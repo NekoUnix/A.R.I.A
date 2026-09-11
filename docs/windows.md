@@ -1,5 +1,12 @@
 # Windows setup and operation
 
+ARIA v0.9 includes an offline help window: hover a circled **?** beside a control
+for a short explanation, or click it for detailed instructions and diagrams.
+**Help & documentation** in the studio header opens the searchable guide. The
+window can stay open while tracking continues; closing it leaves ARIA running.
+Parameter, range, expression and physics-group help includes context from the
+loaded avatar, captured when clicked. See the [bundled reference](in-app-help.md).
+
 ## 1. Choose a way to run
 
 The target for this first build is **Windows 10/11, x64**, with an up-to-date
@@ -12,7 +19,7 @@ systems and Windows ARM64 are not verified release targets yet.
 1. Visit [the Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml).
 2. Select a green, successful run on `main` for the version you want.
 3. Under **Artifacts**, download **aria-windows-x64**. Sign in to GitHub if asked.
-4. Extract the downloaded artifact. Extract `aria-0.8.0-windows-x64.zip` inside it
+4. Extract the downloaded artifact. Extract `aria-0.9.0-windows-x64.zip` inside it
    into a normal writable folder, for example `C:\Apps\ARIA`.
 5. Double-click **aria-desktop.exe**. The default source is Demo and Mica should move.
 

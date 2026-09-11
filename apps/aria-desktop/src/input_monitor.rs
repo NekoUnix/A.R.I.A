@@ -231,6 +231,18 @@ impl InputMonitor {
                 }
             });
         }
+        crate::help::label(
+            ui,
+            "About this tab",
+            match self.tab {
+                Tab::Inputs => "inputs",
+                Tab::Pose => "pose",
+                Tab::Physics => "physics",
+                Tab::Expressions => "expressions",
+                Tab::Presets => "presets",
+                Tab::Raw => "diagnostics",
+            },
+        );
         if let Some(message) = &self.message {
             ui.label(
                 egui::RichText::new(message)
@@ -245,7 +257,7 @@ impl InputMonitor {
                 } else {
                     "MANUAL INPUTS ACTIVE"
                 });
-                if ui.button("Resume live").clicked() {
+                if crate::help::control(ui, "pose", |ui| ui.button("Resume live")).clicked() {
                     self.saved.config.pose.mode = PoseMode::Live;
                     self.reset_motion = true;
                 }
@@ -285,12 +297,16 @@ impl InputMonitor {
         }
     }
     fn filter_ui(&mut self, ui: &mut egui::Ui) {
-        ui.add(
-            egui::TextEdit::singleline(&mut self.search)
-                .hint_text("Find an input or parameter…")
-                .desired_width(f32::INFINITY),
-        );
-        ui.checkbox(&mut self.mapped_only, "Mapped inputs only");
+        crate::help::control(ui, "inputs", |ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.search)
+                    .hint_text("Find an input or parameter…")
+                    .desired_width(f32::INFINITY),
+            )
+        });
+        crate::help::control(ui, "inputs", |ui| {
+            ui.checkbox(&mut self.mapped_only, "Mapped inputs only")
+        });
     }
     fn inputs_ui(
         &mut self,
@@ -305,7 +321,9 @@ impl InputMonitor {
             )
             .small(),
         );
-        if ui.button("Save input configuration").clicked() {
+        if crate::help::control(ui, "profiles", |ui| ui.button("Save input configuration"))
+            .clicked()
+        {
             self.save_requested = true;
             self.message = Some("Input configuration saved locally.".into());
         }
@@ -337,11 +355,10 @@ impl InputMonitor {
             for p in visible {
             let label = labels.get(&p.id).map(String::as_str).unwrap_or(&p.id);
             ui.push_id(&p.id, |ui| {
-                egui::CollapsingHeader::new(format!("{label}   {:.3}", p.value))
-                    .id_salt("input-control")
-                    .default_open(crate::smoke_mode() && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("inputs"))
-                    .show(ui, |ui| {
+                crate::help::parameter_header(ui, p, label,
+                    crate::smoke_mode() && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("inputs"), |ui| {
                         ui.label(egui::RichText::new(&p.id).small());
+                        crate::help::label(ui, "Source", "source");
                         let old = self.saved.config.bindings.get(&p.id).map(|b| b.input.clone());
                         let mut source = old.clone();
                         egui::ComboBox::from_id_salt("source")
@@ -375,19 +392,19 @@ impl InputMonitor {
                             range_row(ui, "Output start / end", &mut b.output_min,
                                 &mut b.output_max, p.min, p.max, false);
                             ui.horizontal_wrapped(|ui| {
-                                ui.checkbox(&mut b.clamp_input, "Clamp input");
-                                ui.checkbox(&mut b.clamp_output, "Clamp output");
-                                if ui.small_button("Invert output").clicked() {
+                                crate::help::control(ui, "clamps", |ui| ui.checkbox(&mut b.clamp_input, "Clamp input"));
+                                crate::help::control(ui, "clamps", |ui| ui.checkbox(&mut b.clamp_output, "Clamp output"));
+                                if crate::help::control(ui, "ranges", |ui| ui.small_button("Invert output")).clicked() {
                                     std::mem::swap(&mut b.output_min, &mut b.output_max);
                                 }
                             });
-                            ui.add(egui::Slider::new(&mut b.smoothing_ms, 0.0..=500.0)
-                                .text("Smoothing ms"));
-                            ui.add(egui::Slider::new(&mut b.dead_zone, 0.0..=0.45)
-                                .text("Dead zone"))
+                            crate::help::control(ui, "smoothing", |ui| ui.add(egui::Slider::new(&mut b.smoothing_ms, 0.0..=500.0)
+                                .text("Smoothing ms")));
+                            crate::help::control(ui, "dead-zone", |ui| ui.add(egui::Slider::new(&mut b.dead_zone, 0.0..=0.45)
+                                .text("Dead zone")))
                                 .on_hover_text("Fraction of the input span ignored around its midpoint. 0 means no dead zone.");
-                            ui.add(egui::Slider::new(&mut b.response_curve, 0.1..=4.0)
-                                .text("Response curve"))
+                            crate::help::control(ui, "curve", |ui| ui.add(egui::Slider::new(&mut b.response_curve, 0.1..=4.0)
+                                .text("Response curve")))
                                 .on_hover_text("1 is linear. Higher values soften movement around the center; endpoints remain unchanged.");
                         } else {
                             let value = self.saved.config.manual.entry(p.id.clone()).or_insert(p.value);
@@ -431,17 +448,19 @@ impl InputMonitor {
     ) {
         crate::theme::category(ui, "pose-capture", "Pose & capture", true, |ui| {
             let mut active = self.saved.config.pose.mode != PoseMode::Live;
-            if ui
-                .checkbox(&mut active, "Pose mode / manual inputs")
-                .changed()
+            if crate::help::control(ui, "pose", |ui| {
+                ui.checkbox(&mut active, "Pose mode / manual inputs")
+            })
+            .changed()
             {
                 self.toggle_pose(parameters);
             }
             if active {
                 let mut frozen = self.saved.config.pose.mode == PoseMode::Frozen;
-                if ui
-                    .checkbox(&mut frozen, "Freeze all animation for a picture")
-                    .changed()
+                if crate::help::control(ui, "pose", |ui| {
+                    ui.checkbox(&mut frozen, "Freeze all animation for a picture")
+                })
+                .changed()
                 {
                     if frozen {
                         self.saved.config.capture_pose(parameters);
@@ -452,11 +471,13 @@ impl InputMonitor {
                 }
                 ui.label(egui::RichText::new(if frozen {"Tracking, physics and breathing are frozen. Adjust any value; the pose stays fixed."} else {"Check Hold on individual controls. Other inputs and physics remain live."}).small());
                 ui.horizontal_wrapped(|ui| {
-                    if ui.button("Capture current pose").clicked() {
+                    if crate::help::control(ui, "pose", |ui| ui.button("Capture current pose"))
+                        .clicked()
+                    {
                         self.saved.config.capture_pose(parameters);
                         self.reset_motion = true;
                     }
-                    if ui.button("Resume live").clicked() {
+                    if crate::help::control(ui, "pose", |ui| ui.button("Resume live")).clicked() {
                         self.saved.config.pose.mode = PoseMode::Live;
                         self.reset_motion = true;
                     }
@@ -464,12 +485,11 @@ impl InputMonitor {
             } else {
                 ui.label("Enable pose mode to hold the current pose and adjust each control.");
             }
-            if ui
-                .add_enabled(can_export, egui::Button::new("Save transparent PNG…"))
-                .on_hover_text(
-                    "Save the rendered Live2D avatar without the studio UI or background.",
-                )
-                .clicked()
+            if crate::help::control(ui, "png", |ui| {
+                ui.add_enabled(can_export, egui::Button::new("Save transparent PNG…"))
+            })
+            .on_hover_text("Save the rendered Live2D avatar without the studio UI or background.")
+            .clicked()
                 && let Some(path) = rfd::FileDialog::new()
                     .set_file_name("aria-pose.png")
                     .add_filter("PNG", &["png"])
@@ -477,7 +497,8 @@ impl InputMonitor {
             {
                 self.export_png = Some(path);
             }
-            if ui.button("Save pose as preset…").clicked() {
+            if crate::help::control(ui, "presets", |ui| ui.button("Save pose as preset…")).clicked()
+            {
                 self.tab = Tab::Presets;
             }
         });
@@ -502,10 +523,17 @@ impl InputMonitor {
                             ui.push_id(&p.id, |ui| {
                                 ui.horizontal(|ui| {
                                     ui.label(label).on_hover_text(&p.id);
+                                    crate::help::context_button(ui, "parameter", || {
+                                        crate::help::parameter_context(p, label)
+                                    });
                                     if self.saved.config.pose.mode == PoseMode::Override {
                                         let mut held =
                                             self.saved.config.pose.held.contains_key(&p.id);
-                                        if ui.checkbox(&mut held, "Hold").changed() {
+                                        if crate::help::control(ui, "pose", |ui| {
+                                            ui.checkbox(&mut held, "Hold")
+                                        })
+                                        .changed()
+                                        {
                                             if held {
                                                 self.saved
                                                     .config
@@ -629,29 +657,32 @@ impl InputMonitor {
                 ui,
                 "Movement stores your tuning and physics. Pose also freezes the entire model.",
             );
-            ui.add(
-                egui::TextEdit::singleline(&mut self.preset_name)
-                    .hint_text("Preset name")
-                    .char_limit(80)
-                    .desired_width(f32::INFINITY),
-            );
+            crate::help::control(ui, "presets", |ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.preset_name)
+                        .hint_text("Preset name")
+                        .char_limit(80)
+                        .desired_width(f32::INFINITY),
+                )
+            });
             hotkey_combo(ui, "new-preset-key", &mut self.draft_hotkey);
             ui.horizontal_wrapped(|ui| {
-                if ui.button("Save movement").clicked() {
+                if crate::help::control(ui, "presets", |ui| ui.button("Save movement")).clicked() {
                     self.save_new(PresetKind::Movement, parameters, mapping);
                 }
-                if ui.button("Save pose").clicked() {
+                if crate::help::control(ui, "presets", |ui| ui.button("Save pose")).clicked() {
                     self.save_new(PresetKind::Pose, parameters, mapping);
                 }
             });
         });
         crate::theme::category(ui, "preset-shortcuts", "Keyboard shortcuts", false, |ui| {
-            if ui
-                .checkbox(
+            if crate::help::control(ui, "hotkeys", |ui| {
+                ui.checkbox(
                     &mut self.saved.global_hotkeys,
                     "Enable global hotkeys (Windows)",
                 )
-                .changed()
+            })
+            .changed()
             {
                 self.save_requested = true;
             }
@@ -686,10 +717,14 @@ impl InputMonitor {
             }
             if let Some(index) = self.selected.filter(|&i| i < self.saved.presets.len()) {
                 ui.horizontal_wrapped(|ui| {
-                    if ui.button("Apply selected").clicked() {
+                    if crate::help::control(ui, "presets", |ui| ui.button("Apply selected"))
+                        .clicked()
+                    {
                         self.apply_preset(index, mapping);
                     }
-                    if ui.button("Replace selected").clicked() {
+                    if crate::help::control(ui, "presets", |ui| ui.button("Replace selected"))
+                        .clicked()
+                    {
                         let preset =
                             self.make_preset(self.saved.presets[index].kind, parameters, mapping);
                         let conflict = self.saved.presets.iter().enumerate().any(|(i, p)| {
@@ -711,7 +746,9 @@ impl InputMonitor {
                     }
                 });
                 ui.horizontal_wrapped(|ui| {
-                    if ui.button("Rename / assign key").clicked() {
+                    if crate::help::control(ui, "presets", |ui| ui.button("Rename / assign key"))
+                        .clicked()
+                    {
                         let mut preset = self.saved.presets[index].clone();
                         preset.name = self.preset_name.trim().into();
                         preset.hotkey = self.draft_hotkey;
@@ -731,7 +768,9 @@ impl InputMonitor {
                             self.save_requested = true;
                         }
                     }
-                    if ui.button("Delete selected").clicked() {
+                    if crate::help::control(ui, "presets", |ui| ui.button("Delete selected"))
+                        .clicked()
+                    {
                         self.saved.presets.remove(index);
                         self.selected = None;
                         self.message = Some("Preset deleted.".into());
@@ -739,7 +778,10 @@ impl InputMonitor {
                     }
                 });
                 if self.selected.is_some()
-                    && ui.button("Export selected preset…").clicked()
+                    && crate::help::control(ui, "presets", |ui| {
+                        ui.button("Export selected preset…")
+                    })
+                    .clicked()
                     && let Some(path) = rfd::FileDialog::new()
                         .set_file_name("aria-preset.json")
                         .add_filter("ARIA preset", &["json"])
@@ -761,7 +803,7 @@ impl InputMonitor {
                     );
                 }
             }
-            if ui.button("Import preset…").clicked()
+            if crate::help::control(ui, "presets", |ui| ui.button("Import preset…")).clicked()
                 && let Some(path) = rfd::FileDialog::new()
                     .add_filter("ARIA preset", &["json"])
                     .pick_file()
@@ -846,7 +888,13 @@ fn range_row(
     max: f32,
     nonzero: bool,
 ) {
-    ui.label(egui::RichText::new(label).small());
+    ui.horizontal_wrapped(|ui| {
+        ui.small(label);
+        crate::help::context_button(ui, "ranges", || format!(
+            "{label}\nStart: {start}\nEnd: {end}\nAllowed editor bounds: {min} to {max}\n{}\n\nValues captured when you opened this help window.",
+            if nonzero { "Input endpoints must differ. Source units depend on the chosen signal." } else { "Output uses this avatar parameter's authored units. Reversed endpoints invert the binding." }
+        ));
+    });
     let before = (*start, *end);
     ui.horizontal(|ui| {
         ui.add(
@@ -870,6 +918,7 @@ fn range_row(
 fn step_editor(ui: &mut egui::Ui, step: &mut f32, p: &RigParameter) {
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("Step").small());
+        crate::help::button(ui, "step");
         ui.add(
             egui::DragValue::new(step)
                 .speed(0.001)
@@ -891,6 +940,7 @@ fn value_slider(ui: &mut egui::Ui, value: &mut f32, p: &RigParameter, step: f32)
     }
 }
 fn hotkey_combo(ui: &mut egui::Ui, id: &str, key: &mut Option<u8>) {
+    crate::help::label(ui, "Preset shortcut", "hotkeys");
     egui::ComboBox::from_id_salt(id)
         .selected_text(key.map_or_else(|| "No hotkey".into(), crate::hotkeys::label))
         .show_ui(ui, |ui| {

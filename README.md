@@ -6,7 +6,10 @@ tracking into avatar parameters, and animates **Live2D `.moc3` avatars**, a buil
 2D test puppet, or your PNG artwork. The UI and preview run on **egui + wgpu**,
 without Unity or Godot.
 
-> **v0.8:** landscape, portrait and Freeform outputs with compact previews,
+> **v0.9:** circled question marks throughout the studio, hover explanations,
+> and a separate searchable offline help window with examples and diagrams.
+> Contextual help includes the loaded avatar's parameters, ranges, physics groups
+> and expression values. Includes landscape, portrait and Freeform outputs with compact previews,
 > selectable full-resolution Spout output to OBS, dragging and mouse-wheel scaling.
 > Includes GPU/buffer reuse and an opt-in Windows High priority setting.
 > Live2D expressions, custom shortcuts and output layouts save per avatar.
@@ -17,6 +20,19 @@ without Unity or Godot.
 > [Live2D setup and compatibility →](docs/live2d.md)
 
 ![A.R.I.A. Windows studio with its original Mica test puppet](docs/images/studio.png)
+
+Hover a **circled ?** beside a control for its explanation. Click it for the full
+guide in a separate resizable window, or open **Help & documentation** from the
+header. Search covers all help text; Back returns to previous topics. Keyboard:
+Tab to focus a question mark, then Enter or Space. Help works offline and leaves
+tracking running. Capture output windows stay free of help overlays.
+
+The [bundled control reference](docs/in-app-help.md) documents tracking, individual
+input ranges and stepping, pose holds, expressions, presets, physics, OBS, saving
+and performance. Avatar-specific context is captured when you click the control;
+reopen its question mark to refresh those values.
+
+![Offline help with an input-range diagram](docs/images/help.png)
 
 ## Run on Windows
 
@@ -159,7 +175,7 @@ To build a portable bundle with its documentation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 ```
 
-The script runs tests and writes `dist/aria-0.8.0-windows-x64.zip`. See
+The script runs tests and writes `dist/aria-0.9.0-windows-x64.zip`. See
 [architecture](docs/architecture.md) for crate boundaries and
 [validation](docs/validation.md) for what has actually been exercised.
 

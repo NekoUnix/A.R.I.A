@@ -95,18 +95,35 @@ pub fn category(
     add: impl FnOnce(&mut egui::Ui),
 ) {
     card(ui, |ui| {
-        let header = egui::CollapsingHeader::new(RichText::new(title).strong().color(TEXT))
-            .id_salt(id)
-            .default_open(default_open);
+        let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(
+            ui.ctx(),
+            ui.make_persistent_id(id),
+            default_open,
+        );
         #[cfg(feature = "screenshots")]
-        let header = if crate::smoke_mode()
+        if crate::smoke_mode()
             && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("capture-controls")
         {
-            header.open(Some(title == "Capture & performance"))
-        } else {
-            header
-        };
-        header.show(ui, add);
+            state.set_open(title == "Capture & performance");
+        }
+        ui.horizontal(|ui| {
+            let (_, toggle) = ui.allocate_exact_size(egui::vec2(16.0, 22.0), egui::Sense::click());
+            egui::collapsing_header::paint_default_icon(ui, state.openness(ui.ctx()), &toggle);
+            if toggle.clicked() {
+                state.toggle(ui);
+            }
+            if ui
+                .add(
+                    egui::Label::new(RichText::new(title).strong().color(TEXT))
+                        .sense(egui::Sense::click()),
+                )
+                .clicked()
+            {
+                state.toggle(ui);
+            }
+            crate::help::button(ui, crate::help::category_topic(title));
+        });
+        state.show_body_unindented(ui, add);
     });
     ui.add_space(4.0);
 }

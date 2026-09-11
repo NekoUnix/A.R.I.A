@@ -6,6 +6,7 @@ mod broadcast;
 mod chroma;
 mod cubism_render;
 mod expressions_panel;
+mod help;
 mod hotkeys;
 mod input_monitor;
 mod live2d;

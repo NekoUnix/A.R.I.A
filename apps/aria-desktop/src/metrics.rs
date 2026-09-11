@@ -57,6 +57,7 @@ impl Metrics {
         self.usage.shared_gpu_bytes = gpu.and_then(|v| v.2);
     }
     pub fn footer(&self, ui: &mut egui::Ui) {
+        crate::help::button(ui, "metrics");
         let u = &self.usage;
         ui.label(egui::RichText::new(format!("CPU {}",u.cpu_percent.map_or_else(||"N/A".into(),|v|format!("{v:.1}%")))).small())
             .on_hover_text(format!("ARIA process CPU time, normalized across {} available logical processors. Sampled every second; 100% means all processors busy.",self.processors));

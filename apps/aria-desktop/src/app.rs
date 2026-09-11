@@ -393,7 +393,8 @@ impl AriaApp {
                 .or_else(|| self.idle.as_ref().map(|s| s.name.as_str()))
                 .unwrap_or("Mica");
             ui.label(RichText::new(name).strong().color(MINT));
-            if ui.small_button("Save profile").clicked() {
+            if crate::help::control(ui, "profiles", |ui| ui.small_button("Save profile")).clicked()
+            {
                 self.input_monitor.save_requested = true;
                 self.input_monitor.message =
                     Some("This model's complete profile was saved locally.".into());
@@ -401,6 +402,7 @@ impl AriaApp {
         });
         theme::caption(ui, "Settings belong to this avatar.");
         theme::category(ui, "tracking-card", "Tracking & connection", true, |ui| {
+            crate::help::label(ui, "Tracking source", "tracking");
             let old = self.settings.source;
             egui::ComboBox::from_id_salt("source")
                 .selected_text(match old {
@@ -433,49 +435,64 @@ impl AriaApp {
                 self.raw = None;
                 self.status_message = None;
             }
+            if self.settings.source == Source::Json {
+                crate::help::label(ui, "Packet format & external tools", "json");
+            }
             if self.settings.source == Source::Demo {
                 ui.label(
                     RichText::new("Synthetic movement for checking your avatar and output.")
                         .color(MUTED),
                 );
             } else {
-                ui.add_enabled_ui(self.receiver.is_none(), |ui| {
+                ui.scope(|ui| {
                     ui.label(if self.settings.source == Source::Vts {
                         "iPhone IPv4 address"
                     } else {
                         "Allowed sender IPv4 address"
                     });
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.settings.sender_ip)
-                            .desired_width(230.0),
-                    );
+                    crate::help::control(ui, "network", |ui| {
+                        ui.add_enabled(
+                            self.receiver.is_none(),
+                            egui::TextEdit::singleline(&mut self.settings.sender_ip)
+                                .desired_width(230.0),
+                        )
+                    });
                     egui::Grid::new("ports").num_columns(2).show(ui, |ui| {
                         if self.settings.source == Source::Vts {
                             ui.label("Phone request port");
-                            ui.add(
-                                egui::DragValue::new(&mut self.settings.request_port)
-                                    .range(1..=65535),
-                            );
+                            crate::help::control(ui, "network", |ui| {
+                                ui.add_enabled(
+                                    self.receiver.is_none(),
+                                    egui::DragValue::new(&mut self.settings.request_port)
+                                        .range(1..=65535),
+                                )
+                            });
                             ui.end_row();
                         }
                         ui.label("PC receive port");
-                        ui.add(
-                            egui::DragValue::new(&mut self.settings.listen_port).range(1..=65535),
-                        );
+                        crate::help::control(ui, "network", |ui| {
+                            ui.add_enabled(
+                                self.receiver.is_none(),
+                                egui::DragValue::new(&mut self.settings.listen_port)
+                                    .range(1..=65535),
+                            )
+                        });
                         ui.end_row();
                     });
                 });
                 if self.receiver.is_some() {
-                    if ui.button("Disconnect").clicked() {
+                    if crate::help::control(ui, "tracking", |ui| ui.button("Disconnect")).clicked()
+                    {
                         self.receiver = None;
                         self.raw = None;
                     }
-                } else if ui
-                    .add_sized(
+                } else if crate::help::control(ui, "tracking", |ui| {
+                    ui.add_sized(
                         [230.0, 36.0],
                         egui::Button::new(RichText::new("Connect tracking").color(BG)).fill(MINT),
                     )
-                    .clicked()
+                })
+                .clicked()
                 {
                     self.connect();
                 }
@@ -505,40 +522,59 @@ impl AriaApp {
             }
         });
         theme::category(ui, "movement-card", "Movement & calibration", false, |ui| {
-            if ui
-                .add_enabled(
+            if crate::help::control(ui, "calibration", |ui| {
+                ui.add_enabled(
                     self.raw.as_ref().is_some_and(|f| f.face_found),
                     egui::Button::new("Calibrate neutral pose"),
                 )
-                .clicked()
+            })
+            .clicked()
                 && let Some(f) = &self.raw
             {
                 self.pipeline.calibrate(f);
             }
-            ui.add(
-                egui::Slider::new(&mut self.settings.mapping.smoothing_ms, 0.0..=300.0)
-                    .text("Smooth ms"),
-            );
-            ui.add(
-                egui::Slider::new(&mut self.settings.mapping.head_gain, 0.1..=3.0)
-                    .text("Head gain"),
-            );
-            ui.add(
-                egui::Slider::new(&mut self.settings.mapping.mouth_gain, 0.1..=3.0)
-                    .text("Mouth gain"),
-            );
-            ui.checkbox(&mut self.settings.mapping.mirror, "Mirror movement");
+            crate::help::control(ui, "smoothing", |ui| {
+                ui.add(
+                    egui::Slider::new(&mut self.settings.mapping.smoothing_ms, 0.0..=300.0)
+                        .text("Smooth ms"),
+                )
+            });
+            crate::help::control(ui, "gain", |ui| {
+                ui.add(
+                    egui::Slider::new(&mut self.settings.mapping.head_gain, 0.1..=3.0)
+                        .text("Head gain"),
+                )
+            });
+            crate::help::control(ui, "gain", |ui| {
+                ui.add(
+                    egui::Slider::new(&mut self.settings.mapping.mouth_gain, 0.1..=3.0)
+                        .text("Mouth gain"),
+                )
+            });
+            crate::help::control(ui, "axes", |ui| {
+                ui.checkbox(&mut self.settings.mapping.mirror, "Mirror movement")
+            });
             ui.collapsing("Axis correction", |ui| {
-                ui.checkbox(
-                    &mut self.settings.mapping.invert_yaw,
-                    "Invert yaw (left / right)",
-                );
-                ui.checkbox(
-                    &mut self.settings.mapping.invert_pitch,
-                    "Invert pitch (up / down)",
-                );
-                ui.checkbox(&mut self.settings.mapping.invert_roll, "Invert roll (tilt)");
-                if ui.button("Reset mapping and calibration").clicked() {
+                crate::help::control(ui, "axes", |ui| {
+                    ui.checkbox(
+                        &mut self.settings.mapping.invert_yaw,
+                        "Invert yaw (left / right)",
+                    )
+                });
+                crate::help::control(ui, "axes", |ui| {
+                    ui.checkbox(
+                        &mut self.settings.mapping.invert_pitch,
+                        "Invert pitch (up / down)",
+                    )
+                });
+                crate::help::control(ui, "axes", |ui| {
+                    ui.checkbox(&mut self.settings.mapping.invert_roll, "Invert roll (tilt)")
+                });
+                if crate::help::control(ui, "calibration", |ui| {
+                    ui.button("Reset mapping and calibration")
+                })
+                .clicked()
+                {
                     self.settings.mapping = MappingSettings::default();
                     self.pipeline.reset();
                 }
@@ -556,15 +592,16 @@ impl AriaApp {
                 ui.label(RichText::new(&sprite.name).small().color(MUTED));
             }
             ui.horizontal(|ui| {
-                if ui.button("Open PNG…").clicked() {
+                if crate::help::control(ui, "avatar", |ui| ui.button("Open PNG…")).clicked() {
                     self.load_image(ctx, false);
                 }
-                if ui
-                    .add_enabled(
+                if crate::help::control(ui, "avatar", |ui| {
+                    ui.add_enabled(
                         self.idle.is_some() || self.live2d.is_some(),
                         egui::Button::new("Reset"),
                     )
-                    .clicked()
+                })
+                .clicked()
                 {
                     self.idle = None;
                     self.talking = None;
@@ -572,7 +609,9 @@ impl AriaApp {
                 }
             });
             if self.idle.is_some() && self.live2d.is_none() {
-                if ui.button("Set talking image…").clicked() {
+                if crate::help::control(ui, "avatar", |ui| ui.button("Set talking image…"))
+                    .clicked()
+                {
                     self.load_image(ctx, true);
                 }
                 if let Some(sprite) = &self.talking {
@@ -584,8 +623,10 @@ impl AriaApp {
                 }
                 ui.label(RichText::new("Images move with your head. Optional talking image switches when your mouth opens.").small().color(MUTED));
             }
-            ui.add(egui::Slider::new(&mut self.settings.zoom, 0.5..=1.5).text("Zoom"));
-            if ui.button("Open Live2D avatar…").clicked()
+            crate::help::control(ui, "avatar", |ui| {
+                ui.add(egui::Slider::new(&mut self.settings.zoom, 0.5..=1.5).text("Zoom"))
+            });
+            if crate::help::control(ui, "avatar", |ui| ui.button("Open Live2D avatar…")).clicked()
                 && let Some(path) = rfd::FileDialog::new()
                     .add_filter("Cubism export", &["moc3", "json"])
                     .pick_file()
@@ -595,6 +636,7 @@ impl AriaApp {
             if let Some(avatar) = &mut self.live2d {
                 ui.label(RichText::new(&avatar.name).color(MINT));
                 ui.collapsing("Model details", |ui| {
+                    crate::help::button(ui, "avatar");
                     ui.label(
                         RichText::new(format!(
                             "{} meshes · {} tracked parameters\n{:.0} MiB atlases · Core {}",
@@ -609,7 +651,8 @@ impl AriaApp {
                         ui.label(RichText::new(warning).small().color(MUTED));
                     }
                 });
-                if ui.button("Model parameters…").clicked() {
+                if crate::help::control(ui, "inputs", |ui| ui.button("Model parameters…")).clicked()
+                {
                     self.input_monitor.tab = Tab::Inputs;
                 }
                 ui.label(
@@ -619,21 +662,26 @@ impl AriaApp {
                     ))
                     .small(),
                 );
-                if ui.button("Configure avatar physics…").clicked() {
+                if crate::help::control(ui, "physics", |ui| ui.button("Configure avatar physics…"))
+                    .clicked()
+                {
                     self.input_monitor.tab = Tab::Physics;
                 }
             }
             ui.collapsing("Cubism runtime setup", |ui| {
             ui.label("Choose Core/dll/windows/x86_64/Live2DCubismCore.dll from the official Native SDK. The path is saved locally.");
-            ui.text_edit_singleline(&mut self.settings.cubism_core);
-            if ui.button("Select Core DLL…").clicked() && let Some(path) = rfd::FileDialog::new().add_filter("Cubism Core", &["dll"]).pick_file() {
+            crate::help::control(ui, "runtime", |ui| ui.text_edit_singleline(&mut self.settings.cubism_core));
+            if crate::help::control(ui, "runtime", |ui| ui.button("Select Core DLL…")).clicked() && let Some(path) = rfd::FileDialog::new().add_filter("Cubism Core", &["dll"]).pick_file() {
                 self.settings.cubism_core = path.display().to_string();
             }
             ui.hyperlink_to("Download the official SDK ↗", "https://www.live2d.com/en/sdk/download/native/");
             ui.hyperlink_to("Avatar import instructions ↗", "https://github.com/NekoUnix/A.R.I.A/blob/main/docs/live2d.md");
         });
             ui.collapsing("Inspect model files", |ui| {
-                if ui.button("Inspect Live2D .model3.json…").clicked()
+                if crate::help::control(ui, "inspection", |ui| {
+                    ui.button("Inspect Live2D .model3.json…")
+                })
+                .clicked()
                     && let Some(path) = rfd::FileDialog::new()
                         .add_filter("Cubism model3 JSON", &["json"])
                         .pick_file()
@@ -662,13 +710,15 @@ impl AriaApp {
             if let Some(status) = &self.broadcasts.status[selected] {
                 ui.label(RichText::new(status).small().color(MINT));
             }
-            if ui.small_button("Retry OBS output").clicked() {
+            if crate::help::control(ui, "spout", |ui| ui.small_button("Retry OBS output")).clicked()
+            {
                 self.broadcasts.retry();
             }
             theme::caption(
                 ui,
                 "OBS → Spout2 Capture → select the matching ARIA sender. Keep ARIA and OBS on the same GPU. Leave the output open; minimizing its preview keeps the full-resolution sender running.",
             );
+            crate::help::label(ui, "Frame rate target", "performance");
             egui::ComboBox::from_id_salt("fps")
                 .selected_text(format!("{} FPS target", self.settings.fps))
                 .show_ui(ui, |ui| {
@@ -682,7 +732,7 @@ impl AriaApp {
                     }
                 });
             ui.collapsing("Windows performance", |ui| {
-                if ui.add_enabled(cfg!(windows), egui::Checkbox::new(&mut self.settings.high_priority, "High process priority")).changed() {
+                if crate::help::control(ui, "priority", |ui| ui.add_enabled(cfg!(windows), egui::Checkbox::new(&mut self.settings.high_priority, "High process priority"))).changed() {
                     match crate::performance::set_high_priority(self.settings.high_priority) {
                         Ok(()) => {
                             self.priority_status = Some(format!("Windows priority: {}", if self.settings.high_priority { "High" } else { "Normal" }));
@@ -878,22 +928,23 @@ impl AriaApp {
         let mut open = true;
         egui::Window::new("Import moc3 with explicit textures").open(&mut open).default_width(600.0).show(ctx,|ui| {
             ui.label(path.display().to_string());
+ crate::help::button(ui, "textures");
             ui.label("No usable matching manifest was found. Prefer opening the exported .model3.json. For a bare moc3, add each texture atlas and put them in index order (0, 1, 2…).");
-            if ui.button("Add texture atlases…").clicked() && let Some(files) = rfd::FileDialog::new().add_filter("PNG atlases", &["png"]).pick_files() { self.bare_textures.extend(files); }
+            if crate::help::control(ui, "textures", |ui| ui.button("Add texture atlases…")).clicked() && let Some(files) = rfd::FileDialog::new().add_filter("PNG atlases", &["png"]).pick_files() { self.bare_textures.extend(files); }
             let mut swap = None; let mut remove = None;
             egui::ScrollArea::vertical().max_height(280.0).show(ui,|ui| {
                 for (i,texture) in self.bare_textures.iter().enumerate() {
                     ui.horizontal(|ui| {
                         ui.label(format!("{i}: {}",texture.display()));
-                        if ui.add_enabled(i>0,egui::Button::new("Up")).clicked() { swap = Some((i,i-1)); }
-                        if ui.add_enabled(i+1<self.bare_textures.len(),egui::Button::new("Down")).clicked() { swap = Some((i,i+1)); }
-                        if ui.button("Remove").clicked() { remove = Some(i); }
+                        if crate::help::control(ui, "textures", |ui| ui.add_enabled(i>0,egui::Button::new("Up"))).clicked() { swap = Some((i,i-1)); }
+                        if crate::help::control(ui, "textures", |ui| ui.add_enabled(i+1<self.bare_textures.len(),egui::Button::new("Down"))).clicked() { swap = Some((i,i+1)); }
+                        if crate::help::control(ui, "textures", |ui| ui.button("Remove")).clicked() { remove = Some(i); }
                     });
                 }
             });
             if let Some((a,b)) = swap { self.bare_textures.swap(a,b); }
             if let Some(i) = remove { self.bare_textures.remove(i); }
-            if ui.add_enabled(!self.bare_textures.is_empty(),egui::Button::new("Load avatar")).clicked() {
+            if crate::help::control(ui, "textures", |ui| ui.add_enabled(!self.bare_textures.is_empty(),egui::Button::new("Load avatar"))).clicked() {
                 match aria_model::bare_moc(&path,&self.bare_textures).and_then(|f| self.import_model(f)) {
                     Ok(()) => { self.bare_moc = None; self.bare_textures.clear(); },
                     Err(e) => self.status_message = Some(format!("{e:#}")),
@@ -927,6 +978,7 @@ impl AriaApp {
             );
         });
         if self.input_monitor.tab == Tab::Raw {
+            crate::help::label(ui, "Received tracking data", "diagnostics");
             if let Some(f) = &self.raw {
                 ui.label(format!(
                     "Head {:.1} / {:.1} / {:.1}°",
@@ -962,7 +1014,8 @@ impl AriaApp {
             "Connection diagnostics & export",
             false,
             |ui| {
-                if ui.button("Export mapped values…").clicked()
+                if crate::help::control(ui, "diagnostics", |ui| ui.button("Export mapped values…"))
+                    .clicked()
                     && let Some(path) = rfd::FileDialog::new()
                         .set_file_name("aria-parameters.json")
                         .add_filter("JSON", &["json"])
@@ -1015,7 +1068,8 @@ impl AriaApp {
     fn model_window(&mut self, ctx: &egui::Context) {
         if let Some(report) = &self.model {
             egui::Window::new("Live2D asset inspection").open(&mut self.model_open).default_width(670.0).show(ctx, |ui| {
-                ui.label(report.manifest.display().to_string());
+                crate::help::button(ui, "inspection");
+ ui.label(report.manifest.display().to_string());
                 ui.colored_label(MINT, format!("{} textures · {} expressions · {} motions · {:.2} MiB on disk", report.texture_count,
                     report.expression_count, report.motion_count, report.total_bytes() as f64 / 1048576.0));
                 ui.label(format!("{} file problems. Presence checks do not validate the contents of a .moc3 file.", report.problem_count()));
@@ -1155,8 +1209,12 @@ impl eframe::App for AriaApp {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("A.R.I.A.").size(26.0).strong().color(MINT));
                     ui.label(RichText::new("AVATAR STUDIO").size(12.0).color(MUTED));
+                    crate::help::button(ui, "welcome");
+                    if ui.small_button("Help & documentation").clicked() {
+                        crate::help::open(ctx, "welcome", String::new());
+                    }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(RichText::new("v0.8 · WINDOWS PREVIEW").small().color(MUTED));
+                        ui.label(RichText::new("v0.9 · WINDOWS PREVIEW").small().color(MUTED));
                     });
                 });
             });
@@ -1167,6 +1225,7 @@ impl eframe::App for AriaApp {
                     ui.label(RichText::new(&self.gpu).small().color(MUTED));
                     ui.separator();
                     ui.label(RichText::new(format!("{:.0} model FPS", self.render_fps)).small());
+                    crate::help::button(ui, "performance");
                     self.metrics.footer(ui);
                     if let Some(cpu) = frame.info().cpu_usage {
                         ui.label(RichText::new(format!("{:.2} ms UI work", cpu * 1000.0)).small());
@@ -1205,6 +1264,7 @@ impl eframe::App for AriaApp {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.heading("Your stage");
+                    crate::help::button(ui, "stage");
                     ui.label(
                         RichText::new(if self.live2d.is_some() {
                             "LIVE2D / CUBISM"
@@ -1359,6 +1419,29 @@ impl eframe::App for AriaApp {
             // Drop senders immediately when their last preview is closed.
             self.broadcasts.retry();
         }
+        #[cfg(feature = "screenshots")]
+        if crate::smoke_mode() {
+            let scenario = std::env::var("ARIA_SMOKE_SCENARIO").unwrap_or_default();
+            if let Some(topic) = scenario.strip_prefix("help-") {
+                let key = egui::Id::new("help-smoke-open");
+                if !ctx.data(|d| d.get_temp::<bool>(key).unwrap_or(false)) {
+                    if let Some(a) = crate::help::articles().iter().find(|a| a.id == topic) {
+                        let context = if a.id == "parameter" {
+                            self.current_parameters()
+                                .first()
+                                .map_or_else(String::new, |p| {
+                                    crate::help::parameter_context(p, &p.id)
+                                })
+                        } else {
+                            String::new()
+                        };
+                        crate::help::open(ctx, a.id, context);
+                    }
+                    ctx.data_mut(|d| d.insert_temp(key, true));
+                }
+            }
+        }
+        crate::help::show(ctx, self.started);
         let remaining = self
             .frame_clock
             .remaining(Instant::now(), self.settings.fps);
@@ -1388,7 +1471,15 @@ fn screenshot_capture(ctx: &egui::Context, started: Instant, output: bool) {
 
 fn section(ui: &mut egui::Ui, label: &str) {
     ui.add_space(5.0);
-    ui.label(RichText::new(label).size(11.0).strong().color(MUTED));
+    crate::help::label(
+        ui,
+        RichText::new(label).size(11.0).strong().color(MUTED),
+        match label {
+            "STUDIO CONTROLS" => "profiles",
+            "INPUT MONITOR" => "inputs",
+            _ => "diagnostics",
+        },
+    );
 }
 
 fn meter(ui: &mut egui::Ui, label: &str, value: f32, min: f32, max: f32) {

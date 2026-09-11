@@ -277,15 +277,18 @@ impl OutputWindows {
     pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<usize> {
         let mut detect = None;
         let mut state = self.state.lock().unwrap();
-        ui.label("Output previews");
+        crate::help::label(ui, "Output previews", "outputs");
         for (i, name) in NAMES.iter().enumerate() {
-            ui.checkbox(&mut state.open[i], format!("Open {name}"));
+            crate::help::control(ui, "outputs", |ui| {
+                ui.checkbox(&mut state.open[i], format!("Open {name}"))
+            });
         }
         theme::caption(
             ui,
             "All three can stay open together. Framing, resolution and backgrounds are saved per avatar.",
         );
         let selected = state.config.selected;
+        crate::help::label(ui, "Canvas to edit", "outputs");
         egui::ComboBox::from_id_salt("edit-output")
             .selected_text(format!("Edit {}", NAMES[selected]))
             .show_ui(ui, |ui| {
@@ -300,19 +303,20 @@ impl OutputWindows {
         let selected = state.config.selected;
         let mut changed = false;
         let config = state.config.canvas_mut(selected);
-        changed |= ui
-            .checkbox(
+        changed |= crate::help::control(ui, "spout", |ui| {
+            ui.checkbox(
                 &mut config.send_to_obs,
                 "Send full resolution to OBS (Spout)",
             )
-            .changed();
+        })
+        .changed();
         theme::caption(
             ui,
             "Previews stay small to save screen space. OBS receives the full canvas resolution through Spout2 Capture, regardless of preview size. Window Capture only captures the small preview.",
         );
         ui.horizontal_wrapped(|ui| {
             ui.label(egui::RichText::new(SENDERS[selected]).monospace().small());
-            if ui.small_button("Copy sender").clicked() {
+            if crate::help::control(ui, "spout", |ui| ui.small_button("Copy sender")).clicked() {
                 ui.ctx().copy_text(SENDERS[selected].into());
             }
         });
@@ -322,7 +326,7 @@ impl OutputWindows {
         );
         let size = config.pixels(selected);
         if selected < 2 {
-            ui.label("OBS canvas resolution");
+            crate::help::label(ui, "OBS canvas resolution", "resolution");
             egui::ComboBox::from_id_salt("canvas-resolution")
                 .width(165.0)
                 .selected_text(format!("{} × {} px", size[0], size[1]))
@@ -343,9 +347,10 @@ impl OutputWindows {
                     }
                 });
         } else {
-            ui.label("OBS canvas · width × height");
+            crate::help::label(ui, "OBS canvas · width × height", "resolution");
             changed |= size_fields(ui, &mut config.freeform_size, 64..=4096);
         }
+        crate::help::label(ui, "Background", "background");
         egui::ComboBox::from_id_salt("output-background")
             .selected_text(match config.background {
                 Background::Studio => "Studio background",
@@ -364,18 +369,21 @@ impl OutputWindows {
                 }
             });
         if config.background == Background::Green {
+            crate::help::label(ui, "Key color", "chroma");
             ui.horizontal(|ui| {
                 if ui.color_edit_button_srgb(&mut config.key).changed() {
                     self.hex_draft = chroma::hex(config.key);
                     changed = true;
                 }
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.hex_draft)
-                        .hint_text("#00FF00")
-                        .char_limit(7)
-                        .desired_width(82.0),
-                );
-                if ui.button("Apply hex").clicked() {
+                crate::help::control(ui, "chroma", |ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.hex_draft)
+                            .hint_text("#00FF00")
+                            .char_limit(7)
+                            .desired_width(82.0),
+                    )
+                });
+                if crate::help::control(ui, "chroma", |ui| ui.button("Apply hex")).clicked() {
                     match chroma::parse_hex(&self.hex_draft) {
                         Ok(rgb) => {
                             config.key = rgb;
@@ -388,10 +396,12 @@ impl OutputWindows {
                 }
             });
             ui.horizontal_wrapped(|ui| {
-                if ui.button("Detect safer color").clicked() {
+                if crate::help::control(ui, "chroma", |ui| ui.button("Detect safer color"))
+                    .clicked()
+                {
                     detect = Some(selected);
                 }
-                if ui.button("Copy hex").clicked() {
+                if crate::help::control(ui, "chroma", |ui| ui.button("Copy hex")).clicked() {
                     ui.ctx().copy_text(chroma::hex(config.key));
                 }
             });
@@ -414,21 +424,23 @@ impl OutputWindows {
             ui.label(egui::RichText::new(message).small().color(theme::MINT));
         }
         ui.collapsing("Framing & preview size", |ui| {
+ crate::help::button(ui, "framing");
             theme::caption(ui, "Drag the avatar to move it. Scroll the mouse wheel over the canvas to resize the avatar. Double-click the avatar to center it. Lock framing protects both position and scale.");
-            let zoom = ui.add(egui::Slider::new(&mut config.zoom,0.25..=3.0).text("Model scale"));
+            let zoom = crate::help::control(ui, "framing", |ui| ui.add(egui::Slider::new(&mut config.zoom,0.25..=3.0).text("Model scale")));
             changed |= zoom.drag_stopped() || (zoom.changed() && !zoom.dragged());
             ui.horizontal(|ui| {
-                if ui.button("Center model").clicked() { config.position = [0.0;2]; changed = true; }
-                if ui.button("Reset framing").clicked() { config.position = [0.0;2]; config.zoom = 1.0; changed = true; }
+                if crate::help::control(ui, "framing", |ui| ui.button("Center model")).clicked() { config.position = [0.0;2]; changed = true; }
+                if crate::help::control(ui, "framing", |ui| ui.button("Reset framing")).clicked() { config.position = [0.0;2]; config.zoom = 1.0; changed = true; }
             });
-            changed |= ui.checkbox(&mut config.locked,"Lock model framing").changed();
-            changed |= ui.checkbox(&mut config.always_on_top,"Keep this output on top").changed();
+            changed |= crate::help::control(ui, "framing", |ui| ui.checkbox(&mut config.locked,"Lock model framing")).changed();
+            changed |= crate::help::control(ui, "framing", |ui| ui.checkbox(&mut config.always_on_top,"Keep this output on top")).changed();
             if selected == 2 {
-                ui.label("Window pixels · width × height");
+                crate::help::label(ui, "Window pixels · width × height", "preview");
                 changed |= size_fields(ui, &mut config.freeform_window, 160..=1600);
                 theme::caption(ui, "You can also drag the Freeform window edges. The canvas fits inside it; unused space is excluded from the OBS texture.");
             } else {
-                egui::ComboBox::from_id_salt("preview-size").width(150.0).selected_text(format!("{} px preview edge",config.preview_edge)).show_ui(ui, |ui| {
+                crate::help::label(ui, "Compact preview size", "preview");
+ egui::ComboBox::from_id_salt("preview-size").width(150.0).selected_text(format!("{} px preview edge",config.preview_edge)).show_ui(ui, |ui| {
                     for edge in [320,480,640,960] {
                         changed |= ui.selectable_value(&mut config.preview_edge,edge,format!("{edge} px preview edge")).changed();
                     }
@@ -436,7 +448,7 @@ impl OutputWindows {
             }
             theme::caption(ui, "Preview window size does not change OBS resolution. Larger OBS canvases use more GPU memory and rendering time.");
         });
-        if ui.button("Save output layouts").clicked() {
+        if crate::help::control(ui, "profiles", |ui| ui.button("Save output layouts")).clicked() {
             changed = true;
             self.message = Some("All output layouts saved for this avatar.".into());
         }

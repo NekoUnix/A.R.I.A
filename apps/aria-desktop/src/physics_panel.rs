@@ -25,6 +25,7 @@ impl PhysicsPanel {
         let mut actions = Actions::default();
         if groups.is_empty() {
             theme::card(ui, |ui| {
+                crate::help::button(ui, "physics");
                 ui.strong("No physics groups loaded");
                 theme::caption(
                     ui,
@@ -34,8 +35,11 @@ impl PhysicsPanel {
             return actions;
         }
         ui.horizontal_wrapped(|ui| {
-            actions.save = ui.button("Save physics settings").clicked();
-            actions.presets = ui.button("Save as preset…").clicked();
+            actions.save =
+                crate::help::control(ui, "profiles", |ui| ui.button("Save physics settings"))
+                    .clicked();
+            actions.presets =
+                crate::help::control(ui, "presets", |ui| ui.button("Save as preset…")).clicked();
         });
         theme::caption(
             ui,
@@ -49,20 +53,25 @@ impl PhysicsPanel {
             "Overall physics",
             show_overall,
             |ui| {
-                ui.checkbox(&mut settings.enabled, "Enable avatar physics");
-                ui.add_enabled_ui(settings.enabled, |ui| {
-                    tuning(
-                        ui,
-                        &mut settings.strength,
-                        &mut settings.inertia,
-                        &mut settings.response,
-                        &mut settings.gravity,
-                        &mut settings.wind,
-                    );
+                crate::help::control(ui, "physics", |ui| {
+                    ui.checkbox(&mut settings.enabled, "Enable avatar physics")
                 });
+                tuning(
+                    ui,
+                    settings.enabled,
+                    &mut settings.strength,
+                    &mut settings.inertia,
+                    &mut settings.response,
+                    &mut settings.gravity,
+                    &mut settings.wind,
+                );
                 ui.horizontal_wrapped(|ui| {
-                    actions.settle = ui.button("Settle motion").clicked();
-                    if ui.button("Reset overall").clicked() {
+                    actions.settle =
+                        crate::help::control(ui, "physics", |ui| ui.button("Settle motion"))
+                            .clicked();
+                    if crate::help::control(ui, "physics", |ui| ui.button("Reset overall"))
+                        .clicked()
+                    {
                         let groups = std::mem::take(&mut settings.groups);
                         *settings = defaults.clone();
                         settings.groups = groups;
@@ -79,25 +88,34 @@ impl PhysicsPanel {
                 .count();
             theme::caption(ui, format!("{enabled} enabled"));
         });
-        ui.add(
-            egui::TextEdit::singleline(&mut self.search)
-                .hint_text("Find hair, tail, ears or a parameter…")
-                .desired_width(f32::INFINITY),
-        );
-        ui.checkbox(&mut self.modified_only, "Only modified groups");
+        crate::help::control(ui, "physics-group", |ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.search)
+                    .hint_text("Find hair, tail, ears or a parameter…")
+                    .desired_width(f32::INFINITY),
+            )
+        });
+        crate::help::control(ui, "physics-group", |ui| {
+            ui.checkbox(&mut self.modified_only, "Only modified groups")
+        });
         ui.collapsing("Group actions", |ui| {
             ui.horizontal_wrapped(|ui| {
-                if ui.button("Enable all").clicked() {
+                if crate::help::control(ui, "physics-group", |ui| ui.button("Enable all")).clicked()
+                {
                     for g in groups {
                         settings.groups.entry(g.id.clone()).or_default().enabled = true;
                     }
                 }
-                if ui.button("Disable all").clicked() {
+                if crate::help::control(ui, "physics-group", |ui| ui.button("Disable all"))
+                    .clicked()
+                {
                     for g in groups {
                         settings.groups.entry(g.id.clone()).or_default().enabled = false;
                     }
                 }
-                if ui.button("Reset all groups").clicked() {
+                if crate::help::control(ui, "physics-group", |ui| ui.button("Reset all groups"))
+                    .clicked()
+                {
                     settings.groups = defaults.groups.clone();
                     actions.settle = true;
                 }
@@ -130,6 +148,10 @@ impl PhysicsPanel {
                         ui.checkbox(&mut group.enabled, "")
                             .on_hover_text("Enable this physics group");
                         ui.strong(&info.name);
+                        crate::help::context_button(ui, "physics-group", || format!(
+                            "Group: {}\nID: {}\nParticles: {}\nImported output multiplier: {}×\n\nDriven by:\n{}\n\nMoves:\n{}\n\nThese connections are authored in this avatar's physics export.",
+                            info.name, info.id, info.particles, info.imported_multiplier, info.inputs.join("\n"), info.outputs.join("\n")
+                        ));
                         if modified {
                             theme::caption(ui, "modified");
                         }
@@ -152,17 +174,16 @@ impl PhysicsPanel {
                                 && info.id == groups[0].id,
                         )
                         .show(ui, |ui| {
-                            ui.add_enabled_ui(group.enabled && settings.enabled, |ui| {
                                 tuning(
                                     ui,
+                                    group.enabled && settings.enabled,
                                     &mut group.strength,
                                     &mut group.inertia,
                                     &mut group.response,
                                     &mut group.gravity,
                                     &mut group.wind,
                                 );
-                            });
-                            if ui.small_button("Reset this group").clicked() {
+                            if crate::help::control(ui, "physics-group", |ui| ui.small_button("Reset this group")).clicked() {
                                 group = defaults.groups.get(&info.id).copied().unwrap_or_default();
                             }
                             ui.collapsing("Authored inputs & outputs", |ui| {
@@ -215,6 +236,7 @@ impl PhysicsPanel {
 
 fn tuning(
     ui: &mut egui::Ui,
+    enabled: bool,
     strength: &mut f32,
     inertia: &mut f32,
     response: &mut f32,
@@ -254,9 +276,19 @@ fn tuning(
         ),
     ] {
         ui.horizontal(|ui| {
+            crate::help::button(
+                ui,
+                match label {
+                    "Strength" => "strength",
+                    "Inertia" => "inertia",
+                    "Response speed" => "response",
+                    "Gravity" => "gravity",
+                    _ => "wind",
+                },
+            );
             ui.add_sized([98.0, 22.0], egui::Label::new(label))
                 .on_hover_text(hint);
-            ui.add(egui::Slider::new(value, range).fixed_decimals(2))
+            ui.add_enabled(enabled, egui::Slider::new(value, range).fixed_decimals(2))
                 .on_hover_text(hint);
         });
     }

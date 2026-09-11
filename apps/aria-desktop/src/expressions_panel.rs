@@ -173,6 +173,7 @@ impl ExpressionsPanel {
     ) -> Actions {
         let mut actions = Actions::default();
         if self.base.as_os_str().is_empty() {
+            crate::help::button(ui, "expressions");
             crate::theme::caption(
                 ui,
                 "Load a Live2D avatar to use its expression files and assign shortcuts.",
@@ -185,7 +186,10 @@ impl ExpressionsPanel {
                 "Toggle expressions independently. Settings and shortcuts are saved for this avatar.",
             );
             ui.horizontal_wrapped(|ui| {
-                if ui.button("Import expression files…").clicked()
+                if crate::help::control(ui, "expression-files", |ui| {
+                    ui.button("Import expression files…")
+                })
+                .clicked()
                     && let Some(paths) = rfd::FileDialog::new()
                         .add_filter("Live2D expression", &["json", "exp3"])
                         .pick_files()
@@ -217,29 +221,31 @@ impl ExpressionsPanel {
                     actions.save = true;
                     actions.message = Some(format!("Imported {imported} expression files."));
                 }
-                if ui
-                    .button("Reload files")
+                if crate::help::control(ui, "expression-files", |ui| ui.button("Reload files"))
                     .on_hover_text("Reread the listed expression files after editing them on disk.")
                     .clicked()
                 {
                     self.reload(saved, parameters);
                 }
-                if ui
-                    .add_enabled(
+                if crate::help::control(ui, "expressions", |ui| {
+                    ui.add_enabled(
                         saved.config.pose.mode != PoseMode::Frozen,
                         egui::Button::new("All off"),
                     )
-                    .clicked()
+                })
+                .clicked()
                 {
                     saved.config.expressions.clear();
                     actions.save = true;
                 }
             });
-            ui.add(
-                egui::TextEdit::singleline(&mut self.search)
-                    .hint_text("Find an expression…")
-                    .desired_width(f32::INFINITY),
-            );
+            crate::help::control(ui, "expressions", |ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.search)
+                        .hint_text("Find an expression…")
+                        .desired_width(f32::INFINITY),
+                )
+            });
             if self.entries.is_empty() {
                 crate::theme::caption(
                     ui,
@@ -258,6 +264,12 @@ impl ExpressionsPanel {
                 ui.push_id(&entry.file.id, |ui| {
                     ui.horizontal_wrapped(|ui| {
                         let mut active = saved.config.expressions.contains(&entry.file.id);
+                        crate::help::context_button(ui, "expressions", || format!(
+                            "Expression: {}\nFile ID: {}\nFade in: {} seconds\nFade out: {} seconds\n\nExported values:\n{}\n\nMissing targets (skipped): {}",
+                            entry.file.name, entry.file.id, entry.expression.fade_in_time, entry.expression.fade_out_time,
+                            entry.expression.parameters.iter().map(|p| format!("{}: {:?} {}", p.id, p.blend, p.value)).collect::<Vec<_>>().join("\n"),
+                            if entry.missing.is_empty() { "None".into() } else { entry.missing.join(", ") }
+                        ));
                         if ui
                             .add_enabled(
                                 saved.config.pose.mode != PoseMode::Frozen,
@@ -310,12 +322,20 @@ impl ExpressionsPanel {
                         entry.expression.fade_out_time
                     ));
                     ui.separator();
-                    ui.label("Keyboard shortcut");
+                    crate::help::label(ui, "Keyboard shortcut", "hotkeys");
                     ui.horizontal_wrapped(|ui| {
-                        ui.checkbox(&mut self.draft.ctrl, "Ctrl");
-                        ui.checkbox(&mut self.draft.alt, "Alt");
-                        ui.checkbox(&mut self.draft.shift, "Shift");
-                        ui.checkbox(&mut self.draft.win, "Win");
+                        crate::help::control(ui, "hotkeys", |ui| {
+                            ui.checkbox(&mut self.draft.ctrl, "Ctrl")
+                        });
+                        crate::help::control(ui, "hotkeys", |ui| {
+                            ui.checkbox(&mut self.draft.alt, "Alt")
+                        });
+                        crate::help::control(ui, "hotkeys", |ui| {
+                            ui.checkbox(&mut self.draft.shift, "Shift")
+                        });
+                        crate::help::control(ui, "hotkeys", |ui| {
+                            ui.checkbox(&mut self.draft.win, "Win")
+                        });
                     });
                     egui::ComboBox::from_id_salt("expression-key")
                         .selected_text(if self.draft.key == 0 {
@@ -329,7 +349,9 @@ impl ExpressionsPanel {
                             }
                         });
                     ui.horizontal_wrapped(|ui| {
-                        if ui.button("Assign shortcut").clicked() {
+                        if crate::help::control(ui, "hotkeys", |ui| ui.button("Assign shortcut"))
+                            .clicked()
+                        {
                             match Self::assign(saved, &entry.file.id, self.draft) {
                                 Ok(()) => {
                                     actions.save = true;
@@ -341,7 +363,9 @@ impl ExpressionsPanel {
                                 Err(error) => actions.message = Some(error.to_string()),
                             }
                         }
-                        if ui.button("Clear shortcut").clicked() {
+                        if crate::help::control(ui, "hotkeys", |ui| ui.button("Clear shortcut"))
+                            .clicked()
+                        {
                             saved.expression_hotkeys.remove(&entry.file.id);
                             actions.save = true;
                             actions.message = Some("Expression shortcut cleared.".into());
@@ -376,9 +400,10 @@ impl ExpressionsPanel {
             "Global shortcuts",
             true,
             |ui| {
-                actions.save |= ui
-                    .checkbox(&mut saved.global_hotkeys, "Enable global hotkeys (Windows)")
-                    .changed();
+                actions.save |= crate::help::control(ui, "hotkeys", |ui| {
+                    ui.checkbox(&mut saved.global_hotkeys, "Enable global hotkeys (Windows)")
+                })
+                .changed();
                 crate::theme::caption(
                     ui,
                     "This switch also controls preset and pose shortcuts. Multiple expressions blend in the displayed file order. Frozen poses pause expressions.",

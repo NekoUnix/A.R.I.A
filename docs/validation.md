@@ -5,6 +5,27 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Local verification on 2026-09-11
 
+### v0.9 contextual documentation
+
+- Formatting and Clippy across all targets/features with warnings denied passed.
+  **58 default tests** passed. Five new help tests cover topic links, lazy context
+  creation, hover text, mouse/keyboard activation, navigation history, independent
+  native-window closing, and vertical layout/wrapping of all **46 articles** at
+  both the 700-point minimum and 880-point default help-window widths.
+- Native Windows/wgpu screenshots at 175% desktop scaling verified the studio,
+  expanded input controls, capture controls, range and physics diagrams, plus
+  actual parameter context and physics/expression panels with the local Live2D
+  test avatar. The initial article layout defect found by screenshots was fixed
+  and covered by the article-layout regression test.
+- The offline guide is compiled into the executable. Avatar-specific context is
+  generated when clicked, not every frame. The help viewport is separate from
+  the three capture viewports; closing help does not issue a root/output close.
+  Public screenshots use Mica or generic help text; private model art remains local.
+- This release changes documentation and UI layout. It does not reimplement
+  tracking, physics, expression blending, rendering or the Spout bridge. The v0.8
+  OBS interoperability checks below remain historical evidence, not a new v0.9
+  end-to-end OBS run.
+
 ### v0.8 compact previews and full-resolution OBS output
 
 - Formatting, Clippy for every target/feature with warnings denied, and **53 default
@@ -259,6 +280,10 @@ Remove-Item Env:ARIA_SCREENSHOT_TO
 The feature enables A.R.I.A.'s wgpu screenshot-and-exit hook. A real graphics adapter and
 interactive Windows desktop are required. Ordinary release packages do not enable
 this feature. Check the resulting image for layout and the reported adapter.
+Use `ARIA_SMOKE_SCENARIO=help-ranges` or `help-physics` for the separate native help
+viewport; `help-parameter` includes the first loaded parameter's actual context.
+Any bundled topic ID can follow `help-` to select another article. These tests use
+the screenshot feature's repaint hook; the normal help window repaints on demand.
 Set `ARIA_SMOKE_SCENARIO=vts` to connect to a running loopback VTS simulator, or
 `ARIA_SMOKE_SCENARIO=output` to capture the separate green-screen output window.
 The VTS smoke scenario selects an available receive port and advertises that port
