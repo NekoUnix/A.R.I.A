@@ -105,6 +105,30 @@ impl Avatar {
     pub fn atlas_mib(&self) -> f64 {
         self.renderer.atlas_mib
     }
+    pub fn key_palette(&self) -> Result<crate::chroma::Palette> {
+        self.renderer.key_palette()
+    }
+    pub fn image_bounds(&self) -> eframe::egui::Rect {
+        let c = self.model.canvas;
+        let mut rect = eframe::egui::Rect::NOTHING;
+        for d in self
+            .model
+            .drawables
+            .iter()
+            .filter(|d| d.visible && d.opacity > 0.01)
+        {
+            for p in &d.positions {
+                rect.extend_with(eframe::egui::pos2(
+                    (p[0] * c.pixels_per_unit + c.origin[0]) / c.size[0],
+                    1.0 - (p[1] * c.pixels_per_unit + c.origin[1]) / c.size[1],
+                ));
+            }
+        }
+        rect.intersect(eframe::egui::Rect::from_min_max(
+            eframe::egui::Pos2::ZERO,
+            eframe::egui::pos2(1.0, 1.0),
+        ))
+    }
     pub fn reset_motion(&mut self) {
         if let Some(physics) = &mut self.physics {
             physics.reset();

@@ -82,7 +82,18 @@ Colors are composed in gamma space using a premultiplied RGBA8 target, matching
 egui's native-texture convention. Multiply/screen colors are applied before alpha.
 The resulting 2048px-longest-side texture is registered with egui and displayed in
 both native windows. Its registration is freed on model replacement/unload.
-Separate deferred viewports allow ordinary Windows capture and screenshot requests.
+Separate deferred landscape (16:9) and portrait (9:16) viewports allow concurrent
+Windows capture and screenshot requests. `output.rs` owns shared, independently
+configured canvas state. Native drag events update normalized offsets directly;
+generation checks and viewport-scoped IDs prevent stale or cross-window drags.
+Layouts persist in per-avatar preferences, with migration of legacy settings.
+Both viewports sample the one existing avatar render texture.
+
+`chroma.rs` collects compact RGB occupancy from atlas pixels as they load. A user
+requested analysis adds the current transparent render, then chooses a saturated
+candidate maximizing minimum Cb/Cr distance. Normal frames do not read textures back.
+Sprite color tables include idle and talking artwork. This is an explained heuristic,
+not a guarantee of lossless OBS chroma keying.
 
 This initial renderer uses one reusable mask target and CPU mesh copies each frame.
 Mask atlasing, dirty-geometry uploads, asynchronous imports, device-loss recovery,

@@ -95,10 +95,18 @@ pub fn category(
     add: impl FnOnce(&mut egui::Ui),
 ) {
     card(ui, |ui| {
-        egui::CollapsingHeader::new(RichText::new(title).strong().color(TEXT))
+        let header = egui::CollapsingHeader::new(RichText::new(title).strong().color(TEXT))
             .id_salt(id)
-            .default_open(default_open)
-            .show(ui, add);
+            .default_open(default_open);
+        #[cfg(feature = "screenshots")]
+        let header = if crate::smoke_mode()
+            && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("capture-controls")
+        {
+            header.open(Some(title == "Capture & performance"))
+        } else {
+            header
+        };
+        header.show(ui, add);
     });
     ui.add_space(4.0);
 }

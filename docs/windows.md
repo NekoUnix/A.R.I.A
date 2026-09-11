@@ -12,7 +12,7 @@ systems and Windows ARM64 are not verified release targets yet.
 1. Visit [the Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml).
 2. Select a green, successful run on `main` for the version you want.
 3. Under **Artifacts**, download **aria-windows-x64**. Sign in to GitHub if asked.
-4. Extract the downloaded artifact. Extract `aria-0.6.0-windows-x64.zip` inside it
+4. Extract the downloaded artifact. Extract `aria-0.7.0-windows-x64.zip` inside it
    into a normal writable folder, for example `C:\Apps\ARIA`.
 5. Double-click **aria-desktop.exe**. The default source is Demo and Mica should move.
 
@@ -201,20 +201,26 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\allow-tracking-fir
 
 ## 5. Capture in OBS
 
-1. Enable **Open OBS capture window** in A.R.I.A. Leave this separate window open
-   and not minimized. It is titled **A.R.I.A. Output** and contains only the avatar.
-2. Select **Green screen** in A.R.I.A.'s output settings.
-3. In OBS add a **Window Capture** source and choose **A.R.I.A. Output**. Select
-   the Windows 10 capture method if OBS's automatic choice is blank. Capture the
-   client area or crop the native title bar as needed.
-4. On that OBS source add **Filters → Effect Filters → Chroma Key**, choose green,
-   and adjust similarity/smoothness for your artwork. Green pixels in artwork may
-   also be removed; use artwork/colors suitable for chroma key.
-5. Resize/crop the source in OBS. **Keep output on top** is optional.
+1. Expand **Capture & performance**. Enable **Open Landscape · 16:9** and/or
+   **Open Portrait · 9:16**. Both can stay open at the same time.
+2. Select the canvas to edit. Drag the model inside its output window to place it;
+   **Framing & window size** offers scale, centering, position locking and sizes.
+3. Choose **Studio background**, **Green screen / color key**, or **Transparent**
+   separately for each canvas. For a key, enter hex and press **Apply hex**, or
+   use **Detect safer color** to analyze the avatar's colors.
+4. In OBS add a **Window Capture** source for **A.R.I.A. Output — Landscape 16:9**
+   and another for **A.R.I.A. Output — Portrait 9:16** if using both. Capture the
+   client area and disable Capture Cursor. Try Windows 10 capture if automatic is blank.
+5. For color-key output, add **Filters → Effect Filters → Chroma Key**, choose
+   **Custom**, and paste that canvas's hex. Begin with low similarity and inspect
+   hair, eyes and clothing. Framing and colors save per window, per avatar.
+
+See the [complete OBS output guide](obs-output.md) for automatic-color limitations,
+matching filters, saved layouts and canvas sizes.
 
 **Transparent (experimental)** asks Windows for a transparent native viewport.
 Desktop transparency does not guarantee the chosen OBS capture method retains
-alpha. Use green screen when capture alpha is black or inconsistent. The main
+alpha. Use a color key when capture alpha is black or inconsistent. The main
 preview uses a dark placeholder background for transparent mode. This release
 does not install an OBS plugin and does not implement Spout, shared GPU textures,
 virtual camera output, click-through, or a borderless desktop overlay.

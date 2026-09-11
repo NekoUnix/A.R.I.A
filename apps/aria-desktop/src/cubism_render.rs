@@ -30,11 +30,14 @@ pub struct ModelImage {
     pub size: egui::Vec2,
 }
 impl ModelImage {
-    pub fn draw(self, painter: &egui::Painter, rect: egui::Rect, zoom: f32) {
+    pub fn rect(self, rect: egui::Rect, zoom: f32) -> egui::Rect {
         let size = self.size * (rect.width() / self.size.x).min(rect.height() / self.size.y) * zoom;
+        egui::Rect::from_center_size(rect.center(), size)
+    }
+    pub fn draw(self, painter: &egui::Painter, rect: egui::Rect, zoom: f32) {
         painter.image(
             self.id,
-            egui::Rect::from_center_size(rect.center(), size),
+            self.rect(rect, zoom),
             egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
             egui::Color32::WHITE,
         );
@@ -59,10 +62,29 @@ pub struct ModelRenderer {
     meshes: Vec<Mesh>,
     vertex_count: usize,
     pub atlas_mib: f64,
+    palette: crate::chroma::Palette,
 }
 
 impl ModelRenderer {
     pub fn save_png(&self, path: &std::path::Path) -> Result<()> {
+        let (rgba, size) = self.read_rgba()?;
+        image::save_buffer_with_format(
+            path,
+            &rgba,
+            size[0],
+            size[1],
+            image::ColorType::Rgba8,
+            image::ImageFormat::Png,
+        )
+        .context("Cannot save avatar PNG")
+    }
+    pub fn key_palette(&self) -> Result<crate::chroma::Palette> {
+        let (rgba, _) = self.read_rgba()?;
+        let mut palette = self.palette.clone();
+        palette.add_rgba(&rgba);
+        Ok(palette)
+    }
+    fn read_rgba(&self) -> Result<(Vec<u8>, [u32; 2])> {
         let texture = self.output.texture();
         let size = texture.size();
         let stride = (size.width * 4).div_ceil(256) * 256;
@@ -109,15 +131,7 @@ impl ModelRenderer {
         }
         drop(mapped);
         buffer.unmap();
-        image::save_buffer_with_format(
-            path,
-            &rgba,
-            size.width,
-            size.height,
-            image::ColorType::Rgba8,
-            image::ImageFormat::Png,
-        )
-        .context("Cannot save avatar PNG")
+        Ok((rgba, [size.width, size.height]))
     }
     pub fn new(
         state: &RenderState,
@@ -127,6 +141,7 @@ impl ModelRenderer {
     ) -> Result<Self> {
         let device = &state.device;
         let queue = &state.queue;
+        let mut palette = crate::chroma::Palette::default();
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
@@ -195,6 +210,7 @@ impl ModelRenderer {
                     )
                 })?
                 .into_rgba8();
+            palette.add_rgba(&rgba);
             let (width, height) = rgba.dimensions();
             total_bytes += width as u64 * height as u64 * 4;
             ensure!(
@@ -389,6 +405,7 @@ impl ModelRenderer {
             meshes,
             vertex_count,
             atlas_mib: total_bytes as f64 / 1048576.0,
+            palette,
         })
     }
 

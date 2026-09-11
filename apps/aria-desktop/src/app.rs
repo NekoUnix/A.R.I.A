@@ -1,5 +1,6 @@
 use crate::avatar::{self, Sprite};
 use crate::input_monitor::{InputMonitor, Tab};
+use crate::output::{Background, OutputSettings, OutputWindows};
 use aria_core::{MappingSettings, ParameterPipeline, Parameters, TrackingFrame, demo_frame};
 use aria_core::{
     movement::{self, PoseMode, RigConfig, SavedRig},
@@ -13,15 +14,10 @@ use std::{
     collections::BTreeMap,
     net::Ipv4Addr,
     path::{Path, PathBuf},
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
     time::{Duration, Instant},
 };
 
 use crate::theme::{self, BG, MINT, MUTED, PANEL};
-const OUTPUT: &str = "aria-output";
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 enum Source {
@@ -29,24 +25,6 @@ enum Source {
     Demo,
     Vts,
     Json,
-}
-
-#[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-enum Background {
-    #[default]
-    Studio,
-    Green,
-    Transparent,
-}
-
-impl Background {
-    fn color(self) -> Color32 {
-        match self {
-            Self::Studio => BG,
-            Self::Green => Color32::from_rgb(0, 255, 0),
-            Self::Transparent => Color32::TRANSPARENT,
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -64,6 +42,7 @@ struct Settings {
     cubism_core: String,
     saved_rigs: BTreeMap<String, SavedRig>,
     model_preferences: BTreeMap<String, ModelPreferences>,
+    outputs: Option<OutputSettings>,
 }
 
 impl Default for Settings {
@@ -81,6 +60,7 @@ impl Default for Settings {
             cubism_core: String::new(),
             saved_rigs: BTreeMap::new(),
             model_preferences: BTreeMap::new(),
+            outputs: None,
         }
     }
 }
@@ -99,6 +79,7 @@ struct ModelPreferences {
     zoom: f32,
     always_on_top: bool,
     calibration: aria_core::Vec3,
+    outputs: Option<OutputSettings>,
 }
 impl Default for ModelPreferences {
     fn default() -> Self {
@@ -118,6 +99,7 @@ impl ModelPreferences {
             zoom: settings.zoom,
             always_on_top: settings.always_on_top,
             calibration: aria_core::Vec3::default(),
+            outputs: settings.outputs.clone(),
         }
     }
     fn restore(&self, settings: &mut Settings) {
@@ -134,6 +116,7 @@ impl ModelPreferences {
             1.0
         };
         settings.always_on_top = self.always_on_top;
+        settings.outputs = self.outputs.clone().map(OutputSettings::sanitized);
     }
 }
 
@@ -150,8 +133,7 @@ pub struct AriaApp {
     gpu: String,
     metrics: crate::metrics::Metrics,
     status_message: Option<String>,
-    output_open: bool,
-    output_close_requested: Arc<AtomicBool>,
+    outputs: OutputWindows,
     input_monitor: InputMonitor,
     hotkeys: crate::hotkeys::Hotkeys,
     live_inputs: Inputs,
@@ -203,6 +185,9 @@ impl AriaApp {
             settings.saved_rigs.get("preview-v1").cloned(),
             &preview_parameters,
         );
+        let outputs = OutputWindows::new(settings.outputs.clone().unwrap_or_else(|| {
+            OutputSettings::from_legacy(settings.background, settings.zoom, settings.always_on_top)
+        }));
         let app = Self {
             settings,
             receiver: None,
@@ -216,8 +201,7 @@ impl AriaApp {
             gpu,
             metrics: crate::metrics::Metrics::default(),
             status_message: None,
-            output_open: false,
-            output_close_requested: Arc::new(AtomicBool::new(false)),
+            outputs,
             input_monitor,
             hotkeys: crate::hotkeys::Hotkeys::new(cc.egui_ctx.clone()),
             live_inputs: Inputs::new(),
@@ -259,8 +243,32 @@ impl AriaApp {
                         );
                     }
                     Ok("output") => {
-                        app.output_open = true;
-                        app.settings.background = Background::Green;
+                        app.outputs.set_open(0, true);
+                        app.outputs
+                            .edit_canvas(0, |c| c.background = Background::Green);
+                    }
+                    Ok("output-both") | Ok("output-transparent") | Ok("capture-controls") => {
+                        app.outputs.set_open(0, true);
+                        app.outputs.set_open(1, true);
+                        app.outputs.edit_canvas(0, |c| {
+                            c.background = Background::Green;
+                            c.position = [0.2, 0.0];
+                        });
+                        app.outputs.edit_canvas(1, |c| {
+                            c.background = Background::Studio;
+                            c.position = [-0.12, 0.1];
+                            c.zoom = 0.75;
+                        });
+                        if std::env::var("ARIA_SMOKE_SCENARIO").as_deref()
+                            == Ok("output-transparent")
+                        {
+                            for i in 0..2 {
+                                app.outputs
+                                    .edit_canvas(i, |c| c.background = Background::Transparent);
+                            }
+                        } else {
+                            app.detect_key_color(0);
+                        }
                     }
                     Ok("physics") | Ok("physics-group") => {
                         app.input_monitor.tab = Tab::Physics;
@@ -618,32 +626,10 @@ impl AriaApp {
             );
         });
         theme::category(ui, "output-card", "Capture & performance", false, |ui| {
-            ui.checkbox(&mut self.output_open, "Open OBS capture window");
-            ui.checkbox(&mut self.settings.always_on_top, "Keep output on top");
-            egui::ComboBox::from_id_salt("background")
-                .selected_text(match self.settings.background {
-                    Background::Studio => "Studio background",
-                    Background::Green => "Green screen",
-                    Background::Transparent => "Transparent (experimental)",
-                })
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(
-                        &mut self.settings.background,
-                        Background::Studio,
-                        "Studio background",
-                    );
-                    ui.selectable_value(
-                        &mut self.settings.background,
-                        Background::Green,
-                        "Green screen",
-                    );
-                    ui.selectable_value(
-                        &mut self.settings.background,
-                        Background::Transparent,
-                        "Transparent (experimental)",
-                    );
-                });
-            ui.label(RichText::new("OBS → Window Capture → A.R.I.A. Output. For reliable transparency, use Green screen + Chroma Key.").small().color(MUTED));
+            if let Some(index) = self.outputs.ui(ui) {
+                self.detect_key_color(index);
+            }
+            ui.label(RichText::new("OBS → Window Capture → A.R.I.A. Output — Landscape or Portrait. Add one source for each window you use.").small().color(MUTED));
             egui::ComboBox::from_id_salt("fps")
                 .selected_text(format!("{} FPS target", self.settings.fps))
                 .show_ui(ui, |ui| {
@@ -656,6 +642,24 @@ impl AriaApp {
                 "https://github.com/NekoUnix/A.R.I.A/blob/main/docs/windows.md",
             );
         });
+    }
+
+    fn detect_key_color(&mut self, index: usize) {
+        let result = (|| -> anyhow::Result<crate::chroma::Suggestion> {
+            let palette = if let Some(avatar) = &self.live2d {
+                avatar.key_palette()?
+            } else if let Some(idle) = &self.idle {
+                let mut palette = (*idle.palette).clone();
+                if let Some(talking) = &self.talking {
+                    palette.merge(&talking.palette);
+                }
+                palette
+            } else {
+                avatar::mica_palette()
+            };
+            palette.suggest()
+        })();
+        self.outputs.apply_suggestion(index, result);
     }
 
     fn load_image(&mut self, ctx: &egui::Context, talking: bool) {
@@ -753,6 +757,7 @@ impl AriaApp {
         )
     }
     fn remember_current_rig(&mut self) {
+        self.settings.outputs = Some(self.outputs.snapshot());
         self.settings.saved_rigs.insert(
             self.input_monitor.model_key.clone(),
             self.input_monitor.saved.clone(),
@@ -771,6 +776,14 @@ impl AriaApp {
             .cloned()
             .unwrap_or_default();
         preferences.restore(&mut self.settings);
+        self.outputs
+            .reset(self.settings.outputs.clone().unwrap_or_else(|| {
+                OutputSettings::from_legacy(
+                    self.settings.background,
+                    self.settings.zoom,
+                    self.settings.always_on_top,
+                )
+            }));
         // A model switch never silently connects to a different saved sender.
         self.receiver = None;
         self.snapshot = Snapshot::default();
@@ -971,9 +984,6 @@ impl eframe::App for AriaApp {
         if let Some(path) = dropped.first() {
             self.open_model(path);
         }
-        if self.output_close_requested.swap(false, Ordering::AcqRel) {
-            self.output_open = false;
-        }
         let now = Instant::now();
         // A layout discard can call update twice for the same frame.
         let dt = if ctx.current_pass_index() == 0 {
@@ -1083,7 +1093,7 @@ impl eframe::App for AriaApp {
                     ui.label(RichText::new("A.R.I.A.").size(26.0).strong().color(MINT));
                     ui.label(RichText::new("AVATAR STUDIO").size(12.0).color(MUTED));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(RichText::new("v0.6 · WINDOWS PREVIEW").small().color(MUTED));
+                        ui.label(RichText::new("v0.7 · WINDOWS PREVIEW").small().color(MUTED));
                     });
                 });
             });
@@ -1125,6 +1135,8 @@ impl eframe::App for AriaApp {
                     .id_salt("diagnostics-scroll")
                     .show(ui, |ui| self.diagnostics(ui));
             });
+        let output_settings = self.outputs.snapshot();
+        let stage_output = &output_settings.canvases[output_settings.selected];
         egui::CentralPanel::default()
             .frame(Frame::new().fill(BG).inner_margin(20.0))
             .show(ctx, |ui| {
@@ -1148,13 +1160,13 @@ impl eframe::App for AriaApp {
                 painter.rect_filled(
                     rect,
                     12.0,
-                    if self.settings.background == Background::Transparent {
+                    if stage_output.background == Background::Transparent {
                         Color32::from_rgb(30, 34, 48)
                     } else {
-                        self.settings.background.color()
+                        stage_output.background.color(stage_output.key)
                     },
                 );
-                if self.settings.background == Background::Studio {
+                if stage_output.background == Background::Studio {
                     for i in 1..12 {
                         let x = rect.left() + rect.width() * i as f32 / 12.0;
                         painter.line_segment(
@@ -1198,6 +1210,7 @@ impl eframe::App for AriaApp {
                 Some("Hotkey worker could not start. Preset buttons remain available.".into());
         }
         self.hotkeys.configure(self.input_monitor.hotkey_keys());
+        self.input_monitor.save_requested |= self.outputs.take_dirty();
         if std::mem::take(&mut self.input_monitor.save_requested) && !crate::smoke_mode() {
             self.remember_current_rig();
             if let Some(storage) = frame.storage_mut() {
@@ -1218,59 +1231,20 @@ impl eframe::App for AriaApp {
             }
             screenshot_capture(ctx, self.started, false);
         }
-        if self.output_open {
-            let close_requested = Arc::clone(&self.output_close_requested);
-            let background = self.settings.background.color();
-            let params = self.params;
-            let sprite = self.active_sprite().cloned();
-            let model_image = self.live2d.as_ref().map(|a| a.image());
-            let zoom = self.settings.zoom;
-            let interval = Duration::from_secs_f64(1.0 / self.settings.fps as f64);
-            #[cfg(feature = "screenshots")]
-            let started = self.started;
-            let level = if self.settings.always_on_top {
-                egui::WindowLevel::AlwaysOnTop
-            } else {
-                egui::WindowLevel::Normal
-            };
-            ctx.show_viewport_deferred(
-                egui::ViewportId::from_hash_of(OUTPUT),
-                egui::ViewportBuilder::default()
-                    .with_title("A.R.I.A. Output")
-                    .with_inner_size([720.0, 720.0])
-                    .with_transparent(true)
-                    .with_window_level(level),
-                move |ctx, _class| {
-                    let began = Instant::now();
-                    if ctx.input(|i| i.viewport().close_requested()) {
-                        close_requested.store(true, Ordering::Release);
-                        ctx.request_repaint_of(egui::ViewportId::ROOT);
-                    }
-                    egui::CentralPanel::default()
-                        .frame(Frame::NONE.fill(background))
-                        .show(ctx, |ui| {
-                            if let Some(image) = model_image {
-                                image.draw(ui.painter(), ui.max_rect(), zoom);
-                            } else {
-                                avatar::draw(
-                                    ui.painter(),
-                                    ui.max_rect(),
-                                    params,
-                                    sprite.as_ref(),
-                                    zoom,
-                                );
-                            }
-                        });
-                    #[cfg(feature = "screenshots")]
-                    screenshot_capture(ctx, started, true);
-                    let prediction =
-                        Duration::from_secs_f32(ctx.input(|i| i.predicted_dt).max(0.0));
-                    ctx.request_repaint_after(
-                        interval.saturating_sub(began.elapsed()) + prediction,
-                    );
-                },
-            );
-        }
+        self.outputs.show(
+            ctx,
+            crate::output::Scene {
+                model: self.live2d.as_ref().map(|a| a.image()),
+                model_bounds: self
+                    .live2d
+                    .as_ref()
+                    .map_or(egui::Rect::NOTHING, |a| a.image_bounds()),
+                sprite: self.active_sprite().cloned(),
+                params: self.params,
+            },
+            self.settings.fps,
+            self.started,
+        );
         let interval = Duration::from_secs_f64(1.0 / self.settings.fps as f64);
         let remaining = (self.last_update + interval).saturating_duration_since(Instant::now());
         // egui subtracts predicted_dt internally. Compensate so a 60 Hz request
@@ -1388,6 +1362,21 @@ mod tests {
         expressions
             .expression_files
             .push("C:/avatar/smile.exp3.json".into());
+        let mut a_outputs = OutputSettings::default();
+        a_outputs.canvases[0].position = [0.25, -0.1];
+        a_outputs.canvases[0].key = [255, 60, 0];
+        a_outputs.canvases[1].background = Background::Transparent;
+        a_outputs.canvases[1].position = [-0.3, 0.2];
+        settings
+            .model_preferences
+            .get_mut("avatar-a")
+            .unwrap()
+            .outputs = Some(a_outputs.clone());
+        settings
+            .model_preferences
+            .get_mut("avatar-b")
+            .unwrap()
+            .outputs = Some(OutputSettings::default());
         let mut storage = Memory::default();
         eframe::set_value(&mut storage, "aria-settings-v1", &settings);
         let mut restored: Settings =
@@ -1401,6 +1390,7 @@ mod tests {
             assert!(restored.source == Source::Vts && restored.background == Background::Green);
             assert_eq!(restored.sender_ip, "192.0.2.1");
             assert_eq!(restored.fps, 30);
+            assert_eq!(restored.outputs.as_ref().unwrap(), &a_outputs);
             assert_eq!(restored.model_preferences["avatar-a"].calibration.y, 17.0);
             restored.model_preferences["avatar-b"]
                 .clone()
@@ -1412,6 +1402,10 @@ mod tests {
             );
             assert_eq!(restored.sender_ip, "127.0.0.1");
             assert_eq!(restored.fps, 120);
+            assert_eq!(
+                restored.outputs.as_ref().unwrap(),
+                &OutputSettings::default()
+            );
         }
         assert_eq!(
             restored.saved_rigs["avatar-a"].config.pose.frozen["ParamAngleX"],

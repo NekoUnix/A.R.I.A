@@ -9,6 +9,7 @@ pub struct Sprite {
     pub name: String,
     pub size: Vec2,
     pub model_key: String,
+    pub palette: std::sync::Arc<crate::chroma::Palette>,
 }
 
 pub fn load_sprite(ctx: &egui::Context, path: &Path) -> Result<Sprite> {
@@ -28,12 +29,15 @@ pub fn load_sprite(ctx: &egui::Context, path: &Path) -> Result<Sprite> {
         .context("Cannot decode PNG/JPEG image (maximum 4096 × 4096)")?
         .into_rgba8();
     let size = [rgba.width() as usize, rgba.height() as usize];
+    let mut palette = crate::chroma::Palette::default();
+    palette.add_rgba(&rgba);
     let texture = ctx.load_texture(
         path.display().to_string(),
         egui::ColorImage::from_rgba_unmultiplied(size, &rgba),
         egui::TextureOptions::LINEAR,
     );
     Ok(Sprite {
+        palette: std::sync::Arc::new(palette),
         model_key: format!(
             "image:{}x{}:{}",
             size[0],
@@ -56,6 +60,59 @@ pub fn draw(p: &Painter, rect: Rect, params: Parameters, sprite: Option<&Sprite>
     } else {
         draw_mica(p, rect, params, zoom);
     }
+}
+
+pub fn bounds(rect: Rect, params: Parameters, sprite: Option<&Sprite>, zoom: f32) -> Rect {
+    let (center, half) = if let Some(sprite) = sprite {
+        (
+            rect.center()
+                + vec2(
+                    params.0[0] * rect.width() * 0.0015,
+                    -params.0[1] * rect.height() * 0.001,
+                ),
+            sprite.size
+                * (rect.width() * 0.75 / sprite.size.x).min(rect.height() * 0.9 / sprite.size.y)
+                * zoom
+                * 0.5,
+        )
+    } else {
+        let scale = (rect.width() / 480.0).min(rect.height() / 560.0) * zoom;
+        (
+            rect.center()
+                + vec2(
+                    params.0[0] * 0.8 * scale,
+                    42.0 * scale - params.0[1] * 0.35 * scale,
+                ),
+            vec2(145.0, 225.0) * scale,
+        )
+    };
+    let rot = egui::emath::Rot2::from_angle(-params.0[2].to_radians());
+    let mut bounds = Rect::NOTHING;
+    for corner in [
+        vec2(-half.x, -half.y),
+        vec2(half.x, -half.y),
+        vec2(half.x, half.y),
+        vec2(-half.x, half.y),
+    ] {
+        bounds.extend_with(center + rot * corner);
+    }
+    bounds
+}
+
+pub fn mica_palette() -> crate::chroma::Palette {
+    let mut palette = crate::chroma::Palette::default();
+    for rgb in [
+        [25, 28, 49],
+        [217, 226, 241],
+        [43, 49, 73],
+        [114, 235, 209],
+        [157, 145, 241],
+        [255, 255, 255],
+        [223, 167, 191],
+    ] {
+        palette.add_rgb(rgb);
+    }
+    palette
 }
 
 fn draw_sprite(p: &Painter, rect: Rect, params: Parameters, sprite: &Sprite, zoom: f32) {

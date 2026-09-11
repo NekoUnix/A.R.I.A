@@ -2,12 +2,14 @@
 
 mod app;
 mod avatar;
+mod chroma;
 mod cubism_render;
 mod expressions_panel;
 mod hotkeys;
 mod input_monitor;
 mod live2d;
 mod metrics;
+mod output;
 mod physics_panel;
 #[cfg(feature = "screenshots")]
 mod screenshot;

@@ -5,6 +5,32 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Local verification on 2026-09-11
 
+### v0.7 dual OBS output and custom key colors
+
+- Formatting, Clippy across all targets/features with warnings denied, and all
+  **48 default tests** passed on Windows x64. The optional native GPU rendering
+  test also passed after sharing the PNG readback path with color analysis.
+- Real egui pointer-event tests drag both landscape and portrait canvases through
+  repeated layout passes, verify one normalized movement with no accumulated jump,
+  report drag release for persistence, and preserve placement while locked.
+- Both layouts retain independent offsets, backgrounds, keys and scale through
+  actual eframe RON profile persistence. Model switching restores distinct layouts.
+  Tests cover old settings migration, invalid numeric values, window independence,
+  and all supported 16:9/9:16 dimensions.
+- Key-color tests cover mixed-case and invalid hex, transparent padding, inclusion
+  of additional artwork, avoidance of existing artwork colors and the case where
+  no well-separated key exists. The color scan runs only on request, with a compact
+  table collected during atlas loading.
+- Native release screenshots with both windows enabled verified **960×540**
+  landscape and **540×960** portrait clients with different model placement and
+  scale. The supplied model's automatic key was **#FF3C00**; screenshot pixels
+  matched that exact opaque color, while portrait retained its dark studio color.
+  The Mica controls screenshot uses only the original built-in artwork.
+- Both transparent output clients also retained their exact dimensions, alpha-zero
+  background pixels and visible opaque model pixels in native GPU screenshots.
+- Actual OBS filter tuning/capture-method acceptance remains a user/device check;
+  automatic key selection is explicitly explained as a best-fit suggestion.
+
 ### v0.6 expressions and custom keyboard shortcuts
 
 - Formatting, Clippy across all targets/features with warnings denied, and all

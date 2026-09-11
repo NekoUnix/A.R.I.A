@@ -6,8 +6,9 @@ tracking into avatar parameters, and animates **Live2D `.moc3` avatars**, a buil
 2D test puppet, or your PNG artwork. The UI and preview run on **egui + wgpu**,
 without Unity or Godot.
 
-> **v0.6:** Live2D expression files with smooth fades, independent toggles and
-> user-defined Windows keyboard shortcuts, saved separately for each avatar.
+> **v0.7:** simultaneous landscape and portrait OBS windows with independent
+> draggable framing, custom hex key colors and automatic avatar color analysis.
+> Live2D expressions, custom shortcuts and output layouts save per avatar.
 > Includes editable input response, frozen poses, presets, Windows hotkeys and PNG export.
 > Supply the official **Cubism Core x64 DLL** and your exported avatar assets.
 > Motion3/pose3 playback and Cubism 5.3 advanced/offscreen
@@ -79,6 +80,8 @@ it does not implement VTS's proprietary USB transport.
 
 **[Global/group physics and independent model profiles →](docs/physics.md)**
 
+**[Landscape/portrait OBS windows and custom key colors →](docs/obs-output.md)**
+
 A `.moc3` selection finds its matching manifest beside it. Without a manifest,
 the import dialog lets you select/reorder the required texture atlases explicitly.
 The same avatar is rendered in the studio and the OBS output window.
@@ -96,8 +99,9 @@ See [the detailed import guide](docs/live2d.md) for limits and troubleshooting.
 - Direct VTS iOS UDP subscription and renewal; all incoming blendshapes retained
   for inspection, with 12 standard Cubism-style parameters mapped for the preview.
 - Versioned **ARIA JSON v1** UDP input for other tools and custom bridges.
-- Separate **A.R.I.A. Output** window for OBS Window Capture, green-screen mode,
-  experimental transparent background, and optional always-on-top behavior.
+- Separate **16:9 landscape** and **9:16 portrait** OBS capture windows, usable
+  together, with independent dragging, scale, background and on-top controls.
+  Color keys accept hex colors or suggest one from the avatar's artwork.
 - Connection diagnostics, packet age/rate, input validation, disconnect recovery,
   GPU adapter/backend information, UI frame rate, process CPU %, resident RAM,
   and measured local GPU memory on the rendering Direct3D 12 adapter.
@@ -148,7 +152,7 @@ To build a portable bundle with its documentation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 ```
 
-The script runs tests and writes `dist/aria-0.6.0-windows-x64.zip`. See
+The script runs tests and writes `dist/aria-0.7.0-windows-x64.zip`. See
 [architecture](docs/architecture.md) for crate boundaries and
 [validation](docs/validation.md) for what has actually been exercised.
 

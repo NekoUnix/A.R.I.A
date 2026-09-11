@@ -16,10 +16,21 @@ pub fn capture(ctx: &egui::Context, started: Instant, output: bool) {
     let Some(path) = std::env::var_os("ARIA_SCREENSHOT_TO") else {
         return;
     };
-    let want_output = std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("output");
+    let want_output = std::env::var("ARIA_SMOKE_SCENARIO").is_ok_and(|s| s.starts_with("output"));
+    let output_index = std::env::var("ARIA_SMOKE_OUTPUT")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(0)
+        .min(1);
+    let target = if want_output {
+        crate::output::viewport_id(output_index)
+    } else {
+        egui::ViewportId::ROOT
+    };
     let requested = egui::Id::new("aria-smoke-requested");
     let delay = delay();
     if output == want_output
+        && ctx.viewport_id() == target
         && started.elapsed() > delay
         && !ctx.data(|d| d.get_temp::<bool>(requested).unwrap_or(false))
     {
@@ -36,11 +47,6 @@ pub fn capture(ctx: &egui::Context, started: Instant, output: bool) {
                 image, viewport_id, ..
             } = event
             {
-                let target = if want_output {
-                    egui::ViewportId::from_hash_of("aria-output")
-                } else {
-                    egui::ViewportId::ROOT
-                };
                 (*viewport_id == target).then(|| image.clone())
             } else {
                 None
