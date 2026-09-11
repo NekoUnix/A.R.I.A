@@ -1,0 +1,10 @@
+/target/
+/dist/
+/.tools/
+/.scratch/
+*.log
+*.pdb
+.DS_Store
+Thumbs.db
+aria-settings.json
+/aria-smoke.png

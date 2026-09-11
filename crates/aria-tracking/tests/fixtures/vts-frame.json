@@ -1,0 +1,17 @@
+{
+  "Timestamp": 1724000000123,
+  "FaceFound": true,
+  "Hotkey": 3,
+  "Rotation": { "x": 4.0, "y": 358.5, "z": -6.0 },
+  "Position": { "x": 0.01, "y": -0.02, "z": 0.4 },
+  "EyeLeft": { "x": 2.0, "y": 5.0, "z": 0.0 },
+  "EyeRight": { "x": 2.0, "y": 5.0, "z": 0.0 },
+  "BlendShapes": [
+    { "k": "JawOpen", "v": 0.7 },
+    { "k": "EyeBlinkLeft", "v": 0.25 },
+    { "k": "EyeBlinkRight", "v": 0.0 },
+    { "k": "MouthSmileLeft", "v": 0.6 },
+    { "k": "MouthSmileRight", "v": 0.5 }
+  ],
+  "FutureField": "must be ignored"
+}

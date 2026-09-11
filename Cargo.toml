@@ -1,0 +1,23 @@
+[workspace]
+members = ["crates/aria-core", "crates/aria-tracking", "crates/aria-model", "apps/aria-desktop", "apps/aria-cli"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+repository = "https://github.com/NekoUnix/A.R.I.A"
+
+[workspace.dependencies]
+aria-core = { path = "crates/aria-core" }
+aria-tracking = { path = "crates/aria-tracking" }
+aria-model = { path = "crates/aria-model" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"

@@ -1,0 +1,60 @@
+//! Opt-in native wgpu screenshot smoke hook. Disabled in normal release packages.
+use eframe::egui;
+use std::time::{Duration, Instant};
+
+pub fn capture(ctx: &egui::Context, started: Instant, output: bool) {
+    let Some(path) = std::env::var_os("ARIA_SCREENSHOT_TO") else {
+        return;
+    };
+    let want_output = std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("output");
+    let requested = egui::Id::new("aria-smoke-requested");
+    if output == want_output
+        && started.elapsed() > Duration::from_secs(2)
+        && !ctx.data(|d| d.get_temp::<bool>(requested).unwrap_or(false))
+    {
+        eprintln!(
+            "Screenshot request; repaint causes: {:?}",
+            ctx.repaint_causes()
+        );
+        ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
+        ctx.data_mut(|d| d.insert_temp(requested, true));
+    }
+    let image = ctx.input(|input| {
+        input.events.iter().find_map(|event| {
+            if let egui::Event::Screenshot {
+                image, viewport_id, ..
+            } = event
+            {
+                let target = if want_output {
+                    egui::ViewportId::from_hash_of("aria-output")
+                } else {
+                    egui::ViewportId::ROOT
+                };
+                (*viewport_id == target).then(|| image.clone())
+            } else {
+                None
+            }
+        })
+    });
+    if let Some(image) = image {
+        let rgba: Vec<u8> = image
+            .pixels
+            .iter()
+            .flat_map(|pixel| pixel.to_array())
+            .collect();
+        if let Err(e) = image::save_buffer(
+            &path,
+            &rgba,
+            image.width() as u32,
+            image.height() as u32,
+            image::ColorType::Rgba8,
+        ) {
+            eprintln!("Screenshot failed: {e}");
+        }
+        ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Close);
+    }
+    if !output && started.elapsed() > Duration::from_secs(12) {
+        eprintln!("Screenshot timed out");
+        ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Close);
+    }
+}

@@ -1,0 +1,40 @@
+name: Windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-package:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        shell: pwsh
+        run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Lint
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - name: Test
+        run: cargo test --locked --workspace
+      - name: Build portable Windows app
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -SkipTests
+      - name: Upload app and instructions
+        uses: actions/upload-artifact@v4
+        with:
+          name: aria-windows-x64
+          path: dist/aria-0.1.0-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30

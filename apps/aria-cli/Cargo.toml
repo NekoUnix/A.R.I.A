@@ -1,0 +1,14 @@
+[package]
+name = "aria-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+aria-core.workspace = true
+aria-tracking.workspace = true
+aria-model.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+clap = { version = "4", features = ["derive"] }

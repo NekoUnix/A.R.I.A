@@ -1,0 +1,25 @@
+[package]
+name = "aria-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aria-desktop"
+path = "src/main.rs"
+
+[features]
+screenshots = []
+
+[dependencies]
+aria-core.workspace = true
+aria-tracking.workspace = true
+aria-model.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+eframe = { version = "=0.33.0", default-features = false, features = ["default_fonts", "wgpu", "persistence", "x11", "wayland"] }
+wgpu = { version = "27.0.1", default-features = false, features = ["std", "dx12", "vulkan", "wgsl"] }
+rfd = "0.15"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
