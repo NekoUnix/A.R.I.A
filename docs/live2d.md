@@ -1,6 +1,6 @@
 # Live2D avatar import on Windows
 
-ARIA v0.2 evaluates real `.moc3` models through Cubism Core and renders their
+ARIA v0.3 evaluates real `.moc3` models through Cubism Core and renders their
 ArtMeshes with wgpu/Direct3D 12. You need **the model, its texture images, and the
 official Cubism Core DLL**. A moc3 contains the rig, not the texture artwork.
 
@@ -73,16 +73,49 @@ Opening another Live2D avatar replaces the current one after loading succeeds.
 feeds the same rig: choose the phone source, enter the phone address, connect and
 calibrate. No desktop VTS WebSocket authentication token is involved.
 
-The 12 [standard mapped parameters](tracking.md#mapping) automatically bind when
-those IDs exist in the rig. Other parameters remain at their exported defaults.
-Missing standard IDs are skipped; values clamp to each model parameter's min/max.
+ARIA looks for `<moc filename stem>.vtube.json` beside the manifest and imports
+its tracking assignments automatically. Keep this file when moving a model from
+VTube Studio. Supported input names include face angles, individual eyes, brows,
+mouth open/smile, MouthX, MouthFunnel, MouthShrug, MouthPressLipOpen, MouthPucker,
+CheekPuff, and automatic breathing/blinking. Custom output IDs use the saved
+input/output ranges, including reversed ranges, clamps and smoothing amounts.
+Warnings identify unsupported inputs or missing rig parameters.
 
-Click **Model parameters…** to search the actual IDs exported by the rig. For any
-parameter, choose one of the 12 tracking inputs, or **Manual** to use its slider.
-This also provides manual controls for custom toggles/shape parameters. These
-assignments and manual values last until the avatar is unloaded; they are not
-saved between sessions. VTube Studio's `.vtube.json` mappings and hotkeys are not
-imported. Smoothing, gains, mirroring and axis corrections apply before rig binding.
+Without a profile, the 12 [standard parameters](tracking.md#mapping) bind by ID,
+with additional body Y/Z and breathing bindings where present. Other parameters
+keep their exported defaults. Values always clamp to the native rig's limits.
+
+Click **Model parameters…** to search IDs or names from the referenced `.cdi3.json`.
+Select an input, expand its row to edit ranges/clamps/smoothing, or choose **Manual**
+for a slider. Raw `ARKit:` inputs received from the tracker are also available.
+Edits and manual values last until unload. The original profile is never modified;
+reopening the avatar imports it again. VTS hotkeys, active expressions and items
+are not imported. Calibration, global smoothing, gains and mirroring precede binding.
+
+These are ARIA filters over raw tracking, not an exact recreation of VTS's
+proprietary face processing. VTS smoothing amounts become a time constant of
+4 ms per unit (0–100). See [input formulas](tracking.md#model-specific-inputs).
+
+### Secondary motion
+
+The manifest's `.physics3.json` loads automatically. ARIA evaluates its authored
+weighted inputs, normalization, particle lengths, delay, mobility, acceleration,
+output scale/reflection and weight. Chains retain momentum: a head turn pushes
+hair/ears/tail/clothing, which follow and settle. The authored FPS sets a fixed
+simulation step with interpolated inputs and outputs, independent of UI FPS.
+Later groups can use earlier groups' outputs. Automatic breathing continues at
+rest, including when tracking is lost, and feeds physics where the rig connects it.
+
+Use **Secondary motion / physics** to enable or disable it, **Motion strength** to
+adjust the amount (1 is authored strength), and **Physics tuning → Wind** for a
+gentle horizontal force. **Settle motion** clears momentum. Physics-driven sliders
+are marked and become manual only when physics is disabled. Controls last until unload.
+The profile's physics enable flag and per-group strength multipliers are honored;
+VTS's global strength/wind/dragging settings and legacy solver mode are not reproduced.
+
+Models need an authored physics file for secondary motion. ARIA does not guess
+which custom rig IDs mean hair or clothing. Missing/invalid files produce a visible
+warning and leave the avatar usable. Bare moc imports have no physics/profile metadata.
 
 Open **A.R.I.A. Output** for OBS as described in the [Windows guide](windows.md).
 The two windows share the same rendered avatar texture and live parameter state.
@@ -115,17 +148,18 @@ works without the SDK installed.
 | Mesh rendering | Ordered triangles, atlas UVs, opacity, single/double-sided culling |
 | Clipping | Multiple mask sources, regular/inverted masks; invisible mask sources still contribute texture alpha |
 | Colors/blending | Multiply/screen colors; normal, legacy additive and multiplicative blending |
-| Tracking | Standard IDs plus manual assignment to custom rig IDs |
+| Tracking | VTS profile import, named/custom/raw inputs, editable ranges, manual controls |
+| Physics | Version 3 particle chains; authored FPS, weights, normalization, reflection and per-group multipliers |
 | Input limits | 2 MiB manifest; 128 MiB moc; 1–32 atlases; each atlas at most 8192px (also limited by the GPU) and 128 MiB compressed; 1 GiB total decoded atlas storage |
 | Render target | Transparent offscreen texture, longest side 2048px, shared with studio/output; UI zoom scales it |
 
-**Not yet implemented:** `.physics3.json` simulation, `.motion3.json` playback,
+**Not yet implemented:** `.motion3.json` playback,
 `.exp3.json` playback, `.pose3.json` processing, motion events/audio, model3 layout
 overrides, VTS item attachments, or Cubism 5.3 offscreen parts/advanced blending.
 Models using offscreen parts or advanced blend modes are rejected with a compatibility
 message. Export using standard compatible ArtMesh blending to use this renderer.
-Physics-dependent hair/clothes stay at their parameter defaults unless assigned
-or manually adjusted. This is an avatar-rendering foundation, not full VTS feature parity.
+The independent Rust physics solver is not a byte-for-byte Cubism Framework or
+VTS implementation. Motion/pose/expression features remain separate from physics.
 
 Atlas MiB is `width × height × 4` summed over textures. It is not measured process
 VRAM; model memory, output/mask textures, uploads, and driver overhead are additional.
@@ -142,8 +176,10 @@ Large models can briefly pause the UI while importing; use a release build for n
   for bare imports verify every atlas index. Do not substitute the model thumbnail.
 - **Mouth/eyes do not respond:** inspect actual IDs and assignments under
   **Model parameters…**, then verify tracking meters and face-found status.
-- **Static hair or missing toggles:** physics and VTS configuration are not applied;
-  inspect the relevant manual parameters. This is separate from tracking connectivity.
+- **Static hair:** check that the referenced physics file loaded, secondary motion
+  is enabled, and strength is above zero. The group/output counts should be visible.
+- **Missing toggles:** VTS hotkeys and expression playback are not imported; use
+  manual parameter controls for simple toggles.
 - **Blank/wrong-size model:** check the model's exported canvas/origin and parameter
   defaults. Models relying on motion/pose/layout setup may need those features added.
 

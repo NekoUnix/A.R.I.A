@@ -5,14 +5,7 @@ use anyhow::{Context, Result, ensure};
 use ffi::{Aligned, Api, V2, array, count};
 use std::{collections::BTreeMap, ffi::CStr, marker::PhantomData, path::Path, rc::Rc};
 
-#[derive(Clone, Debug)]
-pub struct Parameter {
-    pub id: String,
-    pub min: f32,
-    pub max: f32,
-    pub default: f32,
-    pub value: f32,
-}
+pub use aria_core::rig::RigParameter as Parameter;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Blend {

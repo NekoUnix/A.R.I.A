@@ -57,7 +57,13 @@ pub fn decode(bytes: &[u8], protocol: Protocol) -> Result<TrackingFrame> {
             TrackingFrame {
                 timestamp: p.timestamp,
                 face_found: p.face_found,
-                rotation: p.rotation,
+                // VTS sends horizontal/vertical/lean as X/Y/Z. ARIA's internal
+                // contract is pitch/yaw/roll; convert only at this boundary.
+                rotation: Vec3 {
+                    x: p.rotation.y,
+                    y: p.rotation.x,
+                    z: p.rotation.z,
+                },
                 position: p.position,
                 eye_left: p.eye_left,
                 eye_right: p.eye_right,
@@ -109,7 +115,11 @@ pub fn encode(frame: &TrackingFrame, protocol: Protocol) -> Result<Vec<u8>> {
         Protocol::VTubeStudio => Ok(serde_json::to_vec(&VtsPacket {
             timestamp: frame.timestamp,
             face_found: frame.face_found,
-            rotation: frame.rotation,
+            rotation: Vec3 {
+                x: frame.rotation.y,
+                y: frame.rotation.x,
+                z: frame.rotation.z,
+            },
             position: frame.position,
             eye_left: frame.eye_left,
             eye_right: frame.eye_right,
@@ -136,7 +146,7 @@ mod tests {
         .unwrap();
         assert!(f.face_found);
         assert_eq!(f.timestamp, 1724000000123);
-        assert_eq!(f.rotation.y, 358.5);
+        assert_eq!(f.rotation.x, 358.5);
         assert_eq!(f.blend("jawopen"), 0.7);
         assert_eq!(f.blend("eyeblinkleft"), 0.25);
         assert_eq!(f.hotkey, 3);
@@ -151,6 +161,38 @@ mod tests {
         assert!(decode(&vec![b' '; MAX_PACKET_SIZE + 1], Protocol::AriaJson).is_err());
         assert!(decode(br#"{"version":2,"face_found":true,"rotation":{"x":0,"y":0,"z":0},"blend_shapes":{}}"#, Protocol::AriaJson).is_err());
         assert!(decode(br#"{"version":1,"face_found":true,"rotation":{"x":1e99,"y":0,"z":0},"blend_shapes":{}}"#, Protocol::AriaJson).is_err());
+    }
+
+    #[test]
+    fn phone_head_axes_reach_the_matching_model_axis() {
+        use aria_core::{MappingSettings, ParameterPipeline};
+        for (rotation, expected) in [
+            ([12, 0, 0], [12.0, 0.0, 0.0]),
+            ([0, 9, 0], [0.0, 9.0, 0.0]),
+            ([0, 0, -7], [0.0, 0.0, -7.0]),
+        ] {
+            let bytes = serde_json::to_vec(&serde_json::json!({
+                "Timestamp": 1, "FaceFound": true,
+                "Rotation": { "x": rotation[0], "y": rotation[1], "z": rotation[2] },
+                "Position": { "x": 0, "y": 0, "z": 0 }, "BlendShapes": []
+            }))
+            .unwrap();
+            let frame = decode(&bytes, Protocol::VTubeStudio).unwrap();
+            let mut pipeline = ParameterPipeline::default();
+            let settings = MappingSettings {
+                smoothing_ms: 0.0,
+                ..Default::default()
+            };
+            assert_eq!(
+                pipeline.update(Some(&frame), &settings, 0.016).0[..3],
+                expected
+            );
+            assert!(pipeline.calibrate(&frame));
+            assert_eq!(
+                pipeline.update(Some(&frame), &settings, 0.016).0[..3],
+                [0.0; 3]
+            );
+        }
     }
 
     #[test]

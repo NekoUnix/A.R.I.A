@@ -179,6 +179,9 @@ pub struct ModelFiles {
     pub source: PathBuf,
     pub moc: PathBuf,
     pub textures: Vec<PathBuf>,
+    pub physics: Option<PathBuf>,
+    pub tracking_profile: Option<PathBuf>,
+    pub display_info: Option<PathBuf>,
     pub warnings: Vec<String>,
 }
 
@@ -234,9 +237,26 @@ pub fn load_files(path: &Path) -> Result<ModelFiles> {
         .map(|t| resolve_asset(base, t).with_context(|| format!("Texture {t}")))
         .collect::<Result<Vec<_>>>()?;
     let mut warnings = Vec::new();
-    if f.physics.is_some() {
-        warnings.push("Physics is not simulated in this version.".into());
-    }
+    let mut optional = |reference: Option<&str>, kind: &str| {
+        reference.and_then(|r| match resolve_asset(base, r) {
+            Ok(path) => Some(path),
+            Err(error) => {
+                warnings.push(format!("{kind}: {error:#}"));
+                None
+            }
+        })
+    };
+    let physics = optional(f.physics.as_deref(), "Physics file");
+    let display_info = optional(f.display_info.as_deref(), "Parameter names");
+    let sidecar = format!(
+        "{}.vtube.json",
+        moc.file_stem().unwrap_or_default().to_string_lossy()
+    );
+    let tracking_profile = if base.join(&sidecar).exists() {
+        optional(Some(&sidecar), "VTS profile")
+    } else {
+        None
+    };
     if f.pose.is_some() {
         warnings.push("Pose files are not applied in this version.".into());
     }
@@ -250,6 +270,9 @@ pub fn load_files(path: &Path) -> Result<ModelFiles> {
         source,
         moc,
         textures,
+        physics,
+        tracking_profile,
+        display_info,
         warnings,
     })
 }
@@ -266,7 +289,7 @@ pub fn bare_moc(path: &Path, textures: &[PathBuf]) -> Result<ModelFiles> {
         "Select 1–32 textures in atlas index order"
     );
     let moc = path.canonicalize()?;
-    Ok(ModelFiles { source: moc.clone(), moc, textures: textures.iter().map(|p| p.canonicalize().map_err(Into::into)).collect::<Result<_>>()?, warnings: vec!["Bare moc3: textures use the order shown in the import dialog; no manifest metadata loaded.".into()] })
+    Ok(ModelFiles { source: moc.clone(), moc, textures: textures.iter().map(|p| p.canonicalize().map_err(Into::into)).collect::<Result<_>>()?, physics: None, tracking_profile: None, display_info: None, warnings: vec!["Bare moc3: textures use the order shown in the import dialog; no manifest metadata loaded.".into()] })
 }
 
 pub fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>> {
@@ -287,6 +310,30 @@ pub fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn discovers_optional_rig_files_and_reports_broken_physics() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in [
+            "avatar.moc3",
+            "atlas.png",
+            "avatar.vtube.json",
+            "avatar.cdi3.json",
+        ] {
+            fs::write(dir.path().join(name), b"fixture").unwrap();
+        }
+        let path = dir.path().join("avatar.model3.json");
+        fs::write(&path,br#"{"Version":3,"FileReferences":{"Moc":"avatar.moc3","Textures":["atlas.png"],"Physics":"missing.physics3.json","DisplayInfo":"avatar.cdi3.json"}}"#).unwrap();
+        let files = load_files(&path).unwrap();
+        assert!(files.tracking_profile.is_some());
+        assert!(files.display_info.is_some());
+        assert!(files.physics.is_none());
+        assert!(
+            files
+                .warnings
+                .iter()
+                .any(|w| w.starts_with("Physics file:"))
+        );
+    }
     #[test]
     fn moc_selection_resolves_matching_manifest_and_preserves_texture_order() {
         let dir = tempfile::tempdir().unwrap();

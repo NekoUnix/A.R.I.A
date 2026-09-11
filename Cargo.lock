@@ -160,7 +160,7 @@ dependencies = [
 
 [[package]]
 name = "aria-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "aria-core",
@@ -172,14 +172,16 @@ dependencies = [
 
 [[package]]
 name = "aria-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
+ "anyhow",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "aria-desktop"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "aria-core",
@@ -195,19 +197,21 @@ dependencies = [
  "serde_json",
  "tempfile",
  "wgpu",
+ "windows",
 ]
 
 [[package]]
 name = "aria-live2d"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
+ "aria-core",
  "libloading",
 ]
 
 [[package]]
 name = "aria-model"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -217,7 +221,7 @@ dependencies = [
 
 [[package]]
 name = "aria-tracking"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "aria-core",

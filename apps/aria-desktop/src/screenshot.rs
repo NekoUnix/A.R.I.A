@@ -2,19 +2,25 @@
 use eframe::egui;
 use std::time::{Duration, Instant};
 
+pub fn delay() -> Duration {
+    Duration::from_secs(
+        std::env::var("ARIA_SMOKE_DELAY_SECONDS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(2)
+            .clamp(1, 30),
+    )
+}
+
 pub fn capture(ctx: &egui::Context, started: Instant, output: bool) {
     let Some(path) = std::env::var_os("ARIA_SCREENSHOT_TO") else {
         return;
     };
     let want_output = std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("output");
     let requested = egui::Id::new("aria-smoke-requested");
-    let delay = std::env::var("ARIA_SMOKE_DELAY_SECONDS")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-        .unwrap_or(2)
-        .clamp(1, 30);
+    let delay = delay();
     if output == want_output
-        && started.elapsed() > Duration::from_secs(delay)
+        && started.elapsed() > delay
         && !ctx.data(|d| d.get_temp::<bool>(requested).unwrap_or(false))
     {
         eprintln!(
@@ -58,7 +64,7 @@ pub fn capture(ctx: &egui::Context, started: Instant, output: bool) {
         }
         ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Close);
     }
-    if !output && started.elapsed() > Duration::from_secs(delay + 10) {
+    if !output && started.elapsed() > delay + Duration::from_secs(10) {
         eprintln!("Screenshot timed out");
         ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Close);
     }

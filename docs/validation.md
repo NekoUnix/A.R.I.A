@@ -5,6 +5,33 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Local verification on 2026-09-11
 
+### v0.3 rig mapping, physics and resource bar
+
+- Formatting, Clippy across all targets/features with warnings denied, and all
+  **26 default tests** passed on Windows x64. Three optional tests require a real
+  GPU and/or user-supplied Cubism runtime/model files.
+- The supplied model imported **25 VTS assignments** with no missing or unsupported
+  inputs. Every assignment's input endpoints changed its actual native parameter
+  within that parameter's range, including custom mouth and cheek controls.
+- Its authored physics file loaded **29 groups / 93 output assignments**, with
+  no missing input/output IDs. During ten seconds of simulated movement all **92
+  distinct physics output parameters** varied; every value remained finite and
+  within the native limits, and applying the final pose deformed actual Core meshes.
+- Independent single-axis VTS packets verify horizontal, vertical and roll output
+  isolation and calibration. ARIA JSON's existing pitch/yaw/roll contract is preserved.
+- Physics tests verify a push continues after the driver stops, eventually settles,
+  disables cleanly, and remains close at 30/60/120 Hz. Invalid particle indices and
+  delay values are rejected. Importer tests cover optional sidecar discovery/errors.
+- Windows CPU-time normalization and real working-set/private-memory queries passed.
+  A release screenshot on the RTX 5090 showed **CPU 0.7%, RAM 285 MiB, VRAM 958 MiB**
+  at **59 UI FPS** with the user's model, mappings and physics enabled. These are
+  one-second samples from a smoke run, not a benchmark or guaranteed resource budget.
+- Release screenshot checks also verified the separate green output window and
+  live loopback VTS tracking applied to the model: **491 valid packets, zero
+  rejected, 9 subscription requests** at capture. Smoke tracking uses an available
+  loopback port so it can coexist with a running app, and fails without a fresh face frame.
+- Private model assets and screenshots remain local and excluded from distribution.
+
 ### v0.2 moc3 implementation
 
 - Rust 1.98.1 Windows x64: formatting, Clippy with all targets/features and warnings
@@ -68,6 +95,10 @@ cargo test --locked -p aria-desktop gpu_clipping -- --ignored --nocapture
 $env:ARIA_CUBISM_CORE = 'C:\Tools\CubismSdkForNative-5-r.5\Core\dll\windows\x86_64\Live2DCubismCore.dll'
 $env:ARIA_TEST_MOC = 'C:\Avatars\MyAvatar\MyAvatar.moc3'
 cargo test --locked -p aria-live2d real_core -- --ignored --nocapture
+
+# Requires a model with adjacent VTS profile and referenced physics file.
+$env:ARIA_TEST_MODEL = 'C:\Avatars\MyAvatar\MyAvatar.model3.json'
+cargo test --locked -p aria-desktop local_rig_assignments -- --ignored --nocapture
 ```
 
 Run from the repository root:
@@ -93,6 +124,8 @@ interactive Windows desktop are required. Ordinary release packages do not enabl
 this feature. Check the resulting image for layout and the reported adapter.
 Set `ARIA_SMOKE_SCENARIO=vts` to connect to a running loopback VTS simulator, or
 `ARIA_SMOKE_SCENARIO=output` to capture the separate green-screen output window.
+The VTS smoke scenario selects an available receive port and advertises that port
+to the simulator; normal app connections still use the user's configured port.
 Smoke runs use default settings and do not overwrite saved app preferences.
 For Live2D smoke runs, also set `ARIA_CUBISM_CORE` and `ARIA_TEST_MODEL` (a manifest
 or moc3 path). A model-load failure fails the run instead of capturing the fallback
@@ -110,7 +143,7 @@ puppet. `ARIA_SMOKE_DELAY_SECONDS=7` allows additional settling time after impor
 4. Different DPI/display combinations and older supported GPUs.
 
 5. Additional real rigs and export versions, particularly models requiring pose,
-   physics, motions, custom layout or Cubism 5.3 advanced rendering. Unsupported
+   complex physics, motions, custom layout or Cubism 5.3 advanced rendering. Unsupported
    features are listed in [the compatibility guide](live2d.md#compatibility-and-limits).
 
 Simulator success is evidence for the documented protocol and receiver lifecycle;

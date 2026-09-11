@@ -6,5 +6,6 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+aria-core.workspace = true
 anyhow.workspace = true
 libloading = "0.8"

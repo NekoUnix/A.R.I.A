@@ -68,7 +68,7 @@ spells out the published shape; it is not only a serializer round-trip test.
 
 | Output parameter | Input |
 | --- | --- |
-| `ParamAngleX/Y/Z` | Yaw/pitch/roll from rotation Y/X/Z, neutral offset, gain and optional inversion |
+| `ParamAngleX/Y/Z` | Horizontal/vertical/lean after protocol conversion, neutral offset, gain and optional inversion |
 | `ParamEyeLOpen/ROpen` | One minus left/right blink |
 | `ParamMouthOpenY` | Jaw open minus half mouth-close, then mouth gain |
 | `ParamMouthForm` | Average smile minus average frown |
@@ -87,6 +87,40 @@ Angles are degrees. Rotation wrapping is handled around 0/360. Missing blendshap
 default to zero; coefficients are clamped to 0–1. Mirror reverses horizontal head,
 roll and gaze movement and exchanges left/right eyes and brows. Smoothing uses a
 time-based exponential filter, so behavior is consistent at different render rates.
+
+In v0.3 the VTS adapter routes wire Rotation X to horizontal head rotation and
+wire Y to vertical rotation, fixing the crossed controls reported in the previous
+build. It converts to ARIA's internal pitch/yaw/roll X/Y/Z convention. Roll stays Z.
+The simulator applies the inverse conversion when sending VTS packets. ARIA JSON
+v1 retains **X = pitch/up-down, Y = yaw/left-right, Z = roll/lean**. Axis tests use
+independent single-axis VTS packets and also verify neutral calibration.
+
+### Model-specific inputs
+
+Adjacent `.vtube.json` assignments override standard bindings for their output IDs.
+The saved output IDs and ranges determine which custom parts of a rig move; no
+model-specific parameter names are hardcoded into ARIA.
+
+| Named input | ARIA derivation before the profile's range mapping |
+| --- | --- |
+| FaceAngleX/Y/Z | Calibrated, gained, smoothed horizontal/vertical/lean angles |
+| EyeOpenLeft/Right | Standard filtered eye-open values |
+| EyeLeftX / EyeRightX | Half of out-left minus in-left / in-right minus out-right |
+| EyeLeftY / EyeRightY | Half of up minus down for the corresponding eye |
+| MouthOpen / MouthSmile | Standard filtered mouth-open / nonnegative smile |
+| Brows | Average filtered left/right brow height, clamped 0–1 |
+| MouthX | mouthRight minus mouthLeft |
+| MouthFunnel / MouthPucker / CheekPuff | Corresponding raw blendshape |
+| MouthShrug | Average mouthShrugUpper and mouthShrugLower |
+| MouthPressLipOpen | jawOpen minus average mouthPressLeft/Right |
+| Breath | Four-second smooth 0–1 breathing cycle |
+| AutoBlink | Periodic brief eyelid closure for profiles enabling automatic blinking |
+
+These formulas approximate named VTS tracking inputs from the public raw packet;
+VTS's face processing/filter algorithms are not part of that protocol. Custom
+bindings use their own time-based smoothing. Mirror exchanges eyes and reverses
+horizontal mouth/gaze values as well as the standard head mapping. On face loss,
+raw custom inputs return to zero through their binding filters while breathing continues.
 
 No valid frame for **one second**, or `FaceFound: false`, makes the avatar ease
 toward neutral. The receiver keeps renewing while signal is lost and accepts

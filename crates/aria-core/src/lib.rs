@@ -1,4 +1,6 @@
 //! Platform-independent tracking values and a small, deterministic parameter pipeline.
+pub mod physics;
+pub mod rig;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -21,6 +23,7 @@ pub struct TrackingFrame {
     #[serde(default)]
     pub timestamp: u64,
     pub face_found: bool,
+    /// Canonical degrees: X = pitch (up/down), Y = yaw (left/right), Z = roll.
     pub rotation: Vec3,
     #[serde(default)]
     pub position: Vec3,

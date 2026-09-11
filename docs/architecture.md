@@ -11,7 +11,7 @@ iPhone VTS UDP / ARIA JSON / deterministic demo
                 aria-core
        calibration -> mapping -> smoothing
                     |
-             aria-desktop bindings
+       rig bindings -> breath -> physics
                     |
        aria-live2d -> Cubism Core DLL
           owned animated mesh data
@@ -24,11 +24,11 @@ iPhone VTS UDP / ARIA JSON / deterministic demo
 
 | Package | Responsibility |
 | --- | --- |
-| `aria-core` | Tracking/parameter data, calibration, mapping, deterministic smoothing |
+| `aria-core` | Tracking/parameter data, calibration, named inputs, VTS profile import, smoothing, fixed-step physics3 solver |
 | `aria-tracking` | VTS/ARIA decoding, subscription renewal, bounded latest-frame snapshot |
-| `aria-model` | Bounded model3 parsing, path validation, moc-to-manifest discovery, ordered texture references |
+| `aria-model` | Bounded model3 parsing, path validation, moc-to-manifest discovery, ordered textures and optional rig sidecars |
 | `aria-live2d` | Private Core ABI, explicit DLL loading, aligned memory ownership, consistency/version checks, parameter metadata and owned mesh output |
-| `aria-desktop` | Native UI, model import/bindings, wgpu renderer, diagnostics and output viewport |
+| `aria-desktop` | Native UI, model import/bindings, wgpu renderer, Windows process metrics and output viewport |
 | `aria-cli` | Simulator, JSON sender, headless receiver and manifest inspector |
 
 One worker serves each active tracking receiver. The UI consumes the most recent
@@ -49,9 +49,20 @@ System32. Core itself is a trusted native parser; these checks are not process i
 API symbols and counts are checked, including both old/new render-order entry points.
 Unsupported offscreen parts and advanced blend modes fail explicitly.
 
-Tracking binds by exact ID, with optional assignments to custom IDs. Unbound parameters
-use model defaults or manual overrides. Updates clamp values, reset drawable dynamic
-flags, evaluate Core, then render. Physics/motion/pose/expression sequencing is future work.
+Tracking binds by exact output ID, preferring adjacent VTS profile assignments.
+Each update starts from native defaults/manual overrides, applies named tracking and
+breathing through each binding's ranges/filter, then evaluates authored physics.
+Physics uses the rig's fixed FPS, input interpolation and previous/current output
+interpolation, preserving group order for chained dependencies. Particle state retains
+velocity; pause gaps and re-enabling reset it. Values clamp to native parameter limits
+before resetting drawable flags, evaluating Core and rendering. Motion/pose/expression
+sequencing remains future work. Rig math uses owned Rust parameter data, independent
+of native ABI pointers, so unit tests need neither Core nor licensed assets.
+
+Optional profile, physics and display-info reads are bounded to 2 MiB each and
+stay within the model directory. Invalid optional data produces a visible warning;
+the avatar still loads. Physics group/particle/input/output counts and numerical
+ranges are validated before constructing runtime chains.
 
 ## GPU rendering
 
@@ -73,12 +84,22 @@ This initial renderer uses one reusable mask target and CPU mesh copies each fra
 Mask atlasing, dirty-geometry uploads, asynchronous imports, device-loss recovery,
 resolution controls and measured resource budgeting remain follow-up work.
 
+## Windows process metrics
+
+The footer samples once per second. GetProcessTimes supplies combined kernel/user
+100-ns ticks; delta time divided by elapsed monotonic time and available processor
+count yields process CPU %. GetProcessMemoryInfo supplies working-set/private bytes.
+For Direct3D 12, a scoped wgpu HAL adapter guard exposes the exact DXGI adapter for
+read-only QueryVideoMemoryInfo calls (local usage/budget and non-local usage, node 0).
+No arbitrary GPU matching, retained raw object, WMI subprocess or system-wide counter
+is used. Failed queries and non-DX12 backends have explicit unavailable values.
+
 ## Next milestones
 
-- Physics, expressions, motions and pose in an explicit update order.
-- Saved per-avatar mappings and configurable input/output parameter ranges.
+- Expressions, motions and pose in an explicit update order.
+- Persist edited per-avatar mappings, ranges and physics controls.
 - Cubism 5.3 offscreen parts and advanced color/alpha blending.
-- Resource measurements, async import, minimized-window limits and performance work.
+- Per-model resource budgeting, async import, minimized-window limits and performance work.
 - Windows shared GPU textures/Spout and an OBS source plugin, with synchronization.
 - Additional tracking adapters and opt-in recording/replay.
 - Linux/macOS verification and platform output transports.

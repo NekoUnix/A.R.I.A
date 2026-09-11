@@ -91,6 +91,7 @@ pub struct AriaApp {
     last_update: Instant,
     render_fps: f32,
     gpu: String,
+    metrics: crate::metrics::Metrics,
     status_message: Option<String>,
     output_open: bool,
     output_close_requested: Arc<AtomicBool>,
@@ -154,6 +155,7 @@ impl AriaApp {
             last_update: Instant::now(),
             render_fps: 60.0,
             gpu,
+            metrics: crate::metrics::Metrics::default(),
             status_message: None,
             output_open: false,
             output_close_requested: Arc::new(AtomicBool::new(false)),
@@ -185,6 +187,11 @@ impl AriaApp {
                     Ok("vts") => {
                         app.settings.source = Source::Vts;
                         app.connect();
+                        assert!(
+                            app.receiver.is_some(),
+                            "Smoke tracking connection failed: {:?}",
+                            app.status_message
+                        );
                     }
                     Ok("output") => {
                         app.output_open = true;
@@ -220,7 +227,13 @@ impl AriaApp {
         let config = ReceiverConfig {
             sender_ip,
             request_port: self.settings.request_port,
-            listen_port: self.settings.listen_port,
+            // Smoke runs may coexist with the user's running copy. Ask Windows
+            // for a free loopback port and advertise it in the subscription.
+            listen_port: if crate::smoke_mode() {
+                0
+            } else {
+                self.settings.listen_port
+            },
             protocol: if self.settings.source == Source::Vts {
                 Protocol::VTubeStudio
             } else {
@@ -229,6 +242,9 @@ impl AriaApp {
         };
         match Receiver::start(config) {
             Ok(receiver) => {
+                if crate::smoke_mode() {
+                    self.settings.listen_port = receiver.local_port;
+                }
                 self.receiver = Some(receiver);
                 self.snapshot = Snapshot::default();
                 self.pipeline.reset();
@@ -442,6 +458,7 @@ impl AriaApp {
             if ui.button("Model parameters…").clicked() {
                 avatar.controls_open = true;
             }
+            avatar.physics_controls(ui);
             for warning in &avatar.files.warnings {
                 ui.label(RichText::new(warning).small().color(MUTED));
             }
@@ -762,12 +779,18 @@ impl eframe::App for AriaApp {
             .update(self.raw.as_ref(), &self.settings.mapping, dt);
         if let Some(avatar) = &mut self.live2d
             && dt > 0.0
-            && let Err(error) = avatar.update(self.params)
+            && let Err(error) = avatar.update(
+                self.params,
+                self.raw.as_ref(),
+                self.settings.mapping.mirror,
+                dt,
+            )
         {
             self.status_message = Some(format!("Live2D update stopped: {error:#}"));
             self.live2d = None;
         }
 
+        self.metrics.update(self.render_state.as_ref());
         egui::TopBottomPanel::top("header")
             .frame(Frame::new().fill(BG).inner_margin(18.0))
             .show(ctx, |ui| {
@@ -775,7 +798,7 @@ impl eframe::App for AriaApp {
                     ui.label(RichText::new("A.R.I.A.").size(26.0).strong().color(MINT));
                     ui.label(RichText::new("AVATAR STUDIO").size(12.0).color(MUTED));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(RichText::new("v0.2 · WINDOWS PREVIEW").small().color(MUTED));
+                        ui.label(RichText::new("v0.3 · WINDOWS PREVIEW").small().color(MUTED));
                     });
                 });
             });
@@ -786,6 +809,7 @@ impl eframe::App for AriaApp {
                     ui.label(RichText::new(&self.gpu).small().color(MUTED));
                     ui.separator();
                     ui.label(RichText::new(format!("{:.0} UI FPS", self.render_fps)).small());
+                    self.metrics.footer(ui);
                     if let Some(cpu) = frame.info().cpu_usage {
                         ui.label(RichText::new(format!("{:.2} ms UI work", cpu * 1000.0)).small());
                     }
@@ -887,7 +911,18 @@ impl eframe::App for AriaApp {
             avatar.controls(ctx);
         }
         #[cfg(feature = "screenshots")]
-        screenshot_capture(ctx, self.started, false);
+        {
+            if crate::smoke_mode()
+                && self.settings.source == Source::Vts
+                && self.started.elapsed() > crate::screenshot::delay()
+            {
+                assert!(
+                    self.snapshot.fresh_frame().is_some_and(|f| f.face_found),
+                    "Smoke run needs fresh VTS tracking, not a disconnected screenshot"
+                );
+            }
+            screenshot_capture(ctx, self.started, false);
+        }
         if self.output_open {
             let close_requested = Arc::clone(&self.output_close_requested);
             let background = self.settings.background.color();

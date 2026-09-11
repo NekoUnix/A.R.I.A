@@ -12,7 +12,7 @@ systems and Windows ARM64 are not verified release targets yet.
 1. Visit [the Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml).
 2. Select a green, successful run on `main` for the version you want.
 3. Under **Artifacts**, download **aria-windows-x64**. Sign in to GitHub if asked.
-4. Extract the downloaded artifact. Extract `aria-0.2.0-windows-x64.zip` inside it
+4. Extract the downloaded artifact. Extract `aria-0.3.0-windows-x64.zip` inside it
    into a normal writable folder, for example `C:\Apps\ARIA`.
 5. Double-click **aria-desktop.exe**. The default source is Demo and Mica should move.
 
@@ -94,6 +94,10 @@ and mapping without requiring a phone or licensed model.
 - **Head / mouth gain:** scale tracking response. Parameters are clamped to their ranges.
 - **Axis correction:** invert axes if the device orientation produces reversed motion.
 - **Mapped / Raw:** compare the 12 mapped parameters with incoming tracking values.
+- **Model parameters:** inspect the model's actual named parameters and imported
+  VTS profile assignments; adjust input ranges or use manual sliders.
+- **Secondary motion / physics:** enable the model's authored physics and tune
+  strength/wind. Breathing provides an idle input where the rig supports it.
 - **Export mapped values:** save the current parameter snapshot as JSON. This is
   a snapshot, not continuous recording or network output.
 
@@ -105,6 +109,23 @@ The app saves its preferences through eframe's per-user Windows application-data
 storage, under the A.R.I.A. app identity. Window size and settings are local to that
 user. It does not write settings into the source repository. Network connections
 and the OBS output window are never automatically opened on the next launch.
+
+### Resource bar
+
+The bottom bar samples **ARIA's process usage once per second**:
+
+- **CPU %:** kernel + user CPU time, normalized across available logical processors.
+  100% means all processors busy. This differs from the adjacent UI-work time.
+- **RAM:** resident working set. Hover to see private committed memory as well.
+- **VRAM:** DXGI local-memory usage for this process on the exact Direct3D 12
+  adapter used by wgpu. Hover for the OS budget and shared/non-local usage. This
+  includes driver allocations, not just atlas textures. On integrated GPUs the
+  local segment uses system memory.
+
+The first CPU sample and unavailable counters show **N/A**, not zero. VRAM is N/A
+on the Vulkan fallback or when the driver cannot report it. These are process
+counters, not machine-wide totals or GPU utilization %. Atlas MiB in the Avatar
+panel remains a separate decoded-texture estimate.
 
 ## 3. Use your own artwork
 

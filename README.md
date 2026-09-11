@@ -6,10 +6,10 @@ tracking into avatar parameters, and animates **Live2D `.moc3` avatars**, a buil
 2D test puppet, or your PNG artwork. The UI and preview run on **egui + wgpu**,
 without Unity or Godot.
 
-> **v0.2:** real Cubism model evaluation and GPU mesh rendering, including masks,
-> draw order, normal/additive/multiplicative blending, and tracking assignments.
+> **v0.3:** model-specific VTS tracking profiles, corrected phone head axes,
+> authored physics for secondary motion, and live process CPU/RAM/VRAM counters.
 > Supply the official **Cubism Core x64 DLL** and your exported avatar assets.
-> Physics, motion/expression/pose playback and Cubism 5.3 advanced/offscreen
+> Motion/expression/pose playback and Cubism 5.3 advanced/offscreen
 > blending remain future work. SDK binaries and model art are not bundled.
 > [Live2D setup and compatibility →](docs/live2d.md)
 
@@ -79,22 +79,26 @@ See [the detailed import guide](docs/live2d.md) for limits and troubleshooting.
   an optional talking image, neutral-pose calibration, smoothing, gains and axis correction.
 - Actual `.moc3` model loading, texture atlas rendering, regular/inverted clipping,
   multiply/screen colors, parameter range clamping and editable tracking assignments.
+- Automatic adjacent `.vtube.json` assignment import, including custom mouth/cheek
+  controls and authored ranges; `.cdi3.json` parameter names and `.physics3.json`
+  particle chains for hair, ears, tail and clothing, with breathing and motion controls.
 - Direct VTS iOS UDP subscription and renewal; all incoming blendshapes retained
   for inspection, with 12 standard Cubism-style parameters mapped for the preview.
 - Versioned **ARIA JSON v1** UDP input for other tools and custom bridges.
 - Separate **A.R.I.A. Output** window for OBS Window Capture, green-screen mode,
   experimental transparent background, and optional always-on-top behavior.
 - Connection diagnostics, packet age/rate, input validation, disconnect recovery,
-  GPU adapter/backend information, UI frame rate and UI CPU time.
+  GPU adapter/backend information, UI frame rate, process CPU %, resident RAM,
+  and measured local GPU memory on the rendering Direct3D 12 adapter.
 - Live2D manifest/asset presence inspection and mapped-parameter JSON export.
 - Saved connection/mapping/output preferences. Connections always require an
   explicit click after startup. Avatar selections and per-avatar parameter assignments
   last for the current session; the Cubism DLL path is saved locally.
 - Headless CLI, local phone simulator, automated tests, Windows build scripts and CI.
 
-Frame time is not total process CPU utilization. Asset bytes on disk are not VRAM
-usage. GPU load, per-model VRAM accounting, webcam tracking, Spout/shared textures,
-an OBS plugin, and a stable public plugin SDK are not implemented in v0.2.
+The footer samples process resources every second. Hover for measurement details;
+unavailable counters show N/A. GPU load %, per-model VRAM accounting, webcam tracking,
+Spout/shared textures, an OBS plugin, and a stable public plugin SDK remain future work.
 The atlas MiB display estimates decoded texture storage; it excludes renderer,
 driver and staging allocations.
 
@@ -128,7 +132,7 @@ To build a portable bundle with its documentation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 ```
 
-The script runs tests and writes `dist/aria-0.2.0-windows-x64.zip`. See
+The script runs tests and writes `dist/aria-0.3.0-windows-x64.zip`. See
 [architecture](docs/architecture.md) for crate boundaries and
 [validation](docs/validation.md) for what has actually been exercised.
 

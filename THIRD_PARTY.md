@@ -19,6 +19,7 @@ Primary dependencies (exact versions are recorded in Cargo.lock):
 | tempfile | Isolated test files | https://github.com/Stebalien/tempfile |
 | libloading | Explicit native Cubism Core loading | https://github.com/nagisa/rust_libloading |
 | bytemuck | Typed GPU buffer serialization | https://github.com/Lokathor/bytemuck |
+| windows-rs | Windows process and DXGI memory counters | https://github.com/microsoft/windows-rs |
 
 The VTube Studio transport implementation follows DenchiSoft's published
 [third-party iOS UDP protocol](https://github.com/DenchiSoft/VTubeStudioBlendshapeUDPReceiverTest).
@@ -32,6 +33,10 @@ implement the documented [Cubism Core API](https://cubism.live2d.com/sdk-doc/ref
 Core is loaded from the user's official Native SDK installation and remains under
 the [Live2D Proprietary Software License](https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html).
 ARIA's MIT license does not grant rights to redistribute Core or model assets.
+The independent Rust particle solver interprets exported `physics3.json` settings;
+see Live2D's [physics integration documentation](https://docs.live2d.com/en/cubism-sdk-manual/physics/).
+It does not embed Cubism Framework or reproduce VTube Studio's proprietary solver
+and tracking filters. Profile imports read the user's adjacent data files locally.
 Consult Live2D's [SDK licensing information](https://www.live2d.com/en/sdk/license/)
 before distributing a product with their runtime. The portable ZIP includes no Core DLL.
 Live2D's release guidance specifically covers VTuber tracking software as an
