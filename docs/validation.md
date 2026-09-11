@@ -5,6 +5,33 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Local verification on 2026-09-11
 
+### v0.4 input controls, screenshot poses and presets
+
+- All **31 default tests** passed on Windows x64. Formatting and Clippy across
+  all targets/features passed with warnings denied. Four optional tests require
+  native Windows hotkeys, a GPU and/or user-supplied Cubism runtime/model files.
+- Control tests cover input/output endpoints, dead zones, response curves,
+  stepping, exact full freezes, partial holds and returning to live movement.
+  Preset serialization and actual input-monitor shortcut dispatch restore tuning,
+  global mapping and complete poses. Invalid ranges, model mismatches and duplicate
+  hotkey assignments are rejected.
+- The supplied rig's 25 imported VTS assignments and 29 physics groups still pass
+  the native integration test. After serializing and restoring its complete final
+  pose, changing tracking/physics inputs across 120 updates left Core vertices
+  exactly identical. Editing a frozen head parameter then deformed the meshes.
+- The opt-in Windows hotkey test registered a temporary Ctrl+Alt+F11 shortcut,
+  dispatched a message to its own worker queue, detected a conflicting second
+  registration, and verified registration succeeds after the first worker closes.
+  It does not synthesize keystrokes or type into other applications.
+- Direct3D 12 smoke runs with the real model verified the expanded Inputs editor,
+  Pose and Presets panels, including readable controls under a light Windows theme,
+  and actual GPU PNG readback. The exported **1757 × 2048** PNG contains transparent
+  background pixels, translucent edge pixels and opaque artwork. Independent
+  launches exporting the same frozen values produced identical PNG hashes.
+- Private model assets, screenshots and local settings are excluded from the
+  repository and portable bundle. Physical-phone and broader device acceptance
+  checks remain below.
+
 ### v0.3 rig mapping, physics and resource bar
 
 - Formatting, Clippy across all targets/features with warnings denied, and all
@@ -85,7 +112,7 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
   range clamping, face-loss neutral pose and frame-rate-independent smoothing.
 - Model3 version validation, missing files and external/path-traversal references.
 
-Additional local v0.2 checks (not run by normal CI):
+Additional local integration checks (not run by normal CI):
 
 ```powershell
 # Uses synthetic quads; requires a working GPU, no SDK.
@@ -99,13 +126,16 @@ cargo test --locked -p aria-live2d real_core -- --ignored --nocapture
 # Requires a model with adjacent VTS profile and referenced physics file.
 $env:ARIA_TEST_MODEL = 'C:\Avatars\MyAvatar\MyAvatar.model3.json'
 cargo test --locked -p aria-desktop local_rig_assignments -- --ignored --nocapture
+
+# Registers a temporary Ctrl+Alt+F11 key; requires interactive Windows.
+cargo test --locked -p aria-desktop native_registration -- --ignored --nocapture
 ```
 
 Run from the repository root:
 
 ```powershell
 cargo fmt --all --check
-cargo clippy --locked --workspace --all-targets -- -D warnings
+cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 cargo test --locked --workspace
 cargo build --locked --release --workspace
 ```
@@ -130,6 +160,10 @@ Smoke runs use default settings and do not overwrite saved app preferences.
 For Live2D smoke runs, also set `ARIA_CUBISM_CORE` and `ARIA_TEST_MODEL` (a manifest
 or moc3 path). A model-load failure fails the run instead of capturing the fallback
 puppet. `ARIA_SMOKE_DELAY_SECONDS=7` allows additional settling time after import.
+The `inputs`, `pose` and `presets` scenarios prepare example configurations and
+open the corresponding monitor tab. Set `ARIA_SMOKE_AVATAR_PNG` to a local PNG
+path to exercise transparent model export as well as the UI screenshot. These
+scenarios do not register global shortcuts or overwrite normal saved settings.
 
 ## Manual acceptance still required on the intended setup
 

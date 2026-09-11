@@ -62,6 +62,63 @@ pub struct ModelRenderer {
 }
 
 impl ModelRenderer {
+    pub fn save_png(&self, path: &std::path::Path) -> Result<()> {
+        let texture = self.output.texture();
+        let size = texture.size();
+        let stride = (size.width * 4).div_ceil(256) * 256;
+        let buffer = self.state.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("ARIA PNG readback"),
+            size: u64::from(stride) * u64::from(size.height),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = self
+            .state
+            .device
+            .create_command_encoder(&Default::default());
+        encoder.copy_texture_to_buffer(
+            texture.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(stride),
+                    rows_per_image: Some(size.height),
+                },
+            },
+            size,
+        );
+        let submission = self.state.queue.submit([encoder.finish()]);
+        let (tx, rx) = std::sync::mpsc::channel();
+        buffer
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                let _ = tx.send(result);
+            });
+        self.state.device.poll(wgpu::PollType::Wait {
+            submission_index: Some(submission),
+            timeout: Some(std::time::Duration::from_secs(5)),
+        })?;
+        rx.recv_timeout(std::time::Duration::from_secs(1))??;
+        let mapped = buffer.slice(..).get_mapped_range();
+        let mut rgba = Vec::with_capacity(size.width as usize * size.height as usize * 4);
+        for row in mapped.chunks_exact(stride as usize) {
+            for pixel in row[..size.width as usize * 4].as_chunks::<4>().0 {
+                rgba.extend_from_slice(&straight_alpha(*pixel));
+            }
+        }
+        drop(mapped);
+        buffer.unmap();
+        image::save_buffer_with_format(
+            path,
+            &rgba,
+            size.width,
+            size.height,
+            image::ColorType::Rgba8,
+            image::ImageFormat::Png,
+        )
+        .context("Cannot save avatar PNG")
+    }
     pub fn new(
         state: &RenderState,
         canvas: Canvas,
@@ -437,6 +494,20 @@ impl ModelRenderer {
         pass.draw_indexed(self.meshes[index].indices.clone(), 0, 0..1);
     }
 }
+
+fn straight_alpha(pixel: [u8; 4]) -> [u8; 4] {
+    let alpha = u32::from(pixel[3]);
+    if alpha == 0 {
+        return [0; 4];
+    }
+    let channel = |v: u8| ((u32::from(v) * 255 + alpha / 2) / alpha).min(255) as u8;
+    [
+        channel(pixel[0]),
+        channel(pixel[1]),
+        channel(pixel[2]),
+        pixel[3],
+    ]
+}
 impl Drop for ModelRenderer {
     fn drop(&mut self) {
         self.state.renderer.write().free_texture(&self.image.id);
@@ -568,6 +639,12 @@ fn pipeline(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn png_export_converts_premultiplied_edges_to_straight_alpha() {
+        assert_eq!(straight_alpha([64, 32, 0, 128]), [128, 64, 0, 128]);
+        assert_eq!(straight_alpha([1, 2, 3, 0]), [0, 0, 0, 0]);
+        assert_eq!(straight_alpha([255, 100, 40, 255]), [255, 100, 40, 255]);
+    }
     fn quad(texture: usize, order: i32, right: f32) -> Drawable {
         Drawable {
             positions: vec![[0.0, 0.0], [right, 0.0], [right, 4.0], [0.0, 4.0]],

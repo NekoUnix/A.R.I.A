@@ -1,6 +1,6 @@
 # Live2D avatar import on Windows
 
-ARIA v0.3 evaluates real `.moc3` models through Cubism Core and renders their
+ARIA v0.4 evaluates real `.moc3` models through Cubism Core and renders their
 ArtMeshes with wgpu/Direct3D 12. You need **the model, its texture images, and the
 official Cubism Core DLL**. A moc3 contains the rig, not the texture artwork.
 
@@ -85,12 +85,15 @@ Without a profile, the 12 [standard parameters](tracking.md#mapping) bind by ID,
 with additional body Y/Z and breathing bindings where present. Other parameters
 keep their exported defaults. Values always clamp to the native rig's limits.
 
-Click **Model parameters…** to search IDs or names from the referenced `.cdi3.json`.
-Select an input, expand its row to edit ranges/clamps/smoothing, or choose **Manual**
-for a slider. Raw `ARKit:` inputs received from the tracker are also available.
-Edits and manual values last until unload. The original profile is never modified;
-reopening the avatar imports it again. VTS hotkeys, active expressions and items
-are not imported. Calibration, global smoothing, gains and mirroring precede binding.
+Click **Model parameters…** to open **Input Monitor → Inputs**. Search IDs or names
+from `.cdi3.json`, edit ranges/clamps/smoothing/stepping/curves, or choose **Manual**.
+Raw `ARKit:` inputs are also available. Edits save with this model and override its
+initial VTS assignments when reopened; the original profile is never modified.
+**Pose** holds individual parameters or freezes the complete avatar for PNG export.
+**Presets** saves movement configurations and screenshot poses with Windows hotkeys.
+See the [input controls guide](input-controls.md). VTS hotkeys, active expressions
+and items are not imported. Calibration, global smoothing, gains and mirroring
+precede binding.
 
 These are ARIA filters over raw tracking, not an exact recreation of VTS's
 proprietary face processing. VTS smoothing amounts become a time constant of
@@ -108,8 +111,9 @@ rest, including when tracking is lost, and feeds physics where the rig connects 
 
 Use **Secondary motion / physics** to enable or disable it, **Motion strength** to
 adjust the amount (1 is authored strength), and **Physics tuning → Wind** for a
-gentle horizontal force. **Settle motion** clears momentum. Physics-driven sliders
-are marked and become manual only when physics is disabled. Controls last until unload.
+gentle horizontal force. **Settle motion** clears momentum. To hold a physics output,
+use **Pose** controls; physics otherwise runs after tracking. Physics controls persist
+with the model and are included in movement/pose presets.
 The profile's physics enable flag and per-group strength multipliers are honored;
 VTS's global strength/wind/dragging settings and legacy solver mode are not reproduced.
 

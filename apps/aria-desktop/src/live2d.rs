@@ -1,9 +1,9 @@
 use crate::cubism_render::{ModelImage, ModelRenderer};
 use anyhow::{Context, Result};
 use aria_core::{
-    Parameters, TrackingFrame,
+    movement::{self, PoseMode, RigConfig},
     physics::Physics,
-    rig::{self, Binding, Inputs},
+    rig::{self, Inputs},
 };
 use aria_live2d::CubismModel;
 use aria_model::ModelFiles;
@@ -13,27 +13,25 @@ use std::{collections::BTreeMap, path::Path};
 
 pub struct Avatar {
     pub name: String,
+    pub model_key: String,
     pub files: ModelFiles,
     pub model: CubismModel,
-    renderer: ModelRenderer,
-    bindings: BTreeMap<String, Binding>,
-    manual: BTreeMap<String, f32>,
-    labels: BTreeMap<String, String>,
-    inputs: Inputs,
+    pub initial_config: RigConfig,
+    pub labels: BTreeMap<String, String>,
     pub physics: Option<Physics>,
     pub imported_count: usize,
-    search: String,
-    elapsed: f32,
-    pub controls_open: bool,
+    renderer: ModelRenderer,
+    last_pose_mode: PoseMode,
 }
 impl Avatar {
     pub fn load(state: &RenderState, core: &Path, mut files: ModelFiles) -> Result<Self> {
         let bytes = aria_model::read_bounded(&files.moc, 128 * 1024 * 1024)?;
+        let model_key = movement::model_key(&bytes);
         let model = CubismModel::load(core, &bytes, files.textures.len())
             .context("Cannot load Live2D avatar")?;
         let renderer = ModelRenderer::new(state, model.canvas, &model.drawables, &files.textures)?;
         renderer.render(model.canvas, &model.drawables)?;
-        let mut bindings = rig::default_bindings(model.parameters());
+        let mut initial_config = RigConfig::from_parameters(model.parameters());
         let mut imported_count = 0;
         let mut physics = files.physics.as_ref().and_then(|path| {
             match aria_model::read_bounded(path, 2 * 1024 * 1024)
@@ -57,10 +55,10 @@ impl Avatar {
             {
                 Ok(profile) => {
                     imported_count = profile.bindings.len();
-                    bindings.extend(profile.bindings);
+                    initial_config.bindings.extend(profile.bindings);
                     files.warnings.extend(profile.warnings);
+                    initial_config.physics.enabled = profile.physics_enabled;
                     if let Some(physics) = &mut physics {
-                        physics.enabled = profile.physics_enabled;
                         physics.set_multipliers(&profile.physics_multipliers);
                     }
                 }
@@ -90,49 +88,35 @@ impl Avatar {
             .into_owned();
         Ok(Self {
             name,
+            model_key,
             files,
             model,
-            renderer,
-            bindings,
+            initial_config,
+            labels,
             physics,
             imported_count,
-            labels,
-            inputs: Inputs::new(),
-            manual: BTreeMap::new(),
-            search: String::new(),
-            elapsed: 0.0,
-            controls_open: false,
+            renderer,
+            last_pose_mode: PoseMode::Live,
         })
     }
     pub fn image(&self) -> ModelImage {
         self.renderer.image
     }
-    pub fn mapped_count(&self) -> usize {
-        self.bindings.len()
-    }
     pub fn atlas_mib(&self) -> f64 {
         self.renderer.atlas_mib
     }
-    pub fn update(
-        &mut self,
-        params: Parameters,
-        frame: Option<&TrackingFrame>,
-        mirror: bool,
-        dt: f32,
-    ) -> Result<()> {
-        self.elapsed += dt.min(0.25);
-        self.inputs = rig::tracking_inputs(frame, params, mirror, self.elapsed);
-        self.model.reset_parameters();
-        let mut values = self.model.parameters().to_vec();
-        for p in &mut values {
-            if let Some(&value) = self.manual.get(&p.id) {
-                p.value = value;
-            }
-        }
-        rig::apply_bindings(&mut self.bindings, &self.inputs, &mut values, dt);
+    pub fn reset_motion(&mut self) {
         if let Some(physics) = &mut self.physics {
-            physics.update(&mut values, dt);
+            physics.reset();
         }
+    }
+    pub fn update(&mut self, inputs: &Inputs, config: &mut RigConfig, dt: f32) -> Result<()> {
+        if config.pose.mode != self.last_pose_mode {
+            self.reset_motion();
+            self.last_pose_mode = config.pose.mode;
+        }
+        let mut values = self.model.parameters().to_vec();
+        config.evaluate(inputs, &mut values, dt, self.physics.as_mut());
         for p in values {
             self.model.set_parameter(&p.id, p.value);
         }
@@ -140,9 +124,12 @@ impl Avatar {
         self.renderer
             .render(self.model.canvas, &self.model.drawables)
     }
-    pub fn physics_controls(&mut self, ui: &mut egui::Ui) {
+    pub fn save_png(&self, path: &Path) -> Result<()> {
+        self.renderer.save_png(path)
+    }
+    pub fn physics_controls(&mut self, ui: &mut egui::Ui, config: &mut RigConfig) {
         if let Some(physics) = &mut self.physics {
-            ui.checkbox(&mut physics.enabled, "Secondary motion / physics");
+            ui.checkbox(&mut config.physics.enabled, "Secondary motion / physics");
             ui.label(
                 egui::RichText::new(format!(
                     "{} groups · {} driven outputs",
@@ -152,65 +139,21 @@ impl Avatar {
                 .small(),
             );
             ui.add_enabled(
-                physics.enabled,
-                egui::Slider::new(&mut physics.strength, 0.0..=2.0).text("Motion strength"),
+                config.physics.enabled,
+                egui::Slider::new(&mut config.physics.strength, 0.0..=2.0).text("Motion strength"),
             );
             ui.collapsing("Physics tuning", |ui| {
-                ui.add(egui::Slider::new(&mut physics.wind_strength, -1.0..=1.0).text("Wind"));
-                if ui.button("Settle motion").clicked() { physics.reset(); }
-                ui.label("Breathing and the rig's physics run before each model update. Settings last until unload.");
+                ui.add(egui::Slider::new(&mut config.physics.wind, -1.0..=1.0).text("Wind"));
+                if ui.button("Settle motion").clicked() {
+                    physics.reset();
+                }
+                ui.label("Physics settings save with this model and its movement presets.");
             });
         } else {
             ui.label(egui::RichText::new("No physics rig loaded").small());
         }
     }
-    pub fn controls(&mut self, ctx: &egui::Context) {
-        egui::Window::new("Live2D model parameters").open(&mut self.controls_open).default_width(730.0).show(ctx, |ui| {
-            ui.label(&self.name);
-            ui.label(format!("{} assignments imported from the adjacent VTS profile. Edits last until unload.", self.imported_count));
-            ui.label("Expand an input to adjust its ranges. Physics outputs are marked; disable physics to adjust those manually.");
-            ui.horizontal(|ui| { ui.label("Filter name or ID"); ui.text_edit_singleline(&mut self.search); });
-            let search = self.search.to_lowercase();
-            egui::ScrollArea::vertical().max_height(520.0).show(ui, |ui| {
-                for (index,p) in self.model.parameters().iter().enumerate() {
-                    let label = self.labels.get(&p.id).map(String::as_str).unwrap_or(&p.id);
-                    if !format!("{label} {}",p.id).to_lowercase().contains(&search) { continue; }
-                    let physics_driven = self.physics.as_ref().is_some_and(|v| v.enabled && v.controls_parameter(index));
-                    ui.push_id(&p.id, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(label).on_hover_text(&p.id);
-                            if physics_driven { ui.label(egui::RichText::new("PHYSICS").small()); }
-                            let old = self.bindings.get(&p.id).map(|b| b.input.clone());
-                            let mut source = old.clone();
-                            egui::ComboBox::from_id_salt("source").selected_text(source.as_deref().unwrap_or("Manual")).show_ui(ui, |ui| {
-                                ui.selectable_value(&mut source,None,"Manual");
-                                for key in self.inputs.keys() { ui.selectable_value(&mut source,Some(key.clone()),key); }
-                            });
-                            if source != old {
-                                if let Some(source) = source {
-                                    let (min,max) = rig::input_range(&source);
-                                    let mut b = Binding::direct(&source,min,max); b.output_min=p.min; b.output_max=p.max;
-                                    self.bindings.insert(p.id.clone(),b);
-                                } else { self.bindings.remove(&p.id); self.manual.insert(p.id.clone(),p.value); }
-                            }
-                        });
-                        if let Some(b) = self.bindings.get_mut(&p.id) {
-                            egui::CollapsingHeader::new(format!("{} · input {:.3} → {:.3}",b.name,self.inputs.get(&b.input).copied().unwrap_or(0.0),p.value)).id_salt("ranges").show(ui, |ui| {
-                                ui.horizontal(|ui| { ui.label("Input range"); ui.add(egui::DragValue::new(&mut b.input_min).speed(0.01).range(-1000.0..=1000.0)); ui.add(egui::DragValue::new(&mut b.input_max).speed(0.01).range(-1000.0..=1000.0)); ui.checkbox(&mut b.clamp_input,"Clamp"); });
-                                ui.horizontal(|ui| { ui.label("Output range"); ui.add(egui::DragValue::new(&mut b.output_min).speed(0.01).range(p.min..=p.max)); ui.add(egui::DragValue::new(&mut b.output_max).speed(0.01).range(p.min..=p.max)); ui.checkbox(&mut b.clamp_output,"Clamp"); });
-                                ui.add(egui::Slider::new(&mut b.smoothing_ms,0.0..=500.0).text("Smoothing ms"));
-                            });
-                        }
-                        let mut value=p.value;
-                        if ui.add_enabled(!self.bindings.contains_key(&p.id) && !physics_driven,egui::Slider::new(&mut value,p.min..=p.max).text(&p.id)).changed() { self.manual.insert(p.id.clone(),value); }
-                        ui.separator();
-                    });
-                }
-            });
-        });
-    }
 }
-
 fn read_labels(path: &Path) -> Result<BTreeMap<String, String>> {
     #[derive(Deserialize)]
     struct Info {
@@ -332,6 +275,66 @@ mod tests {
             physics.group_count(),
             physics.output_count(),
             moving
+        );
+        let mut config = RigConfig {
+            bindings: profile.bindings.clone(),
+            ..Default::default()
+        };
+        config.capture_pose(model.parameters());
+        let serialized = serde_json::to_vec(&config).unwrap();
+        let mut restored: RigConfig = serde_json::from_slice(&serialized).unwrap();
+        restored.validate(model.parameters()).unwrap();
+        let frozen_vertices = model
+            .drawables
+            .iter()
+            .flat_map(|d| d.positions.clone())
+            .collect::<Vec<_>>();
+        for n in 0..120 {
+            let inputs = rig::tracking_inputs(
+                Some(&aria_core::demo_frame(n as f32)),
+                aria_core::Parameters([1.0; 12]),
+                true,
+                n as f32,
+            );
+            let mut values = model.parameters().to_vec();
+            restored.evaluate(&inputs, &mut values, 1.0 / 60.0, Some(&mut physics));
+            for p in values {
+                model.set_parameter(&p.id, p.value);
+            }
+            if n % 20 == 0 {
+                model.update().unwrap();
+                assert_eq!(
+                    frozen_vertices,
+                    model
+                        .drawables
+                        .iter()
+                        .flat_map(|d| d.positions.clone())
+                        .collect::<Vec<_>>()
+                );
+            }
+        }
+        let p = model
+            .parameters()
+            .iter()
+            .find(|p| p.id == "ParamAngleX")
+            .unwrap();
+        restored.pose.frozen.insert(p.id.clone(), p.max);
+        let mut values = model.parameters().to_vec();
+        restored.evaluate(&Inputs::new(), &mut values, 0.016, Some(&mut physics));
+        for p in values {
+            model.set_parameter(&p.id, p.value);
+        }
+        model.update().unwrap();
+        assert_ne!(
+            frozen_vertices,
+            model
+                .drawables
+                .iter()
+                .flat_map(|d| d.positions.clone())
+                .collect::<Vec<_>>()
+        );
+        eprintln!(
+            "Serialized full pose stayed vertex-identical through changing tracking/physics inputs, and manual head edits deformed the rig"
         );
     }
 }

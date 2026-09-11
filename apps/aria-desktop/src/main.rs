@@ -3,6 +3,8 @@
 mod app;
 mod avatar;
 mod cubism_render;
+mod hotkeys;
+mod input_monitor;
 mod live2d;
 mod metrics;
 #[cfg(feature = "screenshots")]

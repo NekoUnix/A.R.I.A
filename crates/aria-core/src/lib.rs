@@ -1,4 +1,5 @@
 //! Platform-independent tracking values and a small, deterministic parameter pipeline.
+pub mod movement;
 pub mod physics;
 pub mod rig;
 use serde::{Deserialize, Serialize};

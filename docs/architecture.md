@@ -24,11 +24,11 @@ iPhone VTS UDP / ARIA JSON / deterministic demo
 
 | Package | Responsibility |
 | --- | --- |
-| `aria-core` | Tracking/parameter data, calibration, named inputs, VTS profile import, smoothing, fixed-step physics3 solver |
+| `aria-core` | Tracking/parameter data, calibration, VTS profiles, response/ranges, stepping, fixed-step physics3, serializable configurations and poses |
 | `aria-tracking` | VTS/ARIA decoding, subscription renewal, bounded latest-frame snapshot |
 | `aria-model` | Bounded model3 parsing, path validation, moc-to-manifest discovery, ordered textures and optional rig sidecars |
 | `aria-live2d` | Private Core ABI, explicit DLL loading, aligned memory ownership, consistency/version checks, parameter metadata and owned mesh output |
-| `aria-desktop` | Native UI, model import/bindings, wgpu renderer, Windows process metrics and output viewport |
+| `aria-desktop` | Input/pose/preset UI, model import, wgpu renderer/PNG export, Windows process metrics/global hotkeys and output viewport |
 | `aria-cli` | Simulator, JSON sender, headless receiver and manifest inspector |
 
 One worker serves each active tracking receiver. The UI consumes the most recent
@@ -97,7 +97,7 @@ is used. Failed queries and non-DX12 backends have explicit unavailable values.
 ## Next milestones
 
 - Expressions, motions and pose in an explicit update order.
-- Persist edited per-avatar mappings, ranges and physics controls.
+- Animated preset transitions and richer shortcut customization.
 - Cubism 5.3 offscreen parts and advanced color/alpha blending.
 - Per-model resource budgeting, async import, minimized-window limits and performance work.
 - Windows shared GPU textures/Spout and an OBS source plugin, with synchronization.
@@ -114,3 +114,32 @@ The desktop uses eframe 0.33.0 and wgpu 27, resolved in Cargo.lock. Windows defa
 to Direct3D 12; `WGPU_BACKEND=vulkan` selects the available fallback. The toolchain
 is pinned in rust-toolchain.toml. CI builds on Windows MSVC without proprietary
 assets. Core and model files are supplied at runtime under their separate licenses.
+
+## Input configuration and pose boundary
+
+The Input Monitor owns a serializable `SavedRig`: active `RigConfig`, named presets,
+and the model's hotkey enable setting. A stable moc-content fingerprint separates
+avatars without writing to their folders; PNG/Mica have a separate preview identity.
+Model switches remember the outgoing rig. Explicit saves and preset edits flush
+eframe storage immediately; regular app autosave/close also saves the active controls.
+Preset files validate version, model identity, IDs, limits and finite ranges before
+changing the list. Import clears the shortcut and does not apply the preset.
+
+Live evaluation is defaults/manual values → bindings/response/smoothing → holds and
+stepping → physics → held-output enforcement/stepping → Core. Partial holds therefore
+drive unheld physics without letting physics overwrite held parameters. Full freeze
+takes a separate branch: restore all final parameters exactly and skip filters and
+physics. Breathing time also stops. Mode changes reset particle momentum. Movement
+presets release a full freeze; pose presets restore complete frozen values.
+
+Transparent PNG export copies the existing render texture to a padded readback buffer,
+waits with a bounded GPU timeout, removes row padding and converts premultiplied RGB
+to straight-alpha RGBA before encoding PNG. The export is processed after model update
+so the latest pose edits reach the saved image.
+
+Windows global shortcuts use an owned thread and RegisterHotKey/WM_HOTKEY. A command
+channel replaces registrations; generation numbers reject stale events. MOD_NOREPEAT
+prevents repeated triggering while a key is held. Conflicts are surfaced in the UI;
+shutdown joins the worker after unregistering only its own shortcuts. The message
+thread requests an egui repaint when a shortcut arrives, including with another app
+focused. It does not use keyboard hooks or record arbitrary key input.

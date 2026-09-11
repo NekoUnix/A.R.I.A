@@ -12,7 +12,7 @@ systems and Windows ARM64 are not verified release targets yet.
 1. Visit [the Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml).
 2. Select a green, successful run on `main` for the version you want.
 3. Under **Artifacts**, download **aria-windows-x64**. Sign in to GitHub if asked.
-4. Extract the downloaded artifact. Extract `aria-0.3.0-windows-x64.zip` inside it
+4. Extract the downloaded artifact. Extract `aria-0.4.0-windows-x64.zip` inside it
    into a normal writable folder, for example `C:\Apps\ARIA`.
 5. Double-click **aria-desktop.exe**. The default source is Demo and Mica should move.
 
@@ -93,9 +93,11 @@ and mapping without requiring a phone or licensed model.
 - **Smooth ms:** higher values reduce jitter but add response delay. Start at 75 ms.
 - **Head / mouth gain:** scale tracking response. Parameters are clamped to their ranges.
 - **Axis correction:** invert axes if the device orientation produces reversed motion.
-- **Mapped / Raw:** compare the 12 mapped parameters with incoming tracking values.
-- **Model parameters:** inspect the model's actual named parameters and imported
-  VTS profile assignments; adjust input ranges or use manual sliders.
+- **Input Monitor → Inputs / Raw:** compare the model's final values with incoming
+  tracking; expand controls to edit ranges, stepping, curves and dead zones.
+- **Pose / Presets:** hold individual inputs or freeze the whole avatar for images,
+  save model configurations and assign Windows global hotkeys. See the
+  [input controls guide](input-controls.md) for the full workflow.
 - **Secondary motion / physics:** enable the model's authored physics and tune
   strength/wind. Breathing provides an idle input where the rig supports it.
 - **Export mapped values:** save the current parameter snapshot as JSON. This is

@@ -6,8 +6,9 @@ tracking into avatar parameters, and animates **Live2D `.moc3` avatars**, a buil
 2D test puppet, or your PNG artwork. The UI and preview run on **egui + wgpu**,
 without Unity or Godot.
 
-> **v0.3:** model-specific VTS tracking profiles, corrected phone head axes,
-> authored physics for secondary motion, and live process CPU/RAM/VRAM counters.
+> **v0.4:** editable input ranges/stepping/response, individual manual holds,
+> full screenshot pose freeze, movement/pose presets, Windows global hotkeys,
+> and transparent avatar PNG export. Includes v0.3 tracking profiles and physics.
 > Supply the official **Cubism Core x64 DLL** and your exported avatar assets.
 > Motion/expression/pose playback and Cubism 5.3 advanced/offscreen
 > blending remain future work. SDK binaries and model art are not bundled.
@@ -66,7 +67,11 @@ it does not implement VTS's proprietary USB transport.
 3. Select **Open Live2D avatar…** and choose your exported `.model3.json` or `.moc3`.
    Keep the complete model folder, including its texture atlases, together.
 4. Demo input animates the rig immediately. Connect your iPhone to use live tracking;
-   **Model parameters…** can assign inputs to custom parameter IDs.
+   **Input Monitor → Inputs** edits sources, ranges, stepping and response.
+5. Use **Pose** to hold the avatar and export a transparent PNG. **Presets** saves
+   movement setups or complete screenshot poses, with optional Windows hotkeys.
+
+**[Input tuning, pose controls, presets and hotkeys →](docs/input-controls.md)**
 
 A `.moc3` selection finds its matching manifest beside it. Without a manifest,
 the import dialog lets you select/reorder the required texture atlases explicitly.
@@ -90,10 +95,13 @@ See [the detailed import guide](docs/live2d.md) for limits and troubleshooting.
 - Connection diagnostics, packet age/rate, input validation, disconnect recovery,
   GPU adapter/backend information, UI frame rate, process CPU %, resident RAM,
   and measured local GPU memory on the rendering Direct3D 12 adapter.
+- Resizable input monitor with editable ranges, stepping, curves and dead zones;
+  full/partial pose holds, transparent PNG export, per-model configuration and
+  movement/pose presets with JSON import/export and Windows global hotkeys.
 - Live2D manifest/asset presence inspection and mapped-parameter JSON export.
-- Saved connection/mapping/output preferences. Connections always require an
-  explicit click after startup. Avatar selections and per-avatar parameter assignments
-  last for the current session; the Cubism DLL path is saved locally.
+- Saved connection/mapping/output preferences, model controls and presets.
+  Connections require an explicit click after startup. The Cubism DLL path is
+  saved locally; open the avatar to restore its controls and held pose.
 - Headless CLI, local phone simulator, automated tests, Windows build scripts and CI.
 
 The footer samples process resources every second. Hover for measurement details;
@@ -132,7 +140,7 @@ To build a portable bundle with its documentation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 ```
 
-The script runs tests and writes `dist/aria-0.3.0-windows-x64.zip`. See
+The script runs tests and writes `dist/aria-0.4.0-windows-x64.zip`. See
 [architecture](docs/architecture.md) for crate boundaries and
 [validation](docs/validation.md) for what has actually been exercised.
 

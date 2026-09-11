@@ -1,12 +1,16 @@
 use crate::avatar::{self, Sprite};
+use crate::input_monitor::{InputMonitor, Tab};
+use aria_core::{MappingSettings, ParameterPipeline, Parameters, TrackingFrame, demo_frame};
 use aria_core::{
-    MappingSettings, PARAMETER_SPECS, ParameterPipeline, Parameters, TrackingFrame, demo_frame,
+    movement::{self, PoseMode, RigConfig, SavedRig},
+    rig::{self, Inputs, RigParameter},
 };
 use aria_model::ModelReport;
 use aria_tracking::{Protocol, Receiver, ReceiverConfig, Snapshot};
 use eframe::egui::{self, Color32, Frame, RichText, Stroke};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::BTreeMap,
     net::Ipv4Addr,
     path::{Path, PathBuf},
     sync::{
@@ -61,6 +65,7 @@ struct Settings {
     zoom: f32,
     always_on_top: bool,
     cubism_core: String,
+    saved_rigs: BTreeMap<String, SavedRig>,
 }
 
 impl Default for Settings {
@@ -76,6 +81,7 @@ impl Default for Settings {
             zoom: 1.0,
             always_on_top: false,
             cubism_core: String::new(),
+            saved_rigs: BTreeMap::new(),
         }
     }
 }
@@ -95,7 +101,10 @@ pub struct AriaApp {
     status_message: Option<String>,
     output_open: bool,
     output_close_requested: Arc<AtomicBool>,
-    raw_view: bool,
+    input_monitor: InputMonitor,
+    hotkeys: crate::hotkeys::Hotkeys,
+    live_inputs: Inputs,
+    animation_time: f32,
     idle: Option<Sprite>,
     talking: Option<Sprite>,
     model: Option<ModelReport>,
@@ -108,6 +117,9 @@ pub struct AriaApp {
 
 impl AriaApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        // The studio has fixed dark backgrounds. Keep widget contrast consistent
+        // when Windows reports a light system theme on the first frame.
+        cc.egui_ctx.set_theme(egui::Theme::Dark);
         let mut style = (*cc.egui_ctx.style()).clone();
         style.visuals = egui::Visuals::dark();
         style.visuals.panel_fill = PANEL;
@@ -144,6 +156,13 @@ impl AriaApp {
                 format!("{} · {:?}", i.name, i.backend)
             })
             .unwrap_or_else(|| "GPU unavailable".into());
+        let preview_parameters = movement::preview_parameters(Parameters::default());
+        let input_monitor = InputMonitor::new(
+            "preview-v1".into(),
+            RigConfig::from_parameters(&preview_parameters),
+            settings.saved_rigs.get("preview-v1").cloned(),
+            &preview_parameters,
+        );
         let app = Self {
             settings,
             receiver: None,
@@ -159,7 +178,10 @@ impl AriaApp {
             status_message: None,
             output_open: false,
             output_close_requested: Arc::new(AtomicBool::new(false)),
-            raw_view: false,
+            input_monitor,
+            hotkeys: crate::hotkeys::Hotkeys::new(cc.egui_ctx.clone()),
+            live_inputs: Inputs::new(),
+            animation_time: 0.0,
             idle: None,
             talking: None,
             model: None,
@@ -196,6 +218,20 @@ impl AriaApp {
                     Ok("output") => {
                         app.output_open = true;
                         app.settings.background = Background::Green;
+                    }
+                    Ok("pose") | Ok("presets") | Ok("inputs") => {
+                        let parameters = app.current_parameters();
+                        app.input_monitor
+                            .prepare_smoke(&parameters, &app.settings.mapping);
+                        app.input_monitor.tab =
+                            match std::env::var("ARIA_SMOKE_SCENARIO").as_deref() {
+                                Ok("pose") => Tab::Pose,
+                                Ok("presets") => Tab::Presets,
+                                _ => Tab::Inputs,
+                            };
+                        if let Some(path) = std::env::var_os("ARIA_SMOKE_AVATAR_PNG") {
+                            app.input_monitor.export_png = Some(path.into());
+                        }
                     }
                     _ => {}
                 }
@@ -419,7 +455,7 @@ impl AriaApp {
             {
                 self.idle = None;
                 self.talking = None;
-                self.live2d = None;
+                self.use_preview_rig();
             }
         });
         if self.idle.is_some() && self.live2d.is_none() {
@@ -449,16 +485,23 @@ impl AriaApp {
                 RichText::new(format!(
                     "{} meshes · {} tracked parameters\n{:.0} MiB atlases · Core {}",
                     avatar.model.drawables.len(),
-                    avatar.mapped_count(),
+                    self.input_monitor.saved.config.bindings.len(),
                     avatar.atlas_mib(),
                     avatar.model.version
                 ))
                 .small(),
             );
             if ui.button("Model parameters…").clicked() {
-                avatar.controls_open = true;
+                self.input_monitor.tab = Tab::Inputs;
             }
-            avatar.physics_controls(ui);
+            ui.label(
+                RichText::new(format!(
+                    "{} assignments from VTS profile",
+                    avatar.imported_count
+                ))
+                .small(),
+            );
+            avatar.physics_controls(ui, &mut self.input_monitor.saved.config);
             for warning in &avatar.files.warnings {
                 ui.label(RichText::new(warning).small().color(MUTED));
             }
@@ -540,7 +583,9 @@ impl AriaApp {
         {
             match avatar::load_sprite(ctx, &path) {
                 Ok(sprite) => {
-                    self.live2d = None;
+                    if self.live2d.is_some() {
+                        self.use_preview_rig();
+                    }
                     if talking {
                         self.talking = Some(sprite);
                     } else {
@@ -573,6 +618,15 @@ impl AriaApp {
             .ok_or_else(|| anyhow::anyhow!("GPU renderer is unavailable"))?;
         let avatar =
             crate::live2d::Avatar::load(state, Path::new(self.settings.cubism_core.trim()), files)?;
+        self.remember_current_rig();
+        self.input_monitor = InputMonitor::new(
+            avatar.model_key.clone(),
+            avatar.initial_config.clone(),
+            self.settings.saved_rigs.get(&avatar.model_key).cloned(),
+            avatar.model.parameters(),
+        );
+        self.hotkeys.configure(Vec::new());
+        self.animation_time = 0.0;
         self.live2d = Some(avatar);
         self.idle = None;
         self.talking = None;
@@ -597,6 +651,31 @@ impl AriaApp {
                 }
             }
         }
+    }
+    fn current_parameters(&self) -> Vec<RigParameter> {
+        self.live2d.as_ref().map_or_else(
+            || movement::preview_parameters(self.params),
+            |a| a.model.parameters().to_vec(),
+        )
+    }
+    fn remember_current_rig(&mut self) {
+        self.settings.saved_rigs.insert(
+            self.input_monitor.model_key.clone(),
+            self.input_monitor.saved.clone(),
+        );
+    }
+    fn use_preview_rig(&mut self) {
+        self.remember_current_rig();
+        self.live2d = None;
+        let parameters = movement::preview_parameters(Parameters::default());
+        self.input_monitor = InputMonitor::new(
+            "preview-v1".into(),
+            RigConfig::from_parameters(&parameters),
+            self.settings.saved_rigs.get("preview-v1").cloned(),
+            &parameters,
+        );
+        self.hotkeys.configure(Vec::new());
+        self.animation_time = 0.0;
     }
     fn bare_import_window(&mut self, ctx: &egui::Context) {
         let Some(path) = self.bare_moc.clone() else {
@@ -636,11 +715,21 @@ impl AriaApp {
 
     fn diagnostics(&mut self, ui: &mut egui::Ui) {
         section(ui, "INPUT MONITOR");
-        ui.horizontal(|ui| {
-            ui.selectable_value(&mut self.raw_view, false, "Mapped");
-            ui.selectable_value(&mut self.raw_view, true, "Raw");
-        });
-        if self.raw_view {
+        let parameters = self.current_parameters();
+        let labels = self
+            .live2d
+            .as_ref()
+            .map(|a| a.labels.clone())
+            .unwrap_or_default();
+        self.input_monitor.ui(
+            ui,
+            &parameters,
+            &labels,
+            &self.live_inputs,
+            &mut self.settings.mapping,
+            self.live2d.is_some(),
+        );
+        if self.input_monitor.tab == Tab::Raw {
             if let Some(f) = &self.raw {
                 ui.label(format!(
                     "Head {:.1} / {:.1} / {:.1}°",
@@ -668,11 +757,8 @@ impl AriaApp {
             } else {
                 ui.label("Connect a tracker to see raw values.");
             }
-        } else {
-            for ((name, min, max), value) in PARAMETER_SPECS.iter().zip(self.params.0) {
-                meter(ui, name, value, *min, *max);
-            }
         }
+
         ui.separator();
         if ui.button("Export mapped values…").clicked()
             && let Some(path) = rfd::FileDialog::new()
@@ -680,9 +766,14 @@ impl AriaApp {
                 .add_filter("JSON", &["json"])
                 .save_file()
         {
-            match serde_json::to_vec_pretty(&self.params.named())
-                .map_err(anyhow::Error::from)
-                .and_then(|bytes| std::fs::write(path, bytes).map_err(anyhow::Error::from))
+            match serde_json::to_vec_pretty(
+                &parameters
+                    .iter()
+                    .map(|p| (p.id.as_str(), p.value))
+                    .collect::<BTreeMap<_, _>>(),
+            )
+            .map_err(anyhow::Error::from)
+            .and_then(|bytes| std::fs::write(path, bytes).map_err(anyhow::Error::from))
             {
                 Ok(()) => self.status_message = Some("Parameter snapshot exported.".into()),
                 Err(e) => self.status_message = Some(format!("Export failed: {e}")),
@@ -774,20 +865,79 @@ impl eframe::App for AriaApp {
         } else {
             self.raw = None;
         }
+        for event in self.hotkeys.events() {
+            match event {
+                crate::hotkeys::Event::Pressed { generation, key }
+                    if generation == self.hotkeys.generation
+                        && self.input_monitor.saved.global_hotkeys =>
+                {
+                    let parameters = self.current_parameters();
+                    self.input_monitor
+                        .hotkey(key, &parameters, &mut self.settings.mapping);
+                }
+                crate::hotkeys::Event::Registered {
+                    generation,
+                    errors,
+                    thread_id,
+                } if generation == self.hotkeys.generation => {
+                    let _ = thread_id;
+                    self.input_monitor.hotkey_status = if errors.is_empty() {
+                        None
+                    } else {
+                        Some(errors.join("\n"))
+                    };
+                }
+                _ => {}
+            }
+        }
         self.params = self
             .pipeline
             .update(self.raw.as_ref(), &self.settings.mapping, dt);
-        if let Some(avatar) = &mut self.live2d
-            && dt > 0.0
-            && let Err(error) = avatar.update(
-                self.params,
-                self.raw.as_ref(),
-                self.settings.mapping.mirror,
-                dt,
-            )
-        {
-            self.status_message = Some(format!("Live2D update stopped: {error:#}"));
-            self.live2d = None;
+        if self.input_monitor.saved.config.pose.mode != PoseMode::Frozen {
+            self.animation_time += dt.min(0.25);
+        }
+        self.live_inputs = rig::tracking_inputs(
+            self.raw.as_ref(),
+            self.params,
+            self.settings.mapping.mirror,
+            self.animation_time,
+        );
+        if dt > 0.0 {
+            if let Some(avatar) = &mut self.live2d {
+                if std::mem::take(&mut self.input_monitor.reset_motion) {
+                    avatar.reset_motion();
+                }
+                if let Err(error) =
+                    avatar.update(&self.live_inputs, &mut self.input_monitor.saved.config, dt)
+                {
+                    self.status_message = Some(format!("Live2D update stopped: {error:#}"));
+                    self.use_preview_rig();
+                }
+            } else {
+                let mut parameters = movement::preview_parameters(self.params);
+                self.input_monitor.saved.config.evaluate(
+                    &self.live_inputs,
+                    &mut parameters,
+                    dt,
+                    None,
+                );
+                for (value, p) in self.params.0.iter_mut().zip(parameters) {
+                    *value = p.value;
+                }
+            }
+            if let Some(path) = self.input_monitor.export_png.take() {
+                self.input_monitor.message = Some(
+                    match self
+                        .live2d
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("Load a Live2D avatar first"))
+                        .and_then(|avatar| avatar.save_png(&path))
+                    {
+                        Ok(()) => format!("Saved PNG: {}", path.display()),
+                        Err(error) => format!("PNG export failed: {error:#}"),
+                    },
+                );
+            }
         }
 
         self.metrics.update(self.render_state.as_ref());
@@ -798,7 +948,7 @@ impl eframe::App for AriaApp {
                     ui.label(RichText::new("A.R.I.A.").size(26.0).strong().color(MINT));
                     ui.label(RichText::new("AVATAR STUDIO").size(12.0).color(MUTED));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(RichText::new("v0.3 · WINDOWS PREVIEW").small().color(MUTED));
+                        ui.label(RichText::new("v0.4 · WINDOWS PREVIEW").small().color(MUTED));
                     });
                 });
             });
@@ -831,8 +981,9 @@ impl eframe::App for AriaApp {
                     .show(ui, |ui| self.controls(ui, ctx));
             });
         egui::SidePanel::right("diagnostics")
-            .exact_width(258.0)
-            .resizable(false)
+            .default_width(360.0)
+            .width_range(310.0..=700.0)
+            .resizable(true)
             .frame(Frame::new().fill(PANEL).inner_margin(18.0))
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical()
@@ -907,8 +1058,17 @@ impl eframe::App for AriaApp {
             });
         self.model_window(ctx);
         self.bare_import_window(ctx);
-        if let Some(avatar) = &mut self.live2d {
-            avatar.controls(ctx);
+        if !self.hotkeys.available() {
+            self.input_monitor.hotkey_status =
+                Some("Hotkey worker could not start. Preset buttons remain available.".into());
+        }
+        self.hotkeys.configure(self.input_monitor.hotkey_keys());
+        if std::mem::take(&mut self.input_monitor.save_requested) && !crate::smoke_mode() {
+            self.remember_current_rig();
+            if let Some(storage) = frame.storage_mut() {
+                eframe::set_value(storage, "aria-settings-v1", &self.settings);
+                storage.flush();
+            }
         }
         #[cfg(feature = "screenshots")]
         {
@@ -992,6 +1152,7 @@ impl eframe::App for AriaApp {
         if crate::smoke_mode() {
             return;
         }
+        self.remember_current_rig();
         eframe::set_value(storage, "aria-settings-v1", &self.settings);
     }
 }

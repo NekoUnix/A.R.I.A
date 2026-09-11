@@ -2,7 +2,7 @@
 //! approximated from the public raw blendshapes; authored ranges are preserved.
 use crate::{PARAMETER_SPECS, Parameters, TrackingFrame};
 use anyhow::{Result, ensure};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
@@ -120,7 +120,7 @@ pub fn tracking_inputs(
     inputs
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Binding {
     pub name: String,
     pub input: String,
@@ -131,7 +131,16 @@ pub struct Binding {
     pub clamp_input: bool,
     pub clamp_output: bool,
     pub smoothing_ms: f32,
+    #[serde(default)]
+    pub dead_zone: f32,
+    #[serde(default = "unit_curve")]
+    pub response_curve: f32,
+    #[serde(skip)]
     current: Option<f32>,
+}
+
+fn unit_curve() -> f32 {
+    1.0
 }
 
 impl Binding {
@@ -146,6 +155,8 @@ impl Binding {
             clamp_input: true,
             clamp_output: true,
             smoothing_ms: 0.0,
+            dead_zone: 0.0,
+            response_curve: 1.0,
             current: None,
         }
     }
@@ -159,6 +170,12 @@ impl Binding {
         if self.clamp_input {
             t = t.clamp(0.0, 1.0);
         }
+        let centered = t * 2.0 - 1.0;
+        let dead = self.dead_zone.clamp(0.0, 0.49) * 2.0;
+        let response = ((centered.abs() - dead).max(0.0) / (1.0 - dead))
+            .powf(self.response_curve.clamp(0.1, 4.0))
+            * centered.signum();
+        t = (response + 1.0) * 0.5;
         let mut target = self.output_min + t * (self.output_max - self.output_min);
         if self.clamp_output {
             target = target.clamp(
@@ -177,6 +194,9 @@ impl Binding {
         };
         *current += (target - *current) * alpha;
         *current
+    }
+    pub fn reset_filter(&mut self) {
+        self.current = None;
     }
 }
 
@@ -333,6 +353,8 @@ pub fn import_profile(bytes: &[u8], parameters: &[RigParameter]) -> Result<Impor
                 // VTS does not publish its filter algorithm. Interpret its 0..100
                 // amount as a time constant, keeping body movement softer than eyes.
                 smoothing_ms: a.smoothing.clamp(0.0, 100.0) * 4.0,
+                dead_zone: 0.0,
+                response_curve: 1.0,
                 current: None,
             },
         );
