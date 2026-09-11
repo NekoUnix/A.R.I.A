@@ -265,6 +265,16 @@ impl AriaApp {
                     Ok("physics") | Ok("physics-group") => {
                         app.input_monitor.tab = Tab::Physics;
                     }
+                    Ok("expressions") => {
+                        app.input_monitor.tab = Tab::Expressions;
+                        if let Some(entry) = app.input_monitor.expressions.entries.first() {
+                            app.input_monitor
+                                .saved
+                                .config
+                                .expressions
+                                .insert(entry.file.id.clone());
+                        }
+                    }
                     Ok("pose") | Ok("presets") | Ok("inputs") => {
                         let parameters = app.current_parameters();
                         app.input_monitor
@@ -702,6 +712,12 @@ impl AriaApp {
             .as_ref()
             .map(|p| p.groups())
             .unwrap_or_default();
+        self.input_monitor.expressions.load(
+            &avatar.files.expressions,
+            avatar.files.source.parent().unwrap_or(Path::new("")),
+            &self.input_monitor.saved,
+            avatar.model.parameters(),
+        );
         self.restore_model_preferences(&avatar.model_key);
         self.hotkeys.configure(Vec::new());
         self.animation_time = 0.0;
@@ -980,13 +996,16 @@ impl eframe::App for AriaApp {
         }
         for event in self.hotkeys.events() {
             match event {
-                crate::hotkeys::Event::Pressed { generation, key }
+                crate::hotkeys::Event::Pressed { generation, action }
                     if generation == self.hotkeys.generation
                         && self.input_monitor.saved.global_hotkeys =>
                 {
                     let parameters = self.current_parameters();
-                    self.input_monitor
-                        .hotkey(key, &parameters, &mut self.settings.mapping);
+                    self.input_monitor.hotkey_action(
+                        action,
+                        &parameters,
+                        &mut self.settings.mapping,
+                    );
                 }
                 crate::hotkeys::Event::Registered {
                     generation,
@@ -1020,9 +1039,12 @@ impl eframe::App for AriaApp {
                 if std::mem::take(&mut self.input_monitor.reset_motion) {
                     avatar.reset_motion();
                 }
-                if let Err(error) =
-                    avatar.update(&self.live_inputs, &mut self.input_monitor.saved.config, dt)
-                {
+                if let Err(error) = avatar.update(
+                    &self.live_inputs,
+                    &mut self.input_monitor.saved.config,
+                    &mut self.input_monitor.expressions,
+                    dt,
+                ) {
                     self.status_message = Some(format!("Live2D update stopped: {error:#}"));
                     self.use_preview_rig();
                 }
@@ -1061,7 +1083,7 @@ impl eframe::App for AriaApp {
                     ui.label(RichText::new("A.R.I.A.").size(26.0).strong().color(MINT));
                     ui.label(RichText::new("AVATAR STUDIO").size(12.0).color(MUTED));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(RichText::new("v0.5 · WINDOWS PREVIEW").small().color(MUTED));
+                        ui.label(RichText::new("v0.6 · WINDOWS PREVIEW").small().color(MUTED));
                     });
                 });
             });
@@ -1349,6 +1371,23 @@ mod tests {
             );
             settings.saved_rigs.insert(key.into(), saved);
         }
+        let expressions = &mut settings.saved_rigs.get_mut("avatar-a").unwrap();
+        expressions.expression_hotkeys.insert(
+            "smile.exp3.json".into(),
+            aria_core::shortcuts::Shortcut {
+                ctrl: true,
+                shift: true,
+                key: 0x48,
+                ..Default::default()
+            },
+        );
+        expressions
+            .config
+            .expressions
+            .insert("smile.exp3.json".into());
+        expressions
+            .expression_files
+            .push("C:/avatar/smile.exp3.json".into());
         let mut storage = Memory::default();
         eframe::set_value(&mut storage, "aria-settings-v1", &settings);
         let mut restored: Settings =
@@ -1393,5 +1432,27 @@ mod tests {
         for rig in restored.saved_rigs.values() {
             rig.validate(&parameters).unwrap();
         }
+        assert_eq!(
+            restored.saved_rigs["avatar-a"].expression_hotkeys["smile.exp3.json"].label(),
+            "Ctrl+Shift+H"
+        );
+        assert!(
+            restored.saved_rigs["avatar-a"]
+                .config
+                .expressions
+                .contains("smile.exp3.json")
+        );
+        assert_eq!(restored.saved_rigs["avatar-a"].expression_files.len(), 1);
+        assert!(
+            restored.saved_rigs["avatar-b"]
+                .expression_hotkeys
+                .is_empty()
+        );
+        assert!(
+            restored.saved_rigs["avatar-b"]
+                .config
+                .expressions
+                .is_empty()
+        );
     }
 }

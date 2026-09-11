@@ -51,12 +51,16 @@ Unsupported offscreen parts and advanced blend modes fail explicitly.
 
 Tracking binds by exact output ID, preferring adjacent VTS profile assignments.
 Each update starts from native defaults/manual overrides, applies named tracking and
-breathing through each binding's ranges/filter, then evaluates authored physics.
+breathing through each binding's ranges/filter, layers active expressions, then
+evaluates authored physics. Partial holds apply before and after physics.
 Physics uses the rig's fixed FPS, input interpolation and previous/current output
 interpolation, preserving group order for chained dependencies. Particle state retains
 velocity; pause gaps and re-enabling reset it. Values clamp to native parameter limits
-before resetting drawable flags, evaluating Core and rendering. Motion/pose/expression
-sequencing remains future work. Rig math uses owned Rust parameter data, independent
+before resetting drawable flags, evaluating Core and rendering. Expression fades
+are per-model transient state; selections live in RigConfig and shortcuts/import
+paths in SavedRig. The Expressions panel discovers metadata and feeds the same
+runtime from buttons and shortcut actions. Full frozen poses bypass this entire
+pipeline. Motion3/pose3 sequencing remains future work. Rig math uses owned Rust parameter data, independent
 of native ABI pointers, so unit tests need neither Core nor licensed assets.
 
 Optional profile, physics and display-info reads are bounded to 2 MiB each and

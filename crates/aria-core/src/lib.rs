@@ -1,7 +1,9 @@
 //! Platform-independent tracking values and a small, deterministic parameter pipeline.
+pub mod expressions;
 pub mod movement;
 pub mod physics;
 pub mod rig;
+pub mod shortcuts;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 

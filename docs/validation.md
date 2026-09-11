@@ -5,6 +5,33 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Local verification on 2026-09-11
 
+### v0.6 expressions and custom keyboard shortcuts
+
+- Formatting, Clippy across all targets/features with warnings denied, and all
+  **42 default tests** passed on Windows x64. Five optional tests require a GPU,
+  an interactive Windows session and/or locally supplied Cubism files.
+- Expression tests verify Add/Multiply/Overwrite math, native range clamping,
+  default blend/fade values, interrupted fades, clean release without cumulative
+  drift, partial-hold priority and exact frozen poses. Invalid files are rejected
+  and missing target IDs are reported. Discovery merges manifest references with
+  unlisted expression files, preserves display names, deduplicates files and
+  rejects references outside the avatar directory.
+- The supplied model's **three unlisted expressions** loaded and each changed its
+  corresponding native parameter and rendered mesh state. The test used the same
+  expression actions as keyboard shortcuts, verified saved selections/assignments,
+  preserved vertex/color/opacity state while frozen, and restored the underlying
+  values and appearance after each expression faded out.
+- A temporary **Ctrl+Shift+F24** Windows registration dispatched an expression action
+  through the owned worker queue, detected a competing registration and released
+  the shortcut on shutdown. The test injected only a message into its own worker;
+  it did not synthesize keyboard input into another app.
+- Custom modifier/key combinations, expression selections and imported paths
+  remain separate for two models after actual eframe RON storage round-trips.
+  Duplicate expression/preset/pose shortcut assignments are rejected.
+- Release UI checks exercised the real model's Expressions tab, its active blend,
+  shortcut editor, the no-Live2D empty state and the built-in Mica studio. Private
+  avatar assets and screenshots are excluded from the repository and app package.
+
 ### v0.5 studio organization and per-avatar physics
 
 - Formatting, Clippy across all targets/features with warnings denied, and all

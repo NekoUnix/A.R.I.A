@@ -2,7 +2,7 @@
 use anyhow::{Context, Result, ensure};
 use serde::Deserialize;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     io::Read,
     path::{Component, Path, PathBuf},
@@ -38,6 +38,8 @@ struct FileReferences {
 #[serde(rename_all = "PascalCase")]
 struct NamedFile {
     file: String,
+    #[serde(default)]
+    name: String,
 }
 
 #[derive(Deserialize)]
@@ -182,7 +184,117 @@ pub struct ModelFiles {
     pub physics: Option<PathBuf>,
     pub tracking_profile: Option<PathBuf>,
     pub display_info: Option<PathBuf>,
+    pub expressions: Vec<ExpressionFile>,
     pub warnings: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ExpressionFile {
+    /// Relative to the avatar folder so relocating that folder preserves settings.
+    pub id: String,
+    pub name: String,
+    pub path: PathBuf,
+}
+pub fn expression_name(path: &Path) -> String {
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let lower = name.to_ascii_lowercase();
+    for suffix in [".exp3.json", ".exp3"] {
+        if lower.ends_with(suffix) {
+            return name[..name.len() - suffix.len()].into();
+        }
+    }
+    name.into_owned()
+}
+pub fn is_expression(path: &Path) -> bool {
+    let name = path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_ascii_lowercase();
+    name.ends_with(".exp3.json") || name.ends_with(".exp3")
+}
+
+fn discover_expressions(
+    base: &Path,
+    references: Vec<NamedFile>,
+    warnings: &mut Vec<String>,
+) -> Vec<ExpressionFile> {
+    let mut files = Vec::new();
+    let mut seen = BTreeSet::new();
+    let mut add = |path: PathBuf, name: String| {
+        if seen.insert(path.clone()) {
+            files.push(ExpressionFile {
+                id: path
+                    .strip_prefix(base)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+                name: if name.trim().is_empty() {
+                    expression_name(&path)
+                } else {
+                    name.chars().take(256).collect()
+                },
+                path,
+            });
+        }
+    };
+    if references.len() > 256 {
+        warnings.push("Only the first 256 manifest expressions were inspected.".into());
+    }
+    for reference in references.into_iter().take(256) {
+        match resolve_asset(base, &reference.file) {
+            Ok(path) => add(path, reference.name),
+            Err(error) => warnings.push(format!("Expression {}: {error:#}", reference.file)),
+        }
+    }
+    // VTube Studio exports often omit Expressions from model3.json. Inspect a
+    // bounded directory tree, without following links out of the avatar folder.
+    let mut folders = vec![(base.to_path_buf(), 0)];
+    let mut visited = BTreeSet::new();
+    let mut remaining = 4096usize;
+    while let Some((folder, depth)) = folders.pop() {
+        let Ok(folder) = folder.canonicalize() else {
+            continue;
+        };
+        if !folder.starts_with(base) || !visited.insert(folder.clone()) {
+            continue;
+        }
+        let Ok(entries) = fs::read_dir(folder) else {
+            continue;
+        };
+        let mut entries: Vec<_> = entries
+            .take(remaining)
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .collect();
+        remaining -= entries.len();
+        entries.sort();
+        for path in entries {
+            if path.is_dir() && depth < 8 {
+                folders.push((path, depth + 1));
+            } else if is_expression(&path) {
+                let Ok(relative) = path.strip_prefix(base) else {
+                    continue;
+                };
+                match resolve_asset(base, &relative.to_string_lossy()) {
+                    Ok(path) => add(path, String::new()),
+                    Err(error) => {
+                        warnings.push(format!("Expression {}: {error:#}", relative.display()))
+                    }
+                }
+            }
+        }
+        if remaining == 0 {
+            warnings.push("Expression discovery reached 4096 directory entries. Use Import expression files for additional files.".into());
+            break;
+        }
+    }
+    files.sort_by(|a, b| a.id.cmp(&b.id));
+    if files.len() > 256 {
+        files.truncate(256);
+        warnings.push("Maximum 256 expressions per avatar. Additional files were skipped.".into());
+    }
+    files
 }
 
 /// Accept a model3.json, or locate its manifest when the user selects a moc3.
@@ -260,11 +372,10 @@ pub fn load_files(path: &Path) -> Result<ModelFiles> {
     if f.pose.is_some() {
         warnings.push("Pose files are not applied in this version.".into());
     }
-    if !f.expressions.is_empty() || !f.motions.is_empty() {
-        warnings.push(
-            "Motion and expression playback are not implemented; parameter controls are available."
-                .into(),
-        );
+    let expressions = discover_expressions(base, f.expressions, &mut warnings);
+    if !f.motions.is_empty() {
+        warnings
+            .push("Motion playback is not implemented; parameter controls are available.".into());
     }
     Ok(ModelFiles {
         source,
@@ -273,6 +384,7 @@ pub fn load_files(path: &Path) -> Result<ModelFiles> {
         physics,
         tracking_profile,
         display_info,
+        expressions,
         warnings,
     })
 }
@@ -289,7 +401,25 @@ pub fn bare_moc(path: &Path, textures: &[PathBuf]) -> Result<ModelFiles> {
         "Select 1–32 textures in atlas index order"
     );
     let moc = path.canonicalize()?;
-    Ok(ModelFiles { source: moc.clone(), moc, textures: textures.iter().map(|p| p.canonicalize().map_err(Into::into)).collect::<Result<_>>()?, physics: None, tracking_profile: None, display_info: None, warnings: vec!["Bare moc3: textures use the order shown in the import dialog; no manifest metadata loaded.".into()] })
+    let mut warnings = vec!["Bare moc3: textures use the order shown in the import dialog; no manifest metadata loaded.".into()];
+    let expressions = discover_expressions(
+        moc.parent().context("Avatar has no parent folder")?,
+        Vec::new(),
+        &mut warnings,
+    );
+    Ok(ModelFiles {
+        source: moc.clone(),
+        moc,
+        textures: textures
+            .iter()
+            .map(|p| p.canonicalize().map_err(Into::into))
+            .collect::<Result<_>>()?,
+        physics: None,
+        tracking_profile: None,
+        display_info: None,
+        expressions,
+        warnings,
+    })
 }
 
 pub fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>> {
@@ -310,6 +440,28 @@ pub fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn expressions_combine_manifest_and_unlisted_files_without_duplicates() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir(dir.path().join("expressions")).unwrap();
+        for name in [
+            "avatar.moc3",
+            "atlas.png",
+            "expressions/smile.exp3.json",
+            "toggle.exp3",
+            "ignore.json",
+        ] {
+            fs::write(dir.path().join(name), b"fixture").unwrap();
+        }
+        let path = dir.path().join("avatar.model3.json");
+        fs::write(&path, br#"{"Version":3,"FileReferences":{"Moc":"avatar.moc3","Textures":["atlas.png"],"Expressions":[{"Name":"Smile!","File":"expressions/smile.exp3.json"},{"Name":"bad","File":"../escape.exp3.json"}]}}"#).unwrap();
+        let files = load_files(&path).unwrap();
+        assert_eq!(files.expressions.len(), 2);
+        assert_eq!(files.expressions[0].name, "Smile!");
+        assert_eq!(files.expressions[0].id, "expressions/smile.exp3.json");
+        assert_eq!(files.expressions[1].name, "toggle");
+        assert!(files.warnings.iter().any(|w| w.contains("inside")));
+    }
     #[test]
     fn discovers_optional_rig_files_and_reports_broken_physics() {
         let dir = tempfile::tempdir().unwrap();

@@ -110,13 +110,25 @@ impl Avatar {
             physics.reset();
         }
     }
-    pub fn update(&mut self, inputs: &Inputs, config: &mut RigConfig, dt: f32) -> Result<()> {
+    pub fn update(
+        &mut self,
+        inputs: &Inputs,
+        config: &mut RigConfig,
+        expressions: &mut crate::expressions_panel::ExpressionsPanel,
+        dt: f32,
+    ) -> Result<()> {
         if config.pose.mode != self.last_pose_mode {
             self.reset_motion();
             self.last_pose_mode = config.pose.mode;
         }
         let mut values = self.model.parameters().to_vec();
-        config.evaluate(inputs, &mut values, dt, self.physics.as_mut());
+        config.evaluate_with_expressions(
+            inputs,
+            &mut values,
+            dt,
+            self.physics.as_mut(),
+            |p, active| expressions.update(p, active, dt),
+        );
         for p in values {
             self.model.set_parameter(&p.id, p.value);
         }
@@ -152,6 +164,136 @@ fn read_labels(path: &Path) -> Result<BTreeMap<String, String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "requires local ARIA_CUBISM_CORE and ARIA_TEST_MODEL with expression files"]
+    fn local_expressions_toggle_native_avatar_and_restore_after_release() {
+        use crate::{hotkeys::Action, input_monitor::InputMonitor};
+        use aria_core::{MappingSettings, movement::SavedRig, shortcuts::Shortcut};
+        let path = std::env::var_os("ARIA_TEST_MODEL").unwrap();
+        let core = std::env::var_os("ARIA_CUBISM_CORE").unwrap();
+        let files = aria_model::load_files(Path::new(&path)).unwrap();
+        assert!(!files.expressions.is_empty());
+        let mut model = CubismModel::load(
+            Path::new(&core),
+            &aria_model::read_bounded(&files.moc, 128 * 1024 * 1024).unwrap(),
+            files.textures.len(),
+        )
+        .unwrap();
+        let mut baseline = model.parameters().to_vec();
+        let mut config = RigConfig::from_parameters(&baseline);
+        config.evaluate(&Inputs::new(), &mut baseline, 1.0 / 60.0, None);
+        for p in &baseline {
+            model.set_parameter(&p.id, p.value);
+        }
+        model.update().unwrap();
+        let mut monitor = InputMonitor::new("fixture".into(), config, None, &baseline);
+        monitor.expressions.load(
+            &files.expressions,
+            files.source.parent().unwrap(),
+            &monitor.saved,
+            &baseline,
+        );
+        assert_eq!(monitor.expressions.entries.len(), files.expressions.len());
+        let mut mapping = MappingSettings::default();
+        let mut values = baseline.clone();
+        let snapshot = |model: &CubismModel| {
+            model
+                .drawables
+                .iter()
+                .map(|d| (d.positions.clone(), d.opacity, d.multiply, d.screen))
+                .collect::<Vec<_>>()
+        };
+        let mut changed = 0;
+        for file in &files.expressions {
+            let expression = aria_core::expressions::Expression::load(
+                &aria_model::read_bounded(&file.path, 1024 * 1024).unwrap(),
+            )
+            .unwrap();
+            assert!(expression.missing_parameters(&baseline).is_empty());
+            let key = Shortcut {
+                ctrl: true,
+                shift: true,
+                key: 0x48,
+                ..Default::default()
+            };
+            monitor.saved.expression_hotkeys.clear();
+            crate::expressions_panel::ExpressionsPanel::assign(&mut monitor.saved, &file.id, key)
+                .unwrap();
+            assert!(
+                monitor
+                    .hotkey_keys()
+                    .iter()
+                    .any(|r| r.shortcut == key && r.action == Action::Expression(file.id.clone()))
+            );
+            let before = snapshot(&model);
+            monitor.hotkey_action(Action::Expression(file.id.clone()), &values, &mut mapping);
+            for _ in 0..120 {
+                monitor.saved.config.evaluate_with_expressions(
+                    &Inputs::new(),
+                    &mut values,
+                    1.0 / 60.0,
+                    None,
+                    |p, active| monitor.expressions.update(p, active, 1.0 / 60.0),
+                );
+            }
+            for p in &values {
+                model.set_parameter(&p.id, p.value);
+            }
+            model.update().unwrap();
+            assert_ne!(
+                before,
+                snapshot(&model),
+                "Expression {} should change this fixture's appearance",
+                file.name
+            );
+            changed += values
+                .iter()
+                .zip(&baseline)
+                .filter(|(a, b)| a.value != b.value)
+                .count();
+            let saved: SavedRig =
+                serde_json::from_slice(&serde_json::to_vec(&monitor.saved).unwrap()).unwrap();
+            assert!(saved.config.expressions.contains(&file.id));
+            assert_eq!(saved.expression_hotkeys[&file.id], key);
+            monitor.saved.config.capture_pose(&values);
+            let frozen = snapshot(&model);
+            monitor.hotkey_action(Action::Expression(file.id.clone()), &values, &mut mapping);
+            assert!(monitor.saved.config.expressions.contains(&file.id));
+            monitor.saved.config.evaluate_with_expressions(
+                &Inputs::new(),
+                &mut values,
+                0.1,
+                None,
+                |_, _| panic!("Frozen pose evaluated expressions"),
+            );
+            for p in &values {
+                model.set_parameter(&p.id, p.value);
+            }
+            model.update().unwrap();
+            assert_eq!(frozen, snapshot(&model));
+            monitor.saved.config.pose.mode = PoseMode::Live;
+            monitor.hotkey_action(Action::Expression(file.id.clone()), &values, &mut mapping);
+            for _ in 0..120 {
+                monitor.saved.config.evaluate_with_expressions(
+                    &Inputs::new(),
+                    &mut values,
+                    1.0 / 60.0,
+                    None,
+                    |p, active| monitor.expressions.update(p, active, 1.0 / 60.0),
+                );
+            }
+            for (p, original) in values.iter().zip(&baseline) {
+                assert_eq!(p.value, original.value);
+                model.set_parameter(&p.id, p.value);
+            }
+            model.update().unwrap();
+            assert_eq!(before, snapshot(&model));
+        }
+        eprintln!(
+            "Verified {} expressions through hotkey actions: {changed} changed native parameters, appearance changes, exact frozen poses and restoration on release",
+            files.expressions.len()
+        );
+    }
     #[test]
     #[ignore = "requires local ARIA_CUBISM_CORE and ARIA_TEST_MODEL with VTS and physics sidecars"]
     fn local_rig_assignments_and_physics_drive_native_parameters() {

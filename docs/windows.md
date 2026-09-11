@@ -12,7 +12,7 @@ systems and Windows ARM64 are not verified release targets yet.
 1. Visit [the Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml).
 2. Select a green, successful run on `main` for the version you want.
 3. Under **Artifacts**, download **aria-windows-x64**. Sign in to GitHub if asked.
-4. Extract the downloaded artifact. Extract `aria-0.5.0-windows-x64.zip` inside it
+4. Extract the downloaded artifact. Extract `aria-0.6.0-windows-x64.zip` inside it
    into a normal writable folder, for example `C:\Apps\ARIA`.
 5. Double-click **aria-desktop.exe**. The default source is Demo and Mica should move.
 
@@ -101,6 +101,8 @@ and mapping without requiring a phone or licensed model.
   [input controls guide](input-controls.md) for the full workflow.
 - **Physics:** tune enable, strength, inertia, response speed, gravity and wind
   for the whole avatar or each authored group. [Physics/profile guide](physics.md).
+- **Expressions:** toggle `.exp3.json` files and assign your own keyboard shortcuts,
+  saved per avatar. [Expression and custom shortcut guide](expressions.md).
 - **Export mapped values:** save the current parameter snapshot as JSON. This is
   a snapshot, not continuous recording or network output.
 

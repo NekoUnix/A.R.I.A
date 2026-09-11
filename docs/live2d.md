@@ -1,6 +1,6 @@
 # Live2D avatar import on Windows
 
-ARIA v0.5 evaluates real `.moc3` models through Cubism Core and renders their
+ARIA v0.6 evaluates real `.moc3` models through Cubism Core and renders their
 ArtMeshes with wgpu/Direct3D 12. You need **the model, its texture images, and the
 official Cubism Core DLL**. A moc3 contains the rig, not the texture artwork.
 
@@ -91,8 +91,10 @@ Raw `ARKit:` inputs are also available. Edits save with this model and override 
 initial VTS assignments when reopened; the original profile is never modified.
 **Pose** holds individual parameters or freezes the complete avatar for PNG export.
 **Presets** saves movement configurations and screenshot poses with Windows hotkeys.
-See the [input controls guide](input-controls.md). VTS hotkeys, active expressions
-and items are not imported. Calibration, global smoothing, gains and mirroring
+See the [input controls guide](input-controls.md). **Expressions** discovers and
+plays the avatar's `.exp3.json` / `.exp3` files with per-model custom shortcuts;
+see [expressions](expressions.md). VTS hotkey assignments, VTS's active expression
+state and items are not imported. Calibration, global smoothing, gains and mirroring
 precede binding.
 
 These are ARIA filters over raw tracking, not an exact recreation of VTS's
@@ -163,7 +165,8 @@ overrides, VTS item attachments, or Cubism 5.3 offscreen parts/advanced blending
 Models using offscreen parts or advanced blend modes are rejected with a compatibility
 message. Export using standard compatible ArtMesh blending to use this renderer.
 The independent Rust physics solver is not a byte-for-byte Cubism Framework or
-VTS implementation. Motion/pose/expression features remain separate from physics.
+VTS implementation. Expression values apply before physics; motion3/pose3 playback
+remains separate from physics and is not implemented.
 
 Atlas MiB is `width × height × 4` summed over textures. It is not measured process
 VRAM; model memory, output/mask textures, uploads, and driver overhead are additional.
@@ -182,8 +185,9 @@ Large models can briefly pause the UI while importing; use a release build for n
   **Model parameters…**, then verify tracking meters and face-found status.
 - **Static hair:** check that the referenced physics file loaded, secondary motion
   is enabled, and strength is above zero. The group/output counts should be visible.
-- **Missing toggles:** VTS hotkeys and expression playback are not imported; use
-  manual parameter controls for simple toggles.
+- **Missing toggles:** open **Expressions** and import missing `.exp3.json` files.
+  Assign shortcuts in ARIA; VTS keyboard assignments are not imported. If the avatar
+  has no expression file for a toggle, use manual parameter controls.
 - **Blank/wrong-size model:** check the model's exported canvas/origin and parameter
   defaults. Models relying on motion/pose/layout setup may need those features added.
 

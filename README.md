@@ -6,11 +6,11 @@ tracking into avatar parameters, and animates **Live2D `.moc3` avatars**, a buil
 2D test puppet, or your PNG artwork. The UI and preview run on **egui + wgpu**,
 without Unity or Godot.
 
-> **v0.5:** refreshed studio with collapsible categories, saved physics controls
-> for the whole avatar and each authored group, and complete profiles per model.
+> **v0.6:** Live2D expression files with smooth fades, independent toggles and
+> user-defined Windows keyboard shortcuts, saved separately for each avatar.
 > Includes editable input response, frozen poses, presets, Windows hotkeys and PNG export.
 > Supply the official **Cubism Core x64 DLL** and your exported avatar assets.
-> Motion/expression/pose playback and Cubism 5.3 advanced/offscreen
+> Motion3/pose3 playback and Cubism 5.3 advanced/offscreen
 > blending remain future work. SDK binaries and model art are not bundled.
 > [Live2D setup and compatibility →](docs/live2d.md)
 
@@ -70,6 +70,10 @@ it does not implement VTS's proprietary USB transport.
    **Input Monitor → Inputs** edits sources, ranges, stepping and response.
 5. Use **Pose** to hold the avatar and export a transparent PNG. **Presets** saves
    movement setups or complete screenshot poses, with optional Windows hotkeys.
+6. Open **Expressions**, toggle the avatar's `.exp3.json` files, and select a name
+   to assign your own modifier/key combination. The same shortcut toggles it off.
+
+**[Expression files, blending and custom shortcuts →](docs/expressions.md)**
 
 **[Input tuning, pose controls, presets and hotkeys →](docs/input-controls.md)**
 
@@ -101,6 +105,8 @@ See [the detailed import guide](docs/live2d.md) for limits and troubleshooting.
   full/partial pose holds, transparent PNG export, per-model configuration and
   movement/pose presets with JSON import/export and Windows global hotkeys.
 - Live2D manifest/asset presence inspection and mapped-parameter JSON export.
+- Expression discovery and import, Add/Multiply/Overwrite blending with fades,
+  and independent toggles with configurable Windows global shortcuts per model.
 - Saved connection/mapping/output preferences, model controls and presets.
   Connections require an explicit click after startup. The Cubism DLL path is
   saved locally; open the avatar to restore its controls and held pose.
@@ -142,7 +148,7 @@ To build a portable bundle with its documentation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 ```
 
-The script runs tests and writes `dist/aria-0.5.0-windows-x64.zip`. See
+The script runs tests and writes `dist/aria-0.6.0-windows-x64.zip`. See
 [architecture](docs/architecture.md) for crate boundaries and
 [validation](docs/validation.md) for what has actually been exercised.
 

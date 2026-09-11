@@ -3,6 +3,7 @@
 mod app;
 mod avatar;
 mod cubism_render;
+mod expressions_panel;
 mod hotkeys;
 mod input_monitor;
 mod live2d;

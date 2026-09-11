@@ -1,12 +1,13 @@
 # Input controls, screenshot poses and presets
 
-ARIA v0.5 organizes the right-hand **INPUT MONITOR** into **Inputs**, **Pose**,
-**Physics**, **Presets** and **Raw** tabs. Drag its left edge to widen it. These controls use
+ARIA v0.6 organizes the right-hand **INPUT MONITOR** into **Inputs**, **Pose**,
+**Physics**, **Expressions**, **Presets** and **Raw** tabs. Drag its left edge to widen it. These controls use
 the loaded model's actual parameter names, ranges and VTS assignments. The built-in
 and PNG puppets have the same workflow for their 12 standard parameters. Studio
 sections and parameter categories collapse independently. Search reveals matching
 categories; unfamiliar controls remain in Other controls. The tabs work with every
 supported model. See [physics and model profiles](physics.md) for group tuning.
+The [Expressions guide](expressions.md) covers `.exp3` files and custom shortcuts.
 
 ## Tune a movement input
 
@@ -107,6 +108,11 @@ parameters, invalid numbers/ranges and files larger than 2 MiB are rejected. Pre
 files contain controls and parameter values, not SDK binaries or model artwork.
 
 ## Windows hotkeys
+
+Expressions have freely selectable modifier/key combinations in their own tab.
+See [expression shortcuts](expressions.md#assign-your-own-keyboard-shortcut).
+The expression, preset and pose controls share one global-hotkey enable switch.
+Expression selections also save in movement presets and appear in frozen poses.
 
 Assign **Ctrl+Alt+F1–F11** to presets. Assigning a key enables **Enable global hotkeys
 (Windows)**; that checkbox can suspend all registrations. While enabled,

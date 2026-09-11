@@ -34,6 +34,8 @@ pub struct RigConfig {
     pub steps: BTreeMap<String, f32>,
     pub pose: Pose,
     pub physics: PhysicsSettings,
+    /// Active expression file identities for this avatar, also captured in presets.
+    pub expressions: BTreeSet<String>,
 }
 impl RigConfig {
     pub fn from_parameters(parameters: &[RigParameter]) -> Self {
@@ -58,6 +60,16 @@ impl RigConfig {
         dt: f32,
         physics: Option<&mut Physics>,
     ) {
+        self.evaluate_with_expressions(inputs, parameters, dt, physics, |_, _| {});
+    }
+    pub fn evaluate_with_expressions(
+        &mut self,
+        inputs: &Inputs,
+        parameters: &mut [RigParameter],
+        dt: f32,
+        physics: Option<&mut Physics>,
+        expressions: impl FnOnce(&mut [RigParameter], &BTreeSet<String>),
+    ) {
         if self.pose.mode == PoseMode::Frozen {
             // Freeze FINAL values, not tracking inputs. No breathing, physics or
             // smoothing is evaluated while taking a picture, even if packets change.
@@ -81,6 +93,7 @@ impl RigConfig {
                 .clamp(p.min, p.max);
         }
         rig::apply_bindings(&mut self.bindings, inputs, parameters, dt);
+        expressions(parameters, &self.expressions);
         self.apply_holds_and_steps(parameters);
         if let Some(physics) = physics {
             physics.configure(&self.physics);
@@ -167,6 +180,14 @@ impl RigConfig {
             );
         }
         self.physics.validate()?;
+        ensure!(
+            self.expressions.len() <= 256
+                && self
+                    .expressions
+                    .iter()
+                    .all(|id| !id.is_empty() && id.len() <= 4096),
+            "Invalid active expression list"
+        );
         Ok(())
     }
 }
@@ -231,6 +252,8 @@ pub struct SavedRig {
     pub config: RigConfig,
     pub presets: Vec<Preset>,
     pub global_hotkeys: bool,
+    pub expression_hotkeys: BTreeMap<String, crate::shortcuts::Shortcut>,
+    pub expression_files: Vec<std::path::PathBuf>,
 }
 impl SavedRig {
     pub fn validate(&self, parameters: &[RigParameter]) -> Result<()> {
@@ -243,6 +266,32 @@ impl SavedRig {
                 ensure!(keys.insert(key), "Duplicate preset hotkey F{key}");
             }
         }
+        ensure!(
+            self.expression_hotkeys.len() <= 256 && self.expression_files.len() <= 256,
+            "Too many expression settings"
+        );
+        for (id, key) in &self.expression_hotkeys {
+            ensure!(
+                !id.is_empty() && id.len() <= 4096,
+                "Invalid expression identity"
+            );
+            key.validate()?;
+            ensure!(
+                *key != crate::shortcuts::Shortcut::pose()
+                    && !keys
+                        .iter()
+                        .any(|n| crate::shortcuts::Shortcut::preset(*n) == *key),
+                "Expression hotkey conflicts with a preset or the pose shortcut"
+            );
+        }
+        ensure!(
+            self.expression_hotkeys
+                .values()
+                .collect::<BTreeSet<_>>()
+                .len()
+                == self.expression_hotkeys.len(),
+            "Duplicate expression hotkey"
+        );
         Ok(())
     }
 }
@@ -355,6 +404,7 @@ mod tests {
                 hotkey: Some(3),
             }],
             global_hotkeys: true,
+            ..Default::default()
         };
         let json = serde_json::to_vec(&saved).unwrap();
         let loaded: SavedRig = serde_json::from_slice(&json).unwrap();

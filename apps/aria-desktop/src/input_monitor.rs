@@ -12,6 +12,7 @@ pub enum Tab {
     Inputs,
     Pose,
     Physics,
+    Expressions,
     Presets,
     Raw,
 }
@@ -32,6 +33,7 @@ pub struct InputMonitor {
     pub physics_groups: Vec<aria_core::physics::GroupInfo>,
     physics_defaults: aria_core::physics::PhysicsSettings,
     physics_panel: crate::physics_panel::PhysicsPanel,
+    pub expressions: crate::expressions_panel::ExpressionsPanel,
 }
 impl InputMonitor {
     #[cfg(feature = "screenshots")]
@@ -104,6 +106,7 @@ impl InputMonitor {
             physics_groups: Vec::new(),
             physics_defaults,
             physics_panel: Default::default(),
+            expressions: Default::default(),
         }
     }
     pub fn toggle_pose(&mut self, parameters: &[RigParameter]) {
@@ -139,13 +142,58 @@ impl InputMonitor {
             self.apply_preset(index, mapping);
         }
     }
-    pub fn hotkey_keys(&self) -> Vec<u8> {
+    pub fn hotkey_action(
+        &mut self,
+        action: crate::hotkeys::Action,
+        parameters: &[RigParameter],
+        mapping: &mut MappingSettings,
+    ) {
+        match action {
+            crate::hotkeys::Action::Preset(key) => self.hotkey(key, parameters, mapping),
+            crate::hotkeys::Action::TogglePose => self.toggle_pose(parameters),
+            crate::hotkeys::Action::Expression(id) => {
+                self.message = self.expressions.toggle(&id, &mut self.saved);
+                self.save_requested = true;
+            }
+        }
+    }
+    pub fn hotkey_keys(&self) -> Vec<crate::hotkeys::Registration> {
+        use crate::hotkeys::{Action, Registration};
+        use aria_core::shortcuts::Shortcut;
         if !self.saved.global_hotkeys {
             return Vec::new();
         }
-        let mut keys: Vec<_> = self.saved.presets.iter().filter_map(|p| p.hotkey).collect();
-        keys.push(crate::hotkeys::TOGGLE_POSE);
+        let mut keys: Vec<_> = self
+            .saved
+            .presets
+            .iter()
+            .filter_map(|p| p.hotkey)
+            .map(|key| Registration {
+                shortcut: Shortcut::preset(key),
+                action: Action::Preset(key),
+            })
+            .collect();
+        keys.push(Registration {
+            shortcut: Shortcut::pose(),
+            action: Action::TogglePose,
+        });
+        for entry in &self.expressions.entries {
+            if let Some(&shortcut) = self.saved.expression_hotkeys.get(&entry.file.id) {
+                keys.push(Registration {
+                    shortcut,
+                    action: Action::Expression(entry.file.id.clone()),
+                });
+            }
+        }
         keys
+    }
+    fn expression_uses_key(&self, key: Option<u8>) -> bool {
+        key.is_some_and(|key| {
+            self.saved
+                .expression_hotkeys
+                .values()
+                .any(|shortcut| *shortcut == aria_core::shortcuts::Shortcut::preset(key))
+        })
     }
     pub fn ui(
         &mut self,
@@ -156,19 +204,33 @@ impl InputMonitor {
         mapping: &mut MappingSettings,
         can_export: bool,
     ) {
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 3.0;
-            ui.spacing_mut().button_padding = egui::vec2(7.0, 5.0);
-            for (tab, label) in [
+        for row in [
+            [
                 (Tab::Inputs, "Inputs"),
                 (Tab::Pose, "Pose"),
                 (Tab::Physics, "Physics"),
+            ],
+            [
+                (Tab::Expressions, "Expressions"),
                 (Tab::Presets, "Presets"),
                 (Tab::Raw, "Raw"),
-            ] {
-                ui.selectable_value(&mut self.tab, tab, egui::RichText::new(label).size(12.0));
-            }
-        });
+            ],
+        ] {
+            ui.columns(3, |columns| {
+                for (column, (tab, label)) in columns.iter_mut().zip(row) {
+                    if column
+                        .add_sized(
+                            [column.available_width(), 26.0],
+                            egui::Button::new(egui::RichText::new(label).size(12.0))
+                                .selected(self.tab == tab),
+                        )
+                        .clicked()
+                    {
+                        self.tab = tab;
+                    }
+                }
+            });
+        }
         if let Some(message) = &self.message {
             ui.label(
                 egui::RichText::new(message)
@@ -207,6 +269,16 @@ impl InputMonitor {
                 self.reset_motion |= actions.settle;
                 if actions.presets {
                     self.tab = Tab::Presets;
+                }
+            }
+            Tab::Expressions => {
+                let actions = self.expressions.show(ui, &mut self.saved, parameters);
+                self.save_requested |= actions.save;
+                if actions.message.is_some() {
+                    self.message = actions.message;
+                }
+                if let Some(error) = &self.hotkey_status {
+                    ui.colored_label(egui::Color32::LIGHT_RED, error);
                 }
             }
             Tab::Raw => {}
@@ -528,8 +600,9 @@ impl InputMonitor {
                 "Name already exists. Select it and use Replace selected."
             );
             anyhow::ensure!(
-                preset.hotkey.is_none()
-                    || !self.saved.presets.iter().any(|p| p.hotkey == preset.hotkey),
+                !self.expression_uses_key(preset.hotkey)
+                    && (preset.hotkey.is_none()
+                        || !self.saved.presets.iter().any(|p| p.hotkey == preset.hotkey)),
                 "That hotkey is already assigned"
             );
             Ok(())
@@ -624,7 +697,7 @@ impl InputMonitor {
                                 && (p.name.eq_ignore_ascii_case(&preset.name)
                                     || (preset.hotkey.is_some() && p.hotkey == preset.hotkey))
                         });
-                        if conflict {
+                        if conflict || self.expression_uses_key(preset.hotkey) {
                             self.message =
                                 Some("Name or hotkey is already used by another preset.".into());
                         } else if let Err(error) = preset.validate(parameters) {
@@ -647,7 +720,7 @@ impl InputMonitor {
                                 && (p.name.eq_ignore_ascii_case(&preset.name)
                                     || (preset.hotkey.is_some() && p.hotkey == preset.hotkey))
                         });
-                        if conflict {
+                        if conflict || self.expression_uses_key(preset.hotkey) {
                             self.message = Some("Name or hotkey is already in use.".into());
                         } else if let Err(error) = preset.validate(parameters) {
                             self.message = Some(error.to_string());
