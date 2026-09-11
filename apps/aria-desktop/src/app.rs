@@ -8,6 +8,7 @@ use eframe::egui::{self, Color32, Frame, RichText, Stroke};
 use serde::{Deserialize, Serialize};
 use std::{
     net::Ipv4Addr,
+    path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -59,6 +60,7 @@ struct Settings {
     fps: u32,
     zoom: f32,
     always_on_top: bool,
+    cubism_core: String,
 }
 
 impl Default for Settings {
@@ -73,6 +75,7 @@ impl Default for Settings {
             fps: 60,
             zoom: 1.0,
             always_on_top: false,
+            cubism_core: String::new(),
         }
     }
 }
@@ -96,6 +99,10 @@ pub struct AriaApp {
     talking: Option<Sprite>,
     model: Option<ModelReport>,
     model_open: bool,
+    live2d: Option<crate::live2d::Avatar>,
+    render_state: Option<eframe::egui_wgpu::RenderState>,
+    bare_moc: Option<PathBuf>,
+    bare_textures: Vec<PathBuf>,
 }
 
 impl AriaApp {
@@ -120,6 +127,9 @@ impl AriaApp {
                 .unwrap_or_default()
         };
         settings.fps = settings.fps.clamp(15, 120);
+        if let Some(path) = std::env::var_os("ARIA_CUBISM_CORE") {
+            settings.cubism_core = path.to_string_lossy().into_owned();
+        }
         settings.zoom = if settings.zoom.is_finite() {
             settings.zoom.clamp(0.5, 1.5)
         } else {
@@ -152,11 +162,25 @@ impl AriaApp {
             talking: None,
             model: None,
             model_open: false,
+            live2d: None,
+            render_state: cc.wgpu_render_state.clone(),
+            bare_moc: None,
+            bare_textures: Vec::new(),
         };
+        let mut app = app;
+        if let Some(path) = std::env::args_os().nth(1) {
+            app.open_model(Path::new(&path));
+        }
         #[cfg(feature = "screenshots")]
         let app = {
             let mut app = app;
             if crate::smoke_mode() {
+                if let Some(path) = std::env::var_os("ARIA_TEST_MODEL") {
+                    app.import_model(
+                        aria_model::load_files(Path::new(&path)).expect("Smoke model assets"),
+                    )
+                    .expect("Smoke model load");
+                }
                 match std::env::var("ARIA_SMOKE_SCENARIO").as_deref() {
                     Ok("vts") => {
                         app.settings.source = Source::Vts;
@@ -356,7 +380,9 @@ impl AriaApp {
 
         ui.separator();
         section(ui, "AVATAR");
-        ui.label(if self.idle.is_some() {
+        ui.label(if self.live2d.is_some() {
+            "Live2D Cubism avatar"
+        } else if self.idle.is_some() {
             "PNG puppet"
         } else {
             "Mica · built-in test puppet"
@@ -369,14 +395,18 @@ impl AriaApp {
                 self.load_image(ctx, false);
             }
             if ui
-                .add_enabled(self.idle.is_some(), egui::Button::new("Reset"))
+                .add_enabled(
+                    self.idle.is_some() || self.live2d.is_some(),
+                    egui::Button::new("Reset"),
+                )
                 .clicked()
             {
                 self.idle = None;
                 self.talking = None;
+                self.live2d = None;
             }
         });
-        if self.idle.is_some() {
+        if self.idle.is_some() && self.live2d.is_none() {
             if ui.button("Set talking image…").clicked() {
                 self.load_image(ctx, true);
             }
@@ -390,6 +420,41 @@ impl AriaApp {
             ui.label(RichText::new("Images move with your head. Optional talking image switches when your mouth opens.").small().color(MUTED));
         }
         ui.add(egui::Slider::new(&mut self.settings.zoom, 0.5..=1.5).text("Zoom"));
+        if ui.button("Open Live2D avatar…").clicked()
+            && let Some(path) = rfd::FileDialog::new()
+                .add_filter("Cubism export", &["moc3", "json"])
+                .pick_file()
+        {
+            self.open_model(&path);
+        }
+        if let Some(avatar) = &mut self.live2d {
+            ui.label(RichText::new(&avatar.name).color(MINT));
+            ui.label(
+                RichText::new(format!(
+                    "{} meshes · {} tracked parameters\n{:.0} MiB atlases · Core {}",
+                    avatar.model.drawables.len(),
+                    avatar.mapped_count(),
+                    avatar.atlas_mib(),
+                    avatar.model.version
+                ))
+                .small(),
+            );
+            if ui.button("Model parameters…").clicked() {
+                avatar.controls_open = true;
+            }
+            for warning in &avatar.files.warnings {
+                ui.label(RichText::new(warning).small().color(MUTED));
+            }
+        }
+        ui.collapsing("Cubism runtime setup", |ui| {
+            ui.label("Choose Core/dll/windows/x86_64/Live2DCubismCore.dll from the official Native SDK. The path is saved locally.");
+            ui.text_edit_singleline(&mut self.settings.cubism_core);
+            if ui.button("Select Core DLL…").clicked() && let Some(path) = rfd::FileDialog::new().add_filter("Cubism Core", &["dll"]).pick_file() {
+                self.settings.cubism_core = path.display().to_string();
+            }
+            ui.hyperlink_to("Download the official SDK ↗", "https://www.live2d.com/en/sdk/download/native/");
+            ui.hyperlink_to("Avatar import instructions ↗", "https://github.com/NekoUnix/A.R.I.A/blob/main/docs/live2d.md");
+        });
         if ui.button("Inspect Live2D .model3.json…").clicked()
             && let Some(path) = rfd::FileDialog::new()
                 .add_filter("Cubism model3 JSON", &["json"])
@@ -405,11 +470,9 @@ impl AriaApp {
             }
         }
         ui.label(
-            RichText::new(
-                "Live2D inspection only in v0.1. Cubism model rendering is not implemented yet.",
-            )
-            .small()
-            .color(MUTED),
+            RichText::new("Drop a .model3.json or .moc3 here to load an avatar.")
+                .small()
+                .color(MUTED),
         );
 
         ui.separator();
@@ -460,6 +523,7 @@ impl AriaApp {
         {
             match avatar::load_sprite(ctx, &path) {
                 Ok(sprite) => {
+                    self.live2d = None;
                     if talking {
                         self.talking = Some(sprite);
                     } else {
@@ -478,6 +542,78 @@ impl AriaApp {
             self.talking.as_ref().or(self.idle.as_ref())
         } else {
             self.idle.as_ref()
+        }
+    }
+
+    fn import_model(&mut self, files: aria_model::ModelFiles) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self.settings.cubism_core.trim().is_empty(),
+            "First choose the official x64 Cubism Core DLL under Cubism runtime setup."
+        );
+        let state = self
+            .render_state
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("GPU renderer is unavailable"))?;
+        let avatar =
+            crate::live2d::Avatar::load(state, Path::new(self.settings.cubism_core.trim()), files)?;
+        self.live2d = Some(avatar);
+        self.idle = None;
+        self.talking = None;
+        self.status_message = None;
+        Ok(())
+    }
+    fn open_model(&mut self, path: &Path) {
+        match aria_model::load_files(path) {
+            Ok(files) => {
+                if let Err(error) = self.import_model(files) {
+                    self.status_message = Some(format!("{error:#}"));
+                }
+            }
+            Err(error) => {
+                self.status_message = Some(format!("{error:#}"));
+                if path
+                    .extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case("moc3"))
+                {
+                    self.bare_moc = Some(path.to_owned());
+                    self.bare_textures.clear();
+                }
+            }
+        }
+    }
+    fn bare_import_window(&mut self, ctx: &egui::Context) {
+        let Some(path) = self.bare_moc.clone() else {
+            return;
+        };
+        let mut open = true;
+        egui::Window::new("Import moc3 with explicit textures").open(&mut open).default_width(600.0).show(ctx,|ui| {
+            ui.label(path.display().to_string());
+            ui.label("No usable matching manifest was found. Prefer opening the exported .model3.json. For a bare moc3, add each texture atlas and put them in index order (0, 1, 2…).");
+            if ui.button("Add texture atlases…").clicked() && let Some(files) = rfd::FileDialog::new().add_filter("PNG atlases", &["png"]).pick_files() { self.bare_textures.extend(files); }
+            let mut swap = None; let mut remove = None;
+            egui::ScrollArea::vertical().max_height(280.0).show(ui,|ui| {
+                for (i,texture) in self.bare_textures.iter().enumerate() {
+                    ui.horizontal(|ui| {
+                        ui.label(format!("{i}: {}",texture.display()));
+                        if ui.add_enabled(i>0,egui::Button::new("Up")).clicked() { swap = Some((i,i-1)); }
+                        if ui.add_enabled(i+1<self.bare_textures.len(),egui::Button::new("Down")).clicked() { swap = Some((i,i+1)); }
+                        if ui.button("Remove").clicked() { remove = Some(i); }
+                    });
+                }
+            });
+            if let Some((a,b)) = swap { self.bare_textures.swap(a,b); }
+            if let Some(i) = remove { self.bare_textures.remove(i); }
+            if ui.add_enabled(!self.bare_textures.is_empty(),egui::Button::new("Load avatar")).clicked() {
+                match aria_model::bare_moc(&path,&self.bare_textures).and_then(|f| self.import_model(f)) {
+                    Ok(()) => { self.bare_moc = None; self.bare_textures.clear(); },
+                    Err(e) => self.status_message = Some(format!("{e:#}")),
+                }
+            }
+            if let Some(error) = &self.status_message { ui.colored_label(egui::Color32::LIGHT_RED,error); }
+        });
+        if !open {
+            self.bare_moc = None;
+            self.bare_textures.clear();
         }
     }
 
@@ -588,6 +724,16 @@ impl AriaApp {
 
 impl eframe::App for AriaApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        let dropped = ctx.input(|i| {
+            i.raw
+                .dropped_files
+                .iter()
+                .filter_map(|f| f.path.clone())
+                .collect::<Vec<_>>()
+        });
+        if let Some(path) = dropped.first() {
+            self.open_model(path);
+        }
         if self.output_close_requested.swap(false, Ordering::AcqRel) {
             self.output_open = false;
         }
@@ -614,6 +760,13 @@ impl eframe::App for AriaApp {
         self.params = self
             .pipeline
             .update(self.raw.as_ref(), &self.settings.mapping, dt);
+        if let Some(avatar) = &mut self.live2d
+            && dt > 0.0
+            && let Err(error) = avatar.update(self.params)
+        {
+            self.status_message = Some(format!("Live2D update stopped: {error:#}"));
+            self.live2d = None;
+        }
 
         egui::TopBottomPanel::top("header")
             .frame(Frame::new().fill(BG).inner_margin(18.0))
@@ -622,7 +775,7 @@ impl eframe::App for AriaApp {
                     ui.label(RichText::new("A.R.I.A.").size(26.0).strong().color(MINT));
                     ui.label(RichText::new("AVATAR STUDIO").size(12.0).color(MUTED));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(RichText::new("v0.1 · WINDOWS PREVIEW").small().color(MUTED));
+                        ui.label(RichText::new("v0.2 · WINDOWS PREVIEW").small().color(MUTED));
                     });
                 });
             });
@@ -668,7 +821,9 @@ impl eframe::App for AriaApp {
                 ui.horizontal(|ui| {
                     ui.heading("Your stage");
                     ui.label(
-                        RichText::new(if self.idle.is_some() {
+                        RichText::new(if self.live2d.is_some() {
+                            "LIVE2D / CUBISM"
+                        } else if self.idle.is_some() {
                             "PNG PUPPET"
                         } else {
                             "MICA / TEST PUPPET"
@@ -703,13 +858,17 @@ impl eframe::App for AriaApp {
                         Stroke::new(1.0_f32, Color32::from_rgb(45, 60, 69)),
                     );
                 }
-                avatar::draw(
-                    &painter,
-                    rect,
-                    self.params,
-                    self.active_sprite(),
-                    self.settings.zoom,
-                );
+                if let Some(avatar) = &self.live2d {
+                    avatar.image().draw(&painter, rect, self.settings.zoom);
+                } else {
+                    avatar::draw(
+                        &painter,
+                        rect,
+                        self.params,
+                        self.active_sprite(),
+                        self.settings.zoom,
+                    );
+                }
                 painter.text(
                     rect.left_bottom() + egui::vec2(16.0, -18.0),
                     egui::Align2::LEFT_BOTTOM,
@@ -723,6 +882,10 @@ impl eframe::App for AriaApp {
                 );
             });
         self.model_window(ctx);
+        self.bare_import_window(ctx);
+        if let Some(avatar) = &mut self.live2d {
+            avatar.controls(ctx);
+        }
         #[cfg(feature = "screenshots")]
         screenshot_capture(ctx, self.started, false);
         if self.output_open {
@@ -730,6 +893,7 @@ impl eframe::App for AriaApp {
             let background = self.settings.background.color();
             let params = self.params;
             let sprite = self.active_sprite().cloned();
+            let model_image = self.live2d.as_ref().map(|a| a.image());
             let zoom = self.settings.zoom;
             let interval = Duration::from_secs_f64(1.0 / self.settings.fps as f64);
             #[cfg(feature = "screenshots")]
@@ -755,13 +919,17 @@ impl eframe::App for AriaApp {
                     egui::CentralPanel::default()
                         .frame(Frame::NONE.fill(background))
                         .show(ctx, |ui| {
-                            avatar::draw(
-                                ui.painter(),
-                                ui.max_rect(),
-                                params,
-                                sprite.as_ref(),
-                                zoom,
-                            );
+                            if let Some(image) = model_image {
+                                image.draw(ui.painter(), ui.max_rect(), zoom);
+                            } else {
+                                avatar::draw(
+                                    ui.painter(),
+                                    ui.max_rect(),
+                                    params,
+                                    sprite.as_ref(),
+                                    zoom,
+                                );
+                            }
                         });
                     #[cfg(feature = "screenshots")]
                     screenshot_capture(ctx, started, true);

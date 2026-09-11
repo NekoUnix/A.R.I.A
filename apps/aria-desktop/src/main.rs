@@ -2,6 +2,8 @@
 
 mod app;
 mod avatar;
+mod cubism_render;
+mod live2d;
 #[cfg(feature = "screenshots")]
 mod screenshot;
 

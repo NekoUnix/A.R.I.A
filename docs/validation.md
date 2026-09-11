@@ -1,9 +1,33 @@
 # Validation
 
-This file records checks for the first development copy. The Windows CI workflow
+This file records checks for the development builds. The Windows CI workflow
 is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Local verification on 2026-09-11
+
+### v0.2 moc3 implementation
+
+- Rust 1.98.1 Windows x64: formatting, Clippy with all targets/features and warnings
+  denied, and **17** default tests passed. Two extra tests require local runtime/GPU
+  dependencies and are explicitly ignored in ordinary CI.
+- The opt-in native integration test passed with official **Cubism Native 5-r.5 /
+  Core 6.0.1** and a user-supplied avatar. It loaded, changed parameters, verified
+  actual vertex deformation, and unloaded/reloaded three times.
+- The opt-in GPU test passed on Direct3D 12. Synthetic quads verify draw ordering,
+  regular/inverted clipping (including invisible/zero-opacity mask sources), normal
+  alpha blending, additive/multiplicative blending, multiply/screen colors and culling.
+  It reads back GPU pixels and compares them with expected results. No proprietary
+  assets are needed for this test.
+- The user's actual model rendered **441 meshes and ten 4096px atlases**, totaling
+  640 MiB decoded atlas storage. All 12 standard tracking IDs were detected.
+- Native screenshot smoke runs verified `.model3.json` import with demo animation,
+  direct `.moc3` selection with matching-manifest discovery, real loopback VTS UDP
+  tracking applied to the avatar, and the separate green-screen output viewport.
+  The private model and its screenshots are excluded from the repository/package.
+- Synthetic importer tests cover exact texture ordering, differently named matching
+  manifests, ambiguous manifests, missing textures, bounded reads and path escapes.
+
+### v0.1 foundation checks
 
 - Rust 1.98.1, Windows x64 GNU toolchain: format check, Clippy (all targets and
   all features, warnings denied), and all **13** core/model/tracking tests passed.
@@ -34,6 +58,18 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
   range clamping, face-loss neutral pose and frame-rate-independent smoothing.
 - Model3 version validation, missing files and external/path-traversal references.
 
+Additional local v0.2 checks (not run by normal CI):
+
+```powershell
+# Uses synthetic quads; requires a working GPU, no SDK.
+cargo test --locked -p aria-desktop gpu_clipping -- --ignored --nocapture
+
+# Uses your local SDK and licensed model; neither is downloaded by the test.
+$env:ARIA_CUBISM_CORE = 'C:\Tools\CubismSdkForNative-5-r.5\Core\dll\windows\x86_64\Live2DCubismCore.dll'
+$env:ARIA_TEST_MOC = 'C:\Avatars\MyAvatar\MyAvatar.moc3'
+cargo test --locked -p aria-live2d real_core -- --ignored --nocapture
+```
+
 Run from the repository root:
 
 ```powershell
@@ -58,6 +94,9 @@ this feature. Check the resulting image for layout and the reported adapter.
 Set `ARIA_SMOKE_SCENARIO=vts` to connect to a running loopback VTS simulator, or
 `ARIA_SMOKE_SCENARIO=output` to capture the separate green-screen output window.
 Smoke runs use default settings and do not overwrite saved app preferences.
+For Live2D smoke runs, also set `ARIA_CUBISM_CORE` and `ARIA_TEST_MODEL` (a manifest
+or moc3 path). A model-load failure fails the run instead of capturing the fallback
+puppet. `ARIA_SMOKE_DELAY_SECONDS=7` allows additional settling time after import.
 
 ## Manual acceptance still required on the intended setup
 
@@ -70,6 +109,10 @@ Smoke runs use default settings and do not overwrite saved app preferences.
    resize/minimize behavior, and whether their capture method retains alpha.
 4. Different DPI/display combinations and older supported GPUs.
 
+5. Additional real rigs and export versions, particularly models requiring pose,
+   physics, motions, custom layout or Cubism 5.3 advanced rendering. Unsupported
+   features are listed in [the compatibility guide](live2d.md#compatibility-and-limits).
+
 Simulator success is evidence for the documented protocol and receiver lifecycle;
-it is not evidence of a completed physical iPhone test. Cubism rendering is not
-part of these acceptance checks because it is not implemented in this version.
+it is not evidence of a completed physical iPhone test. The model and GPU smoke
+checks are not a performance benchmark or a full Cubism conformance suite.

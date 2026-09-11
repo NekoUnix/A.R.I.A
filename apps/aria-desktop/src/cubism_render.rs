@@ -1,0 +1,723 @@
+//! Cubism ArtMeshes rendered once to a transparent GPU texture shared by both windows.
+use anyhow::{Context, Result, ensure};
+use aria_live2d::{Blend, Canvas, Drawable};
+use bytemuck::{Pod, Zeroable};
+use eframe::{egui, egui_wgpu::RenderState};
+use std::{fs::File, io::BufReader, num::NonZeroU64, ops::Range, path::PathBuf};
+use wgpu::util::DeviceExt;
+
+const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct Vertex {
+    position: [f32; 2],
+    uv: [f32; 2],
+}
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct Style {
+    multiply: [f32; 4],
+    screen: [f32; 4],
+    control: [f32; 4],
+}
+struct Mesh {
+    indices: Range<u32>,
+}
+
+#[derive(Clone, Copy)]
+pub struct ModelImage {
+    pub id: egui::TextureId,
+    pub size: egui::Vec2,
+}
+impl ModelImage {
+    pub fn draw(self, painter: &egui::Painter, rect: egui::Rect, zoom: f32) {
+        let size = self.size * (rect.width() / self.size.x).min(rect.height() / self.size.y) * zoom;
+        painter.image(
+            self.id,
+            egui::Rect::from_center_size(rect.center(), size),
+            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+            egui::Color32::WHITE,
+        );
+    }
+}
+
+pub struct ModelRenderer {
+    state: RenderState,
+    pub image: ModelImage,
+    output: wgpu::TextureView,
+    mask: wgpu::TextureView,
+    // Bind groups own the atlas resources; output is also owned by egui's registered view.
+    atlases: Vec<wgpu::BindGroup>,
+    clipped: wgpu::BindGroup,
+    unclipped: wgpu::BindGroup,
+    pipelines: Vec<wgpu::RenderPipeline>,
+    mask_pipelines: Vec<wgpu::RenderPipeline>,
+    vertices: wgpu::Buffer,
+    indices: wgpu::Buffer,
+    uniforms: wgpu::Buffer,
+    uniform_stride: usize,
+    meshes: Vec<Mesh>,
+    vertex_count: usize,
+    pub atlas_mib: f64,
+}
+
+impl ModelRenderer {
+    pub fn new(
+        state: &RenderState,
+        canvas: Canvas,
+        drawables: &[Drawable],
+        paths: &[PathBuf],
+    ) -> Result<Self> {
+        let device = &state.device;
+        let queue = &state.queue;
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+        let texture_entry = |binding| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        };
+        let atlas_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Cubism atlas"),
+            entries: &[
+                texture_entry(0),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        let style_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Cubism mask and style"),
+            entries: &[
+                texture_entry(0),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: true,
+                        min_binding_size: NonZeroU64::new(48),
+                    },
+                    count: None,
+                },
+            ],
+        });
+        let mut atlases = Vec::new();
+        let mut total_bytes = 0_u64;
+        for path in paths {
+            let file = File::open(path)
+                .with_context(|| format!("Cannot open texture {}", path.display()))?;
+            ensure!(
+                file.metadata()?.len() <= 128 * 1024 * 1024,
+                "Texture file exceeds 128 MiB"
+            );
+            let mut reader = image::ImageReader::new(BufReader::new(file)).with_guessed_format()?;
+            let mut limits = image::Limits::default();
+            let maximum = device.limits().max_texture_dimension_2d.min(8192);
+            limits.max_image_width = Some(maximum);
+            limits.max_image_height = Some(maximum);
+            limits.max_alloc = Some(512 * 1024 * 1024);
+            reader.limits(limits);
+            let rgba = reader
+                .decode()
+                .with_context(|| {
+                    format!(
+                        "Cannot decode texture {} (maximum {maximum}px)",
+                        path.display()
+                    )
+                })?
+                .into_rgba8();
+            let (width, height) = rgba.dimensions();
+            total_bytes += width as u64 * height as u64 * 4;
+            ensure!(
+                total_bytes <= 1024 * 1024 * 1024,
+                "Texture atlases exceed 1 GiB decoded; export smaller atlases"
+            );
+            let texture = target(
+                device,
+                width,
+                height,
+                wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                "Cubism atlas",
+            );
+            queue.write_texture(
+                texture.as_image_copy(),
+                &rgba,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(width * 4),
+                    rows_per_image: Some(height),
+                },
+                texture.size(),
+            );
+            atlases.push(device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Cubism atlas"),
+                layout: &atlas_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(
+                            &texture.create_view(&Default::default()),
+                        ),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&sampler),
+                    },
+                ],
+            }));
+        }
+        let canvas = canvas.size;
+        let scale = 2048.0 / canvas[0].max(canvas[1]);
+        let width = (canvas[0] * scale).round().max(16.0) as u32;
+        let height = (canvas[1] * scale).round().max(16.0) as u32;
+        let output = target(
+            device,
+            width,
+            height,
+            wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
+            "Cubism output",
+        )
+        .create_view(&Default::default());
+        let mask = target(
+            device,
+            width,
+            height,
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            "Cubism mask",
+        )
+        .create_view(&Default::default());
+        let white = target(
+            device,
+            1,
+            1,
+            wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+            "Cubism no mask",
+        );
+        queue.write_texture(
+            white.as_image_copy(),
+            &[255; 4],
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4),
+                rows_per_image: Some(1),
+            },
+            white.size(),
+        );
+        let vertex_count = drawables.iter().map(|d| d.positions.len()).sum();
+        let vertices = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Cubism vertices"),
+            size: (vertex_count as u64 * 16).max(16),
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let mut index_data = Vec::new();
+        let mut meshes = Vec::new();
+        let mut base = 0_u32;
+        for d in drawables {
+            let start = index_data.len() as u32;
+            index_data.extend(d.indices.iter().map(|&i| base + i as u32));
+            meshes.push(Mesh {
+                indices: start..index_data.len() as u32,
+            });
+            base += d.positions.len() as u32;
+        }
+        ensure!(!index_data.is_empty(), "Avatar has no drawable triangles");
+        let indices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Cubism indices"),
+            contents: bytemuck::cast_slice(&index_data),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        let uniform_stride = 48_usize
+            .div_ceil(device.limits().min_uniform_buffer_offset_alignment as usize)
+            * device.limits().min_uniform_buffer_offset_alignment as usize;
+        let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Cubism styles"),
+            size: (drawables.len() * uniform_stride).max(uniform_stride) as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let style_group = |view: &wgpu::TextureView| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Cubism style"),
+                layout: &style_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                            buffer: &uniforms,
+                            offset: 0,
+                            size: NonZeroU64::new(48),
+                        }),
+                    },
+                ],
+            })
+        };
+        let clipped = style_group(&mask);
+        let unclipped = style_group(&white.create_view(&Default::default()));
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("ARIA Cubism"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("cubism.wgsl").into()),
+        });
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Cubism pipeline"),
+            bind_group_layouts: &[&atlas_layout, &style_layout],
+            push_constant_ranges: &[],
+        });
+        let mut pipelines = Vec::new();
+        for mode in [Blend::Normal, Blend::Add, Blend::Multiply] {
+            for double_sided in [false, true] {
+                pipelines.push(pipeline(
+                    device,
+                    &layout,
+                    &shader,
+                    blend_state(mode),
+                    double_sided,
+                    false,
+                ));
+            }
+        }
+        let mask_pipelines = [false, true]
+            .into_iter()
+            .map(|d| {
+                pipeline(
+                    device,
+                    &layout,
+                    &shader,
+                    blend_state(Blend::Normal),
+                    d,
+                    true,
+                )
+            })
+            .collect();
+        let id = state.renderer.write().register_native_texture(
+            device,
+            &output,
+            wgpu::FilterMode::Linear,
+        );
+        Ok(Self {
+            state: state.clone(),
+            image: ModelImage {
+                id,
+                size: egui::vec2(width as f32, height as f32),
+            },
+            output,
+            mask,
+            atlases,
+            clipped,
+            unclipped,
+            pipelines,
+            mask_pipelines,
+            vertices,
+            indices,
+            uniforms,
+            uniform_stride,
+            meshes,
+            vertex_count,
+            atlas_mib: total_bytes as f64 / 1048576.0,
+        })
+    }
+
+    pub fn render(&self, canvas: Canvas, drawables: &[Drawable]) -> Result<()> {
+        ensure!(
+            self.meshes.len() == drawables.len()
+                && self.vertex_count == drawables.iter().map(|d| d.positions.len()).sum::<usize>(),
+            "Model topology changed unexpectedly"
+        );
+        let mut vertices = Vec::with_capacity(self.vertex_count);
+        let mut uniform_bytes = vec![0_u8; self.meshes.len() * self.uniform_stride];
+        let c = canvas;
+        for (i, d) in drawables.iter().enumerate() {
+            vertices.extend(d.positions.iter().zip(&d.uvs).map(|(p, &uv)| Vertex {
+                position: [
+                    2.0 * (p[0] * c.pixels_per_unit + c.origin[0]) / c.size[0] - 1.0,
+                    2.0 * (p[1] * c.pixels_per_unit + c.origin[1]) / c.size[1] - 1.0,
+                ],
+                uv,
+            }));
+            let style = Style {
+                multiply: d.multiply,
+                screen: d.screen,
+                control: [
+                    d.opacity,
+                    if !d.masked {
+                        0.0
+                    } else if d.inverted {
+                        2.0
+                    } else {
+                        1.0
+                    },
+                    self.image.size.x,
+                    self.image.size.y,
+                ],
+            };
+            uniform_bytes[i * self.uniform_stride..i * self.uniform_stride + 48]
+                .copy_from_slice(bytemuck::bytes_of(&style));
+        }
+        self.state
+            .queue
+            .write_buffer(&self.vertices, 0, bytemuck::cast_slice(&vertices));
+        self.state
+            .queue
+            .write_buffer(&self.uniforms, 0, &uniform_bytes);
+        let mut encoder = self
+            .state
+            .device
+            .create_command_encoder(&Default::default());
+        drop(begin_pass(&mut encoder, &self.output, true));
+        let mut sorted: Vec<_> = (0..drawables.len())
+            .filter(|&i| drawables[i].visible && drawables[i].opacity > 0.0)
+            .collect();
+        sorted.sort_by_key(|&i| drawables[i].order);
+        let mut cursor = 0;
+        while cursor < sorted.len() {
+            let d = &drawables[sorted[cursor]];
+            if d.masked {
+                let mut pass = begin_pass(&mut encoder, &self.mask, true);
+                for &index in &d.masks {
+                    let mask = &drawables[index];
+                    pass.set_pipeline(&self.mask_pipelines[usize::from(mask.double_sided)]);
+                    self.draw_mesh(&mut pass, index, mask, false);
+                }
+            }
+            let mut pass = begin_pass(&mut encoder, &self.output, false);
+            loop {
+                let index = sorted[cursor];
+                let mesh = &drawables[index];
+                let blend = match mesh.blend {
+                    Blend::Normal => 0,
+                    Blend::Add => 1,
+                    Blend::Multiply => 2,
+                };
+                pass.set_pipeline(&self.pipelines[blend * 2 + usize::from(mesh.double_sided)]);
+                self.draw_mesh(&mut pass, index, mesh, mesh.masked);
+                cursor += 1;
+                if cursor == sorted.len() {
+                    break;
+                }
+                let next = &drawables[sorted[cursor]];
+                if next.masked && (!d.masked || next.masks != d.masks) {
+                    break;
+                }
+            }
+        }
+        self.state.queue.submit([encoder.finish()]);
+        Ok(())
+    }
+    fn draw_mesh(&self, pass: &mut wgpu::RenderPass<'_>, index: usize, d: &Drawable, masked: bool) {
+        pass.set_bind_group(0, &self.atlases[d.texture], &[]);
+        pass.set_bind_group(
+            1,
+            if masked {
+                &self.clipped
+            } else {
+                &self.unclipped
+            },
+            &[(index * self.uniform_stride) as u32],
+        );
+        pass.set_vertex_buffer(0, self.vertices.slice(..));
+        pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+        pass.draw_indexed(self.meshes[index].indices.clone(), 0, 0..1);
+    }
+}
+impl Drop for ModelRenderer {
+    fn drop(&mut self) {
+        self.state.renderer.write().free_texture(&self.image.id);
+    }
+}
+
+fn target(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+    usage: wgpu::TextureUsages,
+    label: &str,
+) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: FORMAT,
+        usage,
+        view_formats: &[],
+    })
+}
+fn begin_pass<'a>(
+    encoder: &'a mut wgpu::CommandEncoder,
+    view: &wgpu::TextureView,
+    clear: bool,
+) -> wgpu::RenderPass<'a> {
+    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some("Cubism pass"),
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view,
+            resolve_target: None,
+            depth_slice: None,
+            ops: wgpu::Operations {
+                load: if clear {
+                    wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT)
+                } else {
+                    wgpu::LoadOp::Load
+                },
+                store: wgpu::StoreOp::Store,
+            },
+        })],
+        ..Default::default()
+    })
+}
+fn blend_state(mode: Blend) -> wgpu::BlendState {
+    use wgpu::{BlendComponent as C, BlendFactor as F, BlendOperation as O};
+    match mode {
+        Blend::Normal => wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING,
+        Blend::Add => wgpu::BlendState {
+            color: C {
+                src_factor: F::One,
+                dst_factor: F::One,
+                operation: O::Add,
+            },
+            alpha: C {
+                src_factor: F::Zero,
+                dst_factor: F::One,
+                operation: O::Add,
+            },
+        },
+        Blend::Multiply => wgpu::BlendState {
+            color: C {
+                src_factor: F::Dst,
+                dst_factor: F::OneMinusSrcAlpha,
+                operation: O::Add,
+            },
+            alpha: C {
+                src_factor: F::Zero,
+                dst_factor: F::One,
+                operation: O::Add,
+            },
+        },
+    }
+}
+fn pipeline(
+    device: &wgpu::Device,
+    layout: &wgpu::PipelineLayout,
+    shader: &wgpu::ShaderModule,
+    blend: wgpu::BlendState,
+    double_sided: bool,
+    mask: bool,
+) -> wgpu::RenderPipeline {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("Cubism mesh"),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module: shader,
+            entry_point: Some("vertex"),
+            compilation_options: Default::default(),
+            buffers: &[wgpu::VertexBufferLayout {
+                array_stride: 16,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2],
+            }],
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: shader,
+            entry_point: Some(if mask { "mask_fragment" } else { "fragment" }),
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: FORMAT,
+                blend: Some(blend),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        primitive: wgpu::PrimitiveState {
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: if double_sided {
+                None
+            } else {
+                Some(wgpu::Face::Back)
+            },
+            ..Default::default()
+        },
+        depth_stencil: None,
+        multisample: Default::default(),
+        multiview: None,
+        cache: None,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn quad(texture: usize, order: i32, right: f32) -> Drawable {
+        Drawable {
+            positions: vec![[0.0, 0.0], [right, 0.0], [right, 4.0], [0.0, 4.0]],
+            uvs: vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+            indices: vec![0, 1, 2, 0, 2, 3],
+            texture,
+            masks: vec![],
+            masked: false,
+            inverted: false,
+            double_sided: false,
+            visible: true,
+            order,
+            opacity: 1.0,
+            multiply: [1.0; 4],
+            screen: [0.0, 0.0, 0.0, 1.0],
+            blend: Blend::Normal,
+        }
+    }
+    fn pixels(renderer: &ModelRenderer) -> Vec<u8> {
+        let state = &renderer.state;
+        let texture = renderer.output.texture();
+        let size = texture.size();
+        let stride = (size.width * 4).div_ceil(256) * 256;
+        let buffer = state.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("test readback"),
+            size: stride as u64 * size.height as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let mut encoder = state.device.create_command_encoder(&Default::default());
+        encoder.copy_texture_to_buffer(
+            texture.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(stride),
+                    rows_per_image: Some(size.height),
+                },
+            },
+            size,
+        );
+        state.queue.submit([encoder.finish()]);
+        let (tx, rx) = std::sync::mpsc::channel();
+        buffer.slice(..).map_async(wgpu::MapMode::Read, move |r| {
+            tx.send(r).unwrap();
+        });
+        state
+            .device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
+        rx.recv().unwrap().unwrap();
+        let data = buffer.slice(..).get_mapped_range().to_vec();
+        buffer.unmap();
+        data
+    }
+    fn near(actual: &[u8], expected: [u8; 4]) {
+        for (a, e) in actual.iter().zip(expected) {
+            assert!(
+                a.abs_diff(e) <= 2,
+                "Actual {actual:?}, expected {expected:?}"
+            );
+        }
+    }
+    #[test]
+    #[ignore = "requires a graphics adapter; no Cubism SDK or model needed"]
+    fn gpu_clipping_blending_colors_culling_and_draw_order() {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::DX12 | wgpu::Backends::VULKAN,
+            ..Default::default()
+        });
+        let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();
+        let (device, queue) =
+            pollster::block_on(adapter.request_device(&Default::default())).unwrap();
+        let renderer = eframe::egui_wgpu::Renderer::new(&device, FORMAT, Default::default());
+        let state = RenderState {
+            adapter,
+            available_adapters: vec![],
+            device,
+            queue,
+            target_format: FORMAT,
+            renderer: std::sync::Arc::new(egui::mutex::RwLock::new(renderer)),
+        };
+        let temp = tempfile::tempdir().unwrap();
+        let paths: Vec<_> = [[255, 0, 0, 255], [0, 0, 255, 255], [255, 255, 255, 255]]
+            .into_iter()
+            .enumerate()
+            .map(|(i, c)| {
+                let path = temp.path().join(format!("{i}.png"));
+                image::save_buffer(&path, &c, 1, 1, image::ColorType::Rgba8).unwrap();
+                path
+            })
+            .collect();
+        let canvas = Canvas {
+            size: [4.0, 4.0],
+            origin: [0.0, 0.0],
+            pixels_per_unit: 1.0,
+        };
+        // Deliberately reverse storage order: blue background must render first.
+        let mut scene = vec![
+            quad(0, 1, 4.0),
+            quad(1, 0, 4.0),
+            quad(2, 2, 2.0),
+            quad(2, 3, 2.0),
+        ];
+        scene[2].visible = false;
+        scene[2].opacity = 0.0;
+        scene[3].visible = false;
+        for p in &mut scene[3].positions {
+            p[0] += 2.0;
+        }
+        scene[0].masked = true;
+        scene[0].masks = vec![2];
+        let renderer = ModelRenderer::new(&state, canvas, &scene, &paths).unwrap();
+        let check = |scene: &[Drawable], left, right| {
+            renderer.render(canvas, scene).unwrap();
+            let data = pixels(&renderer);
+            let w = renderer.image.size.x as usize;
+            let h = renderer.image.size.y as usize;
+            let l = (h / 2 * w + w / 4) * 4;
+            let r = (h / 2 * w + 3 * w / 4) * 4;
+            near(&data[l..l + 4], left);
+            near(&data[r..r + 4], right);
+        };
+        check(&scene, [255, 0, 0, 255], [0, 0, 255, 255]);
+        scene[0].masks = vec![2, 3];
+        check(&scene, [255, 0, 0, 255], [255, 0, 0, 255]);
+        scene[0].masks = vec![2];
+        scene[0].inverted = true;
+        check(&scene, [0, 0, 255, 255], [255, 0, 0, 255]);
+        scene[0].masked = false;
+        scene[0].opacity = 0.5;
+        check(&scene, [128, 0, 128, 255], [128, 0, 128, 255]);
+        scene[1].visible = false;
+        check(&scene, [128, 0, 0, 128], [128, 0, 0, 128]);
+        scene[1].visible = true;
+        scene[0].opacity = 1.0;
+        scene[0].blend = Blend::Add;
+        check(&scene, [255, 0, 255, 255], [255, 0, 255, 255]);
+        scene[0].blend = Blend::Multiply;
+        check(&scene, [0, 0, 0, 255], [0, 0, 0, 255]);
+        scene[0].blend = Blend::Normal;
+        scene[0].multiply = [0.5, 1.0, 1.0, 1.0];
+        scene[0].screen = [0.0, 1.0, 0.0, 1.0];
+        check(&scene, [128, 255, 0, 255], [128, 255, 0, 255]);
+        // Reverse geometry winding via its positions while keeping UV/index topology.
+        scene[0].positions.swap(0, 1);
+        scene[0].positions.swap(2, 3);
+        check(&scene, [0, 0, 255, 255], [0, 0, 255, 255]);
+        scene[0].double_sided = true;
+        check(&scene, [128, 255, 0, 255], [128, 255, 0, 255]);
+    }
+}

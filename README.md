@@ -2,14 +2,16 @@
 
 A Windows-first, native Rust foundation for a modular avatar runtime. This first
 development build connects directly to **VTube Studio on iPhone**, maps facial
-tracking into avatar parameters, and animates a built-in 2D test puppet or your PNG
-artwork. The UI and preview run on **egui + wgpu**, without Unity or Godot.
+tracking into avatar parameters, and animates **Live2D `.moc3` avatars**, a built-in
+2D test puppet, or your PNG artwork. The UI and preview run on **egui + wgpu**,
+without Unity or Godot.
 
-> **v0.1 scope:** this is a working tracking and desktop-output prototype.
-> It can **inspect** Live2D `.model3.json` exports, but **cannot render `.moc3`
-> models yet**. Cubism Core integration, mesh clipping, physics, motions and
-> expressions are future work. No Cubism SDK binaries or third-party model art
-> are included. See [architecture and roadmap](docs/architecture.md).
+> **v0.2:** real Cubism model evaluation and GPU mesh rendering, including masks,
+> draw order, normal/additive/multiplicative blending, and tracking assignments.
+> Supply the official **Cubism Core x64 DLL** and your exported avatar assets.
+> Physics, motion/expression/pose playback and Cubism 5.3 advanced/offscreen
+> blending remain future work. SDK binaries and model art are not bundled.
+> [Live2D setup and compatibility →](docs/live2d.md)
 
 ![A.R.I.A. Windows studio with its original Mica test puppet](docs/images/studio.png)
 
@@ -55,10 +57,28 @@ it does not implement VTS's proprietary USB transport.
 
 **[Tracking setup, ports, protocol, simulator and troubleshooting →](docs/tracking.md)**
 
+## Load a Live2D avatar
+
+1. Download and extract the official [Cubism Native SDK](https://www.live2d.com/en/sdk/download/native/)
+   under its applicable terms. No C++ bridge build is required.
+2. Expand **Cubism runtime setup** in the Avatar panel. Choose
+   `Core/dll/windows/x86_64/Live2DCubismCore.dll` with **Select Core DLL…**.
+3. Select **Open Live2D avatar…** and choose your exported `.model3.json` or `.moc3`.
+   Keep the complete model folder, including its texture atlases, together.
+4. Demo input animates the rig immediately. Connect your iPhone to use live tracking;
+   **Model parameters…** can assign inputs to custom parameter IDs.
+
+A `.moc3` selection finds its matching manifest beside it. Without a manifest,
+the import dialog lets you select/reorder the required texture atlases explicitly.
+The same avatar is rendered in the studio and the OBS output window.
+See [the detailed import guide](docs/live2d.md) for limits and troubleshooting.
+
 ## Included in this first copy
 
 - Native desktop app with an original animated test puppet, PNG/JPEG loading and
   an optional talking image, neutral-pose calibration, smoothing, gains and axis correction.
+- Actual `.moc3` model loading, texture atlas rendering, regular/inverted clipping,
+  multiply/screen colors, parameter range clamping and editable tracking assignments.
 - Direct VTS iOS UDP subscription and renewal; all incoming blendshapes retained
   for inspection, with 12 standard Cubism-style parameters mapped for the preview.
 - Versioned **ARIA JSON v1** UDP input for other tools and custom bridges.
@@ -68,12 +88,15 @@ it does not implement VTS's proprietary USB transport.
   GPU adapter/backend information, UI frame rate and UI CPU time.
 - Live2D manifest/asset presence inspection and mapped-parameter JSON export.
 - Saved connection/mapping/output preferences. Connections always require an
-  explicit click after startup. PNG artwork is reselected each session.
+  explicit click after startup. Avatar selections and per-avatar parameter assignments
+  last for the current session; the Cubism DLL path is saved locally.
 - Headless CLI, local phone simulator, automated tests, Windows build scripts and CI.
 
 Frame time is not total process CPU utilization. Asset bytes on disk are not VRAM
 usage. GPU load, per-model VRAM accounting, webcam tracking, Spout/shared textures,
-an OBS plugin, and a stable public plugin SDK are not implemented in v0.1.
+an OBS plugin, and a stable public plugin SDK are not implemented in v0.2.
+The atlas MiB display estimates decoded texture storage; it excludes renderer,
+driver and staging allocations.
 
 ## Test without a phone
 
@@ -105,7 +128,7 @@ To build a portable bundle with its documentation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 ```
 
-The script runs tests and writes `dist/aria-0.1.0-windows-x64.zip`. See
+The script runs tests and writes `dist/aria-0.2.0-windows-x64.zip`. See
 [architecture](docs/architecture.md) for crate boundaries and
 [validation](docs/validation.md) for what has actually been exercised.
 

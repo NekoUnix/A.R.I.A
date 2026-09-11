@@ -12,7 +12,7 @@ systems and Windows ARM64 are not verified release targets yet.
 1. Visit [the Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml).
 2. Select a green, successful run on `main` for the version you want.
 3. Under **Artifacts**, download **aria-windows-x64**. Sign in to GitHub if asked.
-4. Extract the downloaded artifact. Extract `aria-0.1.0-windows-x64.zip` inside it
+4. Extract the downloaded artifact. Extract `aria-0.2.0-windows-x64.zip` inside it
    into a normal writable folder, for example `C:\Apps\ARIA`.
 5. Double-click **aria-desktop.exe**. The default source is Demo and Mica should move.
 
@@ -62,7 +62,7 @@ is optional; neither replaces the compiler/linker.
 The compiler version is pinned in `rust-toolchain.toml`; rustup will download it
 when first needed. `Cargo.lock` pins dependency resolution. Internet access is
 needed on the initial build; cached dependencies can be used offline afterward.
-No Live2D SDK download is needed for the v0.1 features.
+The demo, PNG puppet and tracking work without an SDK. Live2D avatars require the official Cubism Core DLL; see [Live2D setup](live2d.md).
 
 For a quicker edit/compile loop:
 
@@ -116,14 +116,11 @@ Optionally choose **Set talking image…** for an open-mouth variant. Use the sa
 dimensions, transparent margins and subject placement for both images. The app
 switches to that image above mapped mouth-open value 0.18. Blink deformation is
 implemented for Mica, not for a single imported PNG. **Reset** restores Mica.
-Image selections are not persisted in v0.1.
+Avatar selections are not persisted between sessions.
 
-**Inspect Live2D .model3.json…** opens an exported Cubism manifest and reports its
-referenced `.moc3`, textures, expressions, motions, physics, pose and other asset
-files. Keep the complete exported folder together. This checks paths/presence and
-file sizes, not binary validity. It never loads `.moc3` into a runtime or substitutes
-Mica for a supposedly loaded Live2D model. References outside the model folder are
-rejected. See [the integration roadmap](architecture.md#live2d-integration).
+**Open Live2D avatar…** loads a real exported .model3.json or .moc3 avatar with its texture atlases. Configure the official Cubism Core x64 DLL first. Follow the [detailed Live2D guide](live2d.md) for import, custom tracking assignments, compatibility and troubleshooting.
+
+**Inspect Live2D .model3.json…** remains available as a separate asset report. It checks references and file sizes; only Open Live2D avatar performs native model evaluation and rendering.
 
 ## 4. Connect iPhone tracking
 

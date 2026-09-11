@@ -64,7 +64,7 @@ spells out the published shape; it is not only a serializer round-trip test.
 }
 ```
 
-### Mapping in v0.1
+### Mapping
 
 | Output parameter | Input |
 | --- | --- |
