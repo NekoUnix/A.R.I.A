@@ -7,8 +7,10 @@ mod hotkeys;
 mod input_monitor;
 mod live2d;
 mod metrics;
+mod physics_panel;
 #[cfg(feature = "screenshots")]
 mod screenshot;
+mod theme;
 
 fn smoke_mode() -> bool {
     cfg!(feature = "screenshots") && std::env::var_os("ARIA_SCREENSHOT_TO").is_some()

@@ -6,9 +6,9 @@ tracking into avatar parameters, and animates **Live2D `.moc3` avatars**, a buil
 2D test puppet, or your PNG artwork. The UI and preview run on **egui + wgpu**,
 without Unity or Godot.
 
-> **v0.4:** editable input ranges/stepping/response, individual manual holds,
-> full screenshot pose freeze, movement/pose presets, Windows global hotkeys,
-> and transparent avatar PNG export. Includes v0.3 tracking profiles and physics.
+> **v0.5:** refreshed studio with collapsible categories, saved physics controls
+> for the whole avatar and each authored group, and complete profiles per model.
+> Includes editable input response, frozen poses, presets, Windows hotkeys and PNG export.
 > Supply the official **Cubism Core x64 DLL** and your exported avatar assets.
 > Motion/expression/pose playback and Cubism 5.3 advanced/offscreen
 > blending remain future work. SDK binaries and model art are not bundled.
@@ -72,6 +72,8 @@ it does not implement VTS's proprietary USB transport.
    movement setups or complete screenshot poses, with optional Windows hotkeys.
 
 **[Input tuning, pose controls, presets and hotkeys →](docs/input-controls.md)**
+
+**[Global/group physics and independent model profiles →](docs/physics.md)**
 
 A `.moc3` selection finds its matching manifest beside it. Without a manifest,
 the import dialog lets you select/reorder the required texture atlases explicitly.
@@ -140,7 +142,7 @@ To build a portable bundle with its documentation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 ```
 
-The script runs tests and writes `dist/aria-0.4.0-windows-x64.zip`. See
+The script runs tests and writes `dist/aria-0.5.0-windows-x64.zip`. See
 [architecture](docs/architecture.md) for crate boundaries and
 [validation](docs/validation.md) for what has actually been exercised.
 

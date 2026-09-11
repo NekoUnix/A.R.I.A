@@ -8,6 +8,7 @@ pub struct Sprite {
     pub texture: egui::TextureHandle,
     pub name: String,
     pub size: Vec2,
+    pub model_key: String,
 }
 
 pub fn load_sprite(ctx: &egui::Context, path: &Path) -> Result<Sprite> {
@@ -33,6 +34,12 @@ pub fn load_sprite(ctx: &egui::Context, path: &Path) -> Result<Sprite> {
         egui::TextureOptions::LINEAR,
     );
     Ok(Sprite {
+        model_key: format!(
+            "image:{}x{}:{}",
+            size[0],
+            size[1],
+            aria_core::movement::model_key(&rgba)
+        ),
         texture,
         name: path
             .file_name()

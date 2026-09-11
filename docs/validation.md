@@ -5,6 +5,28 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Local verification on 2026-09-11
 
+### v0.5 studio organization and per-avatar physics
+
+- Formatting, Clippy across all targets/features with warnings denied, and all
+  **36 default tests** passed on Windows x64.
+- Synthetic rigs with arbitrary group IDs/display names verify metadata discovery,
+  independent group amplitude/muting, global amplitude, and changes to inertia,
+  response speed, gravity and wind. Unrelated group trajectories remain identical.
+  Extreme supported settings and repeated enable/disable transitions remain finite
+  and bounded by native parameter limits. Duplicate group IDs are rejected.
+- Two distinct model profiles round-trip through eframe's actual RON storage format
+  and retain separate tracking sources/addresses, gains, zoom, backgrounds, FPS,
+  calibration, poses and group tuning. Physics controls also round-trip in movement
+  presets. Legacy v0.4 physics fields load with neutral defaults for new controls.
+- The supplied Live2D rig still passes its native integration test: 25 imported
+  assignments, 29 groups, 93 output assignments and 92 moving physics parameters.
+  Serialized screenshot poses remain vertex-identical under changing live inputs.
+- Direct3D 12 screenshots verify the themed studio, parameter categories and
+  global/group physics cards using the real model. Private model screenshots remain
+  local. Names shown in those cards come from the avatar's own physics dictionary.
+- These checks cover the implemented model format and controls, not every possible
+  avatar export or device; remaining compatibility/phone acceptance is listed below.
+
 ### v0.4 input controls, screenshot poses and presets
 
 - All **31 default tests** passed on Windows x64. Formatting and Clippy across
@@ -164,6 +186,9 @@ The `inputs`, `pose` and `presets` scenarios prepare example configurations and
 open the corresponding monitor tab. Set `ARIA_SMOKE_AVATAR_PNG` to a local PNG
 path to exercise transparent model export as well as the UI screenshot. These
 scenarios do not register global shortcuts or overwrite normal saved settings.
+The `physics` scenario opens overall/group controls for the loaded avatar;
+`physics-group` expands its first actual group with overall controls collapsed.
+Omitting `ARIA_TEST_MODEL` exercises the built-in puppet and empty physics state.
 
 ## Manual acceptance still required on the intended setup
 

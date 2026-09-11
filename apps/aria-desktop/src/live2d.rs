@@ -7,7 +7,7 @@ use aria_core::{
 };
 use aria_live2d::CubismModel;
 use aria_model::ModelFiles;
-use eframe::{egui, egui_wgpu::RenderState};
+use eframe::egui_wgpu::RenderState;
 use serde::Deserialize;
 use std::{collections::BTreeMap, path::Path};
 
@@ -126,32 +126,6 @@ impl Avatar {
     }
     pub fn save_png(&self, path: &Path) -> Result<()> {
         self.renderer.save_png(path)
-    }
-    pub fn physics_controls(&mut self, ui: &mut egui::Ui, config: &mut RigConfig) {
-        if let Some(physics) = &mut self.physics {
-            ui.checkbox(&mut config.physics.enabled, "Secondary motion / physics");
-            ui.label(
-                egui::RichText::new(format!(
-                    "{} groups · {} driven outputs",
-                    physics.group_count(),
-                    physics.output_count()
-                ))
-                .small(),
-            );
-            ui.add_enabled(
-                config.physics.enabled,
-                egui::Slider::new(&mut config.physics.strength, 0.0..=2.0).text("Motion strength"),
-            );
-            ui.collapsing("Physics tuning", |ui| {
-                ui.add(egui::Slider::new(&mut config.physics.wind, -1.0..=1.0).text("Wind"));
-                if ui.button("Settle motion").clicked() {
-                    physics.reset();
-                }
-                ui.label("Physics settings save with this model and its movement presets.");
-            });
-        } else {
-            ui.label(egui::RichText::new("No physics rig loaded").small());
-        }
     }
 }
 fn read_labels(path: &Path) -> Result<BTreeMap<String, String>> {

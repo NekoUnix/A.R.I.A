@@ -20,10 +20,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-const BG: Color32 = Color32::from_rgb(15, 18, 29);
-const PANEL: Color32 = Color32::from_rgb(23, 27, 41);
-const MINT: Color32 = Color32::from_rgb(114, 235, 209);
-const MUTED: Color32 = Color32::from_rgb(149, 160, 180);
+use crate::theme::{self, BG, MINT, MUTED, PANEL};
 const OUTPUT: &str = "aria-output";
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -66,6 +63,7 @@ struct Settings {
     always_on_top: bool,
     cubism_core: String,
     saved_rigs: BTreeMap<String, SavedRig>,
+    model_preferences: BTreeMap<String, ModelPreferences>,
 }
 
 impl Default for Settings {
@@ -82,7 +80,60 @@ impl Default for Settings {
             always_on_top: false,
             cubism_core: String::new(),
             saved_rigs: BTreeMap::new(),
+            model_preferences: BTreeMap::new(),
         }
+    }
+}
+
+/// Per-avatar controls outside its native rig. The SDK path is a machine preference.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
+struct ModelPreferences {
+    source: Source,
+    sender_ip: String,
+    request_port: u16,
+    listen_port: u16,
+    mapping: MappingSettings,
+    background: Background,
+    fps: u32,
+    zoom: f32,
+    always_on_top: bool,
+    calibration: aria_core::Vec3,
+}
+impl Default for ModelPreferences {
+    fn default() -> Self {
+        Self::capture(&Settings::default())
+    }
+}
+impl ModelPreferences {
+    fn capture(settings: &Settings) -> Self {
+        Self {
+            source: settings.source,
+            sender_ip: settings.sender_ip.clone(),
+            request_port: settings.request_port,
+            listen_port: settings.listen_port,
+            mapping: settings.mapping.clone(),
+            background: settings.background,
+            fps: settings.fps,
+            zoom: settings.zoom,
+            always_on_top: settings.always_on_top,
+            calibration: aria_core::Vec3::default(),
+        }
+    }
+    fn restore(&self, settings: &mut Settings) {
+        settings.source = self.source;
+        settings.sender_ip = self.sender_ip.clone();
+        settings.request_port = self.request_port;
+        settings.listen_port = self.listen_port;
+        settings.mapping = self.mapping.clone();
+        settings.background = self.background;
+        settings.fps = self.fps.clamp(15, 120);
+        settings.zoom = if self.zoom.is_finite() {
+            self.zoom.clamp(0.5, 1.5)
+        } else {
+            1.0
+        };
+        settings.always_on_top = self.always_on_top;
     }
 }
 
@@ -117,21 +168,7 @@ pub struct AriaApp {
 
 impl AriaApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // The studio has fixed dark backgrounds. Keep widget contrast consistent
-        // when Windows reports a light system theme on the first frame.
-        cc.egui_ctx.set_theme(egui::Theme::Dark);
-        let mut style = (*cc.egui_ctx.style()).clone();
-        style.visuals = egui::Visuals::dark();
-        style.visuals.panel_fill = PANEL;
-        style.visuals.window_fill = PANEL;
-        style.visuals.selection.bg_fill = Color32::from_rgb(42, 92, 88);
-        style.visuals.selection.stroke = Stroke::new(1.0_f32, MINT);
-        style.spacing.item_spacing = egui::vec2(10.0, 9.0);
-        style.spacing.button_padding = egui::vec2(12.0, 8.0);
-        style
-            .text_styles
-            .insert(egui::TextStyle::Body, egui::FontId::proportional(14.0));
-        cc.egui_ctx.set_style(style);
+        theme::install(&cc.egui_ctx);
         let mut settings: Settings = if crate::smoke_mode() {
             Settings::default()
         } else {
@@ -139,6 +176,9 @@ impl AriaApp {
                 .and_then(|s| eframe::get_value(s, "aria-settings-v1"))
                 .unwrap_or_default()
         };
+        if let Some(preferences) = settings.model_preferences.get("preview-v1").cloned() {
+            preferences.restore(&mut settings);
+        }
         settings.fps = settings.fps.clamp(15, 120);
         if let Some(path) = std::env::var_os("ARIA_CUBISM_CORE") {
             settings.cubism_core = path.to_string_lossy().into_owned();
@@ -192,6 +232,9 @@ impl AriaApp {
             bare_textures: Vec::new(),
         };
         let mut app = app;
+        if let Some(preferences) = app.settings.model_preferences.get("preview-v1") {
+            app.pipeline.restore_calibration(preferences.calibration);
+        }
         if let Some(path) = std::env::args_os().nth(1) {
             app.open_model(Path::new(&path));
         }
@@ -218,6 +261,9 @@ impl AriaApp {
                     Ok("output") => {
                         app.output_open = true;
                         app.settings.background = Background::Green;
+                    }
+                    Ok("physics") | Ok("physics-group") => {
+                        app.input_monitor.tab = Tab::Physics;
                     }
                     Ok("pose") | Ok("presets") | Ok("inputs") => {
                         let parameters = app.current_parameters();
@@ -283,7 +329,7 @@ impl AriaApp {
                 }
                 self.receiver = Some(receiver);
                 self.snapshot = Snapshot::default();
-                self.pipeline.reset();
+                self.pipeline.current = Parameters::default();
                 self.status_message = None;
             }
             Err(e) => self.status_message = Some(format!("{e:#}")),
@@ -291,222 +337,246 @@ impl AriaApp {
     }
 
     fn controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        section(ui, "TRACKING SOURCE");
-        let old = self.settings.source;
-        egui::ComboBox::from_id_salt("source")
-            .selected_text(match old {
-                Source::Demo => "Demo · no device needed",
-                Source::Vts => "iPhone · VTube Studio",
-                Source::Json => "External tool · ARIA JSON",
-            })
-            .width(230.0)
-            .show_ui(ui, |ui| {
-                ui.selectable_value(
-                    &mut self.settings.source,
-                    Source::Demo,
-                    "Demo · no device needed",
-                );
-                ui.selectable_value(
-                    &mut self.settings.source,
-                    Source::Vts,
-                    "iPhone · VTube Studio",
-                );
-                ui.selectable_value(
-                    &mut self.settings.source,
-                    Source::Json,
-                    "External tool · ARIA JSON",
-                );
-            });
-        if old != self.settings.source {
-            self.receiver = None;
-            self.snapshot = Snapshot::default();
-            self.pipeline.reset();
-            self.raw = None;
-            self.status_message = None;
-        }
-        if self.settings.source == Source::Demo {
-            ui.label(
-                RichText::new("Synthetic movement for checking your avatar and output.")
-                    .color(MUTED),
-            );
-        } else {
-            ui.add_enabled_ui(self.receiver.is_none(), |ui| {
-                ui.label(if self.settings.source == Source::Vts {
-                    "iPhone IPv4 address"
-                } else {
-                    "Allowed sender IPv4 address"
-                });
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.settings.sender_ip).desired_width(230.0),
-                );
-                egui::Grid::new("ports").num_columns(2).show(ui, |ui| {
-                    if self.settings.source == Source::Vts {
-                        ui.label("Phone request port");
-                        ui.add(
-                            egui::DragValue::new(&mut self.settings.request_port).range(1..=65535),
-                        );
-                        ui.end_row();
-                    }
-                    ui.label("PC receive port");
-                    ui.add(egui::DragValue::new(&mut self.settings.listen_port).range(1..=65535));
-                    ui.end_row();
-                });
-            });
-            if self.receiver.is_some() {
-                if ui.button("Disconnect").clicked() {
-                    self.receiver = None;
-                    self.raw = None;
-                }
-            } else if ui
-                .add_sized(
-                    [230.0, 36.0],
-                    egui::Button::new(RichText::new("Connect tracking").color(BG)).fill(MINT),
-                )
-                .clicked()
-            {
-                self.connect();
+        section(ui, "STUDIO CONTROLS");
+        ui.horizontal_wrapped(|ui| {
+            let name = self
+                .live2d
+                .as_ref()
+                .map(|a| a.name.as_str())
+                .or_else(|| self.idle.as_ref().map(|s| s.name.as_str()))
+                .unwrap_or("Mica");
+            ui.label(RichText::new(name).strong().color(MINT));
+            if ui.small_button("Save profile").clicked() {
+                self.input_monitor.save_requested = true;
+                self.input_monitor.message =
+                    Some("This model's complete profile was saved locally.".into());
             }
-            ui.label(RichText::new(if self.settings.source == Source::Vts { "On iPhone: enable 3rd Party PC Clients in VTube Studio. Use the phone's IPv4 address." }
-                else { "Accepts ARIA JSON v1 packets from this IP. Use 127.0.0.1 for local tools." }).small().color(MUTED));
-        }
-        ui.add_space(7.0);
-        let color = if self.raw.as_ref().is_some_and(|f| f.face_found) {
-            MINT
-        } else {
-            Color32::from_rgb(238, 191, 119)
-        };
-        ui.horizontal(|ui| {
-            let (dot, _) = ui.allocate_exact_size(egui::vec2(9.0, 9.0), egui::Sense::hover());
-            ui.painter().circle_filled(dot.center(), 4.0, color);
-            ui.colored_label(color, self.connection_status());
         });
-        if let Some(error) = &self.status_message {
-            ui.colored_label(Color32::from_rgb(255, 164, 167), error);
-        }
-        if let Some(error) = &self.snapshot.last_error {
-            ui.label(
-                RichText::new(error)
-                    .small()
-                    .color(Color32::from_rgb(255, 164, 167)),
-            );
-        }
-
-        ui.separator();
-        section(ui, "MOVEMENT");
-        if ui
-            .add_enabled(
-                self.raw.as_ref().is_some_and(|f| f.face_found),
-                egui::Button::new("Calibrate neutral pose"),
-            )
-            .clicked()
-            && let Some(f) = &self.raw
-        {
-            self.pipeline.calibrate(f);
-        }
-        ui.add(
-            egui::Slider::new(&mut self.settings.mapping.smoothing_ms, 0.0..=300.0)
-                .text("Smooth ms"),
-        );
-        ui.add(
-            egui::Slider::new(&mut self.settings.mapping.head_gain, 0.1..=3.0).text("Head gain"),
-        );
-        ui.add(
-            egui::Slider::new(&mut self.settings.mapping.mouth_gain, 0.1..=3.0).text("Mouth gain"),
-        );
-        ui.checkbox(&mut self.settings.mapping.mirror, "Mirror movement");
-        ui.collapsing("Axis correction", |ui| {
-            ui.checkbox(
-                &mut self.settings.mapping.invert_yaw,
-                "Invert yaw (left / right)",
-            );
-            ui.checkbox(
-                &mut self.settings.mapping.invert_pitch,
-                "Invert pitch (up / down)",
-            );
-            ui.checkbox(&mut self.settings.mapping.invert_roll, "Invert roll (tilt)");
-            if ui.button("Reset mapping and calibration").clicked() {
-                self.settings.mapping = MappingSettings::default();
+        theme::caption(ui, "Settings belong to this avatar.");
+        theme::category(ui, "tracking-card", "Tracking & connection", true, |ui| {
+            let old = self.settings.source;
+            egui::ComboBox::from_id_salt("source")
+                .selected_text(match old {
+                    Source::Demo => "Demo · no device needed",
+                    Source::Vts => "iPhone · VTube Studio",
+                    Source::Json => "External tool · ARIA JSON",
+                })
+                .width(230.0)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.settings.source,
+                        Source::Demo,
+                        "Demo · no device needed",
+                    );
+                    ui.selectable_value(
+                        &mut self.settings.source,
+                        Source::Vts,
+                        "iPhone · VTube Studio",
+                    );
+                    ui.selectable_value(
+                        &mut self.settings.source,
+                        Source::Json,
+                        "External tool · ARIA JSON",
+                    );
+                });
+            if old != self.settings.source {
+                self.receiver = None;
+                self.snapshot = Snapshot::default();
                 self.pipeline.reset();
+                self.raw = None;
+                self.status_message = None;
             }
-        });
-
-        ui.separator();
-        section(ui, "AVATAR");
-        ui.label(if self.live2d.is_some() {
-            "Live2D Cubism avatar"
-        } else if self.idle.is_some() {
-            "PNG puppet"
-        } else {
-            "Mica · built-in test puppet"
-        });
-        if let Some(sprite) = &self.idle {
-            ui.label(RichText::new(&sprite.name).small().color(MUTED));
-        }
-        ui.horizontal(|ui| {
-            if ui.button("Open PNG…").clicked() {
-                self.load_image(ctx, false);
-            }
-            if ui
-                .add_enabled(
-                    self.idle.is_some() || self.live2d.is_some(),
-                    egui::Button::new("Reset"),
-                )
-                .clicked()
-            {
-                self.idle = None;
-                self.talking = None;
-                self.use_preview_rig();
-            }
-        });
-        if self.idle.is_some() && self.live2d.is_none() {
-            if ui.button("Set talking image…").clicked() {
-                self.load_image(ctx, true);
-            }
-            if let Some(sprite) = &self.talking {
+            if self.settings.source == Source::Demo {
                 ui.label(
-                    RichText::new(format!("Talking: {}", sprite.name))
-                        .small()
+                    RichText::new("Synthetic movement for checking your avatar and output.")
                         .color(MUTED),
                 );
+            } else {
+                ui.add_enabled_ui(self.receiver.is_none(), |ui| {
+                    ui.label(if self.settings.source == Source::Vts {
+                        "iPhone IPv4 address"
+                    } else {
+                        "Allowed sender IPv4 address"
+                    });
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.settings.sender_ip)
+                            .desired_width(230.0),
+                    );
+                    egui::Grid::new("ports").num_columns(2).show(ui, |ui| {
+                        if self.settings.source == Source::Vts {
+                            ui.label("Phone request port");
+                            ui.add(
+                                egui::DragValue::new(&mut self.settings.request_port)
+                                    .range(1..=65535),
+                            );
+                            ui.end_row();
+                        }
+                        ui.label("PC receive port");
+                        ui.add(
+                            egui::DragValue::new(&mut self.settings.listen_port).range(1..=65535),
+                        );
+                        ui.end_row();
+                    });
+                });
+                if self.receiver.is_some() {
+                    if ui.button("Disconnect").clicked() {
+                        self.receiver = None;
+                        self.raw = None;
+                    }
+                } else if ui
+                    .add_sized(
+                        [230.0, 36.0],
+                        egui::Button::new(RichText::new("Connect tracking").color(BG)).fill(MINT),
+                    )
+                    .clicked()
+                {
+                    self.connect();
+                }
+                ui.label(RichText::new(if self.settings.source == Source::Vts { "On iPhone: enable 3rd Party PC Clients in VTube Studio. Use the phone's IPv4 address." }
+                else { "Accepts ARIA JSON v1 packets from this IP. Use 127.0.0.1 for local tools." }).small().color(MUTED));
             }
-            ui.label(RichText::new("Images move with your head. Optional talking image switches when your mouth opens.").small().color(MUTED));
-        }
-        ui.add(egui::Slider::new(&mut self.settings.zoom, 0.5..=1.5).text("Zoom"));
-        if ui.button("Open Live2D avatar…").clicked()
-            && let Some(path) = rfd::FileDialog::new()
-                .add_filter("Cubism export", &["moc3", "json"])
-                .pick_file()
-        {
-            self.open_model(&path);
-        }
-        if let Some(avatar) = &mut self.live2d {
-            ui.label(RichText::new(&avatar.name).color(MINT));
-            ui.label(
-                RichText::new(format!(
-                    "{} meshes · {} tracked parameters\n{:.0} MiB atlases · Core {}",
-                    avatar.model.drawables.len(),
-                    self.input_monitor.saved.config.bindings.len(),
-                    avatar.atlas_mib(),
-                    avatar.model.version
-                ))
-                .small(),
+            ui.add_space(7.0);
+            let color = if self.raw.as_ref().is_some_and(|f| f.face_found) {
+                MINT
+            } else {
+                Color32::from_rgb(238, 191, 119)
+            };
+            ui.horizontal(|ui| {
+                let (dot, _) = ui.allocate_exact_size(egui::vec2(9.0, 9.0), egui::Sense::hover());
+                ui.painter().circle_filled(dot.center(), 4.0, color);
+                ui.colored_label(color, self.connection_status());
+            });
+            if let Some(error) = &self.status_message {
+                ui.colored_label(Color32::from_rgb(255, 164, 167), error);
+            }
+            if let Some(error) = &self.snapshot.last_error {
+                ui.label(
+                    RichText::new(error)
+                        .small()
+                        .color(Color32::from_rgb(255, 164, 167)),
+                );
+            }
+        });
+        theme::category(ui, "movement-card", "Movement & calibration", false, |ui| {
+            if ui
+                .add_enabled(
+                    self.raw.as_ref().is_some_and(|f| f.face_found),
+                    egui::Button::new("Calibrate neutral pose"),
+                )
+                .clicked()
+                && let Some(f) = &self.raw
+            {
+                self.pipeline.calibrate(f);
+            }
+            ui.add(
+                egui::Slider::new(&mut self.settings.mapping.smoothing_ms, 0.0..=300.0)
+                    .text("Smooth ms"),
             );
-            if ui.button("Model parameters…").clicked() {
-                self.input_monitor.tab = Tab::Inputs;
-            }
-            ui.label(
-                RichText::new(format!(
-                    "{} assignments from VTS profile",
-                    avatar.imported_count
-                ))
-                .small(),
+            ui.add(
+                egui::Slider::new(&mut self.settings.mapping.head_gain, 0.1..=3.0)
+                    .text("Head gain"),
             );
-            avatar.physics_controls(ui, &mut self.input_monitor.saved.config);
-            for warning in &avatar.files.warnings {
-                ui.label(RichText::new(warning).small().color(MUTED));
+            ui.add(
+                egui::Slider::new(&mut self.settings.mapping.mouth_gain, 0.1..=3.0)
+                    .text("Mouth gain"),
+            );
+            ui.checkbox(&mut self.settings.mapping.mirror, "Mirror movement");
+            ui.collapsing("Axis correction", |ui| {
+                ui.checkbox(
+                    &mut self.settings.mapping.invert_yaw,
+                    "Invert yaw (left / right)",
+                );
+                ui.checkbox(
+                    &mut self.settings.mapping.invert_pitch,
+                    "Invert pitch (up / down)",
+                );
+                ui.checkbox(&mut self.settings.mapping.invert_roll, "Invert roll (tilt)");
+                if ui.button("Reset mapping and calibration").clicked() {
+                    self.settings.mapping = MappingSettings::default();
+                    self.pipeline.reset();
+                }
+            });
+        });
+        theme::category(ui, "avatar-card", "Avatar & appearance", true, |ui| {
+            ui.label(if self.live2d.is_some() {
+                "Live2D Cubism avatar"
+            } else if self.idle.is_some() {
+                "PNG puppet"
+            } else {
+                "Mica · built-in test puppet"
+            });
+            if let Some(sprite) = &self.idle {
+                ui.label(RichText::new(&sprite.name).small().color(MUTED));
             }
-        }
-        ui.collapsing("Cubism runtime setup", |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("Open PNG…").clicked() {
+                    self.load_image(ctx, false);
+                }
+                if ui
+                    .add_enabled(
+                        self.idle.is_some() || self.live2d.is_some(),
+                        egui::Button::new("Reset"),
+                    )
+                    .clicked()
+                {
+                    self.idle = None;
+                    self.talking = None;
+                    self.use_preview_rig();
+                }
+            });
+            if self.idle.is_some() && self.live2d.is_none() {
+                if ui.button("Set talking image…").clicked() {
+                    self.load_image(ctx, true);
+                }
+                if let Some(sprite) = &self.talking {
+                    ui.label(
+                        RichText::new(format!("Talking: {}", sprite.name))
+                            .small()
+                            .color(MUTED),
+                    );
+                }
+                ui.label(RichText::new("Images move with your head. Optional talking image switches when your mouth opens.").small().color(MUTED));
+            }
+            ui.add(egui::Slider::new(&mut self.settings.zoom, 0.5..=1.5).text("Zoom"));
+            if ui.button("Open Live2D avatar…").clicked()
+                && let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Cubism export", &["moc3", "json"])
+                    .pick_file()
+            {
+                self.open_model(&path);
+            }
+            if let Some(avatar) = &mut self.live2d {
+                ui.label(RichText::new(&avatar.name).color(MINT));
+                ui.collapsing("Model details", |ui| {
+                    ui.label(
+                        RichText::new(format!(
+                            "{} meshes · {} tracked parameters\n{:.0} MiB atlases · Core {}",
+                            avatar.model.drawables.len(),
+                            self.input_monitor.saved.config.bindings.len(),
+                            avatar.atlas_mib(),
+                            avatar.model.version
+                        ))
+                        .small(),
+                    );
+                    for warning in &avatar.files.warnings {
+                        ui.label(RichText::new(warning).small().color(MUTED));
+                    }
+                });
+                if ui.button("Model parameters…").clicked() {
+                    self.input_monitor.tab = Tab::Inputs;
+                }
+                ui.label(
+                    RichText::new(format!(
+                        "{} assignments from VTS profile",
+                        avatar.imported_count
+                    ))
+                    .small(),
+                );
+                if ui.button("Configure avatar physics…").clicked() {
+                    self.input_monitor.tab = Tab::Physics;
+                }
+            }
+            ui.collapsing("Cubism runtime setup", |ui| {
             ui.label("Choose Core/dll/windows/x86_64/Live2DCubismCore.dll from the official Native SDK. The path is saved locally.");
             ui.text_edit_singleline(&mut self.settings.cubism_core);
             if ui.button("Select Core DLL…").clicked() && let Some(path) = rfd::FileDialog::new().add_filter("Cubism Core", &["dll"]).pick_file() {
@@ -515,65 +585,67 @@ impl AriaApp {
             ui.hyperlink_to("Download the official SDK ↗", "https://www.live2d.com/en/sdk/download/native/");
             ui.hyperlink_to("Avatar import instructions ↗", "https://github.com/NekoUnix/A.R.I.A/blob/main/docs/live2d.md");
         });
-        if ui.button("Inspect Live2D .model3.json…").clicked()
-            && let Some(path) = rfd::FileDialog::new()
-                .add_filter("Cubism model3 JSON", &["json"])
-                .pick_file()
-        {
-            match aria_model::inspect(&path) {
-                Ok(report) => {
-                    self.model = Some(report);
-                    self.model_open = true;
-                    self.status_message = None;
-                }
-                Err(e) => self.status_message = Some(format!("{e:#}")),
-            }
-        }
-        ui.label(
-            RichText::new("Drop a .model3.json or .moc3 here to load an avatar.")
-                .small()
-                .color(MUTED),
-        );
-
-        ui.separator();
-        section(ui, "WINDOWS OUTPUT");
-        ui.checkbox(&mut self.output_open, "Open OBS capture window");
-        ui.checkbox(&mut self.settings.always_on_top, "Keep output on top");
-        egui::ComboBox::from_id_salt("background")
-            .selected_text(match self.settings.background {
-                Background::Studio => "Studio background",
-                Background::Green => "Green screen",
-                Background::Transparent => "Transparent (experimental)",
-            })
-            .show_ui(ui, |ui| {
-                ui.selectable_value(
-                    &mut self.settings.background,
-                    Background::Studio,
-                    "Studio background",
-                );
-                ui.selectable_value(
-                    &mut self.settings.background,
-                    Background::Green,
-                    "Green screen",
-                );
-                ui.selectable_value(
-                    &mut self.settings.background,
-                    Background::Transparent,
-                    "Transparent (experimental)",
-                );
-            });
-        ui.label(RichText::new("OBS → Window Capture → A.R.I.A. Output. For reliable transparency, use Green screen + Chroma Key.").small().color(MUTED));
-        egui::ComboBox::from_id_salt("fps")
-            .selected_text(format!("{} FPS target", self.settings.fps))
-            .show_ui(ui, |ui| {
-                for fps in [30, 60, 120] {
-                    ui.selectable_value(&mut self.settings.fps, fps, format!("{fps} FPS"));
+            ui.collapsing("Inspect model files", |ui| {
+                if ui.button("Inspect Live2D .model3.json…").clicked()
+                    && let Some(path) = rfd::FileDialog::new()
+                        .add_filter("Cubism model3 JSON", &["json"])
+                        .pick_file()
+                {
+                    match aria_model::inspect(&path) {
+                        Ok(report) => {
+                            self.model = Some(report);
+                            self.model_open = true;
+                            self.status_message = None;
+                        }
+                        Err(e) => self.status_message = Some(format!("{e:#}")),
+                    }
                 }
             });
-        ui.hyperlink_to(
-            "Windows setup & troubleshooting ↗",
-            "https://github.com/NekoUnix/A.R.I.A/blob/main/docs/windows.md",
-        );
+            ui.label(
+                RichText::new("Drop a .model3.json or .moc3 here to load an avatar.")
+                    .small()
+                    .color(MUTED),
+            );
+        });
+        theme::category(ui, "output-card", "Capture & performance", false, |ui| {
+            ui.checkbox(&mut self.output_open, "Open OBS capture window");
+            ui.checkbox(&mut self.settings.always_on_top, "Keep output on top");
+            egui::ComboBox::from_id_salt("background")
+                .selected_text(match self.settings.background {
+                    Background::Studio => "Studio background",
+                    Background::Green => "Green screen",
+                    Background::Transparent => "Transparent (experimental)",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.settings.background,
+                        Background::Studio,
+                        "Studio background",
+                    );
+                    ui.selectable_value(
+                        &mut self.settings.background,
+                        Background::Green,
+                        "Green screen",
+                    );
+                    ui.selectable_value(
+                        &mut self.settings.background,
+                        Background::Transparent,
+                        "Transparent (experimental)",
+                    );
+                });
+            ui.label(RichText::new("OBS → Window Capture → A.R.I.A. Output. For reliable transparency, use Green screen + Chroma Key.").small().color(MUTED));
+            egui::ComboBox::from_id_salt("fps")
+                .selected_text(format!("{} FPS target", self.settings.fps))
+                .show_ui(ui, |ui| {
+                    for fps in [30, 60, 120] {
+                        ui.selectable_value(&mut self.settings.fps, fps, format!("{fps} FPS"));
+                    }
+                });
+            ui.hyperlink_to(
+                "Windows setup & troubleshooting ↗",
+                "https://github.com/NekoUnix/A.R.I.A/blob/main/docs/windows.md",
+            );
+        });
     }
 
     fn load_image(&mut self, ctx: &egui::Context, talking: bool) {
@@ -583,8 +655,8 @@ impl AriaApp {
         {
             match avatar::load_sprite(ctx, &path) {
                 Ok(sprite) => {
-                    if self.live2d.is_some() {
-                        self.use_preview_rig();
+                    if !talking || self.live2d.is_some() {
+                        self.use_puppet_rig(&sprite.model_key);
                     }
                     if talking {
                         self.talking = Some(sprite);
@@ -625,6 +697,12 @@ impl AriaApp {
             self.settings.saved_rigs.get(&avatar.model_key).cloned(),
             avatar.model.parameters(),
         );
+        self.input_monitor.physics_groups = avatar
+            .physics
+            .as_ref()
+            .map(|p| p.groups())
+            .unwrap_or_default();
+        self.restore_model_preferences(&avatar.model_key);
         self.hotkeys.configure(Vec::new());
         self.animation_time = 0.0;
         self.live2d = Some(avatar);
@@ -663,18 +741,43 @@ impl AriaApp {
             self.input_monitor.model_key.clone(),
             self.input_monitor.saved.clone(),
         );
+        let mut preferences = ModelPreferences::capture(&self.settings);
+        preferences.calibration = self.pipeline.calibration();
+        self.settings
+            .model_preferences
+            .insert(self.input_monitor.model_key.clone(), preferences);
+    }
+    fn restore_model_preferences(&mut self, key: &str) {
+        let preferences = self
+            .settings
+            .model_preferences
+            .get(key)
+            .cloned()
+            .unwrap_or_default();
+        preferences.restore(&mut self.settings);
+        // A model switch never silently connects to a different saved sender.
+        self.receiver = None;
+        self.snapshot = Snapshot::default();
+        self.raw = None;
+        self.pipeline = ParameterPipeline::default();
+        self.pipeline.restore_calibration(preferences.calibration);
+        self.params = Parameters::default();
     }
     fn use_preview_rig(&mut self) {
+        self.use_puppet_rig("preview-v1");
+    }
+    fn use_puppet_rig(&mut self, key: &str) {
         self.remember_current_rig();
         self.live2d = None;
         let parameters = movement::preview_parameters(Parameters::default());
         self.input_monitor = InputMonitor::new(
-            "preview-v1".into(),
+            key.into(),
             RigConfig::from_parameters(&parameters),
-            self.settings.saved_rigs.get("preview-v1").cloned(),
+            self.settings.saved_rigs.get(key).cloned(),
             &parameters,
         );
         self.hotkeys.configure(Vec::new());
+        self.restore_model_preferences(key);
         self.animation_time = 0.0;
     }
     fn bare_import_window(&mut self, ctx: &egui::Context) {
@@ -721,14 +824,17 @@ impl AriaApp {
             .as_ref()
             .map(|a| a.labels.clone())
             .unwrap_or_default();
-        self.input_monitor.ui(
-            ui,
-            &parameters,
-            &labels,
-            &self.live_inputs,
-            &mut self.settings.mapping,
-            self.live2d.is_some(),
-        );
+        let monitor_key = self.input_monitor.model_key.clone();
+        ui.push_id(&monitor_key, |ui| {
+            self.input_monitor.ui(
+                ui,
+                &parameters,
+                &labels,
+                &self.live_inputs,
+                &mut self.settings.mapping,
+                self.live2d.is_some(),
+            );
+        });
         if self.input_monitor.tab == Tab::Raw {
             if let Some(f) = &self.raw {
                 ui.label(format!(
@@ -759,53 +865,60 @@ impl AriaApp {
             }
         }
 
-        ui.separator();
-        if ui.button("Export mapped values…").clicked()
-            && let Some(path) = rfd::FileDialog::new()
-                .set_file_name("aria-parameters.json")
-                .add_filter("JSON", &["json"])
-                .save_file()
-        {
-            match serde_json::to_vec_pretty(
-                &parameters
-                    .iter()
-                    .map(|p| (p.id.as_str(), p.value))
-                    .collect::<BTreeMap<_, _>>(),
-            )
-            .map_err(anyhow::Error::from)
-            .and_then(|bytes| std::fs::write(path, bytes).map_err(anyhow::Error::from))
-            {
-                Ok(()) => self.status_message = Some("Parameter snapshot exported.".into()),
-                Err(e) => self.status_message = Some(format!("Export failed: {e}")),
-            }
-        }
-        section(ui, "CONNECTION");
-        if self.settings.source == Source::Demo {
-            ui.label("Demo generates values locally.");
-        } else {
-            ui.label(format!(
-                "{} valid · {} rejected",
-                self.snapshot.packets, self.snapshot.rejected
-            ));
-            ui.label(format!(
-                "{} ignored · {} requests",
-                self.snapshot.ignored, self.snapshot.requests
-            ));
-            ui.label(format!(
-                "{:.0} packets / second",
-                if self.snapshot.fresh_frame().is_some() {
-                    self.snapshot.packets_per_second
-                } else {
-                    0.0
+        theme::category(
+            ui,
+            "diagnostic-details",
+            "Connection diagnostics & export",
+            false,
+            |ui| {
+                if ui.button("Export mapped values…").clicked()
+                    && let Some(path) = rfd::FileDialog::new()
+                        .set_file_name("aria-parameters.json")
+                        .add_filter("JSON", &["json"])
+                        .save_file()
+                {
+                    match serde_json::to_vec_pretty(
+                        &parameters
+                            .iter()
+                            .map(|p| (p.id.as_str(), p.value))
+                            .collect::<BTreeMap<_, _>>(),
+                    )
+                    .map_err(anyhow::Error::from)
+                    .and_then(|bytes| std::fs::write(path, bytes).map_err(anyhow::Error::from))
+                    {
+                        Ok(()) => self.status_message = Some("Parameter snapshot exported.".into()),
+                        Err(e) => self.status_message = Some(format!("Export failed: {e}")),
+                    }
                 }
-            ));
-            if let Some(at) = self.snapshot.received_at {
-                ui.label(format!(
-                    "Last valid packet: {:.0} ms ago",
-                    at.elapsed().as_secs_f64() * 1000.0
-                ));
-            }
-        }
+                section(ui, "CONNECTION");
+                if self.settings.source == Source::Demo {
+                    ui.label("Demo generates values locally.");
+                } else {
+                    ui.label(format!(
+                        "{} valid · {} rejected",
+                        self.snapshot.packets, self.snapshot.rejected
+                    ));
+                    ui.label(format!(
+                        "{} ignored · {} requests",
+                        self.snapshot.ignored, self.snapshot.requests
+                    ));
+                    ui.label(format!(
+                        "{:.0} packets / second",
+                        if self.snapshot.fresh_frame().is_some() {
+                            self.snapshot.packets_per_second
+                        } else {
+                            0.0
+                        }
+                    ));
+                    if let Some(at) = self.snapshot.received_at {
+                        ui.label(format!(
+                            "Last valid packet: {:.0} ms ago",
+                            at.elapsed().as_secs_f64() * 1000.0
+                        ));
+                    }
+                }
+            },
+        );
     }
 
     fn model_window(&mut self, ctx: &egui::Context) {
@@ -948,7 +1061,7 @@ impl eframe::App for AriaApp {
                     ui.label(RichText::new("A.R.I.A.").size(26.0).strong().color(MINT));
                     ui.label(RichText::new("AVATAR STUDIO").size(12.0).color(MUTED));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(RichText::new("v0.4 · WINDOWS PREVIEW").small().color(MUTED));
+                        ui.label(RichText::new("v0.5 · WINDOWS PREVIEW").small().color(MUTED));
                     });
                 });
             });
@@ -972,19 +1085,19 @@ impl eframe::App for AriaApp {
                 });
             });
         egui::SidePanel::left("controls")
-            .exact_width(288.0)
+            .exact_width(302.0)
             .resizable(false)
-            .frame(Frame::new().fill(PANEL).inner_margin(18.0))
+            .frame(Frame::new().fill(PANEL).inner_margin(12.0))
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical()
                     .id_salt("controls-scroll")
                     .show(ui, |ui| self.controls(ui, ctx));
             });
         egui::SidePanel::right("diagnostics")
-            .default_width(360.0)
-            .width_range(310.0..=700.0)
+            .default_width(380.0)
+            .width_range(330.0..=700.0)
             .resizable(true)
-            .frame(Frame::new().fill(PANEL).inner_margin(18.0))
+            .frame(Frame::new().fill(PANEL).inner_margin(12.0))
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical()
                     .id_salt("diagnostics-scroll")
@@ -1180,4 +1293,105 @@ fn meter(ui: &mut egui::Ui, label: &str, value: f32, min: f32, max: f32) {
             .fill(MINT),
     );
     ui.add_space(3.0);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[derive(Default)]
+    struct Memory(BTreeMap<String, String>);
+    impl eframe::Storage for Memory {
+        fn get_string(&self, key: &str) -> Option<String> {
+            self.0.get(key).cloned()
+        }
+        fn set_string(&mut self, key: &str, value: String) {
+            self.0.insert(key.into(), value);
+        }
+        fn flush(&mut self) {}
+    }
+    #[test]
+    fn independent_model_profiles_round_trip_through_actual_app_storage_format() {
+        let mut settings = Settings {
+            source: Source::Vts,
+            sender_ip: "192.0.2.1".into(),
+            zoom: 1.3,
+            background: Background::Green,
+            fps: 30,
+            ..Default::default()
+        };
+        settings.mapping.head_gain = 1.8;
+        let mut a = ModelPreferences::capture(&settings);
+        a.calibration.y = 17.0;
+        settings.model_preferences.insert("avatar-a".into(), a);
+        settings.source = Source::Json;
+        settings.sender_ip = "127.0.0.1".into();
+        settings.zoom = 0.7;
+        settings.background = Background::Transparent;
+        settings.fps = 120;
+        settings.mapping.head_gain = 0.6;
+        settings
+            .model_preferences
+            .insert("avatar-b".into(), ModelPreferences::capture(&settings));
+        let parameters = movement::preview_parameters(Parameters::default());
+        for (key, angle, strength) in [("avatar-a", 12.0, 0.4), ("avatar-b", -8.0, 1.7)] {
+            let mut saved = SavedRig {
+                config: RigConfig::from_parameters(&parameters),
+                ..Default::default()
+            };
+            saved.config.capture_pose(&parameters);
+            saved.config.pose.frozen.insert("ParamAngleX".into(), angle);
+            saved.config.physics.groups.insert(
+                "Custom spring".into(),
+                aria_core::physics::GroupSettings {
+                    strength,
+                    ..Default::default()
+                },
+            );
+            settings.saved_rigs.insert(key.into(), saved);
+        }
+        let mut storage = Memory::default();
+        eframe::set_value(&mut storage, "aria-settings-v1", &settings);
+        let mut restored: Settings =
+            eframe::get_value(&storage, "aria-settings-v1").expect("RON settings restore");
+        for _ in 0..3 {
+            restored.model_preferences["avatar-a"]
+                .clone()
+                .restore(&mut restored);
+            assert_eq!(restored.zoom, 1.3);
+            assert_eq!(restored.mapping.head_gain, 1.8);
+            assert!(restored.source == Source::Vts && restored.background == Background::Green);
+            assert_eq!(restored.sender_ip, "192.0.2.1");
+            assert_eq!(restored.fps, 30);
+            assert_eq!(restored.model_preferences["avatar-a"].calibration.y, 17.0);
+            restored.model_preferences["avatar-b"]
+                .clone()
+                .restore(&mut restored);
+            assert_eq!(restored.zoom, 0.7);
+            assert_eq!(restored.mapping.head_gain, 0.6);
+            assert!(
+                restored.source == Source::Json && restored.background == Background::Transparent
+            );
+            assert_eq!(restored.sender_ip, "127.0.0.1");
+            assert_eq!(restored.fps, 120);
+        }
+        assert_eq!(
+            restored.saved_rigs["avatar-a"].config.pose.frozen["ParamAngleX"],
+            12.0
+        );
+        assert_eq!(
+            restored.saved_rigs["avatar-b"].config.pose.frozen["ParamAngleX"],
+            -8.0
+        );
+        assert_eq!(
+            restored.saved_rigs["avatar-a"].config.physics.groups["Custom spring"].strength,
+            0.4
+        );
+        assert_eq!(
+            restored.saved_rigs["avatar-b"].config.physics.groups["Custom spring"].strength,
+            1.7
+        );
+        for rig in restored.saved_rigs.values() {
+            rig.validate(&parameters).unwrap();
+        }
+    }
 }

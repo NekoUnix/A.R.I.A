@@ -1,9 +1,12 @@
 # Input controls, screenshot poses and presets
 
-ARIA v0.4 expands the right-hand **INPUT MONITOR** into **Inputs**, **Pose**,
-**Presets** and **Raw** tabs. Drag its left edge to widen it. These controls use
+ARIA v0.5 organizes the right-hand **INPUT MONITOR** into **Inputs**, **Pose**,
+**Physics**, **Presets** and **Raw** tabs. Drag its left edge to widen it. These controls use
 the loaded model's actual parameter names, ranges and VTS assignments. The built-in
-and PNG puppets have the same workflow for their 12 standard parameters.
+and PNG puppets have the same workflow for their 12 standard parameters. Studio
+sections and parameter categories collapse independently. Search reveals matching
+categories; unfamiliar controls remain in Other controls. The tabs work with every
+supported model. See [physics and model profiles](physics.md) for group tuning.
 
 ## Tune a movement input
 
@@ -38,7 +41,8 @@ limits always apply. Physics may drive a parameter after tracking; use a held
 manual input or a full pose freeze when a parameter must remain fixed.
 
 The left-side global gains, mirroring, axis correction and smoothing still apply
-before the per-control mapping. Calibration remains a live session operation.
+before the per-control mapping. These settings and neutral calibration save with
+the active model's profile. Recalibrate after changing your phone setup.
 
 ## Hold a pose for screenshots
 
@@ -92,7 +96,9 @@ Preset changes save immediately to ARIA's local application settings. The active
 model's inputs, held pose, physics and shortcut settings restore when it is reopened.
 Configuration identity follows the `.moc3` content, so moving the same export to
 another folder retains its settings; a newly exported/different moc gets its own
-configuration. Built-in and PNG previews share a separate configuration.
+configuration. Each PNG puppet uses its own image-content identity; Mica has a
+separate configuration. **Save profile** also saves tracking setup, zoom, background,
+frame-rate target and calibration for the current model.
 
 **Export selected preset…** creates a versioned JSON file for backup or sharing.
 **Import preset…** validates it against the current model, then adds it to the list

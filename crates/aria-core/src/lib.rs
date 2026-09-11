@@ -135,6 +135,17 @@ pub fn signed_angle(degrees: f32) -> f32 {
 }
 
 impl ParameterPipeline {
+    pub fn calibration(&self) -> Vec3 {
+        self.neutral
+    }
+    pub fn restore_calibration(&mut self, neutral: Vec3) {
+        self.neutral = if neutral.is_finite() {
+            neutral
+        } else {
+            Vec3::default()
+        };
+        self.current = Parameters::default();
+    }
     pub fn calibrate(&mut self, frame: &TrackingFrame) -> bool {
         if !frame.face_found || !frame.is_finite() {
             return false;
@@ -252,6 +263,25 @@ pub fn demo_frame(t: f32) -> TrackingFrame {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn model_calibration_restores_without_carrying_previous_filter_values() {
+        let mut pipeline = ParameterPipeline::default();
+        let mut frame = demo_frame(1.0);
+        pipeline.calibrate(&frame);
+        let saved = pipeline.calibration();
+        pipeline.current.0[0] = 30.0;
+        pipeline.restore_calibration(saved);
+        let result = pipeline.update(Some(&frame), &MappingSettings::default(), 0.016);
+        assert!(result.0[..3].iter().all(|v| v.abs() < 0.001));
+        pipeline.restore_calibration(Vec3 {
+            x: f32::NAN,
+            y: 0.0,
+            z: 0.0,
+        });
+        frame.rotation = Vec3::default();
+        let result = pipeline.update(Some(&frame), &MappingSettings::default(), 0.016);
+        assert!(result.0.iter().all(|v| v.is_finite()));
+    }
     fn immediate() -> MappingSettings {
         MappingSettings {
             smoothing_ms: 0.0,

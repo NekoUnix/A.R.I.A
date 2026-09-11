@@ -119,11 +119,26 @@ assets. Core and model files are supplied at runtime under their separate licens
 
 The Input Monitor owns a serializable `SavedRig`: active `RigConfig`, named presets,
 and the model's hotkey enable setting. A stable moc-content fingerprint separates
-avatars without writing to their folders; PNG/Mica have a separate preview identity.
+avatars without writing to their folders. PNG/JPEG sprites use separate decoded
+image-content identities; Mica keeps the built-in preview identity.
 Model switches remember the outgoing rig. Explicit saves and preset edits flush
 eframe storage immediately; regular app autosave/close also saves the active controls.
 Preset files validate version, model identity, IDs, limits and finite ranges before
 changing the list. Import clears the shortcut and does not apply the preset.
+
+ModelPreferences stores tracking source/ports/address, calibration, mapping gains,
+output preferences, zoom and target FPS for each model identity alongside SavedRig.
+Switches restore the incoming profile and disconnect the old tracking receiver.
+The SDK path remains a machine preference. Old serialized rig settings use serde
+defaults for newly added physics tuning; the original v0.4 field layout is preserved.
+
+PhysicsSettings contains overall controls and a map of GroupSettings keyed by actual
+physics group ID. Metadata comes from PhysicsSettings plus Meta.PhysicsDictionary,
+with ID fallback. Output amplitude, mobility, particle response and restoring force
+use overall × group multipliers; wind offsets add. Mobility is capped at 1. Disabled
+groups do not write outputs; re-enabled chains initialize without stale momentum.
+Authored group order and dependencies are retained. Unknown saved groups remain
+inactive and are reported in the UI. No physics/model sidecar is modified.
 
 Live evaluation is defaults/manual values → bindings/response/smoothing → holds and
 stepping → physics → held-output enforcement/stepping → Core. Partial holds therefore

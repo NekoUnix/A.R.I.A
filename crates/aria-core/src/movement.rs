@@ -1,4 +1,5 @@
 //! Serializable movement tuning and screenshot poses, independent of the UI/Core ABI.
+pub use crate::physics::PhysicsSettings;
 use crate::{
     MappingSettings, PARAMETER_SPECS, Parameters,
     physics::Physics,
@@ -22,23 +23,6 @@ pub struct Pose {
     pub mode: PoseMode,
     pub held: BTreeMap<String, f32>,
     pub frozen: BTreeMap<String, f32>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(default)]
-pub struct PhysicsSettings {
-    pub enabled: bool,
-    pub strength: f32,
-    pub wind: f32,
-}
-impl Default for PhysicsSettings {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            strength: 1.0,
-            wind: 0.0,
-        }
-    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -99,9 +83,7 @@ impl RigConfig {
         rig::apply_bindings(&mut self.bindings, inputs, parameters, dt);
         self.apply_holds_and_steps(parameters);
         if let Some(physics) = physics {
-            physics.enabled = self.physics.enabled;
-            physics.strength = self.physics.strength;
-            physics.wind_strength = self.physics.wind;
+            physics.configure(&self.physics);
             physics.update(parameters, dt);
         }
         // A held physics output must stay held, while a held driver still
@@ -184,13 +166,7 @@ impl RigConfig {
                 "Invalid stepping for {id}"
             );
         }
-        ensure!(
-            self.physics.strength.is_finite()
-                && (0.0..=2.0).contains(&self.physics.strength)
-                && self.physics.wind.is_finite()
-                && (-1.0..=1.0).contains(&self.physics.wind),
-            "Invalid physics settings"
-        );
+        self.physics.validate()?;
         Ok(())
     }
 }
@@ -360,6 +336,14 @@ mod tests {
         b.dead_zone = 0.1;
         b.evaluate(9.0, 0.016);
         config.steps.insert("ParamAngleX".into(), 0.25);
+        config.physics.groups.insert(
+            "Custom spring".into(),
+            crate::physics::GroupSettings {
+                response: 0.6,
+                strength: 0.8,
+                ..Default::default()
+            },
+        );
         config.capture_pose(&p);
         let saved = SavedRig {
             config: config.clone(),
@@ -378,6 +362,10 @@ mod tests {
         assert_eq!(loaded.presets[0].hotkey, Some(3));
         assert_eq!(loaded.config.bindings["ParamAngleX"].input_min, -12.0);
         assert_eq!(loaded.config.steps["ParamAngleX"], 0.25);
+        assert_eq!(
+            loaded.presets[0].rig.physics.groups["Custom spring"].response,
+            0.6
+        );
         let file = PresetFile {
             version: 1,
             model_key: "model-a".into(),

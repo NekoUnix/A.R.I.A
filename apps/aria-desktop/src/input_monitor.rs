@@ -11,6 +11,7 @@ pub enum Tab {
     #[default]
     Inputs,
     Pose,
+    Physics,
     Presets,
     Raw,
 }
@@ -28,6 +29,9 @@ pub struct InputMonitor {
     preset_name: String,
     draft_hotkey: Option<u8>,
     selected: Option<usize>,
+    pub physics_groups: Vec<aria_core::physics::GroupInfo>,
+    physics_defaults: aria_core::physics::PhysicsSettings,
+    physics_panel: crate::physics_panel::PhysicsPanel,
 }
 impl InputMonitor {
     #[cfg(feature = "screenshots")]
@@ -70,6 +74,7 @@ impl InputMonitor {
         parameters: &[RigParameter],
     ) -> Self {
         let mut message = None;
+        let physics_defaults = default.physics.clone();
         let saved = saved
             .filter(|s| match s.validate(parameters) {
                 Ok(()) => true,
@@ -96,6 +101,9 @@ impl InputMonitor {
             preset_name: String::new(),
             draft_hotkey: None,
             selected: None,
+            physics_groups: Vec::new(),
+            physics_defaults,
+            physics_panel: Default::default(),
         }
     }
     pub fn toggle_pose(&mut self, parameters: &[RigParameter]) {
@@ -149,13 +157,16 @@ impl InputMonitor {
         can_export: bool,
     ) {
         ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 3.0;
+            ui.spacing_mut().button_padding = egui::vec2(7.0, 5.0);
             for (tab, label) in [
                 (Tab::Inputs, "Inputs"),
                 (Tab::Pose, "Pose"),
+                (Tab::Physics, "Physics"),
                 (Tab::Presets, "Presets"),
                 (Tab::Raw, "Raw"),
             ] {
-                ui.selectable_value(&mut self.tab, tab, label);
+                ui.selectable_value(&mut self.tab, tab, egui::RichText::new(label).size(12.0));
             }
         });
         if let Some(message) = &self.message {
@@ -182,6 +193,22 @@ impl InputMonitor {
             Tab::Inputs => self.inputs_ui(ui, parameters, labels, inputs),
             Tab::Pose => self.pose_ui(ui, parameters, labels, can_export),
             Tab::Presets => self.presets_ui(ui, parameters, mapping),
+            Tab::Physics => {
+                let actions = self.physics_panel.show(
+                    ui,
+                    &mut self.saved.config.physics,
+                    &self.physics_defaults,
+                    &self.physics_groups,
+                );
+                if actions.save {
+                    self.save_requested = true;
+                    self.message = Some("Overall and group physics settings saved locally.".into());
+                }
+                self.reset_motion |= actions.settle;
+                if actions.presets {
+                    self.tab = Tab::Presets;
+                }
+            }
             Tab::Raw => {}
         }
     }
@@ -211,7 +238,6 @@ impl InputMonitor {
             self.message = Some("Input configuration saved locally.".into());
         }
         self.filter_ui(ui);
-        let search = self.search.to_lowercase();
         let mut names: Vec<_> = rig::INPUT_NAMES
             .iter()
             .map(|n| n.to_string())
@@ -220,26 +246,28 @@ impl InputMonitor {
             .collect();
         names.sort();
         names.dedup();
-        for p in parameters {
-            let binding = self.saved.config.bindings.get(&p.id);
-            if self.mapped_only && binding.is_none() {
+        let mut shown = 0;
+        for category in CATEGORIES {
+            let visible: Vec<_> = parameters
+                .iter()
+                .filter(|p| self.matches(p, labels) && control_category(p, labels) == category)
+                .collect();
+            if visible.is_empty() {
                 continue;
             }
+            shown += visible.len();
+            let title = format!("{category} · {}", visible.len());
+            crate::theme::card(ui, |ui| {
+                egui::CollapsingHeader::new(egui::RichText::new(title).strong())
+                .id_salt(("input-category", category)).default_open(category == CATEGORIES[0])
+                .open((!self.search.trim().is_empty()).then_some(true))
+                .show(ui, |ui| {
+            for p in visible {
             let label = labels.get(&p.id).map(String::as_str).unwrap_or(&p.id);
-            if !format!(
-                "{label} {} {}",
-                p.id,
-                binding.map_or("", |b| b.input.as_str())
-            )
-            .to_lowercase()
-            .contains(&search)
-            {
-                continue;
-            }
             ui.push_id(&p.id, |ui| {
                 egui::CollapsingHeader::new(format!("{label}   {:.3}", p.value))
                     .id_salt("input-control")
-                    .default_open(crate::smoke_mode())
+                    .default_open(crate::smoke_mode() && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("inputs"))
                     .show(ui, |ui| {
                         ui.label(egui::RichText::new(&p.id).small());
                         let old = self.saved.config.bindings.get(&p.id).map(|b| b.input.clone());
@@ -301,7 +329,26 @@ impl InputMonitor {
                 } else { 0.0 }).desired_height(4.0));
                 ui.add_space(4.0);
             });
+            }
+            });
+            });
+            ui.add_space(4.0);
         }
+        if shown == 0 {
+            crate::theme::caption(ui, "No controls match this filter.");
+        }
+    }
+    fn matches(&self, p: &RigParameter, labels: &BTreeMap<String, String>) -> bool {
+        let binding = self.saved.config.bindings.get(&p.id);
+        (!self.mapped_only || binding.is_some())
+            && format!(
+                "{} {} {}",
+                p.id,
+                labels.get(&p.id).map_or("", String::as_str),
+                binding.map_or("", |b| b.input.as_str())
+            )
+            .to_lowercase()
+            .contains(&self.search.trim().to_lowercase())
     }
     fn pose_ui(
         &mut self,
@@ -310,106 +357,133 @@ impl InputMonitor {
         labels: &BTreeMap<String, String>,
         can_export: bool,
     ) {
-        let mut active = self.saved.config.pose.mode != PoseMode::Live;
-        if ui
-            .checkbox(&mut active, "Pose mode / manual inputs")
-            .changed()
-        {
-            self.toggle_pose(parameters);
-        }
-        if active {
-            let mut frozen = self.saved.config.pose.mode == PoseMode::Frozen;
+        crate::theme::category(ui, "pose-capture", "Pose & capture", true, |ui| {
+            let mut active = self.saved.config.pose.mode != PoseMode::Live;
             if ui
-                .checkbox(&mut frozen, "Freeze all animation for a picture")
+                .checkbox(&mut active, "Pose mode / manual inputs")
                 .changed()
             {
-                if frozen {
-                    self.saved.config.capture_pose(parameters);
-                } else {
-                    self.saved.config.pose.mode = PoseMode::Override;
-                }
-                self.reset_motion = true;
+                self.toggle_pose(parameters);
             }
-            ui.label(egui::RichText::new(if frozen {"Tracking, physics and breathing are frozen. Adjust any value; the pose stays fixed."} else {"Check Hold on individual controls. Other inputs and physics remain live."}).small());
-            ui.horizontal_wrapped(|ui| {
-                if ui.button("Capture current pose").clicked() {
-                    self.saved.config.capture_pose(parameters);
+            if active {
+                let mut frozen = self.saved.config.pose.mode == PoseMode::Frozen;
+                if ui
+                    .checkbox(&mut frozen, "Freeze all animation for a picture")
+                    .changed()
+                {
+                    if frozen {
+                        self.saved.config.capture_pose(parameters);
+                    } else {
+                        self.saved.config.pose.mode = PoseMode::Override;
+                    }
                     self.reset_motion = true;
                 }
-                if ui.button("Resume live").clicked() {
-                    self.saved.config.pose.mode = PoseMode::Live;
-                    self.reset_motion = true;
-                }
-            });
-        } else {
-            ui.label("Enable pose mode to hold the current pose and adjust each control.");
-        }
-        if ui
-            .add_enabled(can_export, egui::Button::new("Save transparent PNG…"))
-            .on_hover_text("Save the rendered Live2D avatar without the studio UI or background.")
-            .clicked()
-            && let Some(path) = rfd::FileDialog::new()
-                .set_file_name("aria-pose.png")
-                .add_filter("PNG", &["png"])
-                .save_file()
-        {
-            self.export_png = Some(path);
-        }
-        if ui.button("Save pose as preset…").clicked() {
-            self.tab = Tab::Presets;
-        }
-        self.filter_ui(ui);
-        let search = self.search.to_lowercase();
-        for p in parameters {
-            if self.mapped_only && !self.saved.config.bindings.contains_key(&p.id) {
-                continue;
-            }
-            let label = labels.get(&p.id).map(String::as_str).unwrap_or(&p.id);
-            if !format!("{label} {}", p.id).to_lowercase().contains(&search) {
-                continue;
-            }
-            ui.push_id(&p.id, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(label).on_hover_text(&p.id);
-                    if self.saved.config.pose.mode == PoseMode::Override {
-                        let mut held = self.saved.config.pose.held.contains_key(&p.id);
-                        if ui.checkbox(&mut held, "Hold").changed() {
-                            if held {
-                                self.saved.config.pose.held.insert(p.id.clone(), p.value);
-                            } else {
-                                self.saved.config.pose.held.remove(&p.id);
-                            }
-                        }
+                ui.label(egui::RichText::new(if frozen {"Tracking, physics and breathing are frozen. Adjust any value; the pose stays fixed."} else {"Check Hold on individual controls. Other inputs and physics remain live."}).small());
+                ui.horizontal_wrapped(|ui| {
+                    if ui.button("Capture current pose").clicked() {
+                        self.saved.config.capture_pose(parameters);
+                        self.reset_motion = true;
+                    }
+                    if ui.button("Resume live").clicked() {
+                        self.saved.config.pose.mode = PoseMode::Live;
+                        self.reset_motion = true;
                     }
                 });
-                let step = self.saved.config.steps.get(&p.id).copied().unwrap_or(0.0);
-                match self.saved.config.pose.mode {
-                    PoseMode::Frozen => {
-                        let value = self
-                            .saved
-                            .config
-                            .pose
-                            .frozen
-                            .entry(p.id.clone())
-                            .or_insert(p.value);
-                        value_slider(ui, value, p, step);
-                    }
-                    PoseMode::Override if self.saved.config.pose.held.contains_key(&p.id) => {
-                        let value = self.saved.config.pose.held.get_mut(&p.id).unwrap();
-                        value_slider(ui, value, p, step);
-                    }
-                    _ => {
-                        let mut value = p.value;
-                        ui.add_enabled_ui(false, |ui| value_slider(ui, &mut value, p, step));
-                    }
-                }
-                step_editor(
-                    ui,
-                    self.saved.config.steps.entry(p.id.clone()).or_insert(0.0),
-                    p,
-                );
-                ui.separator();
+            } else {
+                ui.label("Enable pose mode to hold the current pose and adjust each control.");
+            }
+            if ui
+                .add_enabled(can_export, egui::Button::new("Save transparent PNG…"))
+                .on_hover_text(
+                    "Save the rendered Live2D avatar without the studio UI or background.",
+                )
+                .clicked()
+                && let Some(path) = rfd::FileDialog::new()
+                    .set_file_name("aria-pose.png")
+                    .add_filter("PNG", &["png"])
+                    .save_file()
+            {
+                self.export_png = Some(path);
+            }
+            if ui.button("Save pose as preset…").clicked() {
+                self.tab = Tab::Presets;
+            }
+        });
+        self.filter_ui(ui);
+        for category in CATEGORIES {
+            let visible: Vec<_> = parameters
+                .iter()
+                .filter(|p| self.matches(p, labels) && control_category(p, labels) == category)
+                .collect();
+            if visible.is_empty() {
+                continue;
+            }
+            let title = format!("{category} · {}", visible.len());
+            crate::theme::card(ui, |ui| {
+                egui::CollapsingHeader::new(egui::RichText::new(title).strong())
+                    .id_salt(("pose-category", category))
+                    .default_open(category == CATEGORIES[0])
+                    .open((!self.search.trim().is_empty()).then_some(true))
+                    .show(ui, |ui| {
+                        for p in visible {
+                            let label = labels.get(&p.id).map(String::as_str).unwrap_or(&p.id);
+                            ui.push_id(&p.id, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(label).on_hover_text(&p.id);
+                                    if self.saved.config.pose.mode == PoseMode::Override {
+                                        let mut held =
+                                            self.saved.config.pose.held.contains_key(&p.id);
+                                        if ui.checkbox(&mut held, "Hold").changed() {
+                                            if held {
+                                                self.saved
+                                                    .config
+                                                    .pose
+                                                    .held
+                                                    .insert(p.id.clone(), p.value);
+                                            } else {
+                                                self.saved.config.pose.held.remove(&p.id);
+                                            }
+                                        }
+                                    }
+                                });
+                                let step =
+                                    self.saved.config.steps.get(&p.id).copied().unwrap_or(0.0);
+                                match self.saved.config.pose.mode {
+                                    PoseMode::Frozen => {
+                                        let value = self
+                                            .saved
+                                            .config
+                                            .pose
+                                            .frozen
+                                            .entry(p.id.clone())
+                                            .or_insert(p.value);
+                                        value_slider(ui, value, p, step);
+                                    }
+                                    PoseMode::Override
+                                        if self.saved.config.pose.held.contains_key(&p.id) =>
+                                    {
+                                        let value =
+                                            self.saved.config.pose.held.get_mut(&p.id).unwrap();
+                                        value_slider(ui, value, p, step);
+                                    }
+                                    _ => {
+                                        let mut value = p.value;
+                                        ui.add_enabled_ui(false, |ui| {
+                                            value_slider(ui, &mut value, p, step)
+                                        });
+                                    }
+                                }
+                                step_editor(
+                                    ui,
+                                    self.saved.config.steps.entry(p.id.clone()).or_insert(0.0),
+                                    p,
+                                );
+                                ui.separator();
+                            });
+                        }
+                    });
             });
+            ui.add_space(4.0);
         }
     }
     fn make_preset(
@@ -477,166 +551,216 @@ impl InputMonitor {
         parameters: &[RigParameter],
         mapping: &mut MappingSettings,
     ) {
-        ui.label("Movement presets store ranges, stepping, response, physics and manual holds. Pose presets also freeze the entire model.");
-        ui.add(
-            egui::TextEdit::singleline(&mut self.preset_name)
-                .hint_text("Preset name")
-                .char_limit(80)
-                .desired_width(f32::INFINITY),
-        );
-        hotkey_combo(ui, "new-preset-key", &mut self.draft_hotkey);
-        ui.horizontal_wrapped(|ui| {
-            if ui.button("Save movement").clicked() {
-                self.save_new(PresetKind::Movement, parameters, mapping);
+        crate::theme::category(ui, "preset-create", "Create a preset", true, |ui| {
+            crate::theme::caption(
+                ui,
+                "Movement stores your tuning and physics. Pose also freezes the entire model.",
+            );
+            ui.add(
+                egui::TextEdit::singleline(&mut self.preset_name)
+                    .hint_text("Preset name")
+                    .char_limit(80)
+                    .desired_width(f32::INFINITY),
+            );
+            hotkey_combo(ui, "new-preset-key", &mut self.draft_hotkey);
+            ui.horizontal_wrapped(|ui| {
+                if ui.button("Save movement").clicked() {
+                    self.save_new(PresetKind::Movement, parameters, mapping);
+                }
+                if ui.button("Save pose").clicked() {
+                    self.save_new(PresetKind::Pose, parameters, mapping);
+                }
+            });
+        });
+        crate::theme::category(ui, "preset-shortcuts", "Keyboard shortcuts", false, |ui| {
+            if ui
+                .checkbox(
+                    &mut self.saved.global_hotkeys,
+                    "Enable global hotkeys (Windows)",
+                )
+                .changed()
+            {
+                self.save_requested = true;
             }
-            if ui.button("Save pose").clicked() {
-                self.save_new(PresetKind::Pose, parameters, mapping);
+            if let Some(error) = &self.hotkey_status {
+                ui.colored_label(egui::Color32::LIGHT_RED, error);
+            }
+            ui.label(egui::RichText::new("Ctrl+Alt+F1–F11 apply assigned presets. Ctrl+Alt+P freezes/resumes the pose. Keys are released when disabled or ARIA closes.").small());
+        });
+        crate::theme::category(ui, "preset-library", "Saved presets", true, |ui| {
+            if self.saved.presets.is_empty() {
+                crate::theme::caption(ui, "Your saved movement and poses will appear here.");
+            }
+            for i in 0..self.saved.presets.len() {
+                let p = &self.saved.presets[i];
+                let title = format!(
+                    "{} · {:?}{}",
+                    p.name,
+                    p.kind,
+                    p.hotkey.map_or(String::new(), |key| format!(
+                        " · {}",
+                        crate::hotkeys::label(key)
+                    ))
+                );
+                if ui
+                    .selectable_label(self.selected == Some(i), title)
+                    .clicked()
+                {
+                    self.selected = Some(i);
+                    self.preset_name = p.name.clone();
+                    self.draft_hotkey = p.hotkey;
+                }
+            }
+            if let Some(index) = self.selected.filter(|&i| i < self.saved.presets.len()) {
+                ui.horizontal_wrapped(|ui| {
+                    if ui.button("Apply selected").clicked() {
+                        self.apply_preset(index, mapping);
+                    }
+                    if ui.button("Replace selected").clicked() {
+                        let preset =
+                            self.make_preset(self.saved.presets[index].kind, parameters, mapping);
+                        let conflict = self.saved.presets.iter().enumerate().any(|(i, p)| {
+                            i != index
+                                && (p.name.eq_ignore_ascii_case(&preset.name)
+                                    || (preset.hotkey.is_some() && p.hotkey == preset.hotkey))
+                        });
+                        if conflict {
+                            self.message =
+                                Some("Name or hotkey is already used by another preset.".into());
+                        } else if let Err(error) = preset.validate(parameters) {
+                            self.message = Some(error.to_string());
+                        } else {
+                            self.saved.global_hotkeys |= preset.hotkey.is_some();
+                            self.saved.presets[index] = preset;
+                            self.message = Some("Preset replaced with current settings.".into());
+                            self.save_requested = true;
+                        }
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    if ui.button("Rename / assign key").clicked() {
+                        let mut preset = self.saved.presets[index].clone();
+                        preset.name = self.preset_name.trim().into();
+                        preset.hotkey = self.draft_hotkey;
+                        let conflict = self.saved.presets.iter().enumerate().any(|(i, p)| {
+                            i != index
+                                && (p.name.eq_ignore_ascii_case(&preset.name)
+                                    || (preset.hotkey.is_some() && p.hotkey == preset.hotkey))
+                        });
+                        if conflict {
+                            self.message = Some("Name or hotkey is already in use.".into());
+                        } else if let Err(error) = preset.validate(parameters) {
+                            self.message = Some(error.to_string());
+                        } else {
+                            self.saved.global_hotkeys |= preset.hotkey.is_some();
+                            self.saved.presets[index] = preset;
+                            self.message = Some("Name and hotkey saved.".into());
+                            self.save_requested = true;
+                        }
+                    }
+                    if ui.button("Delete selected").clicked() {
+                        self.saved.presets.remove(index);
+                        self.selected = None;
+                        self.message = Some("Preset deleted.".into());
+                        self.save_requested = true;
+                    }
+                });
+                if self.selected.is_some()
+                    && ui.button("Export selected preset…").clicked()
+                    && let Some(path) = rfd::FileDialog::new()
+                        .set_file_name("aria-preset.json")
+                        .add_filter("ARIA preset", &["json"])
+                        .save_file()
+                {
+                    let file = PresetFile {
+                        version: 1,
+                        model_key: self.model_key.clone(),
+                        preset: self.saved.presets[index].clone(),
+                    };
+                    self.message = Some(
+                        match serde_json::to_vec_pretty(&file)
+                            .map_err(anyhow::Error::from)
+                            .and_then(|bytes| std::fs::write(path, bytes).map_err(Into::into))
+                        {
+                            Ok(()) => "Preset exported.".into(),
+                            Err(error) => format!("Export failed: {error:#}"),
+                        },
+                    );
+                }
+            }
+            if ui.button("Import preset…").clicked()
+                && let Some(path) = rfd::FileDialog::new()
+                    .add_filter("ARIA preset", &["json"])
+                    .pick_file()
+            {
+                let result = aria_model::read_bounded(&path, 2 * 1024 * 1024)
+                    .and_then(|bytes| PresetFile::decode(&bytes, &self.model_key, parameters));
+                match result {
+                    Ok(mut file) if self.saved.presets.len() < 128 => {
+                        let name = file.preset.name.clone();
+                        let mut n = 2;
+                        while self
+                            .saved
+                            .presets
+                            .iter()
+                            .any(|p| p.name.eq_ignore_ascii_case(&file.preset.name))
+                        {
+                            file.preset.name =
+                                format!("{} ({n})", name.chars().take(24).collect::<String>());
+                            n += 1;
+                        }
+                        self.preset_name = file.preset.name.clone();
+                        self.draft_hotkey = None;
+                        self.saved.presets.push(file.preset);
+                        self.selected = Some(self.saved.presets.len() - 1);
+                        self.message =
+                            Some("Imported. Apply to activate; assign a hotkey if wanted.".into());
+                        self.save_requested = true;
+                    }
+                    Ok(_) => self.message = Some("Maximum 128 presets per model.".into()),
+                    Err(error) => self.message = Some(format!("Import failed: {error:#}")),
+                }
             }
         });
-        if ui
-            .checkbox(
-                &mut self.saved.global_hotkeys,
-                "Enable global hotkeys (Windows)",
-            )
-            .changed()
-        {
-            self.save_requested = true;
-        }
-        if let Some(error) = &self.hotkey_status {
-            ui.colored_label(egui::Color32::LIGHT_RED, error);
-        }
-        ui.label(egui::RichText::new("Ctrl+Alt+F1–F11 apply assigned presets. Ctrl+Alt+P freezes/resumes the pose. Keys are released when disabled or ARIA closes.").small());
-        ui.separator();
-        for i in 0..self.saved.presets.len() {
-            let p = &self.saved.presets[i];
-            let title = format!(
-                "{} · {:?}{}",
-                p.name,
-                p.kind,
-                p.hotkey.map_or(String::new(), |key| format!(
-                    " · {}",
-                    crate::hotkeys::label(key)
-                ))
-            );
-            if ui
-                .selectable_label(self.selected == Some(i), title)
-                .clicked()
-            {
-                self.selected = Some(i);
-                self.preset_name = p.name.clone();
-                self.draft_hotkey = p.hotkey;
-            }
-        }
-        if let Some(index) = self.selected.filter(|&i| i < self.saved.presets.len()) {
-            ui.horizontal_wrapped(|ui| {
-                if ui.button("Apply selected").clicked() {
-                    self.apply_preset(index, mapping);
-                }
-                if ui.button("Replace selected").clicked() {
-                    let preset =
-                        self.make_preset(self.saved.presets[index].kind, parameters, mapping);
-                    let conflict = self.saved.presets.iter().enumerate().any(|(i, p)| {
-                        i != index
-                            && (p.name.eq_ignore_ascii_case(&preset.name)
-                                || (preset.hotkey.is_some() && p.hotkey == preset.hotkey))
-                    });
-                    if conflict {
-                        self.message =
-                            Some("Name or hotkey is already used by another preset.".into());
-                    } else if let Err(error) = preset.validate(parameters) {
-                        self.message = Some(error.to_string());
-                    } else {
-                        self.saved.global_hotkeys |= preset.hotkey.is_some();
-                        self.saved.presets[index] = preset;
-                        self.message = Some("Preset replaced with current settings.".into());
-                        self.save_requested = true;
-                    }
-                }
-            });
-            ui.horizontal_wrapped(|ui| {
-                if ui.button("Rename / assign key").clicked() {
-                    let mut preset = self.saved.presets[index].clone();
-                    preset.name = self.preset_name.trim().into();
-                    preset.hotkey = self.draft_hotkey;
-                    let conflict = self.saved.presets.iter().enumerate().any(|(i, p)| {
-                        i != index
-                            && (p.name.eq_ignore_ascii_case(&preset.name)
-                                || (preset.hotkey.is_some() && p.hotkey == preset.hotkey))
-                    });
-                    if conflict {
-                        self.message = Some("Name or hotkey is already in use.".into());
-                    } else if let Err(error) = preset.validate(parameters) {
-                        self.message = Some(error.to_string());
-                    } else {
-                        self.saved.global_hotkeys |= preset.hotkey.is_some();
-                        self.saved.presets[index] = preset;
-                        self.message = Some("Name and hotkey saved.".into());
-                        self.save_requested = true;
-                    }
-                }
-                if ui.button("Delete selected").clicked() {
-                    self.saved.presets.remove(index);
-                    self.selected = None;
-                    self.message = Some("Preset deleted.".into());
-                    self.save_requested = true;
-                }
-            });
-            if self.selected.is_some()
-                && ui.button("Export selected preset…").clicked()
-                && let Some(path) = rfd::FileDialog::new()
-                    .set_file_name("aria-preset.json")
-                    .add_filter("ARIA preset", &["json"])
-                    .save_file()
-            {
-                let file = PresetFile {
-                    version: 1,
-                    model_key: self.model_key.clone(),
-                    preset: self.saved.presets[index].clone(),
-                };
-                self.message = Some(
-                    match serde_json::to_vec_pretty(&file)
-                        .map_err(anyhow::Error::from)
-                        .and_then(|bytes| std::fs::write(path, bytes).map_err(Into::into))
-                    {
-                        Ok(()) => "Preset exported.".into(),
-                        Err(error) => format!("Export failed: {error:#}"),
-                    },
-                );
-            }
-        }
-        if ui.button("Import preset…").clicked()
-            && let Some(path) = rfd::FileDialog::new()
-                .add_filter("ARIA preset", &["json"])
-                .pick_file()
-        {
-            let result = aria_model::read_bounded(&path, 2 * 1024 * 1024)
-                .and_then(|bytes| PresetFile::decode(&bytes, &self.model_key, parameters));
-            match result {
-                Ok(mut file) if self.saved.presets.len() < 128 => {
-                    let name = file.preset.name.clone();
-                    let mut n = 2;
-                    while self
-                        .saved
-                        .presets
-                        .iter()
-                        .any(|p| p.name.eq_ignore_ascii_case(&file.preset.name))
-                    {
-                        file.preset.name =
-                            format!("{} ({n})", name.chars().take(24).collect::<String>());
-                        n += 1;
-                    }
-                    self.preset_name = file.preset.name.clone();
-                    self.draft_hotkey = None;
-                    self.saved.presets.push(file.preset);
-                    self.selected = Some(self.saved.presets.len() - 1);
-                    self.message =
-                        Some("Imported. Apply to activate; assign a hotkey if wanted.".into());
-                    self.save_requested = true;
-                }
-                Ok(_) => self.message = Some("Maximum 128 presets per model.".into()),
-                Err(error) => self.message = Some(format!("Import failed: {error:#}")),
-            }
-        }
+    }
+}
+
+const CATEGORIES: [&str; 6] = [
+    "Head & body",
+    "Eyes & brows",
+    "Mouth & expression",
+    "Hair, ears & tail",
+    "Clothing & accessories",
+    "Other controls",
+];
+
+fn control_category(p: &RigParameter, labels: &BTreeMap<String, String>) -> &'static str {
+    let name = format!("{} {}", p.id, labels.get(&p.id).map_or("", String::as_str)).to_lowercase();
+    // Presentation only: never change a binding based on a guessed category.
+    if ["hair", "ear", "tail"].iter().any(|s| name.contains(s)) {
+        CATEGORIES[3]
+    } else if ["eye", "brow", "pupil", "iris"]
+        .iter()
+        .any(|s| name.contains(s))
+    {
+        CATEGORIES[1]
+    } else if ["mouth", "lip", "tongue", "cheek", "smile", "jaw"]
+        .iter()
+        .any(|s| name.contains(s))
+    {
+        CATEGORIES[2]
+    } else if ["angle", "body", "head", "breath", "neck"]
+        .iter()
+        .any(|s| name.contains(s))
+    {
+        CATEGORIES[0]
+    } else if ["cloth", "hood", "skirt", "ribbon", "sleeve", "accessor"]
+        .iter()
+        .any(|s| name.contains(s))
+    {
+        CATEGORIES[4]
+    } else {
+        CATEGORIES[5]
     }
 }
 

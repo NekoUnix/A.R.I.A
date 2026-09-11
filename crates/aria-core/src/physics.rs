@@ -3,8 +3,105 @@
 //! This implements the data format, not VTube Studio's proprietary physics modes.
 use crate::rig::RigParameter;
 use anyhow::{Result, ensure};
-use serde::Deserialize;
-use std::collections::BTreeMap;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
+
+/// Multipliers on the avatar's authored particle properties, never file edits.
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct GroupSettings {
+    pub enabled: bool,
+    pub strength: f32,
+    pub inertia: f32,
+    pub response: f32,
+    pub gravity: f32,
+    pub wind: f32,
+}
+impl Default for GroupSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            strength: 1.0,
+            inertia: 1.0,
+            response: 1.0,
+            gravity: 1.0,
+            wind: 0.0,
+        }
+    }
+}
+impl GroupSettings {
+    pub fn validate(&self) -> Result<()> {
+        ensure!(
+            [self.strength, self.inertia, self.gravity]
+                .iter()
+                .all(|v| v.is_finite() && (0.0..=2.0).contains(v))
+                && self.response.is_finite()
+                && (0.25..=2.0).contains(&self.response)
+                && self.wind.is_finite()
+                && (-1.0..=1.0).contains(&self.wind),
+            "Invalid physics tuning; multipliers or wind exceed supported limits"
+        );
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct PhysicsSettings {
+    // Keep the v0.4 fields at their original JSON/RON locations.
+    pub enabled: bool,
+    pub strength: f32,
+    pub wind: f32,
+    pub inertia: f32,
+    pub response: f32,
+    pub gravity: f32,
+    pub groups: BTreeMap<String, GroupSettings>,
+}
+impl Default for PhysicsSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            strength: 1.0,
+            wind: 0.0,
+            inertia: 1.0,
+            response: 1.0,
+            gravity: 1.0,
+            groups: BTreeMap::new(),
+        }
+    }
+}
+impl PhysicsSettings {
+    pub fn validate(&self) -> Result<()> {
+        GroupSettings {
+            enabled: self.enabled,
+            strength: self.strength,
+            wind: self.wind,
+            inertia: self.inertia,
+            response: self.response,
+            gravity: self.gravity,
+        }
+        .validate()?;
+        ensure!(self.groups.len() <= 256, "Too many saved physics groups");
+        for (id, group) in &self.groups {
+            ensure!(
+                !id.is_empty() && id.len() <= 256,
+                "Invalid physics group ID"
+            );
+            group.validate()?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct GroupInfo {
+    pub id: String,
+    pub name: String,
+    pub inputs: Vec<String>,
+    pub outputs: Vec<String>,
+    pub particles: usize,
+    pub imported_multiplier: f32,
+}
 
 #[derive(Clone, Copy, Default, Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -70,6 +167,14 @@ struct Meta {
     #[serde(default)]
     fps: f32,
     effective_forces: Forces,
+    #[serde(default)]
+    physics_dictionary: Vec<DictionaryEntry>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct DictionaryEntry {
+    id: String,
+    name: String,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -184,11 +289,14 @@ struct Destination {
 }
 struct Chain {
     id: String,
+    name: String,
     drivers: Vec<Driver>,
     outputs: Vec<Destination>,
     particles: Vec<Particle>,
     normalization: Normalization,
     multiplier: f32,
+    tuning: GroupSettings,
+    reset_pending: bool,
 }
 
 pub struct Physics {
@@ -202,6 +310,9 @@ pub struct Physics {
     pub enabled: bool,
     pub strength: f32,
     pub wind_strength: f32,
+    inertia: f32,
+    response: f32,
+    gravity: f32,
     pub warnings: Vec<String>,
 }
 
@@ -235,9 +346,24 @@ impl Physics {
             enabled: true,
             strength: 1.0,
             wind_strength: 0.0,
+            inertia: 1.0,
+            response: 1.0,
+            gravity: 1.0,
             warnings: Vec::new(),
         };
+        let names: BTreeMap<_, _> = doc
+            .meta
+            .physics_dictionary
+            .into_iter()
+            .filter(|e| e.id.len() <= 256 && !e.name.trim().is_empty() && e.name.len() <= 512)
+            .map(|e| (e.id, e.name))
+            .collect();
+        let mut ids = BTreeSet::new();
         for s in doc.physics_settings {
+            ensure!(
+                !s.id.is_empty() && s.id.len() <= 256 && ids.insert(s.id.clone()),
+                "Physics group IDs must be unique and nonempty"
+            );
             ensure!(
                 (2..=64).contains(&s.vertices.len())
                     && s.input.len() <= 128
@@ -262,11 +388,14 @@ impl Physics {
                 );
             }
             let mut chain = Chain {
+                name: names.get(&s.id).cloned().unwrap_or_else(|| s.id.clone()),
                 id: s.id,
                 drivers: Vec::new(),
                 outputs: Vec::new(),
                 normalization: s.normalization,
                 multiplier: 1.0,
+                tuning: GroupSettings::default(),
+                reset_pending: false,
                 particles: s
                     .vertices
                     .into_iter()
@@ -327,6 +456,38 @@ impl Physics {
     pub fn group_count(&self) -> usize {
         self.chains.len()
     }
+    pub fn groups(&self) -> Vec<GroupInfo> {
+        self.chains
+            .iter()
+            .map(|c| GroupInfo {
+                id: c.id.clone(),
+                name: c.name.clone(),
+                inputs: c.drivers.iter().map(|d| d.spec.source.id.clone()).collect(),
+                outputs: c
+                    .outputs
+                    .iter()
+                    .map(|o| o.spec.destination.id.clone())
+                    .collect(),
+                particles: c.particles.len(),
+                imported_multiplier: c.multiplier,
+            })
+            .collect()
+    }
+    pub fn configure(&mut self, settings: &PhysicsSettings) {
+        self.enabled = settings.enabled;
+        self.strength = settings.strength;
+        self.wind_strength = settings.wind;
+        self.inertia = settings.inertia;
+        self.response = settings.response;
+        self.gravity = settings.gravity;
+        for chain in &mut self.chains {
+            let tuning = settings.groups.get(&chain.id).copied().unwrap_or_default();
+            if chain.tuning.enabled != tuning.enabled {
+                chain.reset_pending = true;
+            }
+            chain.tuning = tuning;
+        }
+    }
     pub fn output_count(&self) -> usize {
         self.chains.iter().map(|c| c.outputs.len()).sum()
     }
@@ -366,19 +527,10 @@ impl Physics {
         if !self.initialized || self.previous_inputs.len() != parameters.len() {
             let mut initial = parameters.to_vec();
             for c in &mut self.chains {
-                let (translation, gravity) = drivers(c, &initial, self.rest_gravity);
-                c.particles[0].pos = translation;
-                for i in 1..c.particles.len() {
-                    c.particles[i].pos = c.particles[i - 1]
-                        .pos
-                        .add(gravity.mul(c.particles[i].spec.radius));
-                    c.particles[i].velocity = V2::default();
-                    c.particles[i].gravity = gravity;
+                if !c.tuning.enabled {
+                    continue;
                 }
-                outputs(c, self.rest_gravity);
-                for o in &mut c.outputs {
-                    o.previous = o.current;
-                }
+                initialize_chain(c, &initial, self.rest_gravity);
                 apply(c, &mut initial, 1.0, self.strength);
             }
             self.previous_inputs = values.clone();
@@ -394,26 +546,46 @@ impl Physics {
             for (i, p) in working.iter_mut().enumerate() {
                 p.value = self.previous_inputs[i] + (values[i] - self.previous_inputs[i]) * t;
             }
-            let wind = self.wind.add(V2 {
-                x: self.wind_strength.clamp(-1.0, 1.0) * 0.1,
-                y: 0.0,
-            });
             for c in &mut self.chains {
+                if !c.tuning.enabled {
+                    continue;
+                }
+                if c.reset_pending {
+                    initialize_chain(c, &working, self.rest_gravity);
+                }
+                let wind = self.wind.add(V2 {
+                    x: (self.wind_strength.clamp(-1.0, 1.0) + c.tuning.wind.clamp(-1.0, 1.0)) * 0.1,
+                    y: 0.0,
+                });
                 let (translation, gravity) = drivers(c, &working, self.rest_gravity);
                 c.particles[0].pos = translation;
                 for i in 1..c.particles.len() {
                     let parent = c.particles[i - 1].pos;
                     let p = &mut c.particles[i];
-                    let delay = p.spec.delay * self.step as f32 * 30.0;
+                    let delay = p.spec.delay
+                        * self.step as f32
+                        * 30.0
+                        * self.response.clamp(0.25, 2.0)
+                        * c.tuning.response.clamp(0.25, 2.0);
                     let before = p.pos;
                     let direction = p.pos.sub(parent).rotate(p.gravity.angle(gravity) / 5.0);
-                    let force = gravity.mul(p.spec.acceleration).add(wind);
+                    let force = gravity
+                        .mul(
+                            p.spec.acceleration
+                                * self.gravity.clamp(0.0, 2.0)
+                                * c.tuning.gravity.clamp(0.0, 2.0),
+                        )
+                        .add(wind);
                     let predicted = direction
                         .add(p.velocity.mul(delay))
                         .add(force.mul(delay * delay));
                     p.pos = parent.add(predicted.unit().mul(p.spec.radius));
                     p.velocity = if delay > 1e-6 {
-                        p.pos.sub(before).mul(p.spec.mobility / delay)
+                        let mobility = (p.spec.mobility
+                            * self.inertia.clamp(0.0, 2.0)
+                            * c.tuning.inertia.clamp(0.0, 2.0))
+                        .clamp(0.0, 1.0);
+                        p.pos.sub(before).mul(mobility / delay)
                     } else {
                         V2::default()
                     };
@@ -435,6 +607,23 @@ impl Physics {
             apply(c, parameters, alpha, self.strength);
         }
     }
+}
+
+fn initialize_chain(c: &mut Chain, parameters: &[RigParameter], rest: V2) {
+    let (translation, gravity) = drivers(c, parameters, rest);
+    c.particles[0].pos = translation;
+    for i in 1..c.particles.len() {
+        c.particles[i].pos = c.particles[i - 1]
+            .pos
+            .add(gravity.mul(c.particles[i].spec.radius));
+        c.particles[i].velocity = V2::default();
+        c.particles[i].gravity = gravity;
+    }
+    outputs(c, rest);
+    for o in &mut c.outputs {
+        o.previous = o.current;
+    }
+    c.reset_pending = false;
 }
 
 fn drivers(c: &Chain, parameters: &[RigParameter], rest: V2) -> (V2, V2) {
@@ -482,10 +671,14 @@ fn outputs(c: &mut Chain, rest: V2) {
     }
 }
 fn apply(c: &Chain, parameters: &mut [RigParameter], alpha: f32, strength: f32) {
+    if !c.tuning.enabled || c.reset_pending {
+        return;
+    }
     for o in &c.outputs {
         let p = &mut parameters[o.index];
         let value = (o.previous + (o.current - o.previous) * alpha)
             * c.multiplier
+            * c.tuning.strength.clamp(0.0, 2.0)
             * strength.clamp(0.0, 3.0);
         let target = value.clamp(p.min, p.max);
         p.value += (target - p.value) * o.spec.weight / 100.0;
@@ -571,5 +764,172 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    fn two_group_rig() -> (Vec<u8>, Vec<RigParameter>) {
+        let mut doc: serde_json::Value = serde_json::from_slice(FIXTURE).unwrap();
+        doc["Meta"]["PhysicsDictionary"] = serde_json::json!([
+            {"Id":"Hair", "Name":"Custom ribbon"}, {"Id":"Tail", "Name":"Custom antenna"}]);
+        let mut second = doc["PhysicsSettings"][0].clone();
+        second["Id"] = "Tail".into();
+        second["Output"][0]["Destination"]["Id"] = "Tail".into();
+        doc["PhysicsSettings"].as_array_mut().unwrap().push(second);
+        let mut p = parameters();
+        let mut tail = p[1].clone();
+        tail.id = "Tail".into();
+        p.push(tail);
+        (serde_json::to_vec(&doc).unwrap(), p)
+    }
+    fn trajectory(settings: &PhysicsSettings) -> Vec<[f32; 2]> {
+        let (bytes, mut p) = two_group_rig();
+        let mut physics = Physics::load(&bytes, &p).unwrap();
+        physics.configure(settings);
+        let mut values = Vec::new();
+        for n in 0..240 {
+            p[0].value = if n < 20 { 0.0 } else { 0.03 };
+            p[1].value = 0.0;
+            p[2].value = 0.0;
+            physics.update(&mut p, 1.0 / 60.0);
+            values.push([p[1].value, p[2].value]);
+        }
+        values
+    }
+    #[test]
+    fn arbitrary_group_names_are_discovered_and_group_changes_are_isolated() {
+        let (bytes, p) = two_group_rig();
+        let physics = Physics::load(&bytes, &p).unwrap();
+        let groups = physics.groups();
+        assert_eq!(groups[0].name, "Custom ribbon");
+        assert_eq!(groups[1].outputs, ["Tail"]);
+        let base = trajectory(&PhysicsSettings::default());
+        let mut settings = PhysicsSettings::default();
+        settings.groups.insert(
+            "Hair".into(),
+            GroupSettings {
+                strength: 0.5,
+                ..Default::default()
+            },
+        );
+        let tuned = trajectory(&settings);
+        assert!(base.iter().any(|v| v[0].abs() > 0.01));
+        for (a, b) in base.iter().zip(tuned) {
+            assert!((a[0] * 0.5 - b[0]).abs() < 1e-6);
+            assert_eq!(a[1], b[1], "An unrelated group must remain unchanged");
+        }
+        settings.groups.get_mut("Hair").unwrap().enabled = false;
+        let muted = trajectory(&settings);
+        assert!(muted.iter().all(|v| v[0] == 0.0));
+        for (a, b) in base.iter().zip(muted) {
+            assert_eq!(a[1], b[1]);
+        }
+        settings.groups.clear();
+        settings.strength = 0.5;
+        for (a, b) in base.iter().zip(trajectory(&settings)) {
+            assert!((a[0] * 0.5 - b[0]).abs() < 1e-6 && (a[1] * 0.5 - b[1]).abs() < 1e-6);
+        }
+    }
+    #[test]
+    fn particle_tuning_changes_motion_and_extremes_stay_finite() {
+        let base = trajectory(&PhysicsSettings::default());
+        for group in [
+            GroupSettings {
+                inertia: 0.2,
+                ..Default::default()
+            },
+            GroupSettings {
+                response: 0.4,
+                ..Default::default()
+            },
+            GroupSettings {
+                gravity: 0.2,
+                ..Default::default()
+            },
+            GroupSettings {
+                wind: 1.0,
+                ..Default::default()
+            },
+        ] {
+            let settings = PhysicsSettings {
+                groups: BTreeMap::from([("Hair".into(), group)]),
+                ..Default::default()
+            };
+            let tuned = trajectory(&settings);
+            assert!(
+                base.iter()
+                    .zip(&tuned)
+                    .any(|(a, b)| (a[0] - b[0]).abs() > 0.001)
+            );
+            assert!(base.iter().zip(&tuned).all(|(a, b)| a[1] == b[1]));
+        }
+        let settings = PhysicsSettings {
+            strength: 2.0,
+            inertia: 2.0,
+            gravity: 2.0,
+            response: 2.0,
+            wind: -1.0,
+            groups: BTreeMap::from([(
+                "Hair".into(),
+                GroupSettings {
+                    strength: 2.0,
+                    inertia: 2.0,
+                    gravity: 2.0,
+                    response: 2.0,
+                    wind: -1.0,
+                    enabled: true,
+                },
+            )]),
+            enabled: true,
+        };
+        settings.validate().unwrap();
+        assert!(
+            trajectory(&settings)
+                .iter()
+                .flatten()
+                .all(|v| v.is_finite() && (-1.0..=1.0).contains(v))
+        );
+        let (bytes, mut p) = two_group_rig();
+        let mut physics = Physics::load(&bytes, &p).unwrap();
+        let mut settings = settings;
+        for n in 0..180 {
+            settings.groups.get_mut("Hair").unwrap().enabled = n % 4 == 0;
+            settings.enabled = n % 7 != 0;
+            physics.configure(&settings);
+            p[0].value = (n as f32).sin();
+            p[1].value = 0.3;
+            p[2].value = 0.2;
+            physics.update(&mut p, 1.0 / 120.0);
+            if !settings.enabled || !settings.groups["Hair"].enabled {
+                assert_eq!(p[1].value, 0.3);
+            }
+            assert!(
+                p.iter()
+                    .all(|p| p.value.is_finite() && (p.min..=p.max).contains(&p.value))
+            );
+        }
+    }
+    #[test]
+    fn saved_physics_migrates_and_rejects_invalid_groups() {
+        let legacy: PhysicsSettings =
+            serde_json::from_str(r#"{"enabled":false,"strength":0.6,"wind":-0.3}"#).unwrap();
+        assert!(!legacy.enabled && legacy.inertia == 1.0 && legacy.groups.is_empty());
+        legacy.validate().unwrap();
+        let mut settings = legacy;
+        settings.groups.insert(
+            "AnyCustomGroup42".into(),
+            GroupSettings {
+                response: 0.5,
+                wind: 0.8,
+                ..Default::default()
+            },
+        );
+        let restored: PhysicsSettings =
+            serde_json::from_slice(&serde_json::to_vec(&settings).unwrap()).unwrap();
+        assert_eq!(restored, settings);
+        settings.groups.get_mut("AnyCustomGroup42").unwrap().inertia = f32::NAN;
+        assert!(settings.validate().is_err());
+        let (bytes, p) = two_group_rig();
+        let mut doc: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        doc["PhysicsSettings"][1]["Id"] = "Hair".into();
+        assert!(Physics::load(&serde_json::to_vec(&doc).unwrap(), &p).is_err());
     }
 }

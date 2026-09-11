@@ -1,6 +1,6 @@
 # Live2D avatar import on Windows
 
-ARIA v0.4 evaluates real `.moc3` models through Cubism Core and renders their
+ARIA v0.5 evaluates real `.moc3` models through Cubism Core and renders their
 ArtMeshes with wgpu/Direct3D 12. You need **the model, its texture images, and the
 official Cubism Core DLL**. A moc3 contains the rig, not the texture artwork.
 
@@ -109,11 +109,11 @@ simulation step with interpolated inputs and outputs, independent of UI FPS.
 Later groups can use earlier groups' outputs. Automatic breathing continues at
 rest, including when tracking is lost, and feeds physics where the rig connects it.
 
-Use **Secondary motion / physics** to enable or disable it, **Motion strength** to
-adjust the amount (1 is authored strength), and **Physics tuning → Wind** for a
-gentle horizontal force. **Settle motion** clears momentum. To hold a physics output,
-use **Pose** controls; physics otherwise runs after tracking. Physics controls persist
-with the model and are included in movement/pose presets.
+Use **Input Monitor → Physics** for global and individual group enable, strength,
+inertia, response speed, gravity and wind. Groups and their names come from each
+avatar's export. **Settle motion** clears momentum. To hold a physics output, use
+**Pose** controls; physics otherwise runs after tracking. Physics controls persist
+with each model and are included in movement/pose presets. See [the physics guide](physics.md).
 The profile's physics enable flag and per-group strength multipliers are honored;
 VTS's global strength/wind/dragging settings and legacy solver mode are not reproduced.
 
