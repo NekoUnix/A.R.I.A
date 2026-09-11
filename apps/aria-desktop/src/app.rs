@@ -43,6 +43,7 @@ struct Settings {
     saved_rigs: BTreeMap<String, SavedRig>,
     model_preferences: BTreeMap<String, ModelPreferences>,
     outputs: Option<OutputSettings>,
+    high_priority: bool,
 }
 
 impl Default for Settings {
@@ -61,6 +62,7 @@ impl Default for Settings {
             saved_rigs: BTreeMap::new(),
             model_preferences: BTreeMap::new(),
             outputs: None,
+            high_priority: false,
         }
     }
 }
@@ -128,12 +130,15 @@ pub struct AriaApp {
     raw: Option<TrackingFrame>,
     params: Parameters,
     started: Instant,
-    last_update: Instant,
+    frame_clock: crate::performance::FrameClock,
+    scene_revision: u64,
     render_fps: f32,
     gpu: String,
     metrics: crate::metrics::Metrics,
     status_message: Option<String>,
     outputs: OutputWindows,
+    broadcasts: crate::broadcast::Broadcasts,
+    priority_status: Option<String>,
     input_monitor: InputMonitor,
     hotkeys: crate::hotkeys::Hotkeys,
     live_inputs: Inputs,
@@ -196,12 +201,15 @@ impl AriaApp {
             raw: None,
             params: Parameters::default(),
             started: Instant::now(),
-            last_update: Instant::now(),
+            frame_clock: crate::performance::FrameClock::new(Instant::now()),
+            scene_revision: 0,
             render_fps: 60.0,
             gpu,
             metrics: crate::metrics::Metrics::default(),
             status_message: None,
             outputs,
+            broadcasts: Default::default(),
+            priority_status: None,
             input_monitor,
             hotkeys: crate::hotkeys::Hotkeys::new(cc.egui_ctx.clone()),
             live_inputs: Inputs::new(),
@@ -216,6 +224,15 @@ impl AriaApp {
             bare_textures: Vec::new(),
         };
         let mut app = app;
+        if app.settings.high_priority {
+            match crate::performance::set_high_priority(true) {
+                Ok(()) => app.priority_status = Some("Windows priority: High".into()),
+                Err(error) => {
+                    app.settings.high_priority = false;
+                    app.priority_status = Some(format!("Could not set High priority: {error:#}"));
+                }
+            }
+        }
         if let Some(preferences) = app.settings.model_preferences.get("preview-v1") {
             app.pipeline.restore_calibration(preferences.calibration);
         }
@@ -247,9 +264,20 @@ impl AriaApp {
                         app.outputs
                             .edit_canvas(0, |c| c.background = Background::Green);
                     }
-                    Ok("output-both") | Ok("output-transparent") | Ok("capture-controls") => {
+                    Ok("output-both")
+                    | Ok("output-transparent")
+                    | Ok("capture-controls")
+                    | Ok("capture-minimized")
+                    | Ok("output-resize")
+                    | Ok("output-freeform") => {
                         app.outputs.set_open(0, true);
                         app.outputs.set_open(1, true);
+                        app.outputs.set_open(2, true);
+                        app.outputs.edit_canvas(2, |c| {
+                            c.freeform_size = [1536, 1024];
+                            c.freeform_window = [480, 320];
+                            c.background = Background::Transparent;
+                        });
                         app.outputs.edit_canvas(0, |c| {
                             c.background = Background::Green;
                             c.position = [0.2, 0.0];
@@ -259,10 +287,11 @@ impl AriaApp {
                             c.position = [-0.12, 0.1];
                             c.zoom = 0.75;
                         });
-                        if std::env::var("ARIA_SMOKE_SCENARIO").as_deref()
-                            == Ok("output-transparent")
-                        {
-                            for i in 0..2 {
+                        if matches!(
+                            std::env::var("ARIA_SMOKE_SCENARIO").as_deref(),
+                            Ok("output-transparent") | Ok("capture-minimized")
+                        ) {
+                            for i in 0..3 {
                                 app.outputs
                                     .edit_canvas(i, |c| c.background = Background::Transparent);
                             }
@@ -629,14 +658,46 @@ impl AriaApp {
             if let Some(index) = self.outputs.ui(ui) {
                 self.detect_key_color(index);
             }
-            ui.label(RichText::new("OBS → Window Capture → A.R.I.A. Output — Landscape or Portrait. Add one source for each window you use.").small().color(MUTED));
+            let selected = self.outputs.snapshot().selected;
+            if let Some(status) = &self.broadcasts.status[selected] {
+                ui.label(RichText::new(status).small().color(MINT));
+            }
+            if ui.small_button("Retry OBS output").clicked() {
+                self.broadcasts.retry();
+            }
+            theme::caption(
+                ui,
+                "OBS → Spout2 Capture → select the matching ARIA sender. Keep ARIA and OBS on the same GPU. Leave the output open; minimizing its preview keeps the full-resolution sender running.",
+            );
             egui::ComboBox::from_id_salt("fps")
                 .selected_text(format!("{} FPS target", self.settings.fps))
                 .show_ui(ui, |ui| {
                     for fps in [30, 60, 120] {
-                        ui.selectable_value(&mut self.settings.fps, fps, format!("{fps} FPS"));
+                        if ui
+                            .selectable_value(&mut self.settings.fps, fps, format!("{fps} FPS"))
+                            .changed()
+                        {
+                            self.input_monitor.save_requested = true;
+                        }
                     }
                 });
+            ui.collapsing("Windows performance", |ui| {
+                if ui.add_enabled(cfg!(windows), egui::Checkbox::new(&mut self.settings.high_priority, "High process priority")).changed() {
+                    match crate::performance::set_high_priority(self.settings.high_priority) {
+                        Ok(()) => {
+                            self.priority_status = Some(format!("Windows priority: {}", if self.settings.high_priority { "High" } else { "Normal" }));
+                            self.input_monitor.save_requested = true;
+                        }
+                        Err(e) => {
+                            self.settings.high_priority = !self.settings.high_priority;
+                            self.priority_status = Some(format!("Priority change failed: {e:#}"));
+                        }
+                    }
+                }
+                theme::caption(ui, "Gives ARIA CPU scheduling preference over normal-priority apps when Windows is busy. It may reduce CPU scheduling hitches, but cannot fix GPU overload or guarantee smooth frames. High is the strongest priority offered here; Realtime can starve Windows, input and OBS. Turn High off if other apps become less responsive. This preference applies to ARIA on this PC.");
+                if let Some(status) = &self.priority_status { ui.label(RichText::new(status).small().color(MINT)); }
+                theme::caption(ui, "The FPS target limits model simulation and rendering even while dragging UI controls. Static poses reuse the last model texture. Closed outputs release their capture textures.");
+            });
             ui.hyperlink_to(
                 "Windows setup & troubleshooting ↗",
                 "https://github.com/NekoUnix/A.R.I.A/blob/main/docs/windows.md",
@@ -769,6 +830,7 @@ impl AriaApp {
             .insert(self.input_monitor.model_key.clone(), preferences);
     }
     fn restore_model_preferences(&mut self, key: &str) {
+        self.scene_revision = self.scene_revision.wrapping_add(1);
         let preferences = self
             .settings
             .model_preferences
@@ -986,13 +1048,9 @@ impl eframe::App for AriaApp {
         }
         let now = Instant::now();
         // A layout discard can call update twice for the same frame.
-        let dt = if ctx.current_pass_index() == 0 {
-            let dt = now.duration_since(self.last_update).as_secs_f32();
-            self.last_update = now;
-            dt
-        } else {
-            0.0
-        };
+        let dt = self
+            .frame_clock
+            .tick(now, self.settings.fps, ctx.current_pass_index() == 0);
         if dt > 0.0 {
             self.render_fps = self.render_fps * 0.92 + (1.0 / dt).min(1000.0) * 0.08;
         }
@@ -1032,33 +1090,38 @@ impl eframe::App for AriaApp {
                 _ => {}
             }
         }
-        self.params = self
-            .pipeline
-            .update(self.raw.as_ref(), &self.settings.mapping, dt);
-        if self.input_monitor.saved.config.pose.mode != PoseMode::Frozen {
-            self.animation_time += dt.min(0.25);
-        }
-        self.live_inputs = rig::tracking_inputs(
-            self.raw.as_ref(),
-            self.params,
-            self.settings.mapping.mirror,
-            self.animation_time,
-        );
         if dt > 0.0 {
+            self.params = self
+                .pipeline
+                .update(self.raw.as_ref(), &self.settings.mapping, dt);
+            if self.input_monitor.saved.config.pose.mode != PoseMode::Frozen {
+                self.animation_time += dt.min(0.25);
+            }
+            self.live_inputs = rig::tracking_inputs(
+                self.raw.as_ref(),
+                self.params,
+                self.settings.mapping.mirror,
+                self.animation_time,
+            );
             if let Some(avatar) = &mut self.live2d {
                 if std::mem::take(&mut self.input_monitor.reset_motion) {
                     avatar.reset_motion();
                 }
-                if let Err(error) = avatar.update(
+                match avatar.update(
                     &self.live_inputs,
                     &mut self.input_monitor.saved.config,
                     &mut self.input_monitor.expressions,
                     dt,
                 ) {
-                    self.status_message = Some(format!("Live2D update stopped: {error:#}"));
-                    self.use_preview_rig();
+                    Ok(true) => self.scene_revision = self.scene_revision.wrapping_add(1),
+                    Ok(false) => {}
+                    Err(error) => {
+                        self.status_message = Some(format!("Live2D update stopped: {error:#}"));
+                        self.use_preview_rig();
+                    }
                 }
             } else {
+                self.scene_revision = self.scene_revision.wrapping_add(1);
                 let mut parameters = movement::preview_parameters(self.params);
                 self.input_monitor.saved.config.evaluate(
                     &self.live_inputs,
@@ -1093,7 +1156,7 @@ impl eframe::App for AriaApp {
                     ui.label(RichText::new("A.R.I.A.").size(26.0).strong().color(MINT));
                     ui.label(RichText::new("AVATAR STUDIO").size(12.0).color(MUTED));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(RichText::new("v0.7 · WINDOWS PREVIEW").small().color(MUTED));
+                        ui.label(RichText::new("v0.8 · WINDOWS PREVIEW").small().color(MUTED));
                     });
                 });
             });
@@ -1103,7 +1166,7 @@ impl eframe::App for AriaApp {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(RichText::new(&self.gpu).small().color(MUTED));
                     ui.separator();
-                    ui.label(RichText::new(format!("{:.0} UI FPS", self.render_fps)).small());
+                    ui.label(RichText::new(format!("{:.0} model FPS", self.render_fps)).small());
                     self.metrics.footer(ui);
                     if let Some(cpu) = frame.info().cpu_usage {
                         ui.label(RichText::new(format!("{:.2} ms UI work", cpu * 1000.0)).small());
@@ -1136,7 +1199,7 @@ impl eframe::App for AriaApp {
                     .show(ui, |ui| self.diagnostics(ui));
             });
         let output_settings = self.outputs.snapshot();
-        let stage_output = &output_settings.canvases[output_settings.selected];
+        let stage_output = output_settings.canvas(output_settings.selected);
         egui::CentralPanel::default()
             .frame(Frame::new().fill(BG).inner_margin(20.0))
             .show(ctx, |ui| {
@@ -1231,9 +1294,8 @@ impl eframe::App for AriaApp {
             }
             screenshot_capture(ctx, self.started, false);
         }
-        self.outputs.show(
-            ctx,
-            crate::output::Scene {
+        if self.outputs.any_open() {
+            let scene = crate::output::Scene {
                 model: self.live2d.as_ref().map(|a| a.image()),
                 model_bounds: self
                     .live2d
@@ -1241,12 +1303,65 @@ impl eframe::App for AriaApp {
                     .map_or(egui::Rect::NOTHING, |a| a.image_bounds()),
                 sprite: self.active_sprite().cloned(),
                 params: self.params,
-            },
-            self.settings.fps,
-            self.started,
-        );
-        let interval = Duration::from_secs_f64(1.0 / self.settings.fps as f64);
-        let remaining = (self.last_update + interval).saturating_duration_since(Instant::now());
+            };
+            if let Some(state) = &self.render_state {
+                self.broadcasts.update(
+                    ctx,
+                    state,
+                    self.outputs.broadcasts(),
+                    &scene,
+                    self.scene_revision,
+                );
+            }
+            self.outputs
+                .show(ctx, scene, self.settings.fps, self.started);
+            #[cfg(feature = "screenshots")]
+            if crate::smoke_mode() && self.started.elapsed() > Duration::from_secs(2) {
+                let scenario = std::env::var("ARIA_SMOKE_SCENARIO").unwrap_or_default();
+                let key = egui::Id::new("smoke-native-window-change");
+                if !ctx.data(|d| d.get_temp::<bool>(key).unwrap_or(false)) {
+                    if scenario == "output-resize" {
+                        self.outputs.edit_canvas(2, |c| {
+                            c.freeform_window = [600, 400];
+                            c.freeform_size = [2048, 1024];
+                        });
+                    } else if scenario == "capture-minimized" {
+                        for i in 0..3 {
+                            ctx.send_viewport_cmd_to(
+                                crate::output::viewport_id(i),
+                                egui::ViewportCommand::Minimized(true),
+                            );
+                        }
+                    }
+                    ctx.data_mut(|d| d.insert_temp(key, true));
+                }
+                if scenario == "capture-minimized"
+                    && self.started.elapsed() > Duration::from_secs(3)
+                {
+                    let key = key.with("verified");
+                    if !ctx.data(|d| d.get_temp::<bool>(key).unwrap_or(false)) {
+                        assert!(
+                            ctx.input(|i| (0..3).all(|n| i
+                                .raw
+                                .viewports
+                                .get(&crate::output::viewport_id(n))
+                                .is_some_and(|v| v.minimized == Some(true)))),
+                            "All output previews should be minimized"
+                        );
+                        eprintln!(
+                            "All three output previews verified minimized; GPU senders remain active"
+                        );
+                        ctx.data_mut(|d| d.insert_temp(key, true));
+                    }
+                }
+            }
+        } else {
+            // Drop senders immediately when their last preview is closed.
+            self.broadcasts.retry();
+        }
+        let remaining = self
+            .frame_clock
+            .remaining(Instant::now(), self.settings.fps);
         // egui subtracts predicted_dt internally. Compensate so a 60 Hz request
         // does not become an immediate repaint on a high-refresh monitor.
         let prediction = Duration::from_secs_f32(ctx.input(|i| i.predicted_dt).max(0.0));
@@ -1313,6 +1428,7 @@ mod tests {
             zoom: 1.3,
             background: Background::Green,
             fps: 30,
+            high_priority: true,
             ..Default::default()
         };
         settings.mapping.head_gain = 1.8;
@@ -1367,6 +1483,11 @@ mod tests {
         a_outputs.canvases[0].key = [255, 60, 0];
         a_outputs.canvases[1].background = Background::Transparent;
         a_outputs.canvases[1].position = [-0.3, 0.2];
+        a_outputs.freeform.freeform_size = [1536, 1024];
+        a_outputs.freeform.freeform_window = [480, 320];
+        a_outputs.freeform.position = [0.1, -0.1];
+        a_outputs.freeform.zoom = 1.2;
+        a_outputs.selected = 2;
         settings
             .model_preferences
             .get_mut("avatar-a")
@@ -1402,6 +1523,7 @@ mod tests {
             );
             assert_eq!(restored.sender_ip, "127.0.0.1");
             assert_eq!(restored.fps, 120);
+            assert!(restored.high_priority);
             assert_eq!(
                 restored.outputs.as_ref().unwrap(),
                 &OutputSettings::default()
@@ -1448,5 +1570,26 @@ mod tests {
                 .expressions
                 .is_empty()
         );
+    }
+    #[test]
+    fn v07_two_canvas_ron_profiles_migrate_without_losing_framing() {
+        #[derive(Serialize)]
+        struct Legacy {
+            canvases: [crate::output::CanvasSettings; 2],
+            selected: usize,
+        }
+        let mut legacy = Legacy {
+            canvases: Default::default(),
+            selected: 1,
+        };
+        legacy.canvases[0].long_edge = 1280;
+        legacy.canvases[1].position = [-0.3, 0.25];
+        let mut memory = Memory::default();
+        eframe::set_value(&mut memory, "output", &legacy);
+        let restored: OutputSettings = eframe::get_value(&memory, "output").unwrap();
+        assert_eq!(restored.selected, 1);
+        assert_eq!(restored.canvases[0].pixels(0), [1280, 720]);
+        assert_eq!(restored.canvases[1].position, [-0.3, 0.25]);
+        assert_eq!(restored.freeform.pixels(2), [1280, 720]);
     }
 }

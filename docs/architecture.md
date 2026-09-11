@@ -19,7 +19,8 @@ iPhone VTS UDP / ARIA JSON / deterministic demo
           wgpu ArtMesh renderer
        transparent shared render target
            /                   \
-  studio preview       Windows output -> OBS Window Capture
+  studio preview       3 compact preview windows
+                    + full-resolution canvases -> Spout2 -> OBS
 ```
 
 | Package | Responsibility |
@@ -28,7 +29,7 @@ iPhone VTS UDP / ARIA JSON / deterministic demo
 | `aria-tracking` | VTS/ARIA decoding, subscription renewal, bounded latest-frame snapshot |
 | `aria-model` | Bounded model3 parsing, path validation, moc-to-manifest discovery, ordered textures and optional rig sidecars |
 | `aria-live2d` | Private Core ABI, explicit DLL loading, aligned memory ownership, consistency/version checks, parameter metadata and owned mesh output |
-| `aria-desktop` | Input/pose/preset UI, model import, wgpu renderer/PNG export, Windows process metrics/global hotkeys and output viewport |
+| `aria-desktop` | Rig UI/import, wgpu renderer/PNG export, process metrics/priority/hotkeys, three output viewports and Spout GPU senders |
 | `aria-cli` | Simulator, JSON sender, headless receiver and manifest inspector |
 
 One worker serves each active tracking receiver. The UI consumes the most recent
@@ -81,13 +82,24 @@ many mask groups do not allocate many full-size textures.
 Colors are composed in gamma space using a premultiplied RGBA8 target, matching
 egui's native-texture convention. Multiply/screen colors are applied before alpha.
 The resulting 2048px-longest-side texture is registered with egui and displayed in
-both native windows. Its registration is freed on model replacement/unload.
-Separate deferred landscape (16:9) and portrait (9:16) viewports allow concurrent
-Windows capture and screenshot requests. `output.rs` owns shared, independently
-configured canvas state. Native drag events update normalized offsets directly;
+the native windows. Its registration is freed on model replacement/unload.
+Separate deferred landscape (16:9), portrait (9:16), and Freeform viewports allow
+concurrent previews. `output.rs` owns shared, independently configured canvas state.
+Native drag events update normalized offsets, and wheel events update scale;
 generation checks and viewport-scoped IDs prevent stale or cross-window drags.
 Layouts persist in per-avatar preferences, with migration of legacy settings.
-Both viewports sample the one existing avatar render texture.
+All viewports sample the existing avatar render texture. Fixed-aspect resolution
+menus control the OBS canvas independently of compact preview pixels; Freeform
+also supports custom dimensions and native window resizing with letterboxing.
+
+`broadcast.rs` composites full-resolution canvases using the shared egui texture
+registrations. It submits each canvas before the renderer reuses streaming buffers.
+`spout.rs` wraps those DX12 resources through D3D11On12 on the same command queue,
+copies them to legacy DXGI shared textures, and publishes Spout2 metadata, mutexes
+and frame-count semaphores. Explicit COPY_SRC transitions keep wgpu's tracker and
+the native wrapper consistent. Sending involves no CPU readback or image encoding.
+A busy receiver skips a frame rather than blocking the model loop. Failed senders
+have visible status and explicit retry. Each closed output unregisters its sender.
 
 `chroma.rs` collects compact RGB occupancy from atlas pixels as they load. A user
 requested analysis adds the current transparent render, then chooses a saturated
@@ -95,9 +107,14 @@ candidate maximizing minimum Cb/Cr distance. Normal frames do not read textures 
 Sprite color tables include idle and talking artwork. This is an explained heuristic,
 not a guarantee of lossless OBS chroma keying.
 
-This initial renderer uses one reusable mask target and CPU mesh copies each frame.
+This renderer uses one reusable mask target and reuses its CPU mesh copies,
+parameter metadata, vertex/style staging and draw-order buffers. Visible model
+bounds are cached during rendering. A frame gate caps simulation independently of
+UI input/repaint frequency; unchanged evaluated Live2D parameters skip Core and
+model rendering. Unchanged canvas/pose pairs also skip offscreen compositing.
+Settings writes and capture-resolution reallocations are debounced during edits.
 Mask atlasing, dirty-geometry uploads, asynchronous imports, device-loss recovery,
-resolution controls and measured resource budgeting remain follow-up work.
+model-render quality controls and measured resource budgeting remain follow-up work.
 
 ## Windows process metrics
 
@@ -109,13 +126,18 @@ read-only QueryVideoMemoryInfo calls (local usage/budget and non-local usage, no
 No arbitrary GPU matching, retained raw object, WMI subprocess or system-wide counter
 is used. Failed queries and non-DX12 backends have explicit unavailable values.
 
+`performance.rs` also applies the opt-in `HIGH_PRIORITY_CLASS` to ARIA's current
+process, verifies it, and restores Normal when disabled. It is saved as a machine
+preference outside per-model profiles, like the SDK path. Realtime and GPU priority
+changes are not exposed; the UI explains CPU-contention benefits and tradeoffs.
+
 ## Next milestones
 
-- Expressions, motions and pose in an explicit update order.
+- Motion3 and pose3 playback alongside the existing expression/physics order.
 - Animated preset transitions and richer shortcut customization.
 - Cubism 5.3 offscreen parts and advanced color/alpha blending.
 - Per-model resource budgeting, async import, minimized-window limits and performance work.
-- Windows shared GPU textures/Spout and an OBS source plugin, with synchronization.
+- Broader Spout/driver compatibility, GPU selection UI and device-loss recovery.
 - Additional tracking adapters and opt-in recording/replay.
 - Linux/macOS verification and platform output transports.
 

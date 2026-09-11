@@ -21,7 +21,7 @@ pub fn capture(ctx: &egui::Context, started: Instant, output: bool) {
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(0)
-        .min(1);
+        .min(2);
     let target = if want_output {
         crate::output::viewport_id(output_index)
     } else {

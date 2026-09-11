@@ -160,7 +160,7 @@ dependencies = [
 
 [[package]]
 name = "aria-cli"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "aria-core",
@@ -172,7 +172,7 @@ dependencies = [
 
 [[package]]
 name = "aria-core"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -181,7 +181,7 @@ dependencies = [
 
 [[package]]
 name = "aria-desktop"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "aria-core",
@@ -202,7 +202,7 @@ dependencies = [
 
 [[package]]
 name = "aria-live2d"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "aria-core",
@@ -211,7 +211,7 @@ dependencies = [
 
 [[package]]
 name = "aria-model"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -221,7 +221,7 @@ dependencies = [
 
 [[package]]
 name = "aria-tracking"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "aria-core",

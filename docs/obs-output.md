@@ -1,48 +1,62 @@
-# Landscape and portrait OBS output
+# OBS output: landscape, portrait and Freeform
 
-ARIA v0.7 provides two independent capture windows:
+ARIA v0.8 provides three independent outputs. The visible windows are compact
+previews; OBS receives a separate full-resolution GPU texture through Spout.
 
-| Toggle | Window title | Default canvas |
-| --- | --- | --- |
-| Open Landscape · 16:9 | A.R.I.A. Output — Landscape 16:9 | 960×540 |
-| Open Portrait · 9:16 | A.R.I.A. Output — Portrait 9:16 | 540×960 |
+| Output | OBS sender | New-profile canvas | Preview pixels |
+| --- | --- | --- | --- |
+| Landscape · 16:9 | ARIA Landscape | 1920×1080 | 480×270 |
+| Portrait · 9:16 | ARIA Portrait | 1080×1920 | 270×480 |
+| Freeform | ARIA Freeform | 1280×720 | 480×360, resizable |
 
-Both can run at the same time, sharing the live avatar and tracking while keeping
-separate positions, scales, backgrounds, key colors, sizes and position locks.
-Both sample the same Live2D render texture; the second window does not load another
-copy of the model or its atlases. PNG puppets and Mica also support both windows.
+All three can run together, with separate positions, scales, backgrounds, keys,
+resolutions and framing locks. They share the same Live2D model render and atlases;
+additional outputs allocate canvas textures, not another copy of the avatar.
+PNG puppets and Mica also support all three outputs.
 
 ![Capture controls with the original Mica puppet and a detected key color](images/obs-controls.png)
 
 ## Open and frame the windows
 
-1. Expand **Studio Controls → Capture & performance** and enable either or both
+1. Expand **Studio Controls → Capture & performance** and enable any combination of
    output toggles.
-2. Choose **Edit Landscape · 16:9** or **Portrait · 9:16** to configure that canvas.
+2. Choose **Edit Landscape · 16:9**, **Portrait · 9:16**, or **Freeform**.
 3. Click the model inside its output window and drag to position it. The other
    output keeps its own framing.
-4. Expand **Framing & window size** to adjust **Model scale**. Double-click the
+4. Scroll the mouse wheel over the canvas to scale the avatar, or expand
+   **Framing & preview size** and use **Model scale**. Double-click the
    model or choose **Center model** to recenter. **Reset framing** also restores
-   scale to 1.0. **Lock model position** prevents accidental dragging.
-5. Choose a pixel size: 640×360, 960×540, 1280×720 or 1920×1080 for landscape,
-   with dimensions reversed for portrait. The window keeps that aspect ratio;
-   use this size menu instead of dragging its edges. Choose a smaller portrait
-   size if it is taller than your display. **Keep this output on top** is optional.
+   scale to 1.0. **Lock model framing** prevents dragging and wheel scaling.
+5. Select the **OBS canvas resolution**: 640×360, 960×540, 1280×720, 1920×1080,
+   2560×1440 or 3840×2160 for landscape; portrait reverses those dimensions.
+   This menu is independent of **preview edge**, which defaults to 480 pixels.
+6. For Freeform, enter the OBS canvas width and height (64–4096 pixels each).
+   Under framing, enter the window width and height, or drag its native window
+   edges. The preview fits the canvas inside the window without stretching;
+   any unused preview space is excluded from the OBS texture.
+
+**Keep the windows small to save desktop space. OBS still receives the selected
+full canvas resolution via Spout2 Capture.** Window Capture only sees the small
+preview; stretching it in OBS does not increase the source's actual resolution.
+The UI explains this alongside the resolution controls. **Keep this output on top**
+is optional. Preview dimensions are client pixels and exclude the title bar.
 
 Dragging the native title bar moves the window on your desktop. Dragging the model
 moves the artwork within the capture. No controls or selection outlines are painted
-into either output. Closing one window leaves the other running.
+into the output. Closing one window leaves the others running and unregisters its
+Spout sender. Minimize previews when desired; leave ARIA running for tracking.
 
-Both layouts save with the current avatar. Drag release and applied settings save
-automatically; **Save output layouts** and the main **Save profile** button also
+All layouts save with the current avatar. Drag release and applied settings save
+automatically after a short quiet period; **Save output layouts** and **Save profile** also
 save them. Switching avatars restores that avatar's layouts. Existing v0.6 profiles
-seed both layouts from their previous background, zoom and on-top settings.
-Capture windows start closed when ARIA starts.
+seed the layouts from their previous background, zoom and on-top settings. v0.7
+profiles retain their existing two canvas resolutions and framing, gaining a new
+Freeform layout and compact previews. Outputs start closed when ARIA starts.
 
 ## Choose a background
 
 Each output has **Studio background** (opaque dark), **Green screen / color key**
-(opaque solid color, initially `#00FF00`), and **Transparent (experimental)**.
+(opaque solid color, initially `#00FF00`), and **Transparent**.
 The studio preview shows the selected output's background; preview zoom is separate
 from each output's Model scale.
 
@@ -82,18 +96,60 @@ OBS, lower similarity if needed, and rerun detection after changing artwork or
 colors. This explanation is also available in the panel under **How automatic
 color detection works**.
 
-## Add both sources in OBS
+## Full-resolution capture in OBS
 
-1. Keep both ARIA outputs open and not minimized.
-2. Add two **Window Capture** sources, selecting the landscape title for one and
-   portrait title for the other. Rename the sources to distinguish them.
-3. Capture the client area or crop away the native title bar. Disable **Capture
-   Cursor** to keep the pointer out while adjusting your model.
-4. For color-key backgrounds, add a Chroma Key filter to each source using the
-   matching canvas's custom hex. The two colors can differ.
-5. Put each source in the desired scene. If capture is blank, try OBS's Windows 10
-   capture method and keep the window visible rather than minimized.
+1. Install the [OBS Spout2 plugin](https://github.com/Off-World-Live/obs-spout2-plugin/releases)
+   with its Windows installer, then restart OBS. ARIA's sender is built in and
+   needs no separate Spout DLL. The plugin is a separate download, not in ARIA's ZIP.
+2. Open the desired ARIA outputs and leave **Send full resolution to OBS (Spout)**
+   enabled. The status below the settings reports the actual sender name and size.
+3. In OBS add **Spout2 Capture** for each output. Choose **ARIA Landscape**,
+   **ARIA Portrait**, or **ARIA Freeform** under **Spout Senders**. With multiple
+   ARIA instances, names can have a process-ID suffix; use the status's exact name.
+4. For transparent output, choose **Composite mode → Premultiplied Alpha**
+   (plugin v1.12). No chroma filter is needed. For color-key output, add a Chroma
+   Key filter using that canvas's hex. Studio output is opaque dark.
+5. Transform each source inside the appropriate OBS scene. Changing ARIA's canvas
+   resolution changes the source dimensions; recheck your OBS transform afterward.
 
-Native window transparency does not guarantee that OBS preserves alpha. If it
-becomes black or inconsistent, use a solid color key and Chroma Key. No OBS plugin
-is required for these capture windows.
+ARIA and OBS must use the **same graphics adapter**. On a multi-GPU PC, select
+matching per-app GPU preferences under **Windows Settings → System → Display →
+Graphics**, then restart both applications. ARIA's footer identifies its adapter.
+Spout requires ARIA's **DirectX 12** backend; Vulkan fallback keeps local previews
+available but reports Spout as unavailable. Use **Retry OBS output** after resolving
+an error, or close/reopen the output. Sender-list contention skips frames instead
+of blocking tracking.
+
+The selected resolution is the **canvas** resolution. Artwork detail still depends
+on the exported textures and ARIA's shared Live2D render, currently capped at a
+2048-pixel long edge. Increasing the canvas does not invent missing model detail.
+Higher resolutions increase GPU memory and fill cost: a 3840×2160 RGBA texture is
+about 31.6 MiB, and each sender also needs its shared destination texture.
+
+## Window Capture fallback
+
+Without the OBS plugin, add **Window Capture** and select the matching
+**A.R.I.A. Output** window. Capture its client area and disable **Capture Cursor**.
+Keep that preview visible if the capture method stops updating when minimized.
+This captures only its preview resolution. Native window transparency depends on
+OBS's capture method; use a solid color key if alpha appears black or inconsistent.
+
+## Rendering and scheduling
+
+ARIA renders Cubism once per model update and composites each enabled canvas on
+the GPU. Spout uses D3D11On12 on wgpu's queue, with no per-frame CPU pixel readback
+or image encoding. Unchanged Live2D poses reuse their existing texture; CPU mesh,
+vertex and style buffers are reused. Extra UI repaints cannot advance simulation
+beyond the FPS target. Closed outputs release their canvas and shared textures.
+
+The optional **Windows performance → High process priority** setting gives ARIA
+CPU scheduling preference during contention. It is off by default and applies to
+this application on this PC. It can help scheduling delays but cannot eliminate
+GPU overload or guarantee hitch-free frames. It can also reduce other apps'
+responsiveness. High is the strongest class offered here; Realtime could starve
+Windows and OBS. Disabling the setting restores Normal priority. Details are in
+the [Windows guide](windows.md#windows-priority-and-performance).
+
+Implementation references: [Spout sender metadata and names](https://github.com/leadedge/Spout2/blob/master/SPOUTSDK/SpoutGL/SpoutSenderNames.h),
+[frame synchronization](https://github.com/leadedge/Spout2/blob/master/SPOUTSDK/SpoutGL/SpoutFrameCount.cpp),
+[official DirectX 12 bridge](https://github.com/leadedge/Spout2/blob/master/SPOUTSDK/SpoutDirectX/SpoutDX/SpoutDX12/SpoutDX12.cpp).

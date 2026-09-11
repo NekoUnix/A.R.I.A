@@ -12,7 +12,7 @@ systems and Windows ARM64 are not verified release targets yet.
 1. Visit [the Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml).
 2. Select a green, successful run on `main` for the version you want.
 3. Under **Artifacts**, download **aria-windows-x64**. Sign in to GitHub if asked.
-4. Extract the downloaded artifact. Extract `aria-0.7.0-windows-x64.zip` inside it
+4. Extract the downloaded artifact. Extract `aria-0.8.0-windows-x64.zip` inside it
    into a normal writable folder, for example `C:\Apps\ARIA`.
 5. Double-click **aria-desktop.exe**. The default source is Demo and Mica should move.
 
@@ -201,16 +201,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\allow-tracking-fir
 
 ## 5. Capture in OBS
 
-1. Expand **Capture & performance**. Enable **Open Landscape · 16:9** and/or
-   **Open Portrait · 9:16**. Both can stay open at the same time.
-2. Select the canvas to edit. Drag the model inside its output window to place it;
-   **Framing & window size** offers scale, centering, position locking and sizes.
+1. Install the [OBS Spout2 plugin](https://github.com/Off-World-Live/obs-spout2-plugin/releases)
+   using its Windows installer, then restart OBS. ARIA already includes its sender.
+2. Expand **Capture & performance**. Enable Landscape, Portrait and/or Freeform;
+   all three can stay open together. Leave **Send full resolution to OBS** checked.
+   Select a canvas resolution independently of its small preview window.
+   Drag the avatar to position it and scroll the wheel to resize it.
 3. Choose **Studio background**, **Green screen / color key**, or **Transparent**
    separately for each canvas. For a key, enter hex and press **Apply hex**, or
    use **Detect safer color** to analyze the avatar's colors.
-4. In OBS add a **Window Capture** source for **A.R.I.A. Output — Landscape 16:9**
-   and another for **A.R.I.A. Output — Portrait 9:16** if using both. Capture the
-   client area and disable Capture Cursor. Try Windows 10 capture if automatic is blank.
+4. In OBS add a **Spout2 Capture** source for each output. Select **ARIA Landscape**,
+   **ARIA Portrait**, or **ARIA Freeform**. For transparent output, choose
+   **Composite mode → Premultiplied Alpha**. Keep OBS and ARIA on the same GPU.
 5. For color-key output, add **Filters → Effect Filters → Chroma Key**, choose
    **Custom**, and paste that canvas's hex. Begin with low similarity and inspect
    hair, eyes and clothing. Framing and colors save per window, per avatar.
@@ -218,12 +220,29 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\allow-tracking-fir
 See the [complete OBS output guide](obs-output.md) for automatic-color limitations,
 matching filters, saved layouts and canvas sizes.
 
-**Transparent (experimental)** asks Windows for a transparent native viewport.
-Desktop transparency does not guarantee the chosen OBS capture method retains
-alpha. Use a color key when capture alpha is black or inconsistent. The main
-preview uses a dark placeholder background for transparent mode. This release
-does not install an OBS plugin and does not implement Spout, shared GPU textures,
-virtual camera output, click-through, or a borderless desktop overlay.
+**The preview stays small to save desktop space. Spout sends the actual selected
+canvas resolution to OBS, even when the preview is minimized.** Window Capture
+is still available without a plugin, but only captures the preview's pixel size;
+enlarging that source in OBS does not add image detail. Window Capture alpha
+depends on the capture method. The main stage uses a dark placeholder in
+transparent mode. Virtual camera, click-through and borderless overlay are not included.
+
+### Windows priority and performance
+
+In **Capture & performance → Windows performance**, enable **High process priority**
+to give ARIA scheduling preference over normal-priority processes during CPU
+contention. This sets Microsoft's `HIGH_PRIORITY_CLASS` for ARIA only; disabling it
+restores Normal. The setting is saved for this PC and is off by default.
+It can reduce scheduling delays but does not guarantee hitch-free output or change
+GPU priority. High can reduce responsiveness in OBS or other CPU-heavy programs;
+disable it if that happens. Realtime is intentionally not offered because it can
+preempt important OS work, including input handling. See Microsoft's
+[SetPriorityClass documentation](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-setpriorityclass).
+
+Use 30 or 60 FPS and a smaller OBS canvas if the GPU is overloaded. Simulation is
+capped even during UI input; unchanged Live2D poses reuse the last render, mesh
+buffers are reused, and closed outputs release their textures. Resolution and
+layout edits settle briefly before reallocating capture textures or saving to disk.
 
 ## Troubleshooting
 
@@ -239,7 +258,9 @@ virtual camera output, click-through, or a borderless desktop overlay.
 | `Signal lost` | No valid frame for one second; the avatar returns toward neutral. The receiver keeps renewing and recovers automatically. |
 | Rejected packets rise | The sender is not using the selected schema, or values/size are invalid. See Raw view and the last error. |
 | Head snaps around 0/360 | Signed Euler wrapping is handled. Calibrate facing the phone; use axis correction if needed. |
-| OBS source blank | Select the **output** window, not the controls window. Do not minimize it. Try OBS's Windows 10 capture method and green screen. |
+| OBS Spout source blank | Open the ARIA output, enable sending, select its named sender and use the same GPU in both apps. Check ARIA's sender status and **Retry OBS output**. Vulkan fallback cannot send Spout. |
+| Window Capture looks low resolution | It sees the compact preview. Use Spout2 Capture for the separate full-resolution canvas. |
+| Transparent edges look dark | Select **Premultiplied Alpha** in Spout2 Capture, with no Chroma Key filter on transparent output. |
 
 Vulkan fallback for a packaged build:
 

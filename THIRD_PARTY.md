@@ -20,6 +20,13 @@ Primary dependencies (exact versions are recorded in Cargo.lock):
 | libloading | Explicit native Cubism Core loading | https://github.com/nagisa/rust_libloading |
 | bytemuck | Typed GPU buffer serialization | https://github.com/Lokathor/bytemuck |
 | windows-rs | Windows process and DXGI memory counters | https://github.com/microsoft/windows-rs |
+| Spout2 SDK protocol | Sender registry, synchronization and D3D11On12 sharing conventions | https://github.com/leadedge/Spout2 |
+
+The Rust Spout sender follows the Spout2 SDK's `SharedTextureInfo` layout,
+sender-name maps, named mutexes, frame-count semaphore and DirectX 12 bridge.
+Copyright (c) 2020-2024, Lynn Jarvis. The BSD 2-Clause notice is reproduced in
+[docs/licenses/spout.txt](docs/licenses/spout.txt) and included in portable builds.
+The OBS Spout2 plugin is installed separately from its upstream project.
 
 The VTube Studio transport implementation follows DenchiSoft's published
 [third-party iOS UDP protocol](https://github.com/DenchiSoft/VTubeStudioBlendshapeUDPReceiverTest).

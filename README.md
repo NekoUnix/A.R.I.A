@@ -6,8 +6,9 @@ tracking into avatar parameters, and animates **Live2D `.moc3` avatars**, a buil
 2D test puppet, or your PNG artwork. The UI and preview run on **egui + wgpu**,
 without Unity or Godot.
 
-> **v0.7:** simultaneous landscape and portrait OBS windows with independent
-> draggable framing, custom hex key colors and automatic avatar color analysis.
+> **v0.8:** landscape, portrait and Freeform outputs with compact previews,
+> selectable full-resolution Spout output to OBS, dragging and mouse-wheel scaling.
+> Includes GPU/buffer reuse and an opt-in Windows High priority setting.
 > Live2D expressions, custom shortcuts and output layouts save per avatar.
 > Includes editable input response, frozen poses, presets, Windows hotkeys and PNG export.
 > Supply the official **Cubism Core x64 DLL** and your exported avatar assets.
@@ -80,7 +81,7 @@ it does not implement VTS's proprietary USB transport.
 
 **[Global/group physics and independent model profiles →](docs/physics.md)**
 
-**[Landscape/portrait OBS windows and custom key colors →](docs/obs-output.md)**
+**[OBS outputs, Freeform sizing and custom key colors →](docs/obs-output.md)**
 
 A `.moc3` selection finds its matching manifest beside it. Without a manifest,
 the import dialog lets you select/reorder the required texture atlases explicitly.
@@ -99,12 +100,17 @@ See [the detailed import guide](docs/live2d.md) for limits and troubleshooting.
 - Direct VTS iOS UDP subscription and renewal; all incoming blendshapes retained
   for inspection, with 12 standard Cubism-style parameters mapped for the preview.
 - Versioned **ARIA JSON v1** UDP input for other tools and custom bridges.
-- Separate **16:9 landscape** and **9:16 portrait** OBS capture windows, usable
-  together, with independent dragging, scale, background and on-top controls.
+- **16:9 landscape**, **9:16 portrait**, and resizable **Freeform** outputs, usable
+  together, with independent dragging, wheel scaling, background and on-top controls.
+  Compact previews and separate OBS canvas resolutions up to 3840×2160 / 2160×3840;
+  Freeform allows 64–4096 pixels per axis. Full-resolution GPU sharing requires the
+  separately installed OBS Spout2 plugin; Window Capture sees the small preview.
   Color keys accept hex colors or suggest one from the avatar's artwork.
 - Connection diagnostics, packet age/rate, input validation, disconnect recovery,
-  GPU adapter/backend information, UI frame rate, process CPU %, resident RAM,
+  GPU adapter/backend information, model update rate, process CPU %, resident RAM,
   and measured local GPU memory on the rendering Direct3D 12 adapter.
+- Frame-capped simulation, reusable CPU/GPU buffers, static Live2D pose caching,
+  and an explained Windows **High process priority** option (off by default).
 - Resizable input monitor with editable ranges, stepping, curves and dead zones;
   full/partial pose holds, transparent PNG export, per-model configuration and
   movement/pose presets with JSON import/export and Windows global hotkeys.
@@ -118,7 +124,8 @@ See [the detailed import guide](docs/live2d.md) for limits and troubleshooting.
 
 The footer samples process resources every second. Hover for measurement details;
 unavailable counters show N/A. GPU load %, per-model VRAM accounting, webcam tracking,
-Spout/shared textures, an OBS plugin, and a stable public plugin SDK remain future work.
+and a stable public plugin SDK remain future work. Spout GPU sharing is included;
+its OBS receiver plugin is installed separately.
 The atlas MiB display estimates decoded texture storage; it excludes renderer,
 driver and staging allocations.
 
@@ -152,7 +159,7 @@ To build a portable bundle with its documentation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 ```
 
-The script runs tests and writes `dist/aria-0.7.0-windows-x64.zip`. See
+The script runs tests and writes `dist/aria-0.8.0-windows-x64.zip`. See
 [architecture](docs/architecture.md) for crate boundaries and
 [validation](docs/validation.md) for what has actually been exercised.
 

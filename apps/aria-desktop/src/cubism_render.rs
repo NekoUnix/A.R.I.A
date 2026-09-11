@@ -63,9 +63,17 @@ pub struct ModelRenderer {
     vertex_count: usize,
     pub atlas_mib: f64,
     palette: crate::chroma::Palette,
+    vertex_staging: Vec<Vertex>,
+    style_staging: Vec<u8>,
+    order: Vec<usize>,
+    pub bounds: egui::Rect,
 }
 
 impl ModelRenderer {
+    #[cfg(test)]
+    pub fn vertex_staging_capacity(&self) -> usize {
+        self.vertex_staging.capacity()
+    }
     pub fn save_png(&self, path: &std::path::Path) -> Result<()> {
         let (rgba, size) = self.read_rgba()?;
         image::save_buffer_with_format(
@@ -402,22 +410,28 @@ impl ModelRenderer {
             indices,
             uniforms,
             uniform_stride,
+            style_staging: vec![0; meshes.len() * uniform_stride],
+            vertex_staging: Vec::with_capacity(vertex_count),
+            order: Vec::with_capacity(meshes.len()),
             meshes,
             vertex_count,
             atlas_mib: total_bytes as f64 / 1048576.0,
             palette,
+            bounds: egui::Rect::NOTHING,
         })
     }
 
-    pub fn render(&self, canvas: Canvas, drawables: &[Drawable]) -> Result<()> {
+    pub fn render(&mut self, canvas: Canvas, drawables: &[Drawable]) -> Result<()> {
         ensure!(
             self.meshes.len() == drawables.len()
                 && self.vertex_count == drawables.iter().map(|d| d.positions.len()).sum::<usize>(),
             "Model topology changed unexpectedly"
         );
-        let mut vertices = Vec::with_capacity(self.vertex_count);
-        let mut uniform_bytes = vec![0_u8; self.meshes.len() * self.uniform_stride];
+        let vertices = &mut self.vertex_staging;
+        vertices.clear();
+        let uniform_bytes = &mut self.style_staging;
         let c = canvas;
+        let mut bounds = egui::Rect::NOTHING;
         for (i, d) in drawables.iter().enumerate() {
             vertices.extend(d.positions.iter().zip(&d.uvs).map(|(p, &uv)| Vertex {
                 position: [
@@ -426,6 +440,14 @@ impl ModelRenderer {
                 ],
                 uv,
             }));
+            if d.visible && d.opacity > 0.01 {
+                for vertex in &vertices[vertices.len() - d.positions.len()..] {
+                    bounds.extend_with(egui::pos2(
+                        (vertex.position[0] + 1.0) * 0.5,
+                        (1.0 - vertex.position[1]) * 0.5,
+                    ));
+                }
+            }
             let style = Style {
                 multiply: d.multiply,
                 screen: d.screen,
@@ -445,21 +467,28 @@ impl ModelRenderer {
             uniform_bytes[i * self.uniform_stride..i * self.uniform_stride + 48]
                 .copy_from_slice(bytemuck::bytes_of(&style));
         }
+        self.bounds = bounds.intersect(egui::Rect::from_min_max(
+            egui::Pos2::ZERO,
+            egui::pos2(1., 1.),
+        ));
         self.state
             .queue
-            .write_buffer(&self.vertices, 0, bytemuck::cast_slice(&vertices));
+            .write_buffer(&self.vertices, 0, bytemuck::cast_slice(vertices));
         self.state
             .queue
-            .write_buffer(&self.uniforms, 0, &uniform_bytes);
+            .write_buffer(&self.uniforms, 0, uniform_bytes);
         let mut encoder = self
             .state
             .device
             .create_command_encoder(&Default::default());
         drop(begin_pass(&mut encoder, &self.output, true));
-        let mut sorted: Vec<_> = (0..drawables.len())
-            .filter(|&i| drawables[i].visible && drawables[i].opacity > 0.0)
-            .collect();
-        sorted.sort_by_key(|&i| drawables[i].order);
+        self.order.clear();
+        self.order.extend(
+            (0..drawables.len()).filter(|&i| drawables[i].visible && drawables[i].opacity > 0.0),
+        );
+        self.order
+            .sort_unstable_by_key(|&i| (drawables[i].order, i));
+        let sorted = &self.order;
         let mut cursor = 0;
         while cursor < sorted.len() {
             let d = &drawables[sorted[cursor]];
@@ -775,8 +804,8 @@ mod tests {
         }
         scene[0].masked = true;
         scene[0].masks = vec![2];
-        let renderer = ModelRenderer::new(&state, canvas, &scene, &paths).unwrap();
-        let check = |scene: &[Drawable], left, right| {
+        let mut renderer = ModelRenderer::new(&state, canvas, &scene, &paths).unwrap();
+        let mut check = |scene: &[Drawable], left, right| {
             renderer.render(canvas, scene).unwrap();
             let data = pixels(&renderer);
             let w = renderer.image.size.x as usize;

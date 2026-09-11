@@ -5,6 +5,38 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Local verification on 2026-09-11
 
+### v0.8 compact previews and full-resolution OBS output
+
+- Formatting, Clippy for every target/feature with warnings denied, and **53 default
+  tests** passed on Windows x64. New cases cover wheel scaling in all three aspect
+  ratios, framing locks, multiple layout passes, resolution/preview independence,
+  Freeform fitting, legacy two-canvas RON migration, per-model Freeform settings,
+  and capping simulation during rapid UI repaints.
+- A separate D3D11 receiver opened ARIA's DX12/Spout GPU textures at **1920×1080**,
+  **1080×1920**, and **1536×1024**. It verified dimensions, BGRA values and alpha,
+  plus unique sender names and cleanup without removing another sender.
+- An isolated **OBS 32.2.1** with the upstream **Spout2 plugin 1.12.0** captured all
+  three simultaneous senders with the real test avatar. Native source screenshots
+  retained those full dimensions, alpha-zero corners, and opaque avatar pixels,
+  using **Premultiplied Alpha** composite mode. Only test-owned portable settings,
+  sources and processes were used. Private model screenshots remain local.
+- All three native preview windows were then minimized (verified by viewport
+  state), while OBS continued receiving full-resolution avatar frames and alpha.
+  Changing Freeform controls resized the native client from **480×320 to 600×400**;
+  a simultaneous canvas change reached OBS at **2048×1024** without reselecting
+  the sender. This caught and fixed an old-callback overwrite of requested sizes.
+- The real model's compact Freeform preview was **480×320** while its OBS source
+  was **1536×1024**. The source receives an offscreen GPU canvas, not a scaled
+  window screenshot. The shared Live2D artwork render remains capped at 2048 pixels.
+- Optional native checks passed for clipping, normal/add/multiply blending,
+  colors, masks, culling, draw order, real Core deformation and mesh allocation
+  reuse. A frozen-avatar check skipped 60 unchanged Core/GPU updates, refreshed
+  after editing a held parameter, then skipped the unchanged pose again.
+- The Windows priority test successfully applied High and Normal to its own test
+  process and restored the original priority afterward. High remains off by default.
+- These tests validate the changed behavior, not a universal performance multiplier
+  or a guarantee against dropped frames under arbitrary CPU/GPU load.
+
 ### v0.7 dual OBS output and custom key colors
 
 - Formatting, Clippy across all targets/features with warnings denied, and all
@@ -243,6 +275,13 @@ The `physics` scenario opens overall/group controls for the loaded avatar;
 `physics-group` expands its first actual group with overall controls collapsed.
 Omitting `ARIA_TEST_MODEL` exercises the built-in puppet and empty physics state.
 
+Output smoke scenarios also include `output-freeform`, `output-resize` (changes
+the Freeform preview to 600×400 and canvas to 2048×1024 after two seconds), and
+`capture-minimized` (opens and then minimizes all three previews, asserting native
+minimized state while senders continue). `ARIA_SMOKE_OUTPUT=0`, `1`, or `2` selects
+the output screenshot target. These hooks require the `screenshots` feature;
+normal portable builds do not run them or change user layouts automatically.
+
 ## Manual acceptance still required on the intended setup
 
 1. Physical iPhone running the user's VTube Studio version, permissions and Wi-Fi.
@@ -250,8 +289,9 @@ Omitting `ARIA_TEST_MODEL` exercises the built-in puppet and empty physics state
    recovery after backgrounding/reopening the phone app.
 2. Windows Firewall helper on the user's Private network, then removal of that rule.
    The app never applies it automatically.
-3. OBS Window Capture on the user's OBS/GPU setup: output selection, green key,
-   resize/minimize behavior, and whether their capture method retains alpha.
+3. Final OBS scenes/filter settings on the intended streaming setup. Full-resolution
+   Spout was tested above; Window Capture fallback alpha and custom chroma-key
+   similarity still depend on capture method and artwork.
 4. Different DPI/display combinations and older supported GPUs.
 
 5. Additional real rigs and export versions, particularly models requiring pose,

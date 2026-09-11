@@ -2,6 +2,7 @@
 
 mod app;
 mod avatar;
+mod broadcast;
 mod chroma;
 mod cubism_render;
 mod expressions_panel;
@@ -10,9 +11,12 @@ mod input_monitor;
 mod live2d;
 mod metrics;
 mod output;
+mod performance;
 mod physics_panel;
 #[cfg(feature = "screenshots")]
 mod screenshot;
+#[cfg(windows)]
+mod spout;
 mod theme;
 
 fn smoke_mode() -> bool {

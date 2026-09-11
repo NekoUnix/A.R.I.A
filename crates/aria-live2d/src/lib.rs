@@ -7,14 +7,15 @@ use std::{collections::BTreeMap, ffi::CStr, marker::PhantomData, path::Path, rc:
 
 pub use aria_core::rig::RigParameter as Parameter;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Blend {
+    #[default]
     Normal,
     Add,
     Multiply,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Drawable {
     pub positions: Vec<[f32; 2]>,
     pub uvs: Vec<[f32; 2]>,
@@ -227,7 +228,9 @@ impl CubismModel {
                     );
                 }
             }
-            let mut output = Vec::with_capacity(n);
+            // Core owns stable mesh topology. Reuse our owned copies instead
+            // of allocating positions, UVs, indices and masks for every frame.
+            self.drawables.resize_with(n, Drawable::default);
             let mut total_vertices = 0;
             let mut total_indices = 0;
             for i in 0..n {
@@ -244,26 +247,28 @@ impl CubismModel {
                     "Model exceeds 12 million indices"
                 );
                 ensure!(ic.is_multiple_of(3), "Invalid triangle index count");
-                let vertices = array(positions[i], vc)?
-                    .iter()
-                    .map(|v| [v.x, v.y])
-                    .collect::<Vec<_>>();
-                let uvs = array(uvs[i], vc)?
-                    .iter()
-                    .map(|v| [v.x, v.y])
-                    .collect::<Vec<_>>();
-                let indices = array(indices[i], ic)?.to_vec();
+                let d = &mut self.drawables[i];
+                d.positions.clear();
+                d.positions
+                    .extend(array(positions[i], vc)?.iter().map(|v| [v.x, v.y]));
+                d.uvs.clear();
+                d.uvs.extend(array(uvs[i], vc)?.iter().map(|v| [v.x, v.y]));
+                d.indices.clear();
+                d.indices.extend_from_slice(array(indices[i], ic)?);
                 ensure!(
-                    vertices.iter().chain(&uvs).flatten().all(|v| v.is_finite())
-                        && indices.iter().all(|&v| (v as usize) < vc),
+                    d.positions
+                        .iter()
+                        .chain(&d.uvs)
+                        .flatten()
+                        .all(|v| v.is_finite())
+                        && d.indices.iter().all(|&v| (v as usize) < vc),
                     "Invalid mesh coordinates or triangle index"
                 );
                 let mc = count(mask_counts[i], n)?;
-                let mask_list = array(masks[i], mc)?
-                    .iter()
-                    .filter(|&&v| v != -1)
-                    .map(|&v| count(v, n.saturating_sub(1)))
-                    .collect::<Result<Vec<_>>>()?;
+                d.masks.clear();
+                for &v in array(masks[i], mc)?.iter().filter(|&&v| v != -1) {
+                    d.masks.push(count(v, n.saturating_sub(1))?);
+                }
                 let mul = multiply[i];
                 let scr = screen[i];
                 let mul = [mul.x, mul.y, mul.z, mul.w];
@@ -272,30 +277,23 @@ impl CubismModel {
                     opacity[i].is_finite() && mul.iter().chain(&scr).all(|v| v.is_finite()),
                     "Invalid drawable color"
                 );
-                output.push(Drawable {
-                    positions: vertices,
-                    uvs,
-                    indices,
-                    texture: count(textures[i], 31)?,
-                    masks: mask_list,
-                    masked: mc > 0,
-                    inverted: flags[i] & 8 != 0,
-                    double_sided: flags[i] & 4 != 0,
-                    visible: dynamic[i] & 1 != 0,
-                    order: orders[i],
-                    opacity: opacity[i].clamp(0.0, 1.0),
-                    multiply: mul,
-                    screen: scr,
-                    blend: if flags[i] & 1 != 0 {
-                        Blend::Add
-                    } else if flags[i] & 2 != 0 {
-                        Blend::Multiply
-                    } else {
-                        Blend::Normal
-                    },
-                });
+                d.texture = count(textures[i], 31)?;
+                d.masked = mc > 0;
+                d.inverted = flags[i] & 8 != 0;
+                d.double_sided = flags[i] & 4 != 0;
+                d.visible = dynamic[i] & 1 != 0;
+                d.order = orders[i];
+                d.opacity = opacity[i].clamp(0.0, 1.0);
+                d.multiply = mul;
+                d.screen = scr;
+                d.blend = if flags[i] & 1 != 0 {
+                    Blend::Add
+                } else if flags[i] & 2 != 0 {
+                    Blend::Multiply
+                } else {
+                    Blend::Normal
+                };
             }
-            self.drawables = output;
         }
         Ok(())
     }
@@ -337,10 +335,36 @@ mod tests {
                 .iter()
                 .flat_map(|d| d.positions.clone())
                 .collect::<Vec<_>>();
+            let buffers: Vec<_> = model
+                .drawables
+                .iter()
+                .map(|d| {
+                    (
+                        d.positions.as_ptr(),
+                        d.uvs.as_ptr(),
+                        d.indices.as_ptr(),
+                        d.masks.as_ptr(),
+                    )
+                })
+                .collect();
             for p in model.parameters.clone() {
                 model.set_parameter(&p.id, p.max);
             }
             model.update().unwrap();
+            assert_eq!(
+                buffers,
+                model
+                    .drawables
+                    .iter()
+                    .map(|d| (
+                        d.positions.as_ptr(),
+                        d.uvs.as_ptr(),
+                        d.indices.as_ptr(),
+                        d.masks.as_ptr()
+                    ))
+                    .collect::<Vec<_>>(),
+                "Native mesh copies should reuse their allocations"
+            );
             let after = model
                 .drawables
                 .iter()

@@ -22,6 +22,7 @@ pub struct Avatar {
     pub imported_count: usize,
     renderer: ModelRenderer,
     last_pose_mode: PoseMode,
+    values: Vec<rig::RigParameter>,
 }
 impl Avatar {
     pub fn load(state: &RenderState, core: &Path, mut files: ModelFiles) -> Result<Self> {
@@ -29,7 +30,8 @@ impl Avatar {
         let model_key = movement::model_key(&bytes);
         let model = CubismModel::load(core, &bytes, files.textures.len())
             .context("Cannot load Live2D avatar")?;
-        let renderer = ModelRenderer::new(state, model.canvas, &model.drawables, &files.textures)?;
+        let mut renderer =
+            ModelRenderer::new(state, model.canvas, &model.drawables, &files.textures)?;
         renderer.render(model.canvas, &model.drawables)?;
         let mut initial_config = RigConfig::from_parameters(model.parameters());
         let mut imported_count = 0;
@@ -86,6 +88,7 @@ impl Avatar {
             .unwrap_or_default()
             .to_string_lossy()
             .into_owned();
+        let values = model.parameters().to_vec();
         Ok(Self {
             name,
             model_key,
@@ -97,6 +100,7 @@ impl Avatar {
             imported_count,
             renderer,
             last_pose_mode: PoseMode::Live,
+            values,
         })
     }
     pub fn image(&self) -> ModelImage {
@@ -109,25 +113,7 @@ impl Avatar {
         self.renderer.key_palette()
     }
     pub fn image_bounds(&self) -> eframe::egui::Rect {
-        let c = self.model.canvas;
-        let mut rect = eframe::egui::Rect::NOTHING;
-        for d in self
-            .model
-            .drawables
-            .iter()
-            .filter(|d| d.visible && d.opacity > 0.01)
-        {
-            for p in &d.positions {
-                rect.extend_with(eframe::egui::pos2(
-                    (p[0] * c.pixels_per_unit + c.origin[0]) / c.size[0],
-                    1.0 - (p[1] * c.pixels_per_unit + c.origin[1]) / c.size[1],
-                ));
-            }
-        }
-        rect.intersect(eframe::egui::Rect::from_min_max(
-            eframe::egui::Pos2::ZERO,
-            eframe::egui::pos2(1.0, 1.0),
-        ))
+        self.renderer.bounds
     }
     pub fn reset_motion(&mut self) {
         if let Some(physics) = &mut self.physics {
@@ -140,25 +126,38 @@ impl Avatar {
         config: &mut RigConfig,
         expressions: &mut crate::expressions_panel::ExpressionsPanel,
         dt: f32,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         if config.pose.mode != self.last_pose_mode {
             self.reset_motion();
             self.last_pose_mode = config.pose.mode;
         }
-        let mut values = self.model.parameters().to_vec();
+        // Parameter identities/ranges are immutable. Reuse their strings and
+        // buffers; only values change between evaluations.
+        for (p, native) in self.values.iter_mut().zip(self.model.parameters()) {
+            p.value = native.value;
+        }
         config.evaluate_with_expressions(
             inputs,
-            &mut values,
+            &mut self.values,
             dt,
             self.physics.as_mut(),
             |p, active| expressions.update(p, active, dt),
         );
-        for p in values {
+        if self
+            .values
+            .iter()
+            .zip(self.model.parameters())
+            .all(|(a, b)| a.value == b.value)
+        {
+            return Ok(false);
+        }
+        for p in &self.values {
             self.model.set_parameter(&p.id, p.value);
         }
         self.model.update()?;
         self.renderer
-            .render(self.model.canvas, &self.model.drawables)
+            .render(self.model.canvas, &self.model.drawables)?;
+        Ok(true)
     }
     pub fn save_png(&self, path: &Path) -> Result<()> {
         self.renderer.save_png(path)
@@ -188,6 +187,67 @@ fn read_labels(path: &Path) -> Result<BTreeMap<String, String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[cfg(windows)]
+    #[ignore = "requires local Cubism Core, test model and DX12 GPU"]
+    fn frozen_avatar_skips_core_and_gpu_work_but_edits_refresh_it() {
+        let state = crate::spout::tests::gpu_state();
+        let path = std::env::var_os("ARIA_TEST_MODEL").unwrap();
+        let core = std::env::var_os("ARIA_CUBISM_CORE").unwrap();
+        let mut avatar = Avatar::load(
+            &state,
+            Path::new(&core),
+            aria_model::load_files(Path::new(&path)).unwrap(),
+        )
+        .unwrap();
+        let mut config = avatar.initial_config.clone();
+        config.pose.mode = PoseMode::Frozen;
+        config.pose.frozen = avatar
+            .model
+            .parameters()
+            .iter()
+            .map(|p| (p.id.clone(), p.value))
+            .collect();
+        let mut expressions = crate::expressions_panel::ExpressionsPanel::default();
+        let before = avatar.renderer.vertex_staging_capacity();
+        for _ in 0..60 {
+            assert!(
+                !avatar
+                    .update(&Inputs::new(), &mut config, &mut expressions, 1.0 / 60.0)
+                    .unwrap()
+            );
+        }
+        let p = avatar
+            .model
+            .parameters()
+            .iter()
+            .find(|p| p.max > p.min)
+            .unwrap();
+        let id = p.id.clone();
+        let value = if p.value == p.max { p.min } else { p.max };
+        config.pose.frozen.insert(id.clone(), value);
+        assert!(
+            avatar
+                .update(&Inputs::new(), &mut config, &mut expressions, 1.0 / 60.0)
+                .unwrap()
+        );
+        assert_eq!(
+            avatar
+                .model
+                .parameters()
+                .iter()
+                .find(|p| p.id == id)
+                .unwrap()
+                .value,
+            value
+        );
+        assert!(
+            !avatar
+                .update(&Inputs::new(), &mut config, &mut expressions, 1.0 / 60.0)
+                .unwrap()
+        );
+        assert_eq!(avatar.renderer.vertex_staging_capacity(), before);
+    }
     #[test]
     #[ignore = "requires local ARIA_CUBISM_CORE and ARIA_TEST_MODEL with expression files"]
     fn local_expressions_toggle_native_avatar_and_restore_after_release() {

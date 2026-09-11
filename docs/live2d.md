@@ -124,7 +124,7 @@ which custom rig IDs mean hair or clothing. Missing/invalid files produce a visi
 warning and leave the avatar usable. Bare moc imports have no physics/profile metadata.
 
 Open **A.R.I.A. Output** for OBS as described in the [Windows guide](windows.md).
-The two windows share the same rendered avatar texture and live parameter state.
+The studio and all output windows share the rendered avatar texture and live parameter state.
 Use green screen plus OBS Chroma Key when your capture method does not retain alpha.
 
 ## Command-line launch
