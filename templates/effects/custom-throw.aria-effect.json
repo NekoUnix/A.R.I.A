@@ -77,6 +77,29 @@
       "drip": 0.035,
       "foam": 0.3,
       "trail": 0.65
+    },
+    "deformation": {
+      "avatar": {
+        "enabled": true,
+        "depth": 0.4,
+        "radius": 0.12,
+        "squash": 0.25,
+        "hold": 0.08,
+        "recovery": 0.8,
+        "elasticity": 0.35,
+        "shading": 0.25
+      },
+      "object": {
+        "enabled": true,
+        "depth": 0.4,
+        "radius": 0.8,
+        "squash": 0.5,
+        "hold": 0.08,
+        "recovery": 0.8,
+        "elasticity": 0.35,
+        "shading": 0.25
+      },
+      "speed_sensitive": false
     }
   }
 }

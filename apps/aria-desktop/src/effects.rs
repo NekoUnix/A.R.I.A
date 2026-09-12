@@ -21,8 +21,17 @@ enum Asset {
     Prop(Box<crate::prop_render::Prop>),
     Moc(u64),
 }
+struct ImpactDent {
+    pin: Pin,
+    response: aria_core::deformation::Response,
+    direction: [f32; 2],
+    age: f32,
+    scale: f32,
+}
 #[derive(Default)]
 pub struct Effects {
+    impacts: Vec<ImpactDent>,
+    pub dents: Arc<[crate::deformation::AvatarDent]>,
     pub editor: Option<Box<crate::effect_editor::Editor>>,
     liquid_art: crate::liquid_art::Cache,
     pub simulation: Simulation,
@@ -69,6 +78,10 @@ impl Effects {
             .count();
         assert!(pins > 0, "Sprays must attach to the avatar");
         assert!(
+            !self.dents.is_empty() && self.draws.iter().any(|d| d.deformation.is_some()),
+            "Avatar and thrown objects must deform"
+        );
+        assert!(
             self.simulation
                 .particles
                 .iter()
@@ -101,6 +114,8 @@ impl Effects {
         *self = Self::default();
     }
     pub fn clear(&mut self) {
+        self.impacts.clear();
+        self.dents = Arc::from([]);
         self.liquid_art = Default::default();
         self.dirty = true;
         self.pending.clear();
@@ -126,7 +141,8 @@ impl Effects {
         dt: f32,
     ) -> bool {
         let (library, pose) = settings;
-        let was = self.simulation.active() || std::mem::take(&mut self.dirty);
+        let was =
+            self.simulation.active() || !self.impacts.is_empty() || std::mem::take(&mut self.dirty);
         for id in std::mem::take(&mut self.pending) {
             let Some(design) = library.designs.iter().find(|d| d.id == id) else {
                 self.message = Some("Effect no longer exists in this avatar's library".into());
@@ -159,8 +175,13 @@ impl Effects {
                 Err(e) => self.message = Some(format!("Cannot trigger {}: {e:#}", design.name)),
             }
         }
-        let active = self.simulation.active();
+        let active = self.simulation.active() || !self.impacts.is_empty();
         if dt > 0.0 && !self.paused && pose != PoseMode::Frozen {
+            for impact in &mut self.impacts {
+                impact.age += dt.min(0.25);
+            }
+            self.impacts
+                .retain(|impact| impact.age < impact.response.duration());
             self.time += dt;
             for sound in self.simulation.tick(dt) {
                 if !library.muted {
@@ -179,6 +200,21 @@ impl Effects {
                         Some(Pin::Puppet { point: p.target })
                     };
                     p.pin_checked = true;
+                    p.contact = surface.is_some();
+                    if let Some(pin) = &surface
+                        && p.deformation.avatar.enabled
+                    {
+                        if self.impacts.len() >= 24 {
+                            self.impacts.remove(0);
+                        }
+                        self.impacts.push(ImpactDent {
+                            pin: pin.clone(),
+                            response: p.deformation.avatar.clone(),
+                            direction: aria_core::deformation::direction(p.origin, p.target),
+                            age: (p.age - p.flight).max(0.0),
+                            scale: p.impact_scale(),
+                        });
+                    }
                     if surface.is_none() {
                         p.bounce = 0.0;
                     }
@@ -201,6 +237,20 @@ impl Effects {
         if library.muted || self.paused || pose == PoseMode::Frozen {
             self.audio.stop();
         }
+        self.dents = self
+            .impacts
+            .iter()
+            .map(|impact| crate::deformation::AvatarDent {
+                anchor: crate::items::anchor(Some(&impact.pin), avatar),
+                field: aria_core::deformation::Field::new(
+                    [0.0; 2],
+                    impact.direction,
+                    &impact.response,
+                    impact.response.gain(impact.age) * impact.scale,
+                ),
+            })
+            .collect::<Vec<_>>()
+            .into();
         let mut draws = Vec::new();
         for p in &self.simulation.particles {
             if p.kind == Kind::Spray && p.asset.to_string_lossy() == "builtin:drop" {
@@ -258,6 +308,7 @@ impl Effects {
                 Some((
                     p,
                     DrawItem {
+                        deformation: crate::deformation::ObjectWarp::from_particle(p),
                         tint: if material.is_some() {
                             egui::Color32::WHITE
                         } else {
@@ -279,6 +330,7 @@ impl Effects {
                 if p.stuck && (0.0..0.45).contains(&after) {
                     let mut ring = draw.clone();
                     ring.image = ItemImage::Png(art.crown.clone());
+                    ring.deformation = None;
                     ring.item.height *= 1.2 + after * 4.0;
                     ring.item.opacity *= (1.0 - after / 0.45) * p.liquid.foam;
                     draws.push(ring);
@@ -480,6 +532,88 @@ fn builtin(ctx: &egui::Context, state: Option<&RenderState>, name: &str) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn dents_outlive_particles_freeze_and_clear_without_touching_shared_art() {
+        let ctx = egui::Context::default();
+        let mut effects = Effects::default();
+        let mut deformation = aria_core::deformation::Settings::gentle();
+        deformation.avatar.hold = 0.4;
+        deformation.avatar.recovery = 0.6;
+        let library = Library {
+            designs: vec![Design {
+                count: 2,
+                interval: 0.2,
+                flight: 0.1,
+                lifetime: 0.2,
+                deformation,
+                ..Default::default()
+            }],
+            muted: true,
+            ..Default::default()
+        };
+        effects.pending.push(1);
+        let update = |e: &mut Effects, dt, pose| {
+            e.update(&ctx, None, Path::new(""), (&library, pose), None, dt)
+        };
+        update(&mut effects, 0.15, PoseMode::Live);
+        assert_eq!(effects.dents.len(), 1);
+        assert!(effects.draws[0].deformation.is_some());
+        let texture = effects.draws[0].image.id();
+        let held = effects.dents.clone();
+        let age = effects.impacts[0].age;
+        update(&mut effects, 1.0, PoseMode::Frozen);
+        assert_eq!(effects.dents, held);
+        assert_eq!(effects.impacts[0].age, age);
+        update(&mut effects, 0.2, PoseMode::Live);
+        assert_eq!(effects.draws[0].image.id(), texture);
+        update(&mut effects, 0.25, PoseMode::Live);
+        assert!(effects.simulation.particles.is_empty());
+        assert!(!effects.dents.is_empty());
+        for _ in 0..6 {
+            update(&mut effects, 0.25, PoseMode::Live);
+        }
+        assert!(effects.dents.is_empty());
+        effects.clear();
+        assert!(effects.dents.is_empty() && effects.impacts.is_empty());
+    }
+    #[test]
+    fn deformation_is_opt_in_for_legacy_designs_and_overlap_is_bounded() {
+        let ctx = egui::Context::default();
+        let mut effects = Effects::default();
+        let mut library = Library {
+            designs: vec![Design {
+                count: 50,
+                interval: 0.0,
+                flight: 0.1,
+                ..Default::default()
+            }],
+            muted: true,
+            ..Default::default()
+        };
+        effects.pending.push(1);
+        effects.update(
+            &ctx,
+            None,
+            Path::new(""),
+            (&library, PoseMode::Live),
+            None,
+            0.2,
+        );
+        assert!(effects.dents.is_empty() && effects.draws.iter().all(|d| d.deformation.is_none()));
+        effects.reset();
+        library.designs[0].deformation = aria_core::deformation::Settings::gentle();
+        effects.pending.push(1);
+        effects.update(
+            &ctx,
+            None,
+            Path::new(""),
+            (&library, PoseMode::Live),
+            None,
+            0.2,
+        );
+        assert_eq!(effects.impacts.len(), 24);
+        assert!(effects.draws.iter().all(|d| d.deformation.is_some()));
+    }
     #[test]
     fn zero_quantity_skips_missing_files_and_throw_assets_attach() {
         let ctx = egui::Context::default();

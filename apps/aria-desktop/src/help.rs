@@ -200,6 +200,7 @@ pub fn category_topic(title: &str) -> &'static str {
         "Throws & sprays" | "Selected effect" => "effects",
         "Visual assets" => "effect-assets",
         "Motion & impact" => "effect-motion",
+        "Avatar on stage" | "Thrown objects" => "effect-deformation",
         "Liquid & color" => "sprays",
         "Sound effects" => "effect-sounds",
         "Effect hotkey" => "hotkeys",

@@ -6,7 +6,10 @@ tracking into avatar parameters, and animates **Live2D `.moc3` avatars**, a buil
 2D test puppet, or your PNG artwork. The UI and preview run on **egui + wgpu**,
 without Unity or Godot.
 
-> **v0.13:** adds a visual throw and liquid designer on your live avatar.
+> **v0.14:** adds configurable impact dents and deformation for the avatar and
+> each thrown object. Set depth, area, squash, hold, recovery, spring-back and shading
+> independently in the visual effect designer. Responses follow the hit surface,
+> pause for screenshots and reset cleanly. Existing designs remain opt-in.
 > Drag launch and aim markers, use up to 16 directions, and choose exact quantities
 > of each PNG, independent Live2D or static 3D asset. Preview a draft before saving.
 > Configure speed, gravity, resistance, bounce, stick probability, scene duration,
@@ -59,7 +62,10 @@ design and click **Edit toggle / directions…**. A popup shows your live avatar
    Set **Stay after impact** (up to 120 seconds) and a separate fade-out time.
 4. For sprays, use **Liquid** to choose color/opacity and water, paint or slime styling.
    **Sounds** selects launch/impact clips; **Hotkey** assigns your shortcut.
-5. Click **Preview burst**, then **Save toggle**. Cancel discards the draft. Preview
+5. In **Deformation**, enable **Avatar on stage** and/or **Thrown objects**. Tune
+   dent depth, area, squash, hold, recovery, elasticity and shading independently.
+   New throws start with Gentle impact; existing designs keep their current behavior.
+6. Click **Preview burst**, then **Save toggle**. Cancel discards the draft. Preview
    effects remain in the editor; saved designs play on the stage and all OBS outputs.
 
 Settings belong to the current avatar. Frozen poses pause stage effects for PNG export.
@@ -77,6 +83,27 @@ Stream tools handle their own service login; ARIA does not connect directly to T
 3D imports are static props, without skeletal/VRM animation or specialized shaders.
 Effects audio uses Windows' default output; capture ARIA audio separately in OBS.
 Detailed limits and every control are explained in the [offline help](docs/in-app-help.md).
+
+## Impact dents and deformation
+
+![Deformation controls and a paused impact on Mica](docs/images/deformation.png)
+
+Open **Throws & liquid sprays → Edit toggle / directions… → Deformation**.
+Use **Gentle impact** or **Soft & elastic** as a starting point, then configure
+the avatar and thrown objects separately. **Scale strength with impact speed**
+makes faster throws hit harder. Each object has its own response, including copies
+of the same PNG, Live2D or 3D asset. A temporary avatar dent follows the animated
+hit surface and can finish recovering after the thrown object disappears.
+
+**Hold dent** controls time at peak strength; **Recover over** controls the return
+to the original shape. **Elastic spring-back** adds a damped wobble, and **Depth
+shading** controls the visual depth. Pause or Freeze holds the response; Clear
+active effects removes it. Save toggle stores the settings per design and per avatar.
+
+The effect warps the rendered 2D geometry, including the appearance of 3D props.
+Source meshes, rig parameters and texture files are unchanged. Up to 24 localized
+avatar dents coexist, with bounded overlap. See the [in-app control reference](docs/in-app-help.md)
+for units, limits, recovery examples and independent object timing.
 
 ## Live2D objects, PNG accessories and toggles
 
@@ -246,7 +273,7 @@ To build a portable bundle with its documentation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 ```
 
-The script runs tests and writes `dist/aria-0.13.0-windows-x64.zip`. See
+The script runs tests and writes `dist/aria-0.14.0-windows-x64.zip`. See
 [architecture](docs/architecture.md) for crate boundaries and
 [validation](docs/validation.md) for what has actually been exercised.
 

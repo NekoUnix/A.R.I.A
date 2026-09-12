@@ -122,6 +122,10 @@ def design(name, kind, assets, **kwargs):
              asset_counts=[d["count"]//len(assets) + int(i<d["count"]%len(assets)) for i in range(len(assets))],
              speed=1, gravity=1, drag=.15, stickiness=1 if kind=="Spray" else .3, fade_out=.7,
              liquid=dict(gloss=.9,clarity=.7,viscosity=.25,drip=.035,foam=.3,trail=.65))
+    d["deformation"] = dict(
+        avatar=dict(enabled=kind=="Throw",depth=.4,radius=.12,squash=.25,hold=.08,recovery=.8,elasticity=.35,shading=.25),
+        object=dict(enabled=kind=="Throw",depth=.4,radius=.8,squash=.5,hold=.08,recovery=.8,elasticity=.35,shading=.25),
+        speed_sensitive=False)
     return {"aria_effect":1,"design":d}
 
 document(ROOT / "custom-throw.aria-effect.json", design("My star throw","Throw",["assets/star.png"]))

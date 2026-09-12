@@ -2,11 +2,39 @@
 
 This guide is bundled into the application and works offline. The topic headers also provide the short hover descriptions for the circled question-mark buttons.
 
+## effect-deformation | Impact dents and deformation | Configure the avatar and thrown objects separately: dent depth, affected area, squash, hold, recovery, elastic spring-back and shading. Preview the impact, then save it per avatar.
+
+### Enable and preview
+
+Open Throws & liquid sprays, select a design, choose Edit toggle / directions, then open Deformation. New throw starts with Gentle impact. Existing saved designs keep deformation disabled until you enable it. Avatar on stage and Thrown objects each have their own Enable deformation switch and settings. Both throws and sprays can use these responses. Gentle impact restores moderate settings; Soft & elastic increases depth, squash and spring-back; Disable both turns off the responses while preserving your numbers.
+
+Preview burst shows the settings on the live avatar and each emitted object. Changes affect the next burst. Pause holds the current response for inspection, while the avatar can keep tracking. Clear preview removes dents and objects. Save toggle stores the configuration for this design and this avatar. Cancel changes discards the draft. In normal playback, Pause effects holds dent timers, Freeze pose holds the model too, and Clear active effects restores the original shape immediately. Switching avatars clears transient dents.
+
+### Shape and strength
+
+Dent depth ranges from 0 to 1. It pushes a localized area inward along the incoming impact direction on the avatar, and compresses the contact side of the thrown object in the opposite direction. Zero removes that displacement. Squash & stretch independently compresses and widens the affected region; thrown objects also squash as a whole, while the avatar response stays localized. Set both to zero for no geometry displacement. Disable Depth shading too if you want no visible response.
+
+Area / canvas height sets the avatar dent radius from 0.02 to 0.6 of its full canvas height, including transparent padding. An area of 0.1 affects a radius of 10 percent of that height. Area / object height sets each thrown object's dent radius from 0.1 to 1.5 of that object's height. Small areas make focused dents; large areas soften a wider region. All values scale with output resolution and avatar zoom. Dents follow the hit Live2D surface as it moves; attached props and accessories follow the displaced attachment point.
+
+Scale strength with impact speed multiplies the response by travel distance divided by actual flight time, clamped between 0.25 and 2. Faster throws hit harder; turn it off to use the same configured strength at every speed. Depth shading darkens the indentation without changing texture alpha, from 0 for pure geometry to 1 for pronounced depth. Clear backgrounds remain transparent in PNG and OBS output.
+
+### Hold, recovery and spring-back
+
+Hold dent (s) keeps the peak response for 0–10 seconds after impact. Recover over (s) returns the shape over 0.05–10 more seconds. Elastic spring-back ranges from 0 for a smooth return to 1 for a damped wobble that can briefly bulge outward. At the end of recovery the original shape is restored exactly. Avatar and object timing are independent. For example, hold 0.2 seconds and recover over 1 second makes a 1.2-second response. Pause and Freeze stop these timers.
+
+Object deformation ends when that object disappears, even if its recovery was longer. Avatar dents finish their own recovery and can outlast the thrown object's scene lifetime. Motion → Stay after impact and Fade-out time still control how long the object is present; deformation timing controls its shape. Use separate short object recovery and longer avatar hold for a soft ball that springs back while leaving a temporary dent.
+
+### Rendering and limits
+
+This is reversible 2D display deformation of the rendered avatar and each rendered prop. Live2D and PNG texture geometry is subdivided and warped; Mica's vector geometry also responds. 3D props receive dents in their rendered appearance; their source 3D geometry is unchanged. Avatar tracking parameters, Cubism rig data and source texture files are unchanged. Surface checks use the original animated geometry for stable impacts; misses do not create Live2D dents. Mica and PNG use their puppet attachment coordinates.
+
+Up to 24 avatar dents can coexist; a newer impact replaces the oldest when full. Overlapping displacement and shading are bounded to keep large bursts stable. Deformation only adds mesh detail while a response is active. Every copy has its own impact and recovery; shared artwork is not deformed for other copies. The same result appears in the studio, designer preview, transparent PNG export and all three OBS canvases. A draft preview is isolated from stage/OBS playback.
+
 ## effect-editor | Visual throw and spray designer | Create a toggle in a popup with your avatar, draw launch-to-aim paths, choose exact asset quantities, preview it locally, then save the design to this avatar.
 
 ### Create, preview and save
 
-New throw and New spray open the Effect designer. Select an existing design and click Edit toggle / directions to reopen it. The left side shows your current avatar; the right side has Directions, Assets, Motion, Liquid, Sounds and Hotkey tabs. Changes stay in a draft until Save toggle. Cancel changes or the window's close button discards the draft. Loading another avatar closes it so one avatar's draft cannot overwrite another's settings. Duplicate opens a copy with a new ID and no shortcut.
+New throw and New spray open the Effect designer. Select an existing design and click Edit toggle / directions to reopen it. The left side shows your current avatar; the right side has Directions, Assets, Motion, Liquid, Sounds, Hotkey and Deformation tabs. Changes stay in a draft until Save toggle. Cancel changes or the window's close button discards the draft. Loading another avatar closes it so one avatar's draft cannot overwrite another's settings. Duplicate opens a copy with a new ID and no shortcut.
 
 Preview burst plays the current draft in the editor only. The main stage and OBS outputs keep their existing effects. Pause holds preview particles while your avatar can continue moving; Clear preview removes them. Editing a value affects the next preview burst. Reload assets / audio clears the preview, reloads modified visual files on the next preview, and retries audio. Preview sound uses the avatar's master volume and mute setting; Listen is an explicit audio audition. The avatar image remains live, so use the main Pose controls if you need to hold its face while designing.
 

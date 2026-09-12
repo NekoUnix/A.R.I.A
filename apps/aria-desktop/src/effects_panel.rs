@@ -32,6 +32,7 @@ impl Effects {
                 self.editor = Some(Box::new(crate::effect_editor::Editor::new(Design {
                     id,
                     name: format!("Throw {id}"),
+                    deformation: aria_core::deformation::Settings::gentle(),
                     fade_out: Some(0.7),
                     ..Default::default()
                 })));

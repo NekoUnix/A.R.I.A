@@ -3,6 +3,29 @@
 This file records checks for the development builds. The Windows CI workflow
 is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
+## Local verification on 2026-09-12
+
+### v0.14 impact deformation
+
+- Formatting and strict Clippy across all targets/features passed. **98 default
+  tests passed**, with nine environment-dependent tests ignored. New coverage
+  exercises legacy settings migration, finite bounds, overlapping dent geometry,
+  independent copies, contact timing, exact recovery, freeze, clear, dent lifetime
+  after particle removal, resolution scaling, texture coordinates and alpha.
+- Native Windows/DX12 editor previews verified Mica and the local Live2D avatar,
+  including a separate thrown moc3 copy. The Live2D comparison changed **438,419
+  avatar pixels** and **104,853 object pixels**. Clearing deformation restored
+  the original render byte-for-byte; transparent corners remained alpha zero.
+  Public documentation screenshots use only Mica; private artwork stays local.
+- A stage run rendered **148 effect particles**, including PNG, independent moc3,
+  GLB, glTF, OBJ and FBX props. Assertions confirmed avatar dents, independent
+  object deformation and both throwing and spray attachment behavior.
+- Isolated OBS 32.2.1 with Spout2 1.12 captured the deformed scene at **1920×1080**,
+  **1080×1920** and **1536×1024**, retaining transparent corners and opaque avatar
+  pixels. This short run reported zero skipped render frames; it is not a general
+  performance guarantee. Source geometry and rig parameters are unchanged: these
+  are reversible display dents, including on the rendered appearance of 3D props.
+
 ## Local verification on 2026-09-11
 
 ### v0.9 contextual documentation

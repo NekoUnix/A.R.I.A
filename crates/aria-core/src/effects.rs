@@ -48,6 +48,7 @@ impl Default for Liquid {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Design {
+    pub deformation: crate::deformation::Settings,
     /// Empty vectors preserve the v0.12 pool/count and single-origin behavior.
     pub routes: Vec<Route>,
     pub route_selection: Selection,
@@ -88,6 +89,7 @@ pub struct Design {
 impl Default for Design {
     fn default() -> Self {
         Self {
+            deformation: crate::deformation::Settings::default(),
             routes: Vec::new(),
             route_selection: Selection::Cycle,
             asset_counts: Vec::new(),
@@ -167,6 +169,7 @@ impl Design {
         self.fade_out.get_or_insert(self.lifetime.min(30.0));
     }
     pub fn validate(&self) -> Result<()> {
+        self.deformation.validate()?;
         ensure!(
             self.routes.len() <= 16
                 && self.routes.iter().all(|r| r
@@ -360,6 +363,8 @@ impl Library {
 }
 #[derive(Clone, Debug)]
 pub struct Particle {
+    pub deformation: crate::deformation::Settings,
+    pub contact: bool,
     pub wants_stick: bool,
     pub stuck: bool,
     pub gravity: f32,
@@ -387,6 +392,14 @@ pub struct Particle {
     pub hit: bool,
 }
 impl Particle {
+    pub fn impact_scale(&self) -> f32 {
+        if self.deformation.speed_sensitive {
+            ((self.target[0] - self.origin[0]).hypot(self.target[1] - self.origin[1]) / self.flight)
+                .clamp(0.25, 2.0)
+        } else {
+            1.0
+        }
+    }
     pub fn pose(&self) -> ([f32; 2], f32, f32, f32) {
         let t = (self.age / self.flight).clamp(0.0, 1.0);
         if !self.hit {
@@ -579,6 +592,8 @@ impl Simulation {
                         .unwrap_or(if d.kind == Kind::Spray { 1.0 } else { 0.0 });
                 let wants_stick = probability >= 1.0 || self.random() < probability;
                 self.particles.push(Particle {
+                    deformation: d.deformation.clone(),
+                    contact: false,
                     wants_stick,
                     stuck: false,
                     gravity: d.gravity,

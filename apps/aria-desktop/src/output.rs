@@ -554,6 +554,7 @@ impl OutputWindows {
 
 #[derive(Clone)]
 pub struct Scene {
+    pub dents: Arc<[crate::deformation::AvatarDent]>,
     pub effects: Arc<[crate::items::DrawItem]>,
     pub recoil: [f32; 2],
     pub _model_lease: Option<std::sync::Arc<crate::cubism_render::ModelTexture>>,
@@ -608,8 +609,22 @@ impl Scene {
             ..Default::default()
         };
         crate::items::paint(painter, self, translated, config.zoom, true);
+        let fields = crate::deformation::avatar_fields(self, translated, zoom);
         if let Some(model) = self.model {
-            model.draw(painter, translated, config.zoom);
+            if fields.is_empty() {
+                model.draw(painter, translated, config.zoom);
+            } else {
+                let rect = model.rect(translated, zoom);
+                painter.add(egui::Shape::mesh(crate::deformation::textured_mesh(
+                    model.id,
+                    rect.center(),
+                    rect.size(),
+                    0.0,
+                    Color32::WHITE,
+                    None,
+                    &fields,
+                )));
+            }
         } else {
             avatar::draw(
                 painter,
@@ -617,6 +632,7 @@ impl Scene {
                 self.params,
                 self.sprite.as_ref(),
                 config.zoom,
+                &fields,
             );
         }
         crate::items::paint(painter, self, translated, config.zoom, false);
@@ -699,6 +715,7 @@ mod tests {
         for size in [egui::vec2(960.0, 540.0), egui::vec2(540.0, 960.0)] {
             let ctx = egui::Context::default();
             let scene = Scene {
+                dents: Default::default(),
                 effects: Arc::from([]),
                 recoil: [0.0; 2],
                 _model_lease: None,
@@ -836,6 +853,7 @@ mod tests {
         for size in [[480., 270.], [270., 480.], [480., 320.]] {
             let ctx = egui::Context::default();
             let scene = Scene {
+                dents: Default::default(),
                 effects: Arc::from([]),
                 recoil: [0.0; 2],
                 _model_lease: None,

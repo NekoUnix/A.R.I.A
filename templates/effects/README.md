@@ -63,6 +63,7 @@ use the Star toss defaults. `id` is reassigned on import. `name` is 1–80 chara
 | `tint`, `splash` | RGBA bytes (custom art multiplies; built-in water preserves white glints) and spray expansion after landing |
 | `launch_sound`, `impact_sound` | Local clip, `builtin:whoosh/pop/spray/splat`, or empty string for silence |
 | `volume`, `cooldown` | Design volume 0–1 and minimum seconds between accepted triggers |
+| `deformation` | Separate avatar/object response settings and speed sensitivity; see below |
 | `hotkey` | Set in ARIA after import; sharing a design never installs a shortcut |
 
 There is no fixed number of saved designs. Runtime caps are 256 active particles,
@@ -98,3 +99,24 @@ droplet SVG/PNG is included for custom artwork. Water, paint and slime presets s
 color and material controls; tune clarity, gloss, foam, viscosity, drip and stretch
 to taste. Rendering uses transparent particles and moving surface pins, not a
 volumetric fluid solver or texture-file changes.
+
+## Deformation fields
+
+The `deformation` object contains `avatar`, `object` and `speed_sensitive`. Each
+response has `enabled`, `depth`, `radius`, `squash`, `hold`, `recovery`, `elasticity`
+and `shading`. Depth, squash, elasticity and shading range from 0 to 1. Avatar
+radius is 0.02–0.6 of avatar canvas height; object radius is 0.1–1.5 of object
+height. Hold is 0–10 seconds and recovery is 0.05–10 seconds. When speed sensitivity
+is true, actual travel speed multiplies strength, bounded between 0.25× and 2×.
+
+The throw/3D templates enable gentle deformation; the spray template leaves it
+off until configured. Missing deformation settings in older designs remain off.
+Use the designer's Deformation tab to edit these fields. Save/Export preserves
+both responses. The shape returns after hold plus recovery; object visibility
+still follows the lifetime/fade settings. Clearing playback resets all dents.
+
+These are visual 2D dents on the rendered geometry, including rendered 3D props.
+Each emitted copy deforms independently and retains the shared source artwork.
+Avatar dents follow their hit surface; up to 24 coexist. Rig parameters and
+source meshes/textures are unchanged. PNG exports and every OBS canvas include
+the same deformation and preserve transparent alpha.

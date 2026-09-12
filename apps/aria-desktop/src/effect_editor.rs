@@ -30,6 +30,43 @@ pub struct Reply {
 }
 impl Editor {
     #[cfg(feature = "screenshots")]
+    pub fn deformation_smoke() -> Self {
+        let mut d = Design {
+            name: "Soft impact · avatar and object dents".into(),
+            assets: vec![
+                "builtin:ball".into(),
+                "builtin:star".into(),
+                "builtin:cube".into(),
+            ],
+            asset_counts: vec![1, 1, 1],
+            interval: 0.3,
+            flight: 0.4,
+            size: 0.2,
+            spread: 0.03,
+            lifetime: 10.0,
+            spin: 0.0,
+            stickiness: Some(1.0),
+            impact: 0.0,
+            deformation: aria_core::deformation::Settings::gentle(),
+            ..Default::default()
+        };
+        if let Some(path) = std::env::var_os("ARIA_SMOKE_EFFECT_ASSET") {
+            d.assets.push(path.into());
+            d.asset_counts.push(1);
+        }
+        d.deformation.avatar.depth = 0.9;
+        d.deformation.avatar.radius = 0.2;
+        d.deformation.avatar.squash = 0.6;
+        d.deformation.avatar.hold = 4.0;
+        d.deformation.object.depth = 0.9;
+        d.deformation.object.squash = 0.85;
+        d.deformation.object.hold = 4.0;
+        let mut editor = Self::new(d);
+        editor.tab = 6;
+        editor.preview.pending.push(editor.draft.id);
+        editor
+    }
+    #[cfg(feature = "screenshots")]
     pub fn smoke() -> Self {
         let mut d = Library::default().designs[3].clone();
         d.name = "Water & stars · three directions".into();
@@ -159,7 +196,40 @@ impl Editor {
             );
         }
         scene.effects = self.preview.draws.clone();
+        scene.dents = self.preview.dents.clone();
         scene.recoil = self.preview.simulation.impulse;
+        #[cfg(feature = "screenshots")]
+        if crate::smoke_mode()
+            && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("effect-deformation")
+            && !self.preview.paused
+            && self
+                .preview
+                .simulation
+                .particles
+                .first()
+                .is_some_and(|p| p.age > 1.6)
+        {
+            assert!(
+                !self.preview.dents.is_empty()
+                    && self.preview.draws.iter().any(|d| d.deformation.is_some()),
+                "Both avatar and object deformation must be active"
+            );
+            if let Some(state) = render
+                && let Some(path) = std::env::var_os("ARIA_SCREENSHOT_TO")
+            {
+                crate::deformation::verify_smoke(ctx, state, &scene, Path::new(&path));
+            }
+            self.preview.paused = true;
+            eprintln!(
+                "Deformation editor verified: {} avatar dents, {} independently deformed objects",
+                self.preview.dents.len(),
+                self.preview
+                    .draws
+                    .iter()
+                    .filter(|d| d.deformation.is_some())
+                    .count()
+            );
+        }
         let screen = ctx.content_rect();
         let height = (screen.height() - 150.0).clamp(360.0, 700.0);
         let mut open = self.open;
@@ -195,14 +265,14 @@ impl Editor {
                     edit_canvas(&mut cols[0],rect,&scene,&mut self.draft.routes,&mut self.selected,self.tool,self.draft.arc);
                     cols[0].small("Green = launch • Pink = aim. Arrows show travel. Preview changes stay here until saved.");
                     cols[1].horizontal_wrapped(|ui| {
-                        for (i,label) in ["Directions","Assets","Motion","Liquid","Sounds","Hotkey"].into_iter().enumerate() {
+                        for (i,label) in ["Directions","Assets","Motion","Liquid","Sounds","Hotkey","Deformation"].into_iter().enumerate() {
                             ui.selectable_value(&mut self.tab,i,label);
                         }
                     });
                     egui::ScrollArea::vertical().id_salt("effect-editor-settings").max_height(height-75.0)
                         .show(&mut cols[1],|ui| {match self.tab {
                             0=>self.directions(ui),1=>self.assets(ui),2=>self.motion(ui),3=>self.liquid(ui),
-                            4=>self.sounds(ui,saved.effects.volume),_=>self.hotkey(ui,saved),
+                            4=>self.sounds(ui,saved.effects.volume),5=>self.hotkey(ui,saved),_=>self.deformation(ui),
                         }});
                 });
                 if let Some(m)=self.message.as_ref().or(self.preview.message.as_ref()) {ui.label(m);}
@@ -284,6 +354,85 @@ impl Editor {
             ui.radio_value(&mut self.draft.route_selection, value, label);
         }
         ui.small("Click Place launch or Place aim, then click the image. Drag either marker to refine it. Add up to 16 directions.");
+    }
+    fn deformation(&mut self, ui: &mut egui::Ui) {
+        help::label(ui, "Impact dents & deformation", "effect-deformation");
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Gentle impact").clicked() {
+                self.draft.deformation = aria_core::deformation::Settings::gentle();
+            }
+            if ui.button("Soft & elastic").clicked() {
+                let mut settings = aria_core::deformation::Settings::gentle();
+                settings.avatar.depth = 0.7;
+                settings.avatar.squash = 0.5;
+                settings.avatar.recovery = 1.6;
+                settings.avatar.elasticity = 0.85;
+                settings.object.depth = 0.6;
+                settings.object.squash = 0.85;
+                settings.object.recovery = 1.4;
+                settings.object.elasticity = 0.85;
+                self.draft.deformation = settings;
+            }
+            if ui.button("Disable both").clicked() {
+                self.draft.deformation.avatar.enabled = false;
+                self.draft.deformation.object.enabled = false;
+            }
+        });
+        help::control(ui, "effect-deformation", |ui| {
+            ui.checkbox(
+                &mut self.draft.deformation.speed_sensitive,
+                "Scale strength with impact speed",
+            )
+        });
+        for (id, label, object, response) in [
+            (
+                "avatar-impact",
+                "Avatar on stage",
+                false,
+                &mut self.draft.deformation.avatar,
+            ),
+            (
+                "object-impact",
+                "Thrown objects",
+                true,
+                &mut self.draft.deformation.object,
+            ),
+        ] {
+            theme::category(ui, id, label, true, |ui| {
+                help::control(ui, "effect-deformation", |ui| {
+                    ui.checkbox(&mut response.enabled, "Enable deformation")
+                });
+                ui.add_enabled_ui(response.enabled, |ui| {
+                    for (label, value, range) in [
+                        ("Dent depth", &mut response.depth, 0.0..=1.0),
+                        (
+                            if object {
+                                "Area / object height"
+                            } else {
+                                "Area / canvas height"
+                            },
+                            &mut response.radius,
+                            if object { 0.1..=1.5 } else { 0.02..=0.6 },
+                        ),
+                        ("Squash & stretch", &mut response.squash, 0.0..=1.0),
+                        ("Hold dent (s)", &mut response.hold, 0.0..=10.0),
+                        ("Recover over (s)", &mut response.recovery, 0.05..=10.0),
+                        ("Elastic spring-back", &mut response.elasticity, 0.0..=1.0),
+                        ("Depth shading", &mut response.shading, 0.0..=1.0),
+                    ] {
+                        help::control(ui, "effect-deformation", |ui| {
+                            ui.add(egui::Slider::new(value, range).text(label))
+                        });
+                    }
+                });
+                ui.small(format!(
+                    "{:.2}s hold + {:.2}s recovery; then the original shape returns.",
+                    response.hold, response.recovery
+                ));
+            });
+        }
+        ui.small("Preview burst shows the current settings. Pause holds deformation for inspection; Clear preview resets it. Each object deforms independently. Avatar dents follow the hit surface.");
+        ui.small("Visual 2D dents and squash work with Live2D, PNG and rendered 3D props. Settings save with this toggle for this avatar.");
     }
     fn assets(&mut self, ui: &mut egui::Ui) {
         help::label(ui, "Assets and exact quantities", "effect-assets");
@@ -658,6 +807,7 @@ mod tests {
         let ctx = egui::Context::default();
         let rect = Rect::from_min_size(Pos2::ZERO, vec2(600.0, 500.0));
         let scene = Scene {
+            dents: Default::default(),
             effects: Default::default(),
             recoil: [0.02, -0.01],
             _model_lease: None,

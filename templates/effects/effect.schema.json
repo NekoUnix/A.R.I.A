@@ -275,6 +275,101 @@
               "maximum": 1
             }
           }
+        },
+        "deformation": {
+          "type": "object",
+          "properties": {
+            "avatar": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "depth": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "radius": {
+                  "type": "number",
+                  "minimum": 0.02,
+                  "maximum": 0.6
+                },
+                "squash": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "hold": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 10
+                },
+                "recovery": {
+                  "type": "number",
+                  "minimum": 0.05,
+                  "maximum": 10
+                },
+                "elasticity": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "shading": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              }
+            },
+            "object": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "depth": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "radius": {
+                  "type": "number",
+                  "minimum": 0.1,
+                  "maximum": 1.5
+                },
+                "squash": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "hold": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 10
+                },
+                "recovery": {
+                  "type": "number",
+                  "minimum": 0.05,
+                  "maximum": 10
+                },
+                "elasticity": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "shading": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              }
+            },
+            "speed_sensitive": {
+              "type": "boolean"
+            }
+          },
+          "description": "Independent reversible display deformation; absent settings default to disabled for compatibility."
         }
       },
       "additionalProperties": false

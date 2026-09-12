@@ -5,6 +5,7 @@ mod avatar;
 mod broadcast;
 mod chroma;
 mod cubism_render;
+mod deformation;
 mod effect_api;
 mod effect_audio;
 mod effect_editor;

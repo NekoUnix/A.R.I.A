@@ -179,6 +179,7 @@ pub struct AriaApp {
 impl AriaApp {
     fn scene(&self) -> crate::output::Scene {
         crate::output::Scene {
+            dents: self.effects.dents.clone(),
             effects: self.effects.draws.clone(),
             recoil: self.effects.simulation.impulse,
             _model_lease: self.live2d.as_ref().map(|a| a.image_lease()),
@@ -302,6 +303,12 @@ impl AriaApp {
                     .expect("Smoke model load");
                 }
                 match std::env::var("ARIA_SMOKE_SCENARIO").as_deref() {
+                    Ok("effect-deformation") => {
+                        app.input_monitor.tab = Tab::Effects;
+                        app.input_monitor.saved.effects.muted = true;
+                        app.effects.editor =
+                            Some(Box::new(crate::effect_editor::Editor::deformation_smoke()));
+                    }
                     Ok("effect-editor") => {
                         app.input_monitor.tab = Tab::Effects;
                         app.input_monitor.saved.effects.muted = true;
@@ -340,6 +347,20 @@ impl AriaApp {
                         library.designs.push(aria_core::effects::Design {
                             id: 6,
                             name: "Native asset import check".into(),
+                            deformation: aria_core::deformation::Settings {
+                                avatar: aria_core::deformation::Response {
+                                    enabled: true,
+                                    hold: 4.0,
+                                    ..Default::default()
+                                },
+                                object: aria_core::deformation::Response {
+                                    enabled: true,
+                                    radius: 0.8,
+                                    hold: 4.0,
+                                    ..Default::default()
+                                },
+                                ..Default::default()
+                            },
                             assets,
                             routes: vec![
                                 aria_core::effects::Route {
@@ -1419,7 +1440,7 @@ impl eframe::App for AriaApp {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            RichText::new("v0.13 · WINDOWS PREVIEW")
+                            RichText::new("v0.14 · WINDOWS PREVIEW")
                                 .small()
                                 .color(MUTED),
                         );

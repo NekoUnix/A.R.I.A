@@ -54,11 +54,18 @@ pub fn load_sprite(ctx: &egui::Context, path: &Path) -> Result<Sprite> {
     })
 }
 
-pub fn draw(p: &Painter, rect: Rect, params: Parameters, sprite: Option<&Sprite>, zoom: f32) {
+pub fn draw(
+    p: &Painter,
+    rect: Rect,
+    params: Parameters,
+    sprite: Option<&Sprite>,
+    zoom: f32,
+    fields: &[aria_core::deformation::Field],
+) {
     if let Some(sprite) = sprite {
-        draw_sprite(p, rect, params, sprite, zoom);
+        draw_sprite(p, rect, params, sprite, zoom, fields);
     } else {
-        draw_mica(p, rect, params, zoom);
+        draw_mica(p, rect, params, zoom, fields);
     }
 }
 
@@ -115,7 +122,14 @@ pub fn mica_palette() -> crate::chroma::Palette {
     palette
 }
 
-fn draw_sprite(p: &Painter, rect: Rect, params: Parameters, sprite: &Sprite, zoom: f32) {
+fn draw_sprite(
+    p: &Painter,
+    rect: Rect,
+    params: Parameters,
+    sprite: &Sprite,
+    zoom: f32,
+    fields: &[aria_core::deformation::Field],
+) {
     let size = sprite.size
         * (rect.width() * 0.75 / sprite.size.x).min(rect.height() * 0.9 / sprite.size.y)
         * zoom;
@@ -125,6 +139,18 @@ fn draw_sprite(p: &Painter, rect: Rect, params: Parameters, sprite: &Sprite, zoo
             -params.0[1] * rect.height() * 0.001,
         );
     let rotation = egui::emath::Rot2::from_angle(-params.0[2].to_radians());
+    if !fields.is_empty() {
+        p.add(Shape::mesh(crate::deformation::textured_mesh(
+            sprite.texture.id(),
+            center,
+            size,
+            -params.0[2].to_radians(),
+            Color32::WHITE,
+            None,
+            fields,
+        )));
+        return;
+    }
     let mut mesh = egui::Mesh::with_texture(sprite.texture.id());
     for (corner, uv) in [
         (vec2(-0.5, -0.5), pos2(0.0, 0.0)),
@@ -143,7 +169,14 @@ fn draw_sprite(p: &Painter, rect: Rect, params: Parameters, sprite: &Sprite, zoo
 }
 
 /// Original vector test puppet. Its mouth, eyelids, pupils, brows and head all use mapped inputs.
-fn draw_mica(p: &Painter, rect: Rect, Parameters(v): Parameters, zoom: f32) {
+fn draw_mica(
+    output: &Painter,
+    rect: Rect,
+    Parameters(v): Parameters,
+    zoom: f32,
+    fields: &[aria_core::deformation::Field],
+) {
+    let p = Shapes::default();
     let scale = (rect.width() / 480.0).min(rect.height() / 560.0) * zoom;
     let origin = rect.center() + vec2(v[0] * 0.8 * scale, 22.0 * scale - v[1] * 0.35 * scale);
     let rot = egui::emath::Rot2::from_angle(-v[2].to_radians());
@@ -298,5 +331,45 @@ fn draw_mica(p: &Painter, rect: Rect, Parameters(v): Parameters, zoom: f32) {
                 Stroke::new(2.0 * scale, dark),
             );
         }
+    }
+    let shapes = p.0.into_inner();
+    if fields.is_empty() {
+        output.extend(shapes);
+    } else {
+        let shapes = shapes
+            .into_iter()
+            .map(|shape| egui::epaint::ClippedShape {
+                clip_rect: output.clip_rect(),
+                shape,
+            })
+            .collect();
+        for primitive in output
+            .ctx()
+            .tessellate(shapes, output.ctx().pixels_per_point())
+        {
+            if let egui::epaint::Primitive::Mesh(mut mesh) = primitive.primitive {
+                for vertex in &mut mesh.vertices {
+                    let (pos, shade) =
+                        aria_core::deformation::apply([vertex.pos.x, vertex.pos.y], fields);
+                    vertex.pos = pos2(pos[0], pos[1]);
+                    vertex.color = crate::deformation::shade(vertex.color, shade);
+                }
+                output.add(Shape::mesh(mesh));
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+struct Shapes(std::cell::RefCell<Vec<Shape>>);
+impl Shapes {
+    fn add(&self, shape: Shape) {
+        self.0.borrow_mut().push(shape);
+    }
+    fn circle_filled(&self, center: Pos2, radius: f32, fill: Color32) {
+        self.add(Shape::circle_filled(center, radius, fill));
+    }
+    fn line_segment(&self, points: [Pos2; 2], stroke: Stroke) {
+        self.add(Shape::line_segment(points, stroke));
     }
 }

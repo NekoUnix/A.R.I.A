@@ -6,7 +6,7 @@ use aria_core::{
     movement::RigConfig,
     rig::{Inputs, RigParameter},
 };
-use eframe::egui::{self, Color32, Pos2, Rect, Vec2, pos2, vec2};
+use eframe::egui::{self, Color32, Pos2, Rect, Vec2, vec2};
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -56,6 +56,7 @@ impl ItemImage {
 }
 #[derive(Clone)]
 pub struct DrawItem {
+    pub deformation: Option<crate::deformation::ObjectWarp>,
     pub tint: Color32,
     pub item: Item,
     pub image: ItemImage,
@@ -65,6 +66,7 @@ pub struct DrawItem {
 impl DrawItem {
     fn same(&self, other: &Self) -> bool {
         self.item == other.item
+            && self.deformation == other.deformation
             && self.tint == other.tint
             && self.image.id() == other.image.id()
             && self.image.revision() == other.image.revision()
@@ -72,6 +74,20 @@ impl DrawItem {
             && self.visible == other.visible
     }
     fn pose(&self, scene: &Scene, canvas: Rect, zoom: f32) -> Option<Placement> {
+        self.pose_with_fields(
+            scene,
+            canvas,
+            zoom,
+            &crate::deformation::avatar_fields(scene, canvas, zoom),
+        )
+    }
+    fn pose_with_fields(
+        &self,
+        scene: &Scene,
+        canvas: Rect,
+        zoom: f32,
+        fields: &[aria_core::deformation::Field],
+    ) -> Option<Placement> {
         let base = frame(scene, canvas, zoom, false);
         let (origin, angle, scale, opacity) = match self.anchor {
             Anchor::Missing => return None,
@@ -95,6 +111,11 @@ impl DrawItem {
         let scale = if self.item.follow_scale { scale } else { 1.0 };
         let offset =
             rotate(vec2(self.item.position[0], self.item.position[1]), angle) * base.scale * scale;
+        let origin = if self.anchor != Anchor::Free && !fields.is_empty() {
+            crate::deformation::point(origin, fields)
+        } else {
+            origin
+        };
         Some(Placement {
             center: origin + offset,
             size: self.image.size() / self.image.size().y * self.item.height * base.scale * scale,
@@ -200,6 +221,39 @@ pub fn effect_from_screen(scene: &Scene, canvas: Rect, zoom: f32, point: Pos2) -
     let v = frame(scene, canvas, zoom, false).local(point);
     [v.x.clamp(-2.0, 2.0), v.y.clamp(-2.0, 2.0)]
 }
+pub fn dent_field(
+    scene: &Scene,
+    canvas: Rect,
+    zoom: f32,
+    dent: &crate::deformation::AvatarDent,
+) -> Option<aria_core::deformation::Field> {
+    let base = frame(scene, canvas, zoom, false);
+    let (center, angle, scale, opacity) = match dent.anchor {
+        Anchor::Surface {
+            point,
+            angle,
+            scale,
+            opacity,
+        } => (base.to_screen(point), angle, scale, opacity),
+        Anchor::Puppet(point) => {
+            let moving = frame(scene, canvas, zoom, true);
+            (moving.to_screen(point), moving.angle, 1.0, 1.0)
+        }
+        _ => return None,
+    };
+    if opacity <= 0.001 {
+        return None;
+    }
+    let mut field = dent.field;
+    field.center = [center.x, center.y];
+    field.radius *= base.scale * scale;
+    let direction = rotate(vec2(field.direction[0], field.direction[1]), angle);
+    field.direction = [direction.x, direction.y];
+    field.depth *= opacity;
+    field.squash *= opacity;
+    field.shading *= opacity;
+    Some(field)
+}
 pub fn paint(painter: &egui::Painter, scene: &Scene, canvas: Rect, zoom: f32, behind: bool) {
     paint_list(painter, scene, canvas, zoom, behind, &scene.items);
 }
@@ -211,30 +265,26 @@ pub fn paint_list(
     behind: bool,
     draws: &[DrawItem],
 ) {
+    let fields = crate::deformation::avatar_fields(scene, canvas, zoom);
     for draw in draws
         .iter()
         .filter(|d| d.item.behind == behind && d.visible)
     {
-        let Some(pose) = draw.pose(scene, canvas, zoom) else {
+        let Some(pose) = draw.pose_with_fields(scene, canvas, zoom, &fields) else {
             continue;
         };
         if pose.opacity <= 0.001 {
             continue;
         }
-        let mut mesh = egui::Mesh::with_texture(draw.image.id());
-        for (pos, uv) in pose.corners().into_iter().zip([
-            pos2(0.0, 0.0),
-            pos2(1.0, 0.0),
-            pos2(1.0, 1.0),
-            pos2(0.0, 1.0),
-        ]) {
-            mesh.vertices.push(egui::epaint::Vertex {
-                pos,
-                uv,
-                color: draw.tint.gamma_multiply(pose.opacity),
-            });
-        }
-        mesh.indices.extend([0, 1, 2, 0, 2, 3]);
+        let mesh = crate::deformation::textured_mesh(
+            draw.image.id(),
+            pose.center,
+            pose.size,
+            pose.angle,
+            draw.tint.gamma_multiply(pose.opacity),
+            draw.deformation.as_ref(),
+            &[],
+        );
         painter.add(egui::Shape::mesh(mesh));
     }
 }
@@ -490,6 +540,7 @@ impl Items {
                     ItemImage::Png(self.assets.get(&item.path)?.as_ref().ok()?.clone())
                 };
                 Some(DrawItem {
+                    deformation: None,
                     tint: Color32::WHITE,
                     item: item.clone(),
                     image,
@@ -1002,6 +1053,7 @@ mod tests {
         let mut manager = Items::default();
         manager.assets.insert("test.png".into(), Ok(sprite));
         let scene_base = Scene {
+            dents: Default::default(),
             effects: Arc::from([]),
             recoil: [0.0; 2],
             _model_lease: None,
@@ -1108,6 +1160,7 @@ mod tests {
     fn output_item_positions_and_sizes_scale_with_each_canvas_without_ui_shapes() {
         let ctx = egui::Context::default();
         let draw = DrawItem {
+            deformation: None,
             tint: Color32::WHITE,
             item: Item {
                 height: 0.2,
@@ -1119,6 +1172,7 @@ mod tests {
             visible: true,
         };
         let scene = Scene {
+            dents: Default::default(),
             effects: Arc::from([]),
             recoil: [0.0; 2],
             _model_lease: None,
