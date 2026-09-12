@@ -58,9 +58,10 @@ pub fn decode(bytes: &[u8], protocol: Protocol) -> Result<TrackingFrame> {
                 timestamp: p.timestamp,
                 face_found: p.face_found,
                 // VTS sends horizontal/vertical/lean as X/Y/Z. ARIA's internal
-                // contract is pitch/yaw/roll; convert only at this boundary.
+                // contract is pitch/yaw/roll. Phone vertical has the opposite
+                // sign to model pitch; convert both axes and sign at this boundary.
                 rotation: Vec3 {
-                    x: p.rotation.y,
+                    x: -p.rotation.y,
                     y: p.rotation.x,
                     z: p.rotation.z,
                 },
@@ -117,7 +118,7 @@ pub fn encode(frame: &TrackingFrame, protocol: Protocol) -> Result<Vec<u8>> {
             face_found: frame.face_found,
             rotation: Vec3 {
                 x: frame.rotation.y,
-                y: frame.rotation.x,
+                y: -frame.rotation.x,
                 z: frame.rotation.z,
             },
             position: frame.position,
@@ -136,6 +137,33 @@ pub fn encode(frame: &TrackingFrame, protocol: Protocol) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn json_pitch_is_unchanged_and_phone_invert_remains_explicit() {
+        let canonical = TrackingFrame {
+            face_found: true,
+            rotation: Vec3 {
+                x: 9.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            ..Default::default()
+        };
+        for protocol in [Protocol::AriaJson, Protocol::VTubeStudio] {
+            let decoded = decode(&encode(&canonical, protocol).unwrap(), protocol).unwrap();
+            assert_eq!(decoded.rotation.x, 9.0);
+            let mapping = aria_core::MappingSettings {
+                invert_pitch: true,
+                smoothing_ms: 0.0,
+                ..Default::default()
+            };
+            assert_eq!(
+                aria_core::ParameterPipeline::default()
+                    .update(Some(&decoded), &mapping, 0.016)
+                    .0[1],
+                -9.0
+            );
+        }
+    }
 
     #[test]
     fn accepts_official_shape_and_future_fields() {
@@ -146,7 +174,7 @@ mod tests {
         .unwrap();
         assert!(f.face_found);
         assert_eq!(f.timestamp, 1724000000123);
-        assert_eq!(f.rotation.x, 358.5);
+        assert_eq!(f.rotation.x, -358.5);
         assert_eq!(f.blend("jawopen"), 0.7);
         assert_eq!(f.blend("eyeblinkleft"), 0.25);
         assert_eq!(f.hotkey, 3);
@@ -168,7 +196,8 @@ mod tests {
         use aria_core::{MappingSettings, ParameterPipeline};
         for (rotation, expected) in [
             ([12, 0, 0], [12.0, 0.0, 0.0]),
-            ([0, 9, 0], [0.0, 9.0, 0.0]),
+            ([0, 9, 0], [0.0, -9.0, 0.0]),
+            ([0, -9, 0], [0.0, 9.0, 0.0]),
             ([0, 0, -7], [0.0, 0.0, -7.0]),
         ] {
             let bytes = serde_json::to_vec(&serde_json::json!({

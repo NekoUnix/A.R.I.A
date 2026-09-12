@@ -564,6 +564,25 @@ pub struct ModelTexture {
     state: RenderState,
     id: egui::TextureId,
 }
+impl ModelTexture {
+    pub fn register(
+        state: &RenderState,
+        view: &wgpu::TextureView,
+    ) -> (egui::TextureId, std::sync::Arc<Self>) {
+        let id = state.renderer.write().register_native_texture(
+            &state.device,
+            view,
+            wgpu::FilterMode::Linear,
+        );
+        (
+            id,
+            std::sync::Arc::new(Self {
+                state: state.clone(),
+                id,
+            }),
+        )
+    }
+}
 impl Drop for ModelTexture {
     fn drop(&mut self) {
         self.state.renderer.write().free_texture(&self.id);

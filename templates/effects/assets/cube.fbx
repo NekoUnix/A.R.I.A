@@ -1,0 +1,34 @@
+; FBX 7.4.0 project file - original ARIA static cube
+FBXHeaderExtension: { FBXHeaderVersion: 1003
+ FBXVersion: 7400
+ Creator: "ARIA template generator"
+}
+GlobalSettings: { Version: 1000
+ Properties70: {
+  P: "UpAxis", "int", "Integer", "",1
+  P: "UpAxisSign", "int", "Integer", "",1
+  P: "FrontAxis", "int", "Integer", "",2
+  P: "FrontAxisSign", "int", "Integer", "",-1
+  P: "CoordAxis", "int", "Integer", "",0
+  P: "CoordAxisSign", "int", "Integer", "",1
+  P: "UnitScaleFactor", "double", "Number", "",1
+ }
+}
+Objects: {
+ Geometry: 100, "Geometry::Cube", "Mesh" {
+  Vertices: *24 { a: -0.5,-0.5,-0.5,0.5,-0.5,-0.5,0.5,0.5,-0.5,-0.5,0.5,-0.5,-0.5,-0.5,0.5,0.5,-0.5,0.5,0.5,0.5,0.5,-0.5,0.5,0.5 }
+  PolygonVertexIndex: *24 { a: 0,3,2,-2,4,5,6,-8,0,4,7,-4,1,2,6,-6,3,7,6,-3,0,1,5,-5 }
+  GeometryVersion: 124
+ }
+ Model: 200, "Model::Cube", "Mesh" { Version: 232
+  Properties70: {
+   P: "Lcl Translation", "Lcl Translation", "", "A",0,0,0
+   P: "Lcl Rotation", "Lcl Rotation", "", "A",0,0,0
+   P: "Lcl Scaling", "Lcl Scaling", "", "A",1,1,1
+  }
+ }
+}
+Connections: {
+ C: "OO",100,200
+ C: "OO",200,0
+}

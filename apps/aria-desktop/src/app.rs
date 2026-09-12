@@ -30,6 +30,9 @@ enum Source {
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 struct Settings {
+    effect_api: crate::effect_api::Settings,
+    #[serde(default)]
+    vts_pitch_revision: u8,
     source: Source,
     sender_ip: String,
     request_port: u16,
@@ -49,6 +52,8 @@ struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            effect_api: Default::default(),
+            vts_pitch_revision: 1,
             source: Source::Demo,
             sender_ip: "127.0.0.1".into(),
             request_port: 21412,
@@ -63,6 +68,21 @@ impl Default for Settings {
             model_preferences: BTreeMap::new(),
             outputs: None,
             high_priority: false,
+        }
+    }
+}
+
+impl Settings {
+    fn migrate_vts_pitch(&mut self) {
+        if self.vts_pitch_revision == 0 {
+            for p in self
+                .model_preferences
+                .values_mut()
+                .filter(|p| p.source == Source::Vts)
+            {
+                p.calibration.x = -p.calibration.x;
+            }
+            self.vts_pitch_revision = 1;
         }
     }
 }
@@ -123,6 +143,8 @@ impl ModelPreferences {
 }
 
 pub struct AriaApp {
+    effects: crate::effects::Effects,
+    effect_api: crate::effect_api::Api,
     settings: Settings,
     receiver: Option<Receiver>,
     snapshot: Snapshot,
@@ -157,6 +179,8 @@ pub struct AriaApp {
 impl AriaApp {
     fn scene(&self) -> crate::output::Scene {
         crate::output::Scene {
+            effects: self.effects.draws.clone(),
+            recoil: self.effects.simulation.impulse,
             _model_lease: self.live2d.as_ref().map(|a| a.image_lease()),
             items: self.items.draws.clone(),
             model: self.live2d.as_ref().map(|a| a.image()),
@@ -177,6 +201,7 @@ impl AriaApp {
                 .and_then(|s| eframe::get_value(s, "aria-settings-v1"))
                 .unwrap_or_default()
         };
+        settings.migrate_vts_pitch();
         if let Some(preferences) = settings.model_preferences.get("preview-v1").cloned() {
             preferences.restore(&mut settings);
         }
@@ -208,6 +233,8 @@ impl AriaApp {
             OutputSettings::from_legacy(settings.background, settings.zoom, settings.always_on_top)
         }));
         let app = Self {
+            effects: Default::default(),
+            effect_api: Default::default(),
             settings,
             receiver: None,
             snapshot: Snapshot::default(),
@@ -258,6 +285,16 @@ impl AriaApp {
         let app = {
             let mut app = app;
             if crate::smoke_mode() {
+                if let Ok(token) = std::env::var("ARIA_SMOKE_API_KEY") {
+                    app.settings.effect_api = crate::effect_api::Settings {
+                        enabled: true,
+                        token,
+                        port: std::env::var("ARIA_SMOKE_API_PORT")
+                            .unwrap()
+                            .parse()
+                            .unwrap(),
+                    };
+                }
                 if let Some(path) = std::env::var_os("ARIA_TEST_MODEL") {
                     app.import_model(
                         aria_model::load_files(Path::new(&path)).expect("Smoke model assets"),
@@ -265,6 +302,61 @@ impl AriaApp {
                     .expect("Smoke model load");
                 }
                 match std::env::var("ARIA_SMOKE_SCENARIO").as_deref() {
+                    Ok("effects") | Ok("output-effects") | Ok("effects-audio") => {
+                        app.input_monitor.tab = Tab::Effects;
+                        app.effects.selected = Some(4);
+                        let library = &mut app.input_monitor.saved.effects;
+                        library.muted =
+                            std::env::var("ARIA_SMOKE_SCENARIO").as_deref() != Ok("effects-audio");
+                        library.volume = 0.08;
+                        for d in &mut library.designs {
+                            d.lifetime = 10.0;
+                            d.impact = 0.0;
+                            if d.kind == aria_core::effects::Kind::Spray {
+                                d.count = 55;
+                                d.flight = 0.3;
+                                d.spread = 0.2;
+                            } else {
+                                d.count = 3;
+                                d.flight = 2.5;
+                                d.interval = 0.3;
+                            }
+                        }
+                        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+                            .join("../../templates/effects/assets");
+                        let mut assets: Vec<_> =
+                            ["star.png", "cube.glb", "cube.gltf", "cube.obj", "cube.fbx"]
+                                .iter()
+                                .map(|p| root.join(p))
+                                .collect();
+                        if let Some(path) = std::env::var_os("ARIA_SMOKE_EFFECT_ASSET") {
+                            assets.push(path.into());
+                        }
+                        library.designs.push(aria_core::effects::Design {
+                            id: 6,
+                            name: "Native asset import check".into(),
+                            assets,
+                            count: 1,
+                            selection: aria_core::effects::Selection::All,
+                            flight: 2.5,
+                            interval: 0.05,
+                            size: 0.2,
+                            lifetime: 10.0,
+                            ..Default::default()
+                        });
+                        app.effects.pending.extend([1, 3, 4, 5, 6]);
+                        if std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("output-effects") {
+                            for i in 0..3 {
+                                app.outputs.set_open(i, true);
+                                app.outputs
+                                    .edit_canvas(i, |c| c.background = Background::Transparent);
+                            }
+                            app.outputs.edit_canvas(2, |c| {
+                                c.freeform_size = [1536, 1024];
+                                c.freeform_window = [480, 320];
+                            });
+                        }
+                    }
                     Ok("vts") => {
                         app.settings.source = Source::Vts;
                         app.connect();
@@ -899,6 +991,7 @@ impl AriaApp {
     }
     fn restore_model_preferences(&mut self, key: &str) {
         self.items.reset();
+        self.effects.reset();
         self.scene_revision = self.scene_revision.wrapping_add(1);
         let preferences = self
             .settings
@@ -1007,6 +1100,14 @@ impl AriaApp {
                 if let Some(error) = &self.input_monitor.hotkey_status {
                     ui.colored_label(egui::Color32::LIGHT_RED, error);
                 }
+            }
+            if self.input_monitor.tab == Tab::Effects {
+                self.input_monitor.save_requested |= self.effects.panel(
+                    ui,
+                    &mut self.input_monitor.saved,
+                    &mut self.settings.effect_api,
+                    self.effect_api.error.as_deref(),
+                );
             }
         });
         if self.input_monitor.tab == Tab::Raw {
@@ -1199,6 +1300,28 @@ impl eframe::App for AriaApp {
         if std::mem::take(&mut self.input_monitor.reset_item_rules) {
             self.items.reset_rules();
         }
+        self.effects
+            .pending
+            .extend(std::mem::take(&mut self.input_monitor.effect_requests));
+        if !crate::smoke_mode() || self.settings.effect_api.enabled {
+            for command in self.effect_api.update(
+                &self.settings.effect_api,
+                &self.input_monitor.model_key,
+                &self.input_monitor.saved.effects,
+                ctx,
+            ) {
+                if command.profile == self.input_monitor.model_key {
+                    #[cfg(feature = "screenshots")]
+                    if crate::smoke_mode() {
+                        eprintln!(
+                            "Plugin API accepted effect {} for current avatar",
+                            command.id
+                        );
+                    }
+                    self.effects.pending.push(command.id);
+                }
+            }
+        }
         if dt > 0.0 {
             self.params = self
                 .pipeline
@@ -1275,7 +1398,7 @@ impl eframe::App for AriaApp {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            RichText::new("v0.11 · WINDOWS PREVIEW")
+                            RichText::new("v0.12 · WINDOWS PREVIEW")
                                 .small()
                                 .color(MUTED),
                         );
@@ -1426,6 +1549,21 @@ impl eframe::App for AriaApp {
                 if self.items.revision != old_revision {
                     self.scene_revision = self.scene_revision.wrapping_add(1);
                 }
+                if ctx.current_pass_index() == 0
+                    && self.effects.update(
+                        ctx,
+                        self.render_state.as_ref(),
+                        Path::new(self.settings.cubism_core.trim()),
+                        (
+                            &self.input_monitor.saved.effects,
+                            self.input_monitor.saved.config.pose.mode,
+                        ),
+                        self.live2d.as_ref(),
+                        dt,
+                    )
+                {
+                    self.scene_revision = self.scene_revision.wrapping_add(1);
+                }
                 let scene = self.scene();
                 let painter = ui.painter_at(rect);
                 painter.rect_filled(
@@ -1451,19 +1589,7 @@ impl eframe::App for AriaApp {
                         Stroke::new(1.0_f32, Color32::from_rgb(45, 60, 69)),
                     );
                 }
-                crate::items::paint(&painter, &scene, rect, self.settings.zoom, true);
-                if let Some(avatar) = &self.live2d {
-                    avatar.image().draw(&painter, rect, self.settings.zoom);
-                } else {
-                    avatar::draw(
-                        &painter,
-                        rect,
-                        self.params,
-                        self.active_sprite(),
-                        self.settings.zoom,
-                    );
-                }
-                crate::items::paint(&painter, &scene, rect, self.settings.zoom, false);
+                scene.paint_subject(&painter, rect, self.settings.zoom);
                 self.items
                     .selection(&painter, &scene, rect, self.settings.zoom);
                 painter.text(
@@ -1481,6 +1607,8 @@ impl eframe::App for AriaApp {
         if let Some(path) = self.input_monitor.export_png.take() {
             let scene = self.scene();
             let result = if scene.items.is_empty()
+                && scene.effects.is_empty()
+                && scene.recoil == [0.0; 2]
                 && let Some(avatar) = &self.live2d
             {
                 avatar.save_png(&path)
@@ -1507,6 +1635,7 @@ impl eframe::App for AriaApp {
         self.hotkeys.configure(self.input_monitor.hotkey_keys());
         self.input_monitor.save_requested |= self.outputs.take_dirty();
         self.input_monitor.save_requested |= self.items.take_save();
+        self.input_monitor.save_requested |= self.effects.take_save();
         if std::mem::take(&mut self.input_monitor.save_requested) && !crate::smoke_mode() {
             self.remember_current_rig();
             if let Some(storage) = frame.storage_mut() {
@@ -1516,6 +1645,25 @@ impl eframe::App for AriaApp {
         }
         #[cfg(feature = "screenshots")]
         {
+            if crate::smoke_mode()
+                && matches!(
+                    std::env::var("ARIA_SMOKE_SCENARIO").as_deref(),
+                    Ok("effects" | "output-effects" | "effects-audio")
+                )
+            {
+                if self.effects.pause_smoke(self.live2d.is_some()) {
+                    if let Some(path) = std::env::var_os("ARIA_SMOKE_AVATAR_PNG") {
+                        self.input_monitor.export_png = Some(path.into());
+                    }
+                    self.scene_revision = self.scene_revision.wrapping_add(1);
+                }
+                if self.started.elapsed() > crate::screenshot::delay() {
+                    assert!(
+                        self.effects.paused,
+                        "Effects smoke must advance and validate before capture"
+                    );
+                }
+            }
             if crate::smoke_mode()
                 && std::env::var_os("ARIA_SMOKE_ITEM").is_some()
                 && self.started.elapsed()
@@ -1714,6 +1862,31 @@ fn meter(ui: &mut egui::Ui, label: &str, value: f32, min: f32, max: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn pitch_migration_runs_once_and_effect_libraries_stay_per_avatar() {
+        let mut settings: Settings = serde_json::from_str("{}").unwrap();
+        assert_eq!(settings.vts_pitch_revision, 0);
+        for (name, source) in [("phone", Source::Vts), ("json", Source::Json)] {
+            let mut p = ModelPreferences::capture(&Settings::default());
+            p.source = source;
+            p.calibration.x = 8.0;
+            settings.model_preferences.insert(name.into(), p);
+            let mut rig = SavedRig::default();
+            rig.effects.designs[0].name = name.into();
+            rig.effects.designs[0].count = if name == "phone" { 12 } else { 3 };
+            settings.saved_rigs.insert(name.into(), rig);
+        }
+        settings.migrate_vts_pitch();
+        settings.migrate_vts_pitch();
+        assert_eq!(settings.model_preferences["phone"].calibration.x, -8.0);
+        assert_eq!(settings.model_preferences["json"].calibration.x, 8.0);
+        let mut memory = Memory::default();
+        eframe::set_value(&mut memory, "settings", &settings);
+        let restored: Settings = eframe::get_value(&memory, "settings").unwrap();
+        assert_eq!(restored.saved_rigs["phone"].effects.designs[0].count, 12);
+        assert_eq!(restored.saved_rigs["json"].effects.designs[0].count, 3);
+        assert_eq!(restored.vts_pitch_revision, 1);
+    }
     #[derive(Default)]
     struct Memory(BTreeMap<String, String>);
     impl eframe::Storage for Memory {

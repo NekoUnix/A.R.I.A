@@ -16,8 +16,10 @@ pub enum Tab {
     Presets,
     Raw,
     Items,
+    Effects,
 }
 pub struct InputMonitor {
+    pub effect_requests: Vec<u64>,
     pub saved: SavedRig,
     pub model_key: String,
     pub tab: Tab,
@@ -92,6 +94,7 @@ impl InputMonitor {
                 ..Default::default()
             });
         Self {
+            effect_requests: Vec::new(),
             saved,
             model_key,
             tab: Tab::Inputs,
@@ -165,6 +168,7 @@ impl InputMonitor {
                     self.save_requested = true;
                 }
             }
+            crate::hotkeys::Action::Effect(id) => self.effect_requests.push(id),
         }
     }
     pub fn hotkey_keys(&self) -> Vec<crate::hotkeys::Registration> {
@@ -203,6 +207,12 @@ impl InputMonitor {
                 });
             }
         }
+        keys.extend(self.saved.effects.designs.iter().filter_map(|d| {
+            d.hotkey.map(|shortcut| Registration {
+                shortcut,
+                action: Action::Effect(d.id),
+            })
+        }));
         keys
     }
     fn expression_uses_key(&self, key: Option<u8>) -> bool {
@@ -211,6 +221,13 @@ impl InputMonitor {
                 .expression_hotkeys
                 .values()
                 .chain(self.saved.item_hotkeys.values())
+                .chain(
+                    self.saved
+                        .effects
+                        .designs
+                        .iter()
+                        .filter_map(|d| d.hotkey.as_ref()),
+                )
                 .any(|shortcut| *shortcut == aria_core::shortcuts::Shortcut::preset(key))
         })
     }
@@ -259,6 +276,15 @@ impl InputMonitor {
         {
             self.tab = Tab::Items;
         }
+        if ui
+            .add_sized(
+                [ui.available_width(), 26.0],
+                egui::Button::new("Throws & liquid sprays").selected(self.tab == Tab::Effects),
+            )
+            .clicked()
+        {
+            self.tab = Tab::Effects;
+        }
         crate::help::label(
             ui,
             "About this tab",
@@ -270,6 +296,7 @@ impl InputMonitor {
                 Tab::Presets => "presets",
                 Tab::Raw => "diagnostics",
                 Tab::Items => "png-items",
+                Tab::Effects => "effects",
             },
         );
         if let Some(message) = &self.message {
@@ -322,7 +349,7 @@ impl InputMonitor {
                     ui.colored_label(egui::Color32::LIGHT_RED, error);
                 }
             }
-            Tab::Raw | Tab::Items => {}
+            Tab::Raw | Tab::Items | Tab::Effects => {}
         }
     }
     fn filter_ui(&mut self, ui: &mut egui::Ui) {
@@ -983,6 +1010,42 @@ fn hotkey_combo(ui: &mut egui::Ui, id: &str, key: &mut Option<u8>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn effect_shortcuts_dispatch_and_conflicts_are_rejected() {
+        let parameters = aria_core::movement::preview_parameters(aria_core::Parameters::default());
+        let mut monitor = InputMonitor::new(
+            "a".into(),
+            RigConfig::from_parameters(&parameters),
+            None,
+            &parameters,
+        );
+        let key = aria_core::shortcuts::Shortcut {
+            ctrl: true,
+            alt: true,
+            key: 0x54,
+            ..Default::default()
+        };
+        monitor.saved.effects.designs[0].hotkey = Some(key);
+        monitor.saved.global_hotkeys = true;
+        assert!(
+            monitor
+                .hotkey_keys()
+                .iter()
+                .any(|r| r.shortcut == key && r.action == crate::hotkeys::Action::Effect(1))
+        );
+        monitor.hotkey_action(
+            crate::hotkeys::Action::Effect(1),
+            &parameters,
+            &mut MappingSettings::default(),
+        );
+        assert_eq!(monitor.effect_requests, vec![1]);
+        monitor.saved.validate(&parameters).unwrap();
+        monitor
+            .saved
+            .expression_hotkeys
+            .insert("x.exp3.json".into(), key);
+        assert!(monitor.saved.validate(&parameters).is_err());
+    }
     #[test]
     fn preset_hotkeys_restore_tuning_and_full_poses_after_reload() {
         let mut parameters =

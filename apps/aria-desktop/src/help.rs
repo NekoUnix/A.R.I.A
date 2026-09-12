@@ -197,6 +197,14 @@ pub fn category_topic(title: &str) -> &'static str {
         "Pin to avatar" => "png-pins",
         "Input toggle" => "png-toggles",
         "Keyboard toggle" => "hotkeys",
+        "Throws & sprays" | "Selected effect" => "effects",
+        "Visual assets" => "effect-assets",
+        "Motion & impact" => "effect-motion",
+        "Liquid & color" => "sprays",
+        "Sound effects" => "effect-sounds",
+        "Effect hotkey" => "hotkeys",
+        "Design file & templates" => "effect-designs",
+        "Stream events & plugins" => "effect-api",
         _ => "welcome",
     }
 }
@@ -656,16 +664,29 @@ mod tests {
             include_str!("physics_panel.rs"),
             include_str!("expressions_panel.rs"),
             include_str!("items_panel.rs"),
+            include_str!("effects_panel.rs"),
+            include_str!("object_models.rs"),
             include_str!("output.rs"),
             include_str!("metrics.rs"),
         ] {
-            for line in source.lines().filter(|line| line.contains("help::")) {
-                for (i, part) in line.split("|ui|").next().unwrap().split('"').enumerate() {
+            for call in source.split("help::").skip(1) {
+                // Read each call's arguments, excluding text before the call or in its closure.
+                let arguments = call
+                    .split("|ui|")
+                    .next()
+                    .unwrap()
+                    .split(')')
+                    .next()
+                    .unwrap();
+                for (i, part) in arguments.split('"').enumerate() {
                     if i % 2 == 1
                         && part.chars().all(|c| c.is_ascii_lowercase() || c == '-')
                         && !part.is_empty()
                     {
-                        article(part);
+                        assert!(
+                            articles().iter().any(|a| a.id == part),
+                            "unknown help topic: {part}"
+                        );
                     }
                 }
             }

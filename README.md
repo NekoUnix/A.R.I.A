@@ -6,12 +6,14 @@ tracking into avatar parameters, and animates **Live2D `.moc3` avatars**, a buil
 2D test puppet, or your PNG artwork. The UI and preview run on **egui + wgpu**,
 without Unity or Godot.
 
-> **v0.11:** drop `.moc3` or `.model3.json` files onto the stage as independent
-> Live2D objects. Pin them to the main avatar without replacing it. Each object
-> has its own parameters, static pose, optional tracking and physics, plus texture setup.
-> PNG accessories still use the same pin and toggle controls.
-> Per-avatar item layouts include named toggles, custom hotkeys, input-range rules,
-> layering and screenshot presets. Accessories appear in all three outputs and PNG exports.
+> **v0.12:** corrects reversed iPhone VTube Studio vertical head motion and adds
+> per-avatar throws and liquid sprays. Create any number of saved designs with
+> asset pools, counts, motion, recoil, tint, replacement sounds and custom hotkeys.
+> PNG, independent Live2D, GLB/glTF, VRM, FBX and OBJ props can be thrown; 3D uses
+> static rest geometry and base-color materials. Spray splats follow avatar surfaces.
+> Buttons, hotkeys and an opt-in local HTTP API trigger the same designs.
+> Includes Streamer.bot/Twitch and Touch Portal setup plus editable asset templates.
+> Independent pinnable Live2D/PNG stage objects retain their own settings and toggles.
 > Question-mark buttons are half their previous size, with hover explanations,
 > and a separate searchable offline help window with examples and diagrams.
 > Contextual help includes the loaded avatar's parameters, ranges, physics groups
@@ -39,6 +41,24 @@ and performance. Avatar-specific context is captured when you click the control;
 reopen its question mark to refresh those values.
 
 ![Offline help with an input-range diagram](docs/images/help.png)
+
+## Throws, liquid sprays and stream events
+
+Open **Throws & liquid sprays** in the right panel. Try Star toss, Soft ball volley,
+3D cube tumble, Water spray or Paint splash. Select a design to edit its asset pool,
+emission count, trajectory, size, recoil, coating color, lifetime and sound clips.
+Duplicate designs for variations and assign a user-defined shortcut. Saved libraries
+belong to each avatar. Freeze pose pauses the effects for transparent PNG export;
+all three full-resolution OBS canvases include them too.
+
+The [effect template kit](templates/effects/README.md) includes editable SVG/PNG,
+OBJ/MTL, GLB/glTF/FBX, a Live2D export layout, WAV audio and JSON design examples.
+[Plugin setup](templates/effects/plugins/README.md) covers buttons, hotkeys,
+Streamer.bot/Twitch events, Touch Portal and a versioned authenticated local API.
+Stream tools handle their own service login; ARIA does not connect directly to Twitch.
+3D imports are static props, without skeletal/VRM animation or specialized shaders.
+Effects audio uses Windows' default output; capture ARIA audio separately in OBS.
+Detailed limits and every control are explained in the [offline help](docs/in-app-help.md).
 
 ## Live2D objects, PNG accessories and toggles
 
@@ -208,7 +228,7 @@ To build a portable bundle with its documentation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 ```
 
-The script runs tests and writes `dist/aria-0.11.0-windows-x64.zip`. See
+The script runs tests and writes `dist/aria-0.12.0-windows-x64.zip`. See
 [architecture](docs/architecture.md) for crate boundaries and
 [validation](docs/validation.md) for what has actually been exercised.
 

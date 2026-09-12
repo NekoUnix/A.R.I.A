@@ -5,6 +5,10 @@ mod avatar;
 mod broadcast;
 mod chroma;
 mod cubism_render;
+mod effect_api;
+mod effect_audio;
+mod effects;
+mod effects_panel;
 mod expressions_panel;
 mod help;
 mod hotkeys;
@@ -12,11 +16,13 @@ mod input_monitor;
 mod items;
 mod items_panel;
 mod live2d;
+mod mesh_asset;
 mod metrics;
 mod object_models;
 mod output;
 mod performance;
 mod physics_panel;
+mod prop_render;
 #[cfg(feature = "screenshots")]
 mod screenshot;
 #[cfg(windows)]

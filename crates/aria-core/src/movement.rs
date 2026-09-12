@@ -251,6 +251,7 @@ impl Preset {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct SavedRig {
+    pub effects: crate::effects::Library,
     pub config: RigConfig,
     pub presets: Vec<Preset>,
     pub global_hotkeys: bool,
@@ -260,6 +261,25 @@ pub struct SavedRig {
 }
 impl SavedRig {
     pub fn validate(&self, parameters: &[RigParameter]) -> Result<()> {
+        self.effects.validate()?;
+        for d in &self.effects.designs {
+            if let Some(key) = d.hotkey {
+                ensure!(
+                    key != crate::shortcuts::Shortcut::pose()
+                        && !self
+                            .item_hotkeys
+                            .values()
+                            .chain(self.expression_hotkeys.values())
+                            .any(|k| *k == key)
+                        && !self
+                            .presets
+                            .iter()
+                            .filter_map(|p| p.hotkey)
+                            .any(|n| crate::shortcuts::Shortcut::preset(n) == key),
+                    "Effect shortcut conflicts with another action"
+                );
+            }
+        }
         self.config.validate(parameters)?;
         ensure!(
             self.item_hotkeys.len() <= 4096,

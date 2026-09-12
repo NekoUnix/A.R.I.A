@@ -15,6 +15,7 @@ pub enum Action {
     TogglePose,
     Expression(String),
     ItemToggle(u64),
+    Effect(u64),
 }
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Registration {
@@ -134,6 +135,9 @@ fn run(commands: Receiver<Command>, events: Sender<Event>, ctx: egui::Context) {
                 {}
                 generation = new;
                 let mut errors = Vec::new();
+                if keys.len() > 512 {
+                    errors.push("Only the first 512 global hotkeys can register. Use buttons or the local API for additional designs.".into());
+                }
                 for (index, key) in keys.into_iter().enumerate().take(512) {
                     if let Err(error) = key.shortcut.validate() {
                         errors.push(error.to_string());

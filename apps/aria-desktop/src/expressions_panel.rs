@@ -143,6 +143,14 @@ impl ExpressionsPanel {
     pub fn assign(saved: &mut SavedRig, id: &str, shortcut: Shortcut) -> anyhow::Result<()> {
         shortcut.validate()?;
         anyhow::ensure!(
+            !saved
+                .effects
+                .designs
+                .iter()
+                .any(|d| d.hotkey == Some(shortcut)),
+            "That shortcut belongs to a throw or spray"
+        );
+        anyhow::ensure!(
             shortcut != Shortcut::pose(),
             "That shortcut is reserved for Freeze / resume pose"
         );

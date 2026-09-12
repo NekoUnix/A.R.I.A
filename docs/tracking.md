@@ -202,3 +202,13 @@ and stops its worker cooperatively.
 
 Physical iPhone testing is a separate acceptance check from simulator tests.
 See [validation](validation.md) for the current evidence and remaining checks.
+
+## Vertical head direction in v0.12
+
+VTube Studio wire rotation X is horizontal, Y is vertical and Z is lean. ARIA
+maps these to internal yaw, **negative vertical pitch**, and roll respectively.
+Positive wire Y now drives negative model pitch; negative wire Y drives positive
+model pitch. ARIA JSON already uses internal pitch/yaw/roll and is unchanged.
+Saved VTS neutral-pitch offsets migrate once with the sign correction. Imported
+per-avatar parameter ranges are preserved. If you previously compensated with
+Invert pitch, review that option and recalibrate while looking straight ahead.

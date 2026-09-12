@@ -250,6 +250,14 @@ impl Items {
     pub fn assign(saved: &mut SavedRig, id: u64, shortcut: Shortcut) -> anyhow::Result<()> {
         shortcut.validate()?;
         anyhow::ensure!(
+            !saved
+                .effects
+                .designs
+                .iter()
+                .any(|d| d.hotkey == Some(shortcut)),
+            "That shortcut belongs to a throw or spray"
+        );
+        anyhow::ensure!(
             saved.config.items.iter().any(|i| i.id == id),
             "Stage object no longer exists"
         );

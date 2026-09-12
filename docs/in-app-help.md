@@ -2,6 +2,102 @@
 
 This guide is bundled into the application and works offline. The topic headers also provide the short hover descriptions for the circled question-mark buttons.
 
+## effects | Throws & liquid sprays | Create reusable effect designs for the current avatar, then trigger them with a button, your own shortcut, or an event from a stream tool. Pause playback for screenshots.
+
+### Start with a design
+
+Open Throws & liquid sprays in the right panel. Every avatar starts with Star toss, Soft ball volley, 3D cube tumble, Water spray and Paint splash. Select a name to edit that design; the Throw or Spray button beside it immediately queues it. Search filters names. New throw and New spray add independent designs with new IDs. Duplicate copies the selected design and clears its hotkey. Delete design removes only the saved definition; Clear active effects stops particles, recoil and sounds already playing.
+
+The name is your label, up to 80 characters. Mode chooses a bouncing thrown object or a liquid particle that attempts to stick on impact. Multiple designs can play together. There is no fixed count limit on saved designs. Each trigger emits at most 1,000 particles, up to 256 particles can exist at once, and up to 32 bursts can wait in the queue. When playback is full, emission waits for space. Cooldown can reject rapid repeat triggers of the same design. Status text reports missing assets, cooldowns and queue limits.
+
+### Save, pose and capture
+
+Edits save with this avatar after editing settles. Save effects writes immediately. Loading another avatar restores its own library, volumes and shortcuts, and clears the previous avatar's transient effects. Moving or renaming an asset file requires updating its reference or importing a corrected design. The default Mica puppet and PNG avatars also have separate profiles.
+
+Pause effects holds particles and recoil while the avatar can keep moving; attached splats still follow its surface. Freeze pose in Pose holds both avatar and effect playback. Use either before Save transparent PNG for an image containing the current effects. Movement and pose presets store avatar poses and stage objects; they do not serialize a transient particle timeline. All three OBS outputs include effects, with each output's framing, zoom and background. Effect audio needs separate OBS audio capture.
+
+## effect-assets | Throw and spray artwork | Mix transparent PNG artwork, complete Live2D exports and static 3D props in a design. Asset selection controls which file is emitted and how many copies are made.
+
+### Files and selection
+
+Add asset files accepts PNG, moc3 or model3.json, GLB, glTF, VRM, FBX and OBJ. Select multiple files to build a pool. Star, Ball, 3D cube and Droplet add built-in artwork. Up and Down change the pool order; Remove removes a reference, leaving its file untouched. Keep at least one asset. Random chooses from the pool for each particle. Cycle walks the pool in order until Number to emit is reached. All emits Copies of every asset; for example, 3 assets and 4 copies produces 12 particles. Each design holds up to 256 asset references and each trigger is limited to 1,000 total particles.
+
+PNG artwork should be tightly cropped with transparent padding where needed. Maximum dimensions are 4096 × 4096, with a combined active PNG budget of 256 MiB decoded. A moc3 needs its matching model3.json and all referenced atlas PNGs beside it; select Cubism Core under Avatar setup first. Live2D throw props use independent instances at their authored default pose. They never replace or reconfigure the main avatar. Up to four different Live2D throw assets can be loaded together, with a combined 1 GiB atlas budget. Repeated particles of the same asset share its rendered image.
+
+### 3D import and resource limits
+
+GLB/glTF and VRM use glTF triangle geometry; FBX and OBJ use the native ufbx importer. These are static prop imports: mesh transforms, UVs, normals and base-color materials render with simple lighting and a tumble animation. Skeletal animation, blendshape playback, VRM spring bones, MToon, full PBR and proprietary material graphs are not evaluated. Export the desired rest pose and bake complex materials to a PNG or JPEG base-color texture. Unsupported compressed geometry should be exported as ordinary triangles. A .blend, .max or .ma project must be exported to a supported interchange format first.
+
+Keep local buffer, MTL and texture companions within the asset folder. Remote texture URLs and references outside it are rejected. Use at most 200,000 triangles, 256 material batches, 128 MiB per model file and 4096 pixels per texture edge. Active 3D resources have a 512 MiB budget; each prop is rendered to a shared 512 × 512 transparent texture. All copies share that asset's 3D orientation, with individual flight and screen-space spin. Reload cached assets / sounds clears playback and retries edited or missing files. Small exports load faster and consume less VRAM.
+
+## effect-motion | Emission, flight and impact | Set the burst count, trajectory, size, timing and recoil. Positions are measured relative to the avatar canvas so a design scales with every output resolution.
+
+### Coordinates and size
+
+Launch position and Aim position are X/Y pairs in avatar-canvas-height units, measured from its center. X increases rightward and Y downward. An origin of (-0.8, -0.25) starts 0.8 canvas heights left and 0.25 above center. An aim of (0, -0.16) targets the upper center. Target spread adds random horizontal and vertical offsets around that point, up to one canvas height. Aim at visible artwork for sprays to find a surface. Transparent padding belongs to the avatar canvas too.
+
+Item size is the particle image's height divided by avatar canvas height: 0.10 means one tenth of that height. Size variation adds a random fractional variation, so 0.25 gives 75–125 percent of the chosen size. Aspect ratio is preserved. These values scale with the model when the mouse wheel changes zoom in any output.
+
+### Timing and response
+
+Interval is the time between emissions, from 0 to 5 seconds. Zero starts a rapid burst, subject to the particle limit. Flight time is seconds from launch to the aim plane. Flight arc adds upward curvature when positive and downward curvature when negative; zero flies straight. Spin is degrees per second in screen space, with negative values reversing direction. Bounce controls the sideways/upward rebound of thrown objects after impact. Time after impact controls the fade duration, from 0.1 to 15 seconds.
+
+Avatar recoil applies a damped displacement to the avatar composition after impacts, then settles back to zero. It moves the avatar and its accessories together without overwriting your tracking parameters or rig physics. Zero disables it. Impact timing is a 2D aim-plane effect, not a 3D collision simulation; liquid additionally checks the avatar surface when it lands. Cooldown is the minimum real time between accepted triggers of this design, up to 60 seconds. Pause/Freeze stops simulation time. A fixed-step simulation keeps normal 15–120 FPS playback consistent; long suspend gaps are discarded to avoid a burst of overdue work.
+
+## sprays | Liquid spray, splats and color | Spray particles fly toward the avatar, expand into splats on a visible mesh, follow that surface, then drip and fade. Customize the artwork and tint for water, paint or your own liquid.
+
+### Make a spray
+
+Choose Water spray or Paint splash, or click New spray. Select a droplet PNG or use the built-in white Droplet; a white source makes tint colors easy to control. Liquid & color contains the RGBA picker. RGB multiplies the artwork's color channels and A controls transparency. White with full alpha preserves the original artwork. Dark or colored artwork cannot become brighter just by tinting it. This tint also works for thrown assets.
+
+Splat expansion adds growth just after impact: 0 keeps the incoming size and 1 doubles it. Expansion ranges from 0 to 2. Time after impact determines how long the coating lasts. Smaller Item size, more particles, short intervals and some Target spread create a stream; larger particles and higher expansion create paint blobs. Launch and impact clips can be replaced separately. Disable the impact sound for a continuous spray if individual splat sounds become too busy.
+
+### Surface attachment and limits
+
+On landing, ARIA looks for a rendered Live2D triangle beneath the aim point and stores a surface pin. The splat then follows that triangle while slowly drifting downward and fading. A particle that misses the mesh falls away. For Mica and PNG puppets, attachment follows the puppet's coordinate system. Pins live only for this effect's lifetime and do not add permanent Stage objects. This is a stylized particle coating, not a fluid solver, texture painting system or wet-material shader; it does not edit the avatar's texture files.
+
+Pause effects keeps the current coating visible while tracking continues. Freeze pose stops both for an image. Clear active effects removes all current coating and recoil immediately. The same coating appears in landscape, portrait and freeform outputs and transparent PNG export. Use transparent output for soft alpha edges; colored liquid may conflict with a chroma key. Choose a key after checking the colors in your effects as well as the avatar.
+
+## effect-sounds | Replaceable launch and impact audio | Choose local WAV, MP3, Ogg Vorbis or FLAC clips for each effect, preview them, and mix their volume. OBS captures this audio separately from the video canvas.
+
+### Select and mix clips
+
+Launch sound plays once when the burst begins emitting. Impact sound plays once per particle at the aim plane. Choose audio selects a file, Preview plays the selected clip at design and master volume, and None disables that event. Built-in whoosh, pop, spray and splat buttons restore synthesized starter sounds. Design volume multiplies Master volume. Mute effects silences playback, and Pause effects, Freeze pose and Clear active effects stop current sounds. Preview is an explicit audition even when automatic effects are muted.
+
+Clips may be mono or stereo, up to 192 kHz, 10 seconds and 16 MiB per compressed file. WAV PCM, MP3, Ogg Vorbis and FLAC are supported. ARIA normalizes decoded clip peaks and limits simultaneous voices to 16; new sounds retire the oldest voice when full. It caches up to 64 MiB of decoded audio. Use a short, quiet impact clip for large volleys. Missing clips or unavailable devices show an error while visual playback continues. Reload cached assets / sounds retries the audio device and rereads edited clips.
+
+### Windows and OBS
+
+Playback uses Windows' default audio output when the audio device is first opened. Choose the desired device in Windows before starting ARIA. In OBS, add Application Audio Capture for ARIA, or use Desktop Audio for that device. Avoid capturing both at once because this doubles the sound. Spout shares only the image texture and carries no audio. Test a quiet built-in preview while watching OBS's meter before going live. The template kit contains an editable WAV and synthesis script; you can replace it with your own recording without changing code.
+
+## effect-designs | Editable designs and asset templates | Import and export a design as JSON, duplicate it for variations, and use the bundled artwork, 3D, Live2D layout, audio and plugin templates to create your own effects.
+
+### Save and share a design
+
+Export this design writes an .aria-effect.json file with aria_effect version 1 and a design object. It stores the selected asset paths, sounds, count, timing, movement and color. It does not embed the assets. For a portable kit, put files in a folder beside the design JSON and replace absolute paths with relative paths such as assets/star.png. Import design resolves those paths relative to the JSON file. Built-in references such as builtin:star and builtin:whoosh work without companion files.
+
+Import gives the design a new local ID and clears its hotkey, preventing someone else's assignment from replacing your shortcuts. IDs are displayed in the design list and used by the plugin API. Use names for people and IDs for automation. Duplicate similarly creates a new ID with no hotkey. Changes save in the current avatar profile, independently of movement presets. Keep a backup export before restructuring a library used by stream events.
+
+### Template kit
+
+Open the templates/effects folder beside the portable executable, or in the repository. Its README explains the editable SVG and transparent PNG artwork, OBJ/MTL, GLB/glTF and FBX prop examples, WAV audio, JSON designs, schema and plugin adapters. generate_templates.py regenerates the sample assets from their source. You can use the starter artwork under ARIA's MIT license and replace it with your own design.
+
+Live2D templates provide the folder layout and a model3.json template, not a fabricated moc3. Export your own model from Cubism, keep its atlases and manifest together, then select it as a visual asset. The 3D templates are small static props; export VRM characters from a VRM-capable tool when needed. The import renderer uses their rest geometry. Design files allow paths to local assets only; the event API selects an already saved design and cannot import files or run commands.
+
+## effect-api | Stream events and plugin bridge | Enable the local API to trigger saved effects from Streamer.bot, Touch Portal or a custom tool. Use the supplied adapters to connect Twitch events without changing ARIA's code.
+
+### Enable and connect
+
+Expand Stream events & plugins and enable the local plugin API. ARIA generates a random API key. Copy API key puts it on the clipboard; paste it into your local tool's configuration. The default address is http://127.0.0.1:39421. Loopback TCP port changes the port if another program uses it. Generate new key replaces the current key, so update each adapter afterward. The API binds only to this PC and starts disabled. It is separate from iPhone tracking and does not require a tracking firewall rule.
+
+Send Authorization: Bearer YOUR_KEY on every request. GET /v1/effects returns the loaded avatar's design IDs, names and kinds. POST /v1/effects/trigger accepts a JSON body containing version: 1 and id: the saved design ID. HTTP 202 means queued, not guaranteed playback: cooldown, resource limits or missing assets may still reject it, with details in the ARIA panel. The bridge accepts up to 20 requests per second and queues up to 32 commands. Changing avatars discards commands queued for the old profile; query the catalogue again because the new avatar can use the same ID for a different effect.
+
+### Bind stream and desktop events
+
+The templates/effects/plugins folder contains a Streamer.bot Execute C# Code adapter, a PowerShell client and request examples. In Streamer.bot, set the ariaKey, ariaPort and ariaEffectId arguments before the C# sub-action, then attach any event you want: channel-point redemption, cheer, subscription, chat command, timer or another installed integration. Streamer.bot owns the Twitch login, permissions and event conditions. ARIA receives only the resulting local trigger; it does not connect directly to Twitch or store a Twitch token.
+
+For Touch Portal, configure an HTTP POST action with the same endpoint, Authorization and Content-Type: application/json headers, and JSON body. A custom plugin can list IDs and send the identical request. The adapters run on the same PC as ARIA. Browser-origin requests, remote network access, arbitrary asset paths and command execution are not supported. Keep the key in local settings, out of shared screenshots, public action exports and repositories. Error responses distinguish invalid requests, unknown effects and queue/rate limits. Detailed copyable examples are in the bundled guide.
+
 ## png-items | Stage objects & avatar accessories | Drop PNG images or Live2D exports onto Your stage to add accessories. Each item has its own placement, pin, visibility toggle and optional input rule, saved with this avatar.
 
 ### Add and select items
@@ -230,6 +326,8 @@ Mouth gain also ranges from 0.1 to 3.0. It scales the mouth-open signal after mo
 Gain cannot create deformation that the artist did not rig. If one custom parameter needs different sensitivity, edit its Input start / end and Output start / end instead of changing gain for the whole avatar. Save these adjustments with the avatar's profile or a movement preset.
 
 ## axes | Mirror, yaw, pitch & roll | Yaw turns left/right, pitch looks up/down, and roll tilts the head. Invert flips a direction; it does not exchange two axes.
+
+V0.12 corrects VTube Studio vertical direction at the input boundary: wire Y becomes negative internal pitch. ARIA JSON is unchanged. Existing VTS neutral-pitch offsets migrate once. If you previously compensated with Invert pitch, review it and recalibrate while facing forward. Your custom per-model mapping ranges and inversion settings are preserved.
 
 ### Correct directions
 

@@ -21,13 +21,14 @@ try {
     & cargo build --locked --release --workspace
     if ($LASTEXITCODE -ne 0) { throw 'Rust build failed; no package was produced.' }
 
-    $ariaVersion = '0.11.0'
+    $ariaVersion = '0.12.0'
     $ariaDist = Join-Path $ariaRoot 'dist'
     $ariaStage = Join-Path $ariaDist ('staging\' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force -Path $ariaStage | Out-Null
     Copy-Item -LiteralPath (Join-Path $ariaRoot 'target\release\aria-desktop.exe'), (Join-Path $ariaRoot 'target\release\aria-cli.exe') -Destination $ariaStage
     Copy-Item -LiteralPath (Join-Path $ariaRoot 'README.md'), (Join-Path $ariaRoot 'LICENSE'), (Join-Path $ariaRoot 'THIRD_PARTY.md') -Destination $ariaStage
     Copy-Item -LiteralPath (Join-Path $ariaRoot 'docs') -Destination $ariaStage -Recurse
+    Copy-Item -LiteralPath (Join-Path $ariaRoot 'templates') -Destination $ariaStage -Recurse
     $ariaScripts = Join-Path $ariaStage 'scripts'
     New-Item -ItemType Directory -Force -Path $ariaScripts | Out-Null
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'allow-tracking-firewall.ps1') -Destination $ariaScripts

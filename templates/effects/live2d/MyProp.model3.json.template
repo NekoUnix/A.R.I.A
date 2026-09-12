@@ -1,0 +1,9 @@
+{
+  "Version": 3,
+  "FileReferences": {
+    "Moc": "MyProp.moc3",
+    "Textures": ["MyProp.2048/texture_00.png"]
+  },
+  "Groups": [],
+  "HitAreas": []
+}

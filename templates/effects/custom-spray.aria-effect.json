@@ -1,0 +1,43 @@
+{
+  "aria_effect": 1,
+  "design": {
+    "id": 1,
+    "name": "My water spray",
+    "kind": "Spray",
+    "assets": [
+      "assets/droplet.png"
+    ],
+    "selection": "Cycle",
+    "count": 80,
+    "interval": 0.018,
+    "flight": 0.4,
+    "size": 0.023,
+    "size_variance": 0.25,
+    "origin": [
+      -0.8,
+      -0.25
+    ],
+    "target": [
+      0,
+      -0.16
+    ],
+    "spread": 0.12,
+    "arc": 0.18,
+    "spin": 0,
+    "bounce": 0.6,
+    "lifetime": 3,
+    "impact": 0.04,
+    "tint": [
+      100,
+      195,
+      255,
+      205
+    ],
+    "splash": 0.65,
+    "launch_sound": "builtin:spray",
+    "impact_sound": "",
+    "volume": 0.45,
+    "cooldown": 0.5,
+    "hotkey": null
+  }
+}

@@ -554,6 +554,8 @@ impl OutputWindows {
 
 #[derive(Clone)]
 pub struct Scene {
+    pub effects: Arc<[crate::items::DrawItem]>,
+    pub recoil: [f32; 2],
     pub _model_lease: Option<std::sync::Arc<crate::cubism_render::ModelTexture>>,
     pub items: std::sync::Arc<[crate::items::DrawItem]>,
     pub model: Option<ModelImage>,
@@ -596,6 +598,15 @@ impl Scene {
         painter.rect_filled(canvas, 0.0, config.background.color(config.key));
         let translated =
             canvas.translate(egui::vec2(config.position[0], config.position[1]) * canvas.size());
+        self.paint_subject(painter, translated, config.zoom);
+    }
+    pub fn paint_subject(&self, painter: &egui::Painter, canvas: Rect, zoom: f32) {
+        let translated =
+            canvas.translate(egui::vec2(self.recoil[0], self.recoil[1]) * canvas.height() * zoom);
+        let config = CanvasSettings {
+            zoom,
+            ..Default::default()
+        };
         crate::items::paint(painter, self, translated, config.zoom, true);
         if let Some(model) = self.model {
             model.draw(painter, translated, config.zoom);
@@ -609,6 +620,7 @@ impl Scene {
             );
         }
         crate::items::paint(painter, self, translated, config.zoom, false);
+        crate::items::paint_list(painter, self, translated, zoom, false, &self.effects);
     }
 }
 fn size_fields(
@@ -687,6 +699,8 @@ mod tests {
         for size in [egui::vec2(960.0, 540.0), egui::vec2(540.0, 960.0)] {
             let ctx = egui::Context::default();
             let scene = Scene {
+                effects: Arc::from([]),
+                recoil: [0.0; 2],
                 _model_lease: None,
                 items: Default::default(),
                 model: None,
@@ -822,6 +836,8 @@ mod tests {
         for size in [[480., 270.], [270., 480.], [480., 320.]] {
             let ctx = egui::Context::default();
             let scene = Scene {
+                effects: Arc::from([]),
+                recoil: [0.0; 2],
                 _model_lease: None,
                 items: Default::default(),
                 model: None,

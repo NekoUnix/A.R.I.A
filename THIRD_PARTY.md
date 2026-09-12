@@ -21,6 +21,16 @@ Primary dependencies (exact versions are recorded in Cargo.lock):
 | bytemuck | Typed GPU buffer serialization | https://github.com/Lokathor/bytemuck |
 | windows-rs | Windows process and DXGI memory counters | https://github.com/microsoft/windows-rs |
 | Spout2 SDK protocol | Sender registry, synchronization and D3D11On12 sharing conventions | https://github.com/leadedge/Spout2 |
+| gltf-rs | Static GLB/glTF and VRM geometry import | https://github.com/gltf-rs/gltf |
+| ufbx | Static FBX and OBJ parsing | https://github.com/ufbx/ufbx |
+| glam | 3D prop transforms | https://github.com/bitshifter/glam-rs |
+| rodio / cpal / Symphonia | Windows audio playback and WAV, MP3, Vorbis and FLAC decoding | https://github.com/RustAudio/rodio / https://github.com/RustAudio/cpal / https://github.com/pdeljanov/Symphonia |
+| getrandom / base64 | Local API keys and embedded glTF buffers | https://github.com/rust-random/getrandom / https://github.com/marshallpierce/rust-base64 |
+
+Effect starter artwork, static cube files, WAV and synthesis/export templates in
+`templates/effects` are original ARIA materials under the repository MIT license.
+The Streamer.bot adapter is original integration code using its public C# API;
+Streamer.bot and Twitch are separate applications/services and are not bundled.
 
 The Rust Spout sender follows the Spout2 SDK's `SharedTextureInfo` layout,
 sender-name maps, named mutexes, frame-count semaphore and DirectX 12 bridge.

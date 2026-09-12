@@ -56,6 +56,7 @@ impl ItemImage {
 }
 #[derive(Clone)]
 pub struct DrawItem {
+    pub tint: Color32,
     pub item: Item,
     pub image: ItemImage,
     pub anchor: Anchor,
@@ -64,6 +65,7 @@ pub struct DrawItem {
 impl DrawItem {
     fn same(&self, other: &Self) -> bool {
         self.item == other.item
+            && self.tint == other.tint
             && self.image.id() == other.image.id()
             && self.image.revision() == other.image.revision()
             && self.anchor == other.anchor
@@ -192,8 +194,17 @@ fn frame(scene: &Scene, canvas: Rect, zoom: f32, moving: bool) -> Frame {
     }
 }
 pub fn paint(painter: &egui::Painter, scene: &Scene, canvas: Rect, zoom: f32, behind: bool) {
-    for draw in scene
-        .items
+    paint_list(painter, scene, canvas, zoom, behind, &scene.items);
+}
+pub fn paint_list(
+    painter: &egui::Painter,
+    scene: &Scene,
+    canvas: Rect,
+    zoom: f32,
+    behind: bool,
+    draws: &[DrawItem],
+) {
+    for draw in draws
         .iter()
         .filter(|d| d.item.behind == behind && d.visible)
     {
@@ -213,7 +224,7 @@ pub fn paint(painter: &egui::Painter, scene: &Scene, canvas: Rect, zoom: f32, be
             mesh.vertices.push(egui::epaint::Vertex {
                 pos,
                 uv,
-                color: Color32::WHITE.gamma_multiply(pose.opacity),
+                color: draw.tint.gamma_multiply(pose.opacity),
             });
         }
         mesh.indices.extend([0, 1, 2, 0, 2, 3]);
@@ -472,6 +483,7 @@ impl Items {
                     ItemImage::Png(self.assets.get(&item.path)?.as_ref().ok()?.clone())
                 };
                 Some(DrawItem {
+                    tint: Color32::WHITE,
                     item: item.clone(),
                     image,
                     anchor: anchor(item.pin.as_ref(), avatar),
@@ -702,7 +714,7 @@ pub fn signal(item: &Item, inputs: &Inputs, parameters: &[RigParameter]) -> Opti
             .map(|p| p.value),
     }
 }
-fn load_png(
+pub(crate) fn load_png(
     ctx: &egui::Context,
     state: Option<&eframe::egui_wgpu::RenderState>,
     path: &Path,
@@ -778,7 +790,7 @@ fn model_point(canvas: aria_live2d::Canvas, point: [f32; 2]) -> Vec2 {
         0.5 - (point[1] * canvas.pixels_per_unit + canvas.origin[1]) / canvas.size[1],
     )
 }
-fn anchor(pin: Option<&Pin>, avatar: Option<&Avatar>) -> Anchor {
+pub fn anchor(pin: Option<&Pin>, avatar: Option<&Avatar>) -> Anchor {
     match pin {
         None => Anchor::Free,
         Some(Pin::Puppet { point }) if avatar.is_none() => Anchor::Puppet(vec2(point[0], point[1])),
@@ -983,6 +995,8 @@ mod tests {
         let mut manager = Items::default();
         manager.assets.insert("test.png".into(), Ok(sprite));
         let scene_base = Scene {
+            effects: Arc::from([]),
+            recoil: [0.0; 2],
             _model_lease: None,
             model: None,
             model_bounds: Rect::NOTHING,
@@ -1087,6 +1101,7 @@ mod tests {
     fn output_item_positions_and_sizes_scale_with_each_canvas_without_ui_shapes() {
         let ctx = egui::Context::default();
         let draw = DrawItem {
+            tint: Color32::WHITE,
             item: Item {
                 height: 0.2,
                 position: [0.1, -0.2],
@@ -1097,6 +1112,8 @@ mod tests {
             visible: true,
         };
         let scene = Scene {
+            effects: Arc::from([]),
+            recoil: [0.0; 2],
             _model_lease: None,
             model: None,
             model_bounds: Rect::NOTHING,
