@@ -5,6 +5,32 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Local verification on 2026-09-12
 
+### v0.16 Twitch / YouTube chat companion
+
+- Formatting and strict Clippy passed for all workspace targets/features.
+  **114 default tests passed**; twelve environment-dependent tests are ignored
+  in the default run. New tests cover PKCE's standard vector, callback path/host/
+  state validation, duplicate callback rejection, token rotation, cancellation,
+  target URL validation, IRC tags and control-message parsing, moderation deletion,
+  deduplication and bounded history. The actual eframe RON storage test restores
+  distinct chat appearances per avatar while keeping account setup global.
+- Two additional native tests passed explicitly: Windows DPAPI protected/unlocked
+  synthetic login data, and a loopback HTTP fixture exercised Twitch's pending
+  device-code response and YouTube's quota error. No real credentials were used.
+- Native DX12 chat previews exercised Twitch-only, YouTube-only, both services,
+  transparent backgrounds and whole-chat opacity. At 175% display scale the
+  combined viewport was 630×805; a single service was 630×403. Corner alpha was
+  184 for Twitch and 115 for YouTube; halving Twitch opacity yielded 92 while
+  YouTube remained unchanged. Fully transparent backgrounds had alpha-zero corners
+  while opaque message text remained visible.
+- Native viewport assertions verified that chat follows below a moved portrait
+  preview, disappears while the portrait is minimized, and returns on restore.
+  The chat is separate from avatar scene rendering and Spout textures.
+- These UI checks use explicitly labeled synthetic messages. Live Twitch/Google
+  OAuth consent, real chat reception, provider quota and public-app verification
+  require registered client credentials and authorized accounts and were **not
+  tested against real accounts** in this run. See [setup](streaming-chat.md).
+
 ### v0.15 image actions, GIFs and microphone
 
 - Formatting and strict Clippy across all targets/features passed. **104 default

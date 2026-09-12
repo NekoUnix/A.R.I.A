@@ -1,6 +1,10 @@
 # Windows setup and operation
 
-ARIA v0.15 adds configurable PNG/GIF image actions and microphone talking input.
+ARIA v0.16 adds Twitch/YouTube sign-in and a chat window below the portrait preview.
+Open **Streaming chat** in the left panel; each service has independent opacity,
+background color and font settings. [Account setup and operation](streaming-chat.md)
+explains the required OAuth registration and Windows-protected saved logins.
+PNG/GIF image actions and microphone talking input are also available.
 Open **PNG / GIF actions** to assign artwork to talking, blinking, custom input
 ranges or hotkeys. Configure transitions, shake/jump/blip and GIF playback per action.
 Open **Microphone** for device selection, sensitivity, smoothing and talking thresholds.
@@ -31,7 +35,7 @@ systems and Windows ARM64 are not verified release targets yet.
 1. Visit [the Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml).
 2. Select a green, successful run on `main` for the version you want.
 3. Under **Artifacts**, download **aria-windows-x64**. Sign in to GitHub if asked.
-4. Extract the downloaded artifact. Extract `aria-0.15.0-windows-x64.zip` inside it
+4. Extract the downloaded artifact. Extract `aria-0.16.0-windows-x64.zip` inside it
    into a normal writable folder, for example `C:\Apps\ARIA`.
 5. Double-click **aria-desktop.exe**. The default source is Demo and Mica should move.
 

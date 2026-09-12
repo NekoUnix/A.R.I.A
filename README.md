@@ -6,7 +6,11 @@ tracking into avatar parameters, and animates **Live2D `.moc3` avatars**, a buil
 2D test puppet, or your PNG/GIF artwork. The UI and preview run on **egui + wgpu**,
 without Unity or Godot.
 
-> **v0.15:** adds PNG/GIF action states and Windows microphone talking input.
+> **v0.16:** adds Twitch and YouTube sign-in and a chat companion below the
+> portrait OBS preview. Display either service or both, with independent opacity,
+> background colors and text settings. [First-time account setup](docs/streaming-chat.md)
+> requires registered OAuth client credentials; no publisher client is bundled.
+> Includes PNG/GIF action states and Windows microphone talking input.
 > Assign artwork to tracking/parameter ranges or hotkeys, configure fades and
 > shake/jump/blip/pulse/wobble/bob animations, and tune GIF speed and looping.
 > Microphone sensitivity, smoothing and talk/quiet thresholds save per avatar.
@@ -50,6 +54,18 @@ and performance. Avatar-specific context is captured when you click the control;
 reopen its question mark to refresh those values.
 
 ![Offline help with an input-range diagram](docs/images/help.png)
+
+## Twitch and YouTube chat
+
+Open **Streaming chat** in the left panel, choose either service or both, and click
+**Open chats below portrait**. Complete **Account setup**, then sign in through the
+service's official browser page. Each service has separate opacity, background hex
+color, text size and height. Chat appearance saves per avatar; remembered logins
+use Windows DPAPI. The chat companion is separate from the avatar's Spout canvas.
+
+The native viewer is read-only. **Open official chat** opens the platform's browser
+chat for typing, moderation and native emotes. See the detailed
+[Twitch/YouTube setup and operation guide](docs/streaming-chat.md).
 
 ## PNG/GIF avatars and microphone input
 
@@ -305,7 +321,7 @@ To build a portable bundle with its documentation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 ```
 
-The script runs tests and writes `dist/aria-0.15.0-windows-x64.zip`. See
+The script runs tests and writes `dist/aria-0.16.0-windows-x64.zip`. See
 [architecture](docs/architecture.md) for crate boundaries and
 [validation](docs/validation.md) for what has actually been exercised.
 

@@ -121,6 +121,7 @@ impl CanvasSettings {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct OutputSettings {
+    pub chat: crate::chat::Appearance,
     // Keep the v0.7 pair intact so saved RON tuples continue to deserialize.
     pub canvases: [CanvasSettings; 2],
     pub freeform: CanvasSettings,
@@ -129,6 +130,7 @@ pub struct OutputSettings {
 impl OutputSettings {
     pub fn from_legacy(background: Background, zoom: f32, always_on_top: bool) -> Self {
         Self {
+            chat: Default::default(),
             canvases: std::array::from_fn(|_| CanvasSettings {
                 background,
                 zoom,
@@ -146,6 +148,7 @@ impl OutputSettings {
         .sanitized()
     }
     pub fn sanitized(mut self) -> Self {
+        self.chat.sanitize();
         self.selected = self.selected.min(2);
         for c in &mut self.canvases {
             c.sanitize();
@@ -235,11 +238,9 @@ impl OutputWindows {
             (state.open[i] && c.send_to_obs).then(|| c.clone())
         })
     }
-    #[cfg(test)]
     pub fn is_open(&self, index: usize) -> bool {
         self.state.lock().unwrap().open[index]
     }
-    #[cfg(any(test, feature = "screenshots"))]
     pub fn set_open(&self, index: usize, open: bool) {
         self.state.lock().unwrap().open[index] = open;
     }
@@ -247,6 +248,12 @@ impl OutputWindows {
         let mut state = self.state.lock().unwrap();
         edit(state.config.canvas_mut(index));
         state.config.canvas_mut(index).sanitize();
+        state.dirty = true;
+    }
+    pub fn edit_chat(&self, mut appearance: crate::chat::Appearance) {
+        appearance.sanitize();
+        let mut state = self.state.lock().unwrap();
+        state.config.chat = appearance;
         state.dirty = true;
     }
     pub fn apply_suggestion(

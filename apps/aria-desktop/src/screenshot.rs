@@ -22,7 +22,11 @@ pub fn capture(ctx: &egui::Context, started: Instant, output: bool) {
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(0)
         .min(2);
-    let target = if std::env::var("ARIA_SMOKE_SCENARIO").is_ok_and(|s| s.starts_with("help-")) {
+    let target = if std::env::var("ARIA_SMOKE_SCENARIO")
+        .is_ok_and(|s| s.starts_with("chat") && s != "chat-controls")
+    {
+        crate::chat::viewport_id()
+    } else if std::env::var("ARIA_SMOKE_SCENARIO").is_ok_and(|s| s.starts_with("help-")) {
         crate::help::viewport_id()
     } else if want_output {
         crate::output::viewport_id(output_index)

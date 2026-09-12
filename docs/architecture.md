@@ -1,5 +1,29 @@
 # Architecture and next steps
 
+## Streaming chat companion (v0.16)
+
+`aria-desktop/src/chat` contains the native companion UI, bounded plain-text
+protocol parsers, desktop OAuth helpers and one cancellable network worker per
+service. Twitch uses Public device authorization plus TLS IRC WebSockets;
+YouTube uses desktop authorization-code OAuth with PKCE/state validation, a
+loopback-only callback, and the read-only Data API. HTTP requests have timeouts,
+response budgets and retry backoff. Cancelled workers cannot publish into a new
+connection's feed; at most four active/closing workers can exist during rapid
+reconnects. Network work never runs in the rendering callback.
+
+Each feed holds at most 200 messages and handles provider moderation events.
+Credential fields in app settings contain only current-user Windows DPAPI blobs.
+Access tokens refresh in the worker; replacements reach persistent settings via
+the normal app save path. A service connects only after the user's Sign in or
+Connect action. Remote chat is never evaluated as markup or avatar commands.
+
+`OutputSettings.chat` holds per-avatar appearance. Global `Settings.chat_accounts`
+holds provider setup and protected credentials separately from rig presets.
+The chat viewport follows the portrait's actual outer rectangle when docked,
+hides with its minimized/closed parent, and uses independent alpha/color per
+service. It is never included in the avatar `Scene` or Spout render texture.
+See [streaming-chat.md](streaming-chat.md) for operational limits and API sources.
+
 ## PNG/GIF actions and microphone input (v0.15)
 
 `aria-core::image_actions` stores action triggers, priorities, motion, playback and

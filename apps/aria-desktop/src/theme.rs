@@ -121,6 +121,12 @@ pub fn category(
         {
             state.set_open(matches!(title, "Live2D object" | "Object parameters"));
         }
+        #[cfg(feature = "screenshots")]
+        if crate::smoke_mode()
+            && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("chat-controls")
+        {
+            state.set_open(title == "Streaming chat");
+        }
         ui.horizontal(|ui| {
             let (_, toggle) = ui.allocate_exact_size(egui::vec2(16.0, 22.0), egui::Sense::click());
             egui::collapsing_header::paint_default_icon(ui, state.openness(ui.ctx()), &toggle);

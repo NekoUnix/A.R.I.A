@@ -31,6 +31,7 @@ enum Source {
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 struct Settings {
+    chat_accounts: crate::chat::Accounts,
     image_avatar: Option<PathBuf>,
     effect_api: crate::effect_api::Settings,
     #[serde(default)]
@@ -54,6 +55,7 @@ struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            chat_accounts: Default::default(),
             image_avatar: None,
             effect_api: Default::default(),
             vts_pitch_revision: 1,
@@ -146,6 +148,7 @@ impl ModelPreferences {
 }
 
 pub struct AriaApp {
+    chats: crate::chat::Chats,
     images: crate::image_actions::Images,
     microphone: crate::microphone::Microphone,
     effects: crate::effects::Effects,
@@ -243,6 +246,7 @@ impl AriaApp {
             OutputSettings::from_legacy(settings.background, settings.zoom, settings.always_on_top)
         }));
         let app = Self {
+            chats: Default::default(),
             images: Default::default(),
             microphone: Default::default(),
             effects: Default::default(),
@@ -965,6 +969,10 @@ impl AriaApp {
                 .color(MUTED),
             );
         });
+        theme::category(ui, "chat-card", "Streaming chat", false, |ui| {
+            self.chats
+                .ui(ui, &mut self.settings.chat_accounts, &self.outputs);
+        });
         theme::category(ui, "output-card", "Capture & performance", false, |ui| {
             if let Some(index) = self.outputs.ui(ui) {
                 self.detect_key_color(index);
@@ -1426,6 +1434,19 @@ impl AriaApp {
 
 impl eframe::App for AriaApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.input_monitor.save_requested |=
+            self.chats.update(&mut self.settings.chat_accounts, ctx);
+        #[cfg(feature = "screenshots")]
+        if crate::smoke_mode()
+            && std::env::var("ARIA_SMOKE_SCENARIO").is_ok_and(|s| s.starts_with("chat"))
+        {
+            let key = egui::Id::new("chat-smoke-init");
+            if !ctx.data(|d| d.get_temp::<bool>(key).unwrap_or(false)) {
+                self.chats.smoke(&self.outputs);
+                ctx.data_mut(|d| d.insert_temp(key, true));
+            }
+            self.chats.verify_smoke_docking(ctx);
+        }
         #[cfg(feature = "screenshots")]
         if crate::smoke_mode()
             && ctx.current_pass_index() == 0
@@ -1619,7 +1640,7 @@ impl eframe::App for AriaApp {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            RichText::new("v0.15 · WINDOWS PREVIEW")
+                            RichText::new("v0.16 · WINDOWS PREVIEW")
                                 .small()
                                 .color(MUTED),
                         );
@@ -1651,9 +1672,16 @@ impl eframe::App for AriaApp {
             .resizable(false)
             .frame(Frame::new().fill(PANEL).inner_margin(12.0))
             .show(ctx, |ui| {
-                egui::ScrollArea::vertical()
-                    .id_salt("controls-scroll")
-                    .show(ui, |ui| self.controls(ui, ctx));
+                let area = egui::ScrollArea::vertical().id_salt("controls-scroll");
+                #[cfg(feature = "screenshots")]
+                let area = if crate::smoke_mode()
+                    && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("chat-controls")
+                {
+                    area.vertical_scroll_offset(640.0)
+                } else {
+                    area
+                };
+                area.show(ui, |ui| self.controls(ui, ctx));
             });
         egui::SidePanel::right("diagnostics")
             .default_width(380.0)
@@ -2084,6 +2112,12 @@ impl eframe::App for AriaApp {
                 }
             }
         }
+        self.chats.show(
+            ctx,
+            &self.outputs.snapshot().chat,
+            self.outputs.is_open(1),
+            self.started,
+        );
         crate::help::show(ctx, self.started);
         let remaining = self
             .frame_clock
@@ -2265,6 +2299,11 @@ mod tests {
         a_outputs.freeform.position = [0.1, -0.1];
         a_outputs.freeform.zoom = 1.2;
         a_outputs.selected = 2;
+        a_outputs.chat.styles[0].background = [75, 20, 110];
+        a_outputs.chat.styles[0].opacity = 0.42;
+        a_outputs.chat.styles[1].visible = false;
+        a_outputs.chat.docked = false;
+        settings.chat_accounts.services[0].client_id = "global-test-client".into();
         settings
             .model_preferences
             .get_mut("avatar-a")
@@ -2312,6 +2351,10 @@ mod tests {
             );
             assert_eq!(restored.sender_ip, "127.0.0.1");
             assert_eq!(restored.fps, 120);
+            assert_eq!(
+                restored.chat_accounts.services[0].client_id,
+                "global-test-client"
+            );
             assert!(restored.high_priority);
             assert_eq!(
                 restored.outputs.as_ref().unwrap(),

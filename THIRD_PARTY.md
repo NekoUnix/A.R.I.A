@@ -26,6 +26,15 @@ Primary dependencies (exact versions are recorded in Cargo.lock):
 | glam | 3D prop transforms | https://github.com/bitshifter/glam-rs |
 | rodio / cpal / Symphonia | Windows microphone amplitude capture, audio playback and WAV, MP3, Vorbis and FLAC decoding | https://github.com/RustAudio/rodio / https://github.com/RustAudio/cpal / https://github.com/pdeljanov/Symphonia |
 | getrandom / base64 | Local API keys and embedded glTF buffers | https://github.com/rust-random/getrandom / https://github.com/marshallpierce/rust-base64 |
+| reqwest / rustls | HTTPS OAuth and YouTube API requests | https://github.com/seanmonstar/reqwest / https://github.com/rustls/rustls |
+| tungstenite / native-tls | Twitch secure IRC WebSocket connection using Windows TLS | https://github.com/snapview/tungstenite-rs / https://github.com/sfackler/rust-native-tls |
+| sha2 | SHA-256 PKCE challenge generation | https://github.com/RustCrypto/hashes |
+
+Twitch and YouTube are separate services. Their APIs require user-configured OAuth
+applications and account authorization; ARIA includes no publisher-owned client
+credentials. The native chat preview contains synthetic examples, not downloaded
+chat histories. OAuth passwords and browser cookies are handled by the providers.
+See [chat setup and protocol references](docs/streaming-chat.md).
 
 Effect starter artwork, static cube files, WAV and synthesis/export templates in
 `templates/effects` and `templates/images` are original ARIA materials under the repository MIT license.

@@ -1,5 +1,11 @@
 # OBS output: landscape, portrait and Freeform
 
+For Twitch and YouTube chat under the portrait preview, open **Streaming chat**.
+The [chat companion](streaming-chat.md) supports either service or both with
+independent transparency and background colors. It is a separate native window;
+chat does not change the avatar Spout canvas. Add the companion as a separate
+Window Capture source if it should appear on stream.
+
 ARIA v0.8 provides three independent outputs. The visible windows are compact
 previews; OBS receives a separate full-resolution GPU texture through Spout.
 

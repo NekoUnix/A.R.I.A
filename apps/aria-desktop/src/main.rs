@@ -3,6 +3,7 @@
 mod app;
 mod avatar;
 mod broadcast;
+mod chat;
 mod chroma;
 mod cubism_render;
 mod deformation;
