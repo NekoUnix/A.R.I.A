@@ -100,7 +100,7 @@
         "lifetime": {
           "type": "number",
           "minimum": 0.1,
-          "maximum": 15
+          "maximum": 120
         },
         "impact": {
           "type": "number",
@@ -159,6 +159,122 @@
         "impact_sound": {
           "type": "string",
           "maxLength": 4096
+        },
+        "routes": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "required": [
+              "origin",
+              "target"
+            ],
+            "properties": {
+              "origin": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "number",
+                  "minimum": -2,
+                  "maximum": 2
+                }
+              },
+              "target": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "number",
+                  "minimum": -2,
+                  "maximum": 2
+                }
+              }
+            }
+          }
+        },
+        "asset_counts": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "description": "Must match assets length unless empty. Total including All routes is 1-1000."
+        },
+        "route_selection": {
+          "enum": [
+            "Random",
+            "Cycle",
+            "All"
+          ]
+        },
+        "speed": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 5
+        },
+        "gravity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "drag": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "stickiness": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "fade_out": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 30
+        },
+        "liquid": {
+          "type": "object",
+          "properties": {
+            "gloss": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "clarity": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "viscosity": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "drip": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.2
+            },
+            "foam": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "trail": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
         }
       },
       "additionalProperties": false

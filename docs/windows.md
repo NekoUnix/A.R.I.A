@@ -1,10 +1,12 @@
 # Windows setup and operation
 
-ARIA v0.12 adds per-avatar throws and liquid sprays, PNG/Live2D/static 3D asset
-pools, user hotkeys, replaceable sounds and a local API for stream events. Start in
-**Throws & liquid sprays** on the right. The bundled [template kit](../templates/effects/README.md)
-and [plugin guide](../templates/effects/plugins/README.md) include editable examples.
-This build also corrects reversed vertical iPhone VTube Studio head tracking.
+ARIA v0.13 adds the **Effect designer**. Open **Throws & liquid sprays → New throw
+or New spray**. Mark launch and aim points on your avatar, add several directions,
+choose each asset's quantity, and configure motion, bounce/sticking, duration,
+liquid appearance, audio and hotkeys. Preview locally, then **Save toggle**.
+See the [step-by-step designer guide](../README.md#throws-liquid-sprays-and-stream-events),
+[template kit](../templates/effects/README.md) and [plugin guide](../templates/effects/plugins/README.md).
+Settings save per avatar. The previous vertical iPhone tracking correction remains.
 Existing VTS neutral-pitch calibrations migrate once. If you manually enabled
 Invert pitch to compensate for the earlier bug, review that setting and recalibrate
 while looking straight ahead. Per-model mapping ranges and custom inversions remain yours.
@@ -28,7 +30,7 @@ systems and Windows ARM64 are not verified release targets yet.
 1. Visit [the Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml).
 2. Select a green, successful run on `main` for the version you want.
 3. Under **Artifacts**, download **aria-windows-x64**. Sign in to GitHub if asked.
-4. Extract the downloaded artifact. Extract `aria-0.12.0-windows-x64.zip` inside it
+4. Extract the downloaded artifact. Extract `aria-0.13.0-windows-x64.zip` inside it
    into a normal writable folder, for example `C:\Apps\ARIA`.
 5. Double-click **aria-desktop.exe**. The default source is Demo and Mica should move.
 

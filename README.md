@@ -6,13 +6,14 @@ tracking into avatar parameters, and animates **Live2D `.moc3` avatars**, a buil
 2D test puppet, or your PNG artwork. The UI and preview run on **egui + wgpu**,
 without Unity or Godot.
 
-> **v0.12:** corrects reversed iPhone VTube Studio vertical head motion and adds
-> per-avatar throws and liquid sprays. Create any number of saved designs with
-> asset pools, counts, motion, recoil, tint, replacement sounds and custom hotkeys.
-> PNG, independent Live2D, GLB/glTF, VRM, FBX and OBJ props can be thrown; 3D uses
-> static rest geometry and base-color materials. Spray splats follow avatar surfaces.
-> Buttons, hotkeys and an opt-in local HTTP API trigger the same designs.
-> Includes Streamer.bot/Twitch and Touch Portal setup plus editable asset templates.
+> **v0.13:** adds a visual throw and liquid designer on your live avatar.
+> Drag launch and aim markers, use up to 16 directions, and choose exact quantities
+> of each PNG, independent Live2D or static 3D asset. Preview a draft before saving.
+> Configure speed, gravity, resistance, bounce, stick probability, scene duration,
+> fade, sounds and a custom hotkey. Settings remain per design and per avatar.
+> Anime water has transparent depth, white highlights, splash crowns and adjustable
+> gloss, clarity, viscosity, drips, stretch and color, with water/paint/slime presets.
+> Includes editable templates and the existing local API for stream-tool events.
 > Independent pinnable Live2D/PNG stage objects retain their own settings and toggles.
 > Question-mark buttons are half their previous size, with hover explanations,
 > and a separate searchable offline help window with examples and diagrams.
@@ -44,12 +45,29 @@ reopen its question mark to refresh those values.
 
 ## Throws, liquid sprays and stream events
 
-Open **Throws & liquid sprays** in the right panel. Try Star toss, Soft ball volley,
-3D cube tumble, Water spray or Paint splash. Select a design to edit its asset pool,
-emission count, trajectory, size, recoil, coating color, lifetime and sound clips.
-Duplicate designs for variations and assign a user-defined shortcut. Saved libraries
-belong to each avatar. Freeze pose pauses the effects for transparent PNG export;
-all three full-resolution OBS canvases include them too.
+![Visual effect designer with launch and aim paths on Mica](docs/images/effect-designer.png)
+
+Open **Throws & liquid sprays → New throw / New spray**, or select an existing
+design and click **Edit toggle / directions…**. A popup shows your live avatar.
+
+1. In **Directions**, add launch paths and drag the green launch and pink aim markers.
+   Use **Place launch / Place aim** to set either point with a click on the image.
+   Distribute objects across paths, randomize paths, or send each quantity from every path.
+2. In **Assets**, select multiple files and set the quantity of each. Zero skips an asset.
+3. In **Motion**, set speed, flight arc, spin, gravity, resistance, recoil and bounce.
+   **Stick probability** blends bouncing and surface attachment from 0% to 100%.
+   Set **Stay after impact** (up to 120 seconds) and a separate fade-out time.
+4. For sprays, use **Liquid** to choose color/opacity and water, paint or slime styling.
+   **Sounds** selects launch/impact clips; **Hotkey** assigns your shortcut.
+5. Click **Preview burst**, then **Save toggle**. Cancel discards the draft. Preview
+   effects remain in the editor; saved designs play on the stage and all OBS outputs.
+
+Settings belong to the current avatar. Frozen poses pause stage effects for PNG export.
+Existing designs load with their old counts and fade; opening an old pooled design
+converts its count into explicit quantities while keeping the total. One hotkey press
+emits one burst. The full burst is limited to 1,000 objects and 256 can be active at once.
+Water is a detailed anime particle effect with surface pins; it does not simulate
+volumetric fluid or refract the avatar texture. Rebounds use a 2D aim-plane check.
 
 The [effect template kit](templates/effects/README.md) includes editable SVG/PNG,
 OBJ/MTL, GLB/glTF/FBX, a Live2D export layout, WAV audio and JSON design examples.
@@ -228,7 +246,7 @@ To build a portable bundle with its documentation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 ```
 
-The script runs tests and writes `dist/aria-0.12.0-windows-x64.zip`. See
+The script runs tests and writes `dist/aria-0.13.0-windows-x64.zip`. See
 [architecture](docs/architecture.md) for crate boundaries and
 [validation](docs/validation.md) for what has actually been exercised.
 

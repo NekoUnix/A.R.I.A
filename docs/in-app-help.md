@@ -2,11 +2,63 @@
 
 This guide is bundled into the application and works offline. The topic headers also provide the short hover descriptions for the circled question-mark buttons.
 
+## effect-editor | Visual throw and spray designer | Create a toggle in a popup with your avatar, draw launch-to-aim paths, choose exact asset quantities, preview it locally, then save the design to this avatar.
+
+### Create, preview and save
+
+New throw and New spray open the Effect designer. Select an existing design and click Edit toggle / directions to reopen it. The left side shows your current avatar; the right side has Directions, Assets, Motion, Liquid, Sounds and Hotkey tabs. Changes stay in a draft until Save toggle. Cancel changes or the window's close button discards the draft. Loading another avatar closes it so one avatar's draft cannot overwrite another's settings. Duplicate opens a copy with a new ID and no shortcut.
+
+Preview burst plays the current draft in the editor only. The main stage and OBS outputs keep their existing effects. Pause holds preview particles while your avatar can continue moving; Clear preview removes them. Editing a value affects the next preview burst. Reload assets / audio clears the preview, reloads modified visual files on the next preview, and retries audio. Preview sound uses the avatar's master volume and mute setting; Listen is an explicit audio audition. The avatar image remains live, so use the main Pose controls if you need to hold its face while designing.
+
+Save toggle validates the design, installs its hotkey when assigned, and saves it in this avatar's library. One button/hotkey press triggers one burst. The existing local API also works with the saved ID. Export draft writes a portable design file referencing your artwork and audio, without changing the saved library. Shared templates and their schema are in templates/effects. Asset files remain separate; keep them in a stable folder.
+
+## effect-directions | Draw multiple launch and aim paths | Green markers are launch points and pink markers are aim points. Drag them directly over the avatar preview or click to place them, and choose how multiple directions share the burst.
+
+### Place and edit markers
+
+Directions starts with the design's existing launch and aim points. Left, Right, Above, Below, Top left and Top right add paths from those sides aimed toward the avatar's upper center. You can have up to 16 paths. Select a numbered direction in the list or click its marker. Drag markers moves either endpoint. Place launch and Place aim let you click anywhere in the preview to place the selected endpoint. Arrows show travel toward the aim, including the flight arc.
+
+Each direction has numeric Launch and Aim X/Y values for precision or offscreen positions. Values are measured in avatar canvas heights from the canvas center: positive X goes right and positive Y goes down. Native model canvases may include transparent padding. Aim on visible artwork if you want an attached object or liquid splat. Remove deletes a path while keeping at least one. The preview is scaled down to leave room around the avatar for incoming paths; output resolution and avatar zoom do not change the saved coordinates.
+
+### Distribute quantities across directions
+
+Distribute objects across paths walks directions in order while emitting the quantities from Assets. Pick a random path chooses a direction for each object while keeping the same total quantities. Send each quantity from every path multiplies each asset quantity by the number of directions. For example, 3 stars and 2 balls across two paths is 5 objects when distributing, or 10 when using every path. The total at the top of the editor includes that multiplication. The entire burst must contain 1–1,000 objects; the existing limit of 256 active particles queues the remainder as space becomes available.
+
+Launch/aim paths are saved with the design and used by buttons, hotkeys and stream events. An old single-path design opens with its existing points. Old Random/Cycle pool counts convert to explicit quantities divided across the assets; All preserves the number of copies per asset. A zero quantity skips an asset without deleting it. Assets emit in list order with the configured interval.
+
+## effect-impact | Speed, physics, sticking and scene lifetime | Choose how fast the objects arrive, how they rebound, their probability of attaching, and exactly how long each remains after impact before disappearing.
+
+### Flight and bounce
+
+Speed multiplier divides Base flight time: a 1-second base at 2× speed reaches the aim plane in half a second. Emission interval is the gap between objects and does not change with speed. Flight arc curves the path upward when positive. Spin is clockwise degrees per second. Size and Size variation control scale; Aim spread adds independent randomness around each direction's aim point. Set spread to zero for exact marker placement.
+
+Bounce strength controls how far a free object rebounds after reaching its aim plane. Gravity accelerates it downward; zero removes the downward acceleration. Air resistance damps the rebound. These controls shape a stylized 2D impact, not a 3D rigid-body collision engine. Avatar recoil gives the whole avatar composition a brief damped push without changing your rig's parameters. A burst can be triggered from any number of saved paths up to the 16-path limit.
+
+### Attach and expire
+
+Stick probability ranges from 0 (always bounce) to 1 (always attempt to attach). Intermediate values choose independently for each emitted object: 0.5 gives approximately half sticking over many bursts, not a guaranteed half in every small burst. Attachment requires a model surface beneath the aim point when the object arrives. Missing it lets the object fall away. Attached PNG, Live2D and 3D props follow that surface's movement and keep their impact rotation. They do not replace the main avatar or become permanent stage objects. Sprays can also bounce instead of sticking when you reduce their probability.
+
+Stay after impact ranges from 0.1 to 120 seconds for each object, including its fade. Fade-out time controls the final part of that period, up to 30 seconds; it is capped to the stay duration. A zero fade removes it at expiry. For example, stay 10 seconds and fade 2 seconds holds the object for 8 seconds, then fades for 2. Flight time is additional, and later emissions expire later. These lifetimes use simulation time, so Pause/Freeze holds them until resumed. A bounced object can leave the visible canvas before its lifetime expires. Clear active effects removes current objects and liquid immediately.
+
+## anime-liquid | Detailed anime water, paint and slime | Replace flat droplets with transparent depth, white specular glints, rim lighting, caustic bands, splats and splash crowns. Tune color, thickness, dripping and highlights in the visual editor.
+
+### Material and color
+
+New spray uses the built-in Anime water asset. Liquid's Clear water, Thick paint and Slime buttons set useful color and material starting points. The RGBA picker controls color and overall opacity. Hex color accepts six RGB digits with an optional #; opacity remains in the picker. White highlights stay white as the liquid color changes. Built-in droplet assets in older spray designs also receive this upgraded material. Custom PNG/Live2D/3D artwork retains its own image and uses your multiplicative tint.
+
+Gloss / highlights changes the bright specular spots, rim and lower caustic band. Clarity makes the center more transparent while preserving the colored edge. Viscosity slows dripping and creates a thicker coating. Drip speed sets the downward drift in avatar-canvas-height units per second; zero keeps splats still. Stream stretch elongates moving droplets along their flight direction. Foam / splash crown controls expanding pale rings during the first moments of a stuck impact. Splat expansion grows the irregular wet patch after landing.
+
+### Preview and performance
+
+Preview burst rebuilds materials for the draft's current settings. Each material shares three small textures across all droplets and all outputs. Up to 32 liquid materials can be cached together; additional material variants use the basic artwork until cleared. Clearing playback resets the material cache. This is a detailed anime-inspired particle material, not physically simulated fluid or true refraction of the model's texture. It does not modify the original artwork. Transparency, highlights and motion create its glassy appearance.
+
+Choose Motion to control spray speed, interval, spread, gravity, stick probability, lifetime and fade. Choose Sounds to replace launch and impact clips. For a smooth water jet use short intervals, small droplets, high clarity and moderate stretch; paint works well with lower clarity, higher viscosity and larger splats. All material settings are per design and per avatar. Liquid appears in PNG exports and every OBS canvas, with alpha edges preserved in transparent output.
+
 ## effects | Throws & liquid sprays | Create reusable effect designs for the current avatar, then trigger them with a button, your own shortcut, or an event from a stream tool. Pause playback for screenshots.
 
 ### Start with a design
 
-Open Throws & liquid sprays in the right panel. Every avatar starts with Star toss, Soft ball volley, 3D cube tumble, Water spray and Paint splash. Select a name to edit that design; the Throw or Spray button beside it immediately queues it. Search filters names. New throw and New spray add independent designs with new IDs. Duplicate copies the selected design and clears its hotkey. Delete design removes only the saved definition; Clear active effects stops particles, recoil and sounds already playing.
+Open Throws & liquid sprays in the right panel. Every avatar starts with Star toss, Soft ball volley, 3D cube tumble, Water spray and Paint splash. Select a name, then Edit toggle / directions to edit that design; the Throw or Spray button beside it immediately queues it. Search filters names. New throw and New spray open drafts; Save toggle adds them with new IDs. Duplicate copies the selected design and clears its hotkey. Delete design removes only the saved definition; Clear active effects stops particles, recoil and sounds already playing.
 
 The name is your label, up to 80 characters. Mode chooses a bouncing thrown object or a liquid particle that attempts to stick on impact. Multiple designs can play together. There is no fixed count limit on saved designs. Each trigger emits at most 1,000 particles, up to 256 particles can exist at once, and up to 32 bursts can wait in the queue. When playback is full, emission waits for space. Cooldown can reject rapid repeat triggers of the same design. Status text reports missing assets, cooldowns and queue limits.
 
@@ -18,6 +70,12 @@ Pause effects holds particles and recoil while the avatar can keep moving; attac
 
 ## effect-assets | Throw and spray artwork | Mix transparent PNG artwork, complete Live2D exports and static 3D props in a design. Asset selection controls which file is emitted and how many copies are made.
 
+### Exact quantities in the designer
+
+Assets → Choose files accepts multiple files at once. Each row has Quantity; zero disables that row without loading its file. Add built-in Star, Ball, Cube or Anime water without a file. Remove deletes a row, leaving at least one. Save rejects an all-zero burst or a total above 1,000. Every path multiplies the sum by the number of paths. Distribute and Random keep the sum unchanged. Custom 3D and Live2D remain independent of the main avatar.
+
+Older designs with no asset_counts use the pool rules below until edited. The editor divides their total across assets (or keeps count per asset for old All mode), so review quantities before saving an old randomized pool. New designs always use explicit quantities.
+
 ### Files and selection
 
 Add asset files accepts PNG, moc3 or model3.json, GLB, glTF, VRM, FBX and OBJ. Select multiple files to build a pool. Star, Ball, 3D cube and Droplet add built-in artwork. Up and Down change the pool order; Remove removes a reference, leaving its file untouched. Keep at least one asset. Random chooses from the pool for each particle. Cycle walks the pool in order until Number to emit is reached. All emits Copies of every asset; for example, 3 assets and 4 copies produces 12 particles. Each design holds up to 256 asset references and each trigger is limited to 1,000 total particles.
@@ -28,7 +86,7 @@ PNG artwork should be tightly cropped with transparent padding where needed. Max
 
 GLB/glTF and VRM use glTF triangle geometry; FBX and OBJ use the native ufbx importer. These are static prop imports: mesh transforms, UVs, normals and base-color materials render with simple lighting and a tumble animation. Skeletal animation, blendshape playback, VRM spring bones, MToon, full PBR and proprietary material graphs are not evaluated. Export the desired rest pose and bake complex materials to a PNG or JPEG base-color texture. Unsupported compressed geometry should be exported as ordinary triangles. A .blend, .max or .ma project must be exported to a supported interchange format first.
 
-Keep local buffer, MTL and texture companions within the asset folder. Remote texture URLs and references outside it are rejected. Use at most 200,000 triangles, 256 material batches, 128 MiB per model file and 4096 pixels per texture edge. Active 3D resources have a 512 MiB budget; each prop is rendered to a shared 512 × 512 transparent texture. All copies share that asset's 3D orientation, with individual flight and screen-space spin. Reload cached assets / sounds clears playback and retries edited or missing files. Small exports load faster and consume less VRAM.
+Keep local buffer, MTL and texture companions within the asset folder. Remote texture URLs and references outside it are rejected. Use at most 200,000 triangles, 256 material batches, 128 MiB per model file and 4096 pixels per texture edge. Active 3D resources have a 512 MiB budget; each prop is rendered to a shared 512 × 512 transparent texture. All copies share that asset's 3D orientation, with individual flight and screen-space spin. Reload assets / audio clears playback and retries edited or missing files. Small exports load faster and consume less VRAM.
 
 ## effect-motion | Emission, flight and impact | Set the burst count, trajectory, size, timing and recoil. Positions are measured relative to the avatar canvas so a design scales with every output resolution.
 
@@ -40,15 +98,15 @@ Item size is the particle image's height divided by avatar canvas height: 0.10 m
 
 ### Timing and response
 
-Interval is the time between emissions, from 0 to 5 seconds. Zero starts a rapid burst, subject to the particle limit. Flight time is seconds from launch to the aim plane. Flight arc adds upward curvature when positive and downward curvature when negative; zero flies straight. Spin is degrees per second in screen space, with negative values reversing direction. Bounce controls the sideways/upward rebound of thrown objects after impact. Time after impact controls the fade duration, from 0.1 to 15 seconds.
+Interval is the time between emissions, from 0 to 5 seconds. Zero starts a rapid burst, subject to the particle limit. Flight time is seconds from launch to the aim plane. Flight arc adds upward curvature when positive and downward curvature when negative; zero flies straight. Spin is degrees per second in screen space, with negative values reversing direction. Bounce strength controls rebound opposite the incoming direction. Gravity and Air resistance shape its fall. Stay after impact sets visibility duration from 0.1 to 120 seconds; Fade-out time controls the final 0–30 seconds, capped at that duration. Zero fade removes the object immediately at expiry.
 
-Avatar recoil applies a damped displacement to the avatar composition after impacts, then settles back to zero. It moves the avatar and its accessories together without overwriting your tracking parameters or rig physics. Zero disables it. Impact timing is a 2D aim-plane effect, not a 3D collision simulation; liquid additionally checks the avatar surface when it lands. Cooldown is the minimum real time between accepted triggers of this design, up to 60 seconds. Pause/Freeze stops simulation time. A fixed-step simulation keeps normal 15–120 FPS playback consistent; long suspend gaps are discarded to avoid a burst of overdue work.
+Avatar recoil applies a damped displacement to the avatar composition after impacts, then settles back to zero. It moves the avatar and its accessories together without overwriting your tracking parameters or rig physics. Zero disables it. Impact timing is a 2D aim-plane effect, not a 3D collision simulation; bouncing and sticking additionally check the avatar surface when the particle lands. Cooldown is the minimum real time between accepted triggers of this design, up to 60 seconds. Pause/Freeze stops simulation time. A fixed-step simulation keeps normal 15–120 FPS playback consistent; long suspend gaps are discarded to avoid a burst of overdue work.
 
 ## sprays | Liquid spray, splats and color | Spray particles fly toward the avatar, expand into splats on a visible mesh, follow that surface, then drip and fade. Customize the artwork and tint for water, paint or your own liquid.
 
 ### Make a spray
 
-Choose Water spray or Paint splash, or click New spray. Select a droplet PNG or use the built-in white Droplet; a white source makes tint colors easy to control. Liquid & color contains the RGBA picker. RGB multiplies the artwork's color channels and A controls transparency. White with full alpha preserves the original artwork. Dark or colored artwork cannot become brighter just by tinting it. This tint also works for thrown assets.
+Choose Water spray or Paint splash, or click New spray. Use the built-in Anime water asset for shaded liquid with white glints and splash crowns, or select your own droplet PNG. The Liquid tab contains material presets, hex color and the RGBA picker. RGB multiplies custom artwork's color channels and A controls transparency; built-in water retains white highlights. White with full alpha preserves the original artwork. Dark or colored artwork cannot become brighter just by tinting it. This tint also works for thrown assets.
 
 Splat expansion adds growth just after impact: 0 keeps the incoming size and 1 doubles it. Expansion ranges from 0 to 2. Time after impact determines how long the coating lasts. Smaller Item size, more particles, short intervals and some Target spread create a stream; larger particles and higher expansion create paint blobs. Launch and impact clips can be replaced separately. Disable the impact sound for a continuous spray if individual splat sounds become too busy.
 
@@ -62,9 +120,9 @@ Pause effects keeps the current coating visible while tracking continues. Freeze
 
 ### Select and mix clips
 
-Launch sound plays once when the burst begins emitting. Impact sound plays once per particle at the aim plane. Choose audio selects a file, Preview plays the selected clip at design and master volume, and None disables that event. Built-in whoosh, pop, spray and splat buttons restore synthesized starter sounds. Design volume multiplies Master volume. Mute effects silences playback, and Pause effects, Freeze pose and Clear active effects stop current sounds. Preview is an explicit audition even when automatic effects are muted.
+Launch sound plays once when the burst begins emitting. Impact sound plays once per particle at the aim plane. In Sounds, Choose clip selects a file, Listen plays the selected clip at design and master volume, and Silent disables that event. Built-in whoosh, pop, spray and splat buttons restore synthesized starter sounds. Design volume multiplies Master volume. Mute effects silences playback, and Pause effects, Freeze pose and Clear active effects stop current sounds. Preview is an explicit audition even when automatic effects are muted.
 
-Clips may be mono or stereo, up to 192 kHz, 10 seconds and 16 MiB per compressed file. WAV PCM, MP3, Ogg Vorbis and FLAC are supported. ARIA normalizes decoded clip peaks and limits simultaneous voices to 16; new sounds retire the oldest voice when full. It caches up to 64 MiB of decoded audio. Use a short, quiet impact clip for large volleys. Missing clips or unavailable devices show an error while visual playback continues. Reload cached assets / sounds retries the audio device and rereads edited clips.
+Clips may be mono or stereo, up to 192 kHz, 10 seconds and 16 MiB per compressed file. WAV PCM, MP3, Ogg Vorbis and FLAC are supported. ARIA normalizes decoded clip peaks and limits simultaneous voices to 16; new sounds retire the oldest voice when full. It caches up to 64 MiB of decoded audio. Use a short, quiet impact clip for large volleys. Missing clips or unavailable devices show an error while visual playback continues. Reload assets / audio retries the audio device and rereads edited clips.
 
 ### Windows and OBS
 
@@ -74,7 +132,7 @@ Playback uses Windows' default audio output when the audio device is first opene
 
 ### Save and share a design
 
-Export this design writes an .aria-effect.json file with aria_effect version 1 and a design object. It stores the selected asset paths, sounds, count, timing, movement and color. It does not embed the assets. For a portable kit, put files in a folder beside the design JSON and replace absolute paths with relative paths such as assets/star.png. Import design resolves those paths relative to the JSON file. Built-in references such as builtin:star and builtin:whoosh work without companion files.
+Export draft in the editor writes an .aria-effect.json file with aria_effect version 1 and a design object. It stores the selected asset paths, sounds, count, timing, movement and color. It does not embed the assets. For a portable kit, put files in a folder beside the design JSON and replace absolute paths with relative paths such as assets/star.png. Import design resolves those paths relative to the JSON file. Built-in references such as builtin:star and builtin:whoosh work without companion files.
 
 Import gives the design a new local ID and clears its hotkey, preventing someone else's assignment from replacing your shortcuts. IDs are displayed in the design list and used by the plugin API. Use names for people and IDs for automation. Duplicate similarly creates a new ID with no hotkey. Changes save in the current avatar profile, independently of movement presets. Keep a backup export before restructuring a library used by stream events.
 

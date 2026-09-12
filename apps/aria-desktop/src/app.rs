@@ -302,6 +302,11 @@ impl AriaApp {
                     .expect("Smoke model load");
                 }
                 match std::env::var("ARIA_SMOKE_SCENARIO").as_deref() {
+                    Ok("effect-editor") => {
+                        app.input_monitor.tab = Tab::Effects;
+                        app.input_monitor.saved.effects.muted = true;
+                        app.effects.editor = Some(Box::new(crate::effect_editor::Editor::smoke()));
+                    }
                     Ok("effects") | Ok("output-effects") | Ok("effects-audio") => {
                         app.input_monitor.tab = Tab::Effects;
                         app.effects.selected = Some(4);
@@ -336,9 +341,24 @@ impl AriaApp {
                             id: 6,
                             name: "Native asset import check".into(),
                             assets,
+                            routes: vec![
+                                aria_core::effects::Route {
+                                    origin: [-0.8, -0.3],
+                                    target: [-0.08, -0.16],
+                                },
+                                aria_core::effects::Route {
+                                    origin: [0.8, -0.3],
+                                    target: [0.08, -0.16],
+                                },
+                                aria_core::effects::Route {
+                                    origin: [0.0, -0.8],
+                                    target: [0.0, -0.16],
+                                },
+                            ],
+                            stickiness: Some(1.0),
                             count: 1,
                             selection: aria_core::effects::Selection::All,
-                            flight: 2.5,
+                            flight: 0.3,
                             interval: 0.05,
                             size: 0.2,
                             lifetime: 10.0,
@@ -1248,11 +1268,12 @@ impl eframe::App for AriaApp {
                 .filter_map(|f| f.path.clone())
                 .collect::<Vec<_>>()
         });
-        let mut dropped_items: Vec<_> = if ctx.current_pass_index() == 0 {
-            dropped
-        } else {
-            Vec::new()
-        };
+        let mut dropped_items: Vec<_> =
+            if ctx.current_pass_index() == 0 && self.effects.editor.is_none() {
+                dropped
+            } else {
+                Vec::new()
+            };
         let now = Instant::now();
         // A layout discard can call update twice for the same frame.
         let dt = self
@@ -1398,7 +1419,7 @@ impl eframe::App for AriaApp {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            RichText::new("v0.12 · WINDOWS PREVIEW")
+                            RichText::new("v0.13 · WINDOWS PREVIEW")
                                 .small()
                                 .color(MUTED),
                         );
@@ -1633,6 +1654,36 @@ impl eframe::App for AriaApp {
                 Some("Hotkey worker could not start. Preset buttons remain available.".into());
         }
         self.hotkeys.configure(self.input_monitor.hotkey_keys());
+        if let Some(mut editor) = self.effects.editor.take() {
+            let reply = editor.show(
+                ctx,
+                &self.scene(),
+                self.render_state.as_ref(),
+                Path::new(&self.settings.cubism_core),
+                (self.live2d.as_ref(), dt),
+                &self.input_monitor.saved,
+            );
+            if let Some(design) = reply.saved {
+                self.input_monitor.saved.global_hotkeys |= design.hotkey.is_some();
+                self.effects.selected = Some(design.id);
+                if let Some(old) = self
+                    .input_monitor
+                    .saved
+                    .effects
+                    .designs
+                    .iter_mut()
+                    .find(|d| d.id == design.id)
+                {
+                    *old = design;
+                } else {
+                    self.input_monitor.saved.effects.designs.push(design);
+                }
+                self.input_monitor.save_requested = true;
+                self.effects.message = Some("Toggle saved for this avatar".into());
+            } else if !reply.closed {
+                self.effects.editor = Some(editor);
+            }
+        }
         self.input_monitor.save_requested |= self.outputs.take_dirty();
         self.input_monitor.save_requested |= self.items.take_save();
         self.input_monitor.save_requested |= self.effects.take_save();

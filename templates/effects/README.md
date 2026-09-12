@@ -1,7 +1,7 @@
 # Make your own ARIA throws and sprays
 
 Open **Throws & liquid sprays → Import design** and choose one of the three
-`.aria-effect.json` files here. Select the imported design and click **Trigger now**.
+`.aria-effect.json` files here. Select the imported design and click its **Throw** or **Spray** button.
 All assets in this kit are original ARIA examples under the repository MIT license.
 Keep this folder together: design paths are relative to their JSON file.
 
@@ -13,7 +13,7 @@ Keep this folder together: design paths are relative to their JSON file.
    beneath that asset's folder. ARIA centers and scales the mesh automatically.
 4. Replace `pop.wav` with a short mono/stereo sound, or select WAV, MP3, Ogg Vorbis
    or FLAC in ARIA. Clips may be at most 10 seconds, 16 MiB and 192 kHz.
-5. Import a design, customize it in the panel, assign a hotkey and save.
+5. Import a design, click **Edit toggle / directions…**, customize it in the visual designer, assign a hotkey and save.
    Export the design again to back up your changes. Import assigns a fresh ID and
    clears the hotkey; configure integrations using the new ID shown in the list.
 
@@ -45,15 +45,22 @@ use the Star toss defaults. `id` is reassigned on import. `name` is 1–80 chara
 
 | Field | Meaning |
 | --- | --- |
-| `kind` | `Throw` bounces; `Spray` pins a splat at a visible surface |
+| `kind` | `Throw` keeps object artwork; `Spray` expands/drips when attached and enables the built-in water material |
 | `assets` | 1–256 file paths or `builtin:star`, `builtin:ball`, `builtin:cube`, `builtin:drop` |
-| `selection`, `count` | `Random` / `Cycle`: total particles; `All`: copies of each asset; at most 1,000 per trigger |
+| `selection`, `count` (legacy) | `Random` / `Cycle`: total particles; `All`: copies of each asset; at most 1,000 per trigger |
+| `asset_counts` | Exact quantity per asset in the same order; 0 skips it; empty uses legacy selection/count |
+| `routes` | Up to 16 `{origin:[X,Y],target:[X,Y]}` pairs; empty uses legacy origin/target |
+| `route_selection` | `Cycle` distributes the total; `Random` chooses a path per object; `All` sends the quantity from every path |
+| `speed`, `gravity`, `drag` | Flight speed multiplier 0.1–5; fall strength 0–4; air resistance 0–5 |
+| `stickiness` | 0 always bounces; 1 sticks to a hit surface; intermediate values choose per object; null preserves old Throw/Spray defaults |
+| `fade_out` | Final fade in seconds, 0–30 capped by lifetime; 0 disappears at expiry; null preserves the legacy full-duration fade |
+| `liquid` | gloss, clarity, viscosity, foam and trail: 0–1; drip: 0–0.2 canvas heights/s before viscosity reduction |
 | `interval`, `flight` | Seconds between emissions and seconds to the aim plane |
 | `origin`, `target` | `[X,Y]` offsets from avatar center in canvas-height units; right/down are positive |
 | `size`, `size_variance` | Canvas-height fraction and fractional random size variation |
 | `spread`, `arc`, `spin` | Aim randomness, upward curve, clockwise degrees per second |
-| `bounce`, `lifetime`, `impact` | Rebound amount, seconds after impact, damped avatar composition recoil |
-| `tint`, `splash` | Multiplicative RGBA bytes and spray expansion after landing |
+| `bounce`, `lifetime`, `impact` | Rebound amount, 0.1–120 seconds after impact, damped avatar composition recoil |
+| `tint`, `splash` | RGBA bytes (custom art multiplies; built-in water preserves white glints) and spray expansion after landing |
 | `launch_sound`, `impact_sound` | Local clip, `builtin:whoosh/pop/spray/splat`, or empty string for silence |
 | `volume`, `cooldown` | Design volume 0–1 and minimum seconds between accepted triggers |
 | `hotkey` | Set in ARIA after import; sharing a design never installs a shortcut |
@@ -69,3 +76,25 @@ audio separately; Spout carries video only.
 See [the plugin setup guide](plugins/README.md) for Streamer.bot, Twitch, Touch
 Portal, PowerShell and HTTP. These trigger the same saved designs as buttons and
 hotkeys. ARIA does not log in to Twitch; your stream tool provides that connection.
+
+## Visual design workflow
+
+New throw / New spray opens a draft with the live avatar. Add Left, Right, Above,
+Below or diagonal paths, then drag each green launch and pink aim marker. Place launch
+and Place aim let you click the desired position. Coordinates use avatar canvas
+height, so a saved path scales with all output resolutions. Transparent canvas padding
+counts too: aim at visible artwork to stick. For example, two stars and three balls
+with three paths emit five objects with Cycle/Random or fifteen with All.
+
+Set asset quantities, Motion, Liquid, Sounds and Hotkey, then Preview burst. Pause
+holds the preview for inspection; Clear preview clears it. Save toggle commits to
+this avatar; Cancel leaves its library unchanged. Pause effects in the main panel
+holds real playback for screenshots. Lifetime starts when each object reaches its
+aim point; flight time divided by speed is additional time on scene. Objects may
+leave the visible canvas while bouncing before their lifetime expires.
+
+The spray example uses builtin:drop for the shaded anime material. The editable
+droplet SVG/PNG is included for custom artwork. Water, paint and slime presets set
+color and material controls; tune clarity, gloss, foam, viscosity, drip and stretch
+to taste. Rendering uses transparent particles and moving surface pins, not a
+volumetric fluid solver or texture-file changes.

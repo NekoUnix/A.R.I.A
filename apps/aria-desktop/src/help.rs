@@ -665,6 +665,7 @@ mod tests {
             include_str!("expressions_panel.rs"),
             include_str!("items_panel.rs"),
             include_str!("effects_panel.rs"),
+            include_str!("effect_editor.rs"),
             include_str!("object_models.rs"),
             include_str!("output.rs"),
             include_str!("metrics.rs"),

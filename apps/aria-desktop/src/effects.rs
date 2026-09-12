@@ -23,6 +23,8 @@ enum Asset {
 }
 #[derive(Default)]
 pub struct Effects {
+    pub editor: Option<Box<crate::effect_editor::Editor>>,
+    liquid_art: crate::liquid_art::Cache,
     pub simulation: Simulation,
     pub draws: Arc<[DrawItem]>,
     pub pending: Vec<u64>,
@@ -35,7 +37,6 @@ pub struct Effects {
     pub audio: crate::effect_audio::Audio,
     time: f32,
     pub paused: bool,
-    pub shortcut: aria_core::shortcuts::Shortcut,
     dirty: bool,
     pub save_after: Option<Instant>,
     pub search: String,
@@ -67,6 +68,13 @@ impl Effects {
             .filter(|p| p.pin.is_some())
             .count();
         assert!(pins > 0, "Sprays must attach to the avatar");
+        assert!(
+            self.simulation
+                .particles
+                .iter()
+                .any(|p| p.kind == Kind::Throw && p.stuck),
+            "Thrown props must also attach to the avatar"
+        );
         if native_avatar {
             assert!(
                 self.simulation
@@ -93,6 +101,7 @@ impl Effects {
         *self = Self::default();
     }
     pub fn clear(&mut self) {
+        self.liquid_art = Default::default();
         self.dirty = true;
         self.pending.clear();
         self.simulation.clear();
@@ -105,6 +114,7 @@ impl Effects {
         self.mocs.clear();
         self.moc_rig.items.clear();
         self.audio.clear();
+        self.liquid_art = Default::default();
     }
     pub fn update(
         &mut self,
@@ -158,8 +168,8 @@ impl Effects {
                 }
             }
             for p in &mut self.simulation.particles {
-                if p.hit && p.kind == Kind::Spray && !p.pin_checked {
-                    p.pin = if let Some(a) = avatar {
+                if p.hit && !p.pin_checked {
+                    let surface = if let Some(a) = avatar {
                         crate::items::pick_surface(
                             a.model.canvas,
                             &a.model.drawables,
@@ -169,10 +179,11 @@ impl Effects {
                         Some(Pin::Puppet { point: p.target })
                     };
                     p.pin_checked = true;
-                    if p.pin.is_none() {
-                        p.kind = Kind::Throw;
+                    if surface.is_none() {
                         p.bounce = 0.0;
                     }
+                    p.pin = if p.wants_stick { surface } else { None };
+                    p.stuck = p.pin.is_some();
                 }
             }
             let used: BTreeSet<_> = self
@@ -190,18 +201,42 @@ impl Effects {
         if library.muted || self.paused || pose == PoseMode::Frozen {
             self.audio.stop();
         }
-        let draws = self
+        let mut draws = Vec::new();
+        for p in &self.simulation.particles {
+            if p.kind == Kind::Spray && p.asset.to_string_lossy() == "builtin:drop" {
+                self.liquid_art.prepare(ctx, state, p);
+            }
+        }
+        let base_draws = self
             .simulation
             .particles
             .iter()
             .filter_map(|p| {
-                let image = match self.cache.get(&p.asset)? {
+                let mut image = match self.cache.get(&p.asset)? {
                     Asset::Image(i) => i.clone(),
                     Asset::Prop(p) => p.image(),
                     Asset::Moc(id) => self.mocs.image(*id)?,
                 };
-                let (position, size, rotation, opacity) = p.pose();
-                let pinned = p.kind == Kind::Spray && p.hit && p.pin.is_some();
+                let (position, mut size, mut rotation, opacity) = p.pose();
+                let material = self.liquid_art.get(p);
+                if let Some(art) = material {
+                    let mut sprite = if p.stuck {
+                        art.splat.clone()
+                    } else {
+                        art.drop.clone()
+                    };
+                    if !p.hit {
+                        rotation = (p.target[1] - p.origin[1])
+                            .atan2(p.target[0] - p.origin[0])
+                            .to_degrees()
+                            - 90.0;
+                        let stretch = 1.0 + p.liquid.trail * 1.5;
+                        size *= stretch;
+                        sprite.size.x /= stretch;
+                    }
+                    image = ItemImage::Png(sprite);
+                }
+                let pinned = p.stuck && p.pin.is_some();
                 let anchor = if pinned {
                     crate::items::anchor(p.pin.as_ref(), avatar)
                 } else {
@@ -220,17 +255,37 @@ impl Effects {
                     follow_scale: pinned,
                     ..Default::default()
                 };
-                Some(DrawItem {
-                    tint: egui::Color32::from_rgba_unmultiplied(
-                        p.tint[0], p.tint[1], p.tint[2], p.tint[3],
-                    ),
-                    item,
-                    image,
-                    anchor,
-                    visible: true,
-                })
+                Some((
+                    p,
+                    DrawItem {
+                        tint: if material.is_some() {
+                            egui::Color32::WHITE
+                        } else {
+                            egui::Color32::from_rgba_unmultiplied(
+                                p.tint[0], p.tint[1], p.tint[2], p.tint[3],
+                            )
+                        },
+                        item,
+                        image,
+                        anchor,
+                        visible: true,
+                    },
+                ))
             })
             .collect::<Vec<_>>();
+        for (p, draw) in &base_draws {
+            if let Some(art) = self.liquid_art.get(p) {
+                let after = p.age - p.flight;
+                if p.stuck && (0.0..0.45).contains(&after) {
+                    let mut ring = draw.clone();
+                    ring.image = ItemImage::Png(art.crown.clone());
+                    ring.item.height *= 1.2 + after * 4.0;
+                    ring.item.opacity *= (1.0 - after / 0.45) * p.liquid.foam;
+                    draws.push(ring);
+                }
+            }
+        }
+        draws.extend(base_draws.into_iter().map(|(_, draw)| draw));
         self.draws = draws.into();
         was || active || self.simulation.active()
     }
@@ -262,7 +317,11 @@ impl Effects {
             .collect();
         self.cache.retain(|p, _| keep.contains(p));
         self.moc_rig.items.retain(|i| keep.contains(&i.path));
-        for path in &design.assets {
+        self.mocs.sync(state, core, &self.moc_rig);
+        for (i, path) in design.assets.iter().enumerate() {
+            if design.asset_counts.get(i) == Some(&0) {
+                continue;
+            }
             if self.cache.contains_key(path) {
                 continue;
             }
@@ -421,6 +480,46 @@ fn builtin(ctx: &egui::Context, state: Option<&RenderState>, name: &str) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn zero_quantity_skips_missing_files_and_throw_assets_attach() {
+        let ctx = egui::Context::default();
+        let mut effects = Effects::default();
+        let library = Library {
+            designs: vec![Design {
+                assets: vec!["builtin:star".into(), "missing.png".into()],
+                asset_counts: vec![2, 0],
+                stickiness: Some(1.0),
+                interval: 0.0,
+                flight: 0.1,
+                ..Default::default()
+            }],
+            muted: true,
+            ..Default::default()
+        };
+        effects.pending.push(1);
+        effects.update(
+            &ctx,
+            None,
+            Path::new(""),
+            (&library, PoseMode::Live),
+            None,
+            0.2,
+        );
+        assert_eq!(
+            effects.simulation.particles.len(),
+            2,
+            "{:?}",
+            effects.message
+        );
+        assert!(
+            effects
+                .simulation
+                .particles
+                .iter()
+                .all(|p| p.stuck && p.pin.is_some())
+        );
+        assert_eq!(effects.draws.len(), 2);
+    }
     #[test]
     fn freeze_holds_particles_and_clear_invalidates_a_static_output() {
         let ctx = egui::Context::default();

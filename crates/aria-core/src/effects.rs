@@ -19,8 +19,45 @@ pub enum Selection {
     All,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Route {
+    pub origin: [f32; 2],
+    pub target: [f32; 2],
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Liquid {
+    pub gloss: f32,
+    pub clarity: f32,
+    pub viscosity: f32,
+    pub drip: f32,
+    pub foam: f32,
+    pub trail: f32,
+}
+impl Default for Liquid {
+    fn default() -> Self {
+        Self {
+            gloss: 0.9,
+            clarity: 0.7,
+            viscosity: 0.25,
+            drip: 0.035,
+            foam: 0.3,
+            trail: 0.65,
+        }
+    }
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Design {
+    /// Empty vectors preserve the v0.12 pool/count and single-origin behavior.
+    pub routes: Vec<Route>,
+    pub route_selection: Selection,
+    pub asset_counts: Vec<u32>,
+    pub speed: f32,
+    pub gravity: f32,
+    pub drag: f32,
+    pub stickiness: Option<f32>,
+    pub fade_out: Option<f32>,
+    pub liquid: Liquid,
     pub id: u64,
     pub name: String,
     pub kind: Kind,
@@ -51,6 +88,15 @@ pub struct Design {
 impl Default for Design {
     fn default() -> Self {
         Self {
+            routes: Vec::new(),
+            route_selection: Selection::Cycle,
+            asset_counts: Vec::new(),
+            speed: 1.0,
+            gravity: 1.0,
+            drag: 0.15,
+            stickiness: None,
+            fade_out: None,
+            liquid: Liquid::default(),
             id: 1,
             name: "Star toss".into(),
             kind: Kind::Throw,
@@ -80,7 +126,62 @@ impl Default for Design {
     }
 }
 impl Design {
+    pub fn total_count(&self) -> u32 {
+        let n = if !self.asset_counts.is_empty() {
+            self.asset_counts
+                .iter()
+                .fold(0_u32, |n, v| n.saturating_add(*v))
+        } else if self.selection == Selection::All {
+            self.count.saturating_mul(self.assets.len() as u32)
+        } else {
+            self.count
+        };
+        n.saturating_mul(if self.route_selection == Selection::All {
+            self.routes.len().max(1) as u32
+        } else {
+            1
+        })
+    }
+    pub fn make_editable(&mut self) {
+        if self.routes.is_empty() {
+            self.routes.push(Route {
+                origin: self.origin,
+                target: self.target,
+            });
+        }
+        // Preserve totals when converting an older pool to explicit per-asset quantities.
+        if self.asset_counts.is_empty() {
+            self.asset_counts = if self.selection == Selection::All {
+                vec![self.count; self.assets.len()]
+            } else {
+                (0..self.assets.len())
+                    .map(|i| {
+                        self.count / self.assets.len() as u32
+                            + u32::from(i < self.count as usize % self.assets.len())
+                    })
+                    .collect()
+            };
+        }
+        self.stickiness
+            .get_or_insert(if self.kind == Kind::Spray { 1.0 } else { 0.0 });
+        self.fade_out.get_or_insert(self.lifetime.min(30.0));
+    }
     pub fn validate(&self) -> Result<()> {
+        ensure!(
+            self.routes.len() <= 16
+                && self.routes.iter().all(|r| r
+                    .origin
+                    .iter()
+                    .chain(&r.target)
+                    .all(|v| v.is_finite() && v.abs() <= 2.0)),
+            "Use up to 16 launch/aim paths within the canvas limits"
+        );
+        ensure!(
+            self.asset_counts.is_empty()
+                || (self.asset_counts.len() == self.assets.len()
+                    && self.asset_counts.iter().all(|n| *n <= 1000)),
+            "Each asset needs its own quantity from 0 to 1000"
+        );
         ensure!(
             self.id != 0 && !self.name.trim().is_empty() && self.name.chars().count() <= 80,
             "Give the effect a name of 1–80 characters"
@@ -95,7 +196,28 @@ impl Design {
             "Choose 1–256 visual assets for this design"
         );
         ensure!((1..=1000).contains(&self.count), "Count must be 1–1000");
+        ensure!(
+            (1..=1000).contains(&self.total_count()),
+            "The complete burst must contain 1–1000 objects, including all directions"
+        );
+        ensure!(
+            self.stickiness
+                .is_none_or(|v| v.is_finite() && (0.0..=1.0).contains(&v))
+                && self
+                    .fade_out
+                    .is_none_or(|v| v.is_finite() && (0.0..=30.0).contains(&v)),
+            "Invalid attachment or fade setting"
+        );
         for (v, lo, hi) in [
+            (self.speed, 0.1, 5.0),
+            (self.gravity, 0.0, 4.0),
+            (self.drag, 0.0, 5.0),
+            (self.liquid.gloss, 0.0, 1.0),
+            (self.liquid.clarity, 0.0, 1.0),
+            (self.liquid.viscosity, 0.0, 1.0),
+            (self.liquid.drip, 0.0, 0.2),
+            (self.liquid.foam, 0.0, 1.0),
+            (self.liquid.trail, 0.0, 1.0),
             (self.interval, 0.0, 5.0),
             (self.flight, 0.1, 5.0),
             (self.size, 0.005, 1.5),
@@ -104,7 +226,7 @@ impl Design {
             (self.arc, -1.0, 1.0),
             (self.spin, -1440.0, 1440.0),
             (self.bounce, 0.0, 2.0),
-            (self.lifetime, 0.1, 15.0),
+            (self.lifetime, 0.1, 120.0),
             (self.impact, 0.0, 1.0),
             (self.splash, 0.0, 2.0),
             (self.volume, 0.0, 1.0),
@@ -191,6 +313,14 @@ impl Default for Library {
                     size: 0.04,
                     tint: [222, 105, 250, 220],
                     splash: 1.4,
+                    liquid: Liquid {
+                        clarity: 0.0,
+                        viscosity: 0.9,
+                        gloss: 0.45,
+                        drip: 0.012,
+                        foam: 0.0,
+                        trail: 0.2,
+                    },
                     lifetime: 4.0,
                     impact: 0.07,
                     launch_sound: "builtin:spray".into(),
@@ -230,6 +360,12 @@ impl Library {
 }
 #[derive(Clone, Debug)]
 pub struct Particle {
+    pub wants_stick: bool,
+    pub stuck: bool,
+    pub gravity: f32,
+    pub drag: f32,
+    pub fade_out: Option<f32>,
+    pub liquid: Liquid,
     pub pin: Option<crate::items::Pin>,
     pub pin_checked: bool,
     pub asset: PathBuf,
@@ -266,20 +402,45 @@ impl Particle {
             );
         }
         let after = (self.age - self.flight).max(0.0);
-        let fade = (1.0 - after / self.lifetime).clamp(0.0, 1.0);
-        if self.kind == Kind::Spray {
+        let fade_duration = self.fade_out.unwrap_or(self.lifetime).min(self.lifetime);
+        let fade = if fade_duration <= 0.0 {
+            1.0
+        } else {
+            ((self.lifetime - after) / fade_duration).clamp(0.0, 1.0)
+        };
+        if self.stuck {
             (
-                [self.target[0], self.target[1] + after * 0.012],
-                self.size * (1.0 + self.splash * (after * 12.0).min(1.0)),
-                0.0,
+                [
+                    self.target[0],
+                    self.target[1]
+                        + if self.kind == Kind::Spray {
+                            after * self.liquid.drip * (1.0 - self.liquid.viscosity)
+                        } else {
+                            0.0
+                        },
+                ],
+                self.size
+                    * if self.kind == Kind::Spray {
+                        1.0 + self.splash * (after * 12.0).min(1.0)
+                    } else {
+                        1.0
+                    },
+                if self.kind == Kind::Spray {
+                    0.0
+                } else {
+                    self.spin * self.flight
+                },
                 fade,
             )
         } else {
+            let dx = self.target[0] - self.origin[0];
+            let dy = self.target[1] - self.origin[1];
+            let distance = (dx * dx + dy * dy).sqrt().max(0.001);
+            let recoil = after * 0.38 * self.bounce / (1.0 + self.drag * after);
             (
                 [
-                    self.target[0]
-                        + (self.target[0] - self.origin[0]).signum() * after * 0.15 * self.bounce,
-                    self.target[1] - after * 0.28 * self.bounce + after * after * 0.65,
+                    self.target[0] - dx / distance * recoil,
+                    self.target[1] - dy / distance * recoil + after * after * 0.65 * self.gravity,
                 ],
                 self.size,
                 self.spin * self.age,
@@ -289,6 +450,7 @@ impl Particle {
     }
 }
 struct Burst {
+    assets: Vec<usize>,
     design: Design,
     remaining: u32,
     emitted: usize,
@@ -333,13 +495,15 @@ impl Simulation {
             self.queue.len() < 32,
             "Effect queue full; clear active effects or wait"
         );
-        let count = if d.selection == Selection::All {
-            d.count * d.assets.len() as u32
-        } else {
-            d.count
-        };
+        let count = d.total_count();
         ensure!(count <= 1000, "All assets × count must be at most 1000");
         self.queue.push_back(Burst {
+            assets: d
+                .asset_counts
+                .iter()
+                .enumerate()
+                .flat_map(|(i, n)| std::iter::repeat_n(i, *n as usize))
+                .collect(),
             design: d.clone(),
             remaining: count,
             emitted: 0,
@@ -373,25 +537,63 @@ impl Simulation {
                 }
                 let d = &burst.design;
                 let random = self.random();
-                let i = match d.selection {
-                    Selection::Random => (random * d.assets.len() as f32) as usize % d.assets.len(),
-                    _ => burst.emitted % d.assets.len(),
+                let i = if !burst.assets.is_empty() {
+                    burst.assets[burst.emitted
+                        / if d.route_selection == Selection::All {
+                            d.routes.len().max(1)
+                        } else {
+                            1
+                        }
+                        % burst.assets.len()]
+                } else {
+                    match d.selection {
+                        Selection::Random => {
+                            (random * d.assets.len() as f32) as usize % d.assets.len()
+                        }
+                        _ => {
+                            let paths = if d.route_selection == Selection::All {
+                                d.routes.len().max(1)
+                            } else {
+                                1
+                            };
+                            (burst.emitted / paths) % d.assets.len()
+                        }
+                    }
                 };
+                let route_index = match d.route_selection {
+                    Selection::Random => {
+                        (self.random() * d.routes.len() as f32) as usize % d.routes.len().max(1)
+                    }
+                    _ => burst.emitted % d.routes.len().max(1),
+                };
+                let route = d.routes.get(route_index);
+                let origin = route.map_or(d.origin, |r| r.origin);
+                let target = route.map_or(d.target, |r| r.target);
                 let jitter = [
                     (self.random() - 0.5) * 2.0 * d.spread,
                     (self.random() - 0.5) * 2.0 * d.spread,
                 ];
                 let size = d.size * (1.0 + (self.random() - 0.5) * 2.0 * d.size_variance);
+                let probability =
+                    d.stickiness
+                        .unwrap_or(if d.kind == Kind::Spray { 1.0 } else { 0.0 });
+                let wants_stick = probability >= 1.0 || self.random() < probability;
                 self.particles.push(Particle {
+                    wants_stick,
+                    stuck: false,
+                    gravity: d.gravity,
+                    drag: d.drag,
+                    fade_out: d.fade_out,
+                    liquid: d.liquid.clone(),
                     pin: None,
                     pin_checked: false,
                     asset: d.assets[i].clone(),
                     kind: d.kind,
                     age: 0.0,
-                    flight: d.flight,
+                    flight: d.flight / d.speed,
                     lifetime: d.lifetime,
-                    origin: d.origin,
-                    target: [d.target[0] + jitter[0], d.target[1] + jitter[1]],
+                    origin,
+                    target: [target[0] + jitter[0], target[1] + jitter[1]],
                     size,
                     arc: d.arc,
                     spin: d.spin,
@@ -456,6 +658,159 @@ impl Simulation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn routed() -> Design {
+        Design {
+            assets: vec!["a.png".into(), "b.moc3".into(), "unused.obj".into()],
+            asset_counts: vec![2, 3, 0],
+            routes: vec![
+                Route {
+                    origin: [-0.8, 0.0],
+                    target: [-0.1, 0.0],
+                },
+                Route {
+                    origin: [0.0, -0.8],
+                    target: [0.0, -0.1],
+                },
+            ],
+            spread: 0.0,
+            interval: 0.0,
+            ..Default::default()
+        }
+    }
+    #[test]
+    fn exact_quantities_and_route_distribution_survive_serialization() {
+        for selection in [Selection::Cycle, Selection::Random, Selection::All] {
+            let d = Design {
+                route_selection: selection,
+                ..routed()
+            };
+            let d: Design = serde_json::from_str(&serde_json::to_string(&d).unwrap()).unwrap();
+            let mut sim = Simulation::default();
+            sim.trigger(&d).unwrap();
+            sim.tick(0.1);
+            let multiplier = if selection == Selection::All { 2 } else { 1 };
+            assert_eq!(sim.particles.len(), 5 * multiplier);
+            for (path, quantity) in d.assets.iter().zip(&d.asset_counts) {
+                assert_eq!(
+                    sim.particles.iter().filter(|p| &p.asset == path).count(),
+                    *quantity as usize * multiplier
+                );
+            }
+            assert!(sim.particles.iter().all(|p| {
+                d.routes
+                    .iter()
+                    .any(|r| p.origin == r.origin && p.target == r.target)
+            }));
+            if selection == Selection::All {
+                for route in &d.routes {
+                    assert_eq!(
+                        sim.particles
+                            .iter()
+                            .filter(|p| p.origin == route.origin)
+                            .count(),
+                        5
+                    );
+                }
+            }
+        }
+        assert!(
+            Design {
+                asset_counts: vec![500, 1, 0],
+                route_selection: Selection::All,
+                ..routed()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            Design {
+                asset_counts: vec![0; 3],
+                ..routed()
+            }
+            .validate()
+            .is_err()
+        );
+    }
+    #[test]
+    fn attachment_bounce_speed_hold_and_fade_have_distinct_effects() {
+        for probability in [0.0, 1.0] {
+            let d = Design {
+                stickiness: Some(probability),
+                speed: 2.0,
+                flight: 1.0,
+                lifetime: 4.0,
+                fade_out: Some(1.0),
+                gravity: 0.0,
+                ..routed()
+            };
+            let mut sim = Simulation::default();
+            sim.trigger(&d).unwrap();
+            sim.tick(0.1);
+            assert!(
+                sim.particles
+                    .iter()
+                    .all(|p| p.wants_stick == (probability == 1.0) && p.flight == 0.5)
+            );
+            for p in &mut sim.particles {
+                p.hit = true;
+                p.stuck = p.wants_stick;
+                p.age = 1.5;
+                let (pos, _, rotation, opacity) = p.pose();
+                assert_eq!(opacity, 1.0);
+                if p.stuck {
+                    assert_eq!(pos, p.target);
+                    assert_eq!(rotation, p.spin * p.flight);
+                } else {
+                    let incoming = [p.target[0] - p.origin[0], p.target[1] - p.origin[1]];
+                    assert!(
+                        (pos[0] - p.target[0]) * incoming[0] + (pos[1] - p.target[1]) * incoming[1]
+                            < 0.0
+                    );
+                }
+                p.age = 4.0;
+                assert!((p.pose().3 - 0.5).abs() < 0.001);
+            }
+        }
+    }
+    #[test]
+    fn legacy_designs_preserve_totals_and_fade_when_opened_for_editing() {
+        let mut d: Design =
+            serde_json::from_str(r#"{"assets":["a.png","b.png"],"count":5,"lifetime":4.0}"#)
+                .unwrap();
+        d.make_editable();
+        assert_eq!(d.asset_counts, [3, 2]);
+        assert_eq!(d.total_count(), 5);
+        assert_eq!(d.fade_out, Some(4.0));
+        assert_eq!(d.routes[0].origin, d.origin);
+        let copy = d.clone();
+        d.make_editable();
+        assert_eq!(d, copy);
+    }
+    #[test]
+    fn legacy_all_assets_are_sent_from_every_route() {
+        let d = Design {
+            assets: vec!["a.png".into(), "b.png".into()],
+            asset_counts: vec![],
+            selection: Selection::All,
+            route_selection: Selection::All,
+            count: 2,
+            ..routed()
+        };
+        let mut sim = Simulation::default();
+        sim.trigger(&d).unwrap();
+        sim.tick(0.1);
+        for asset in &d.assets {
+            for route in &d.routes {
+                assert_eq!(
+                    sim.particles
+                        .iter()
+                        .filter(|p| &p.asset == asset && p.origin == route.origin)
+                        .count(),
+                    2
+                );
+            }
+        }
+    }
     #[test]
     fn all_selection_and_timing_are_independent_of_render_rate() {
         let d = Design {

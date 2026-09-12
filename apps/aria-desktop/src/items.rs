@@ -193,6 +193,13 @@ fn frame(scene: &Scene, canvas: Rect, zoom: f32, moving: bool) -> Frame {
         }
     }
 }
+pub fn effect_to_screen(scene: &Scene, canvas: Rect, zoom: f32, point: [f32; 2]) -> Pos2 {
+    frame(scene, canvas, zoom, false).to_screen(vec2(point[0], point[1]))
+}
+pub fn effect_from_screen(scene: &Scene, canvas: Rect, zoom: f32, point: Pos2) -> [f32; 2] {
+    let v = frame(scene, canvas, zoom, false).local(point);
+    [v.x.clamp(-2.0, 2.0), v.y.clamp(-2.0, 2.0)]
+}
 pub fn paint(painter: &egui::Painter, scene: &Scene, canvas: Rect, zoom: f32, behind: bool) {
     paint_list(painter, scene, canvas, zoom, behind, &scene.items);
 }

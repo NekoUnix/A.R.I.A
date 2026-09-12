@@ -117,9 +117,14 @@ def design(name, kind, assets, **kwargs):
              arc=.18,spin=360,bounce=.6,lifetime=1.4,impact=.18,tint=[255]*4,splash=.65,
              launch_sound="builtin:whoosh",impact_sound="assets/pop.wav",volume=.45,cooldown=.5,hotkey=None)
     d.update(kwargs)
+    d.update(routes=[{"origin":d["origin"],"target":d["target"]},
+                     {"origin":[.8,-.25],"target":[.08,-.16]}], route_selection="Cycle",
+             asset_counts=[d["count"]//len(assets) + int(i<d["count"]%len(assets)) for i in range(len(assets))],
+             speed=1, gravity=1, drag=.15, stickiness=1 if kind=="Spray" else .3, fade_out=.7,
+             liquid=dict(gloss=.9,clarity=.7,viscosity=.25,drip=.035,foam=.3,trail=.65))
     return {"aria_effect":1,"design":d}
 
 document(ROOT / "custom-throw.aria-effect.json", design("My star throw","Throw",["assets/star.png"]))
-document(ROOT / "custom-spray.aria-effect.json", design("My water spray","Spray",["assets/droplet.png"],count=80,interval=.018,size=.023,spin=0,flight=.4,lifetime=3,tint=[100,195,255,205],launch_sound="builtin:spray",impact_sound="",impact=.04))
+document(ROOT / "custom-spray.aria-effect.json", design("My water spray","Spray",["builtin:drop"],count=80,interval=.018,size=.023,spin=0,flight=.4,lifetime=3,tint=[100,195,255,205],launch_sound="builtin:spray",impact_sound="",impact=.04))
 document(ROOT / "custom-3d.aria-effect.json", design("My 3D volley","Throw",["assets/cube.glb","assets/cube.obj","assets/cube.fbx"],count=3,size=.22))
 print("Generated editable PNG/SVG, OBJ/MTL, GLB/glTF/FBX, WAV and design templates in", ROOT)
