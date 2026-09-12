@@ -69,7 +69,10 @@ fn main() -> eframe::Result {
                 smoke_mode().then(|| {
                     std::env::temp_dir().join(format!("aria-smoke-{}", std::process::id()))
                 })
-            }),
+            })
+            // eframe 0.33's implementation expects the file, despite its field
+            // documentation describing a folder.
+            .map(|directory| directory.join("app.ron")),
         ..Default::default()
     };
     let result = eframe::run_native(
