@@ -3,10 +3,15 @@
 A Windows-first, native Rust foundation for a modular avatar runtime. This first
 development build connects directly to **VTube Studio on iPhone**, maps facial
 tracking into avatar parameters, and animates **Live2D `.moc3` avatars**, a built-in
-2D test puppet, or your PNG artwork. The UI and preview run on **egui + wgpu**,
+2D test puppet, or your PNG/GIF artwork. The UI and preview run on **egui + wgpu**,
 without Unity or Godot.
 
-> **v0.14:** adds configurable impact dents and deformation for the avatar and
+> **v0.15:** adds PNG/GIF action states and Windows microphone talking input.
+> Assign artwork to tracking/parameter ranges or hotkeys, configure fades and
+> shake/jump/blip/pulse/wobble/bob animations, and tune GIF speed and looping.
+> Microphone sensitivity, smoothing and talk/quiet thresholds save per avatar.
+> GIFs also work as stage accessories and thrown assets.
+> Includes configurable impact dents and deformation for the avatar and
 > each thrown object. Set depth, area, squash, hold, recovery, spring-back and shading
 > independently in the visual effect designer. Responses follow the hit surface,
 > pause for screenshots and reset cleanly. Existing designs remain opt-in.
@@ -45,6 +50,33 @@ and performance. Avatar-specific context is captured when you click the control;
 reopen its question mark to refresh those values.
 
 ![Offline help with an input-range diagram](docs/images/help.png)
+
+## PNG/GIF avatars and microphone input
+
+![Microphone controls with a PNG/GIF avatar](docs/images/microphone.png)
+
+1. Choose **Avatar & appearance → Open PNG / GIF** for the base artwork.
+2. Open **PNG / GIF actions** in the Input Monitor. Add Talking, Quiet, Blink,
+   custom input-range or manual/hotkey states. Higher priority wins; Idle is a fallback.
+3. Configure **Fade & transition**, **Animation on change**, and **GIF playback**
+   for each action. Use **Activate / hold image** to try it and **Resume automatic
+   actions** to return. An assigned hotkey toggles the same manual selection.
+4. For voice control, open **Microphone**, enable a device, and tune the live meter.
+   **Microphone / manual · no tracker** removes demo movement without needing a phone.
+   Use Replace or Combine to drive a Live2D mouth, or route MicLevel/MicTalking into
+   arbitrary inputs and stage-object toggles. Audio is measured locally and discarded.
+5. **Save actions** saves the library per avatar. **Pose → Freeze** holds tracking,
+   GIFs, fades and motion for transparent PNG export. All three OBS outputs use
+   the same animated scene. PNG/GIF stage objects and throws are supported too.
+
+The [editable image starter pack](templates/images/README.md) includes idle/talking/
+blink PNGs, an animated GIF, an SVG drawing template and an importable action library.
+Export actions creates your own reusable JSON. Reopening a base image restores its
+profile; the last image avatar also reopens on startup.
+
+Up to 128 actions per avatar; 4096×4096 images and 32 MiB files. GIFs have limits of
+256 frames/128 MiB decoded and collections have a 256 MiB decoded budget. See the
+[offline help](docs/in-app-help.md) for all controls, units and microphone setup.
 
 ## Throws, liquid sprays and stream events
 
@@ -109,7 +141,7 @@ for units, limits, recovery examples and independent object timing.
 
 ![PNG accessories and pin controls on the Mica puppet](docs/images/png-items.png)
 
-Drop PNG, `.moc3` or `.model3.json` files onto **Your stage**, then open
+Drop PNG/GIF, `.moc3` or `.model3.json` files onto **Your stage**, then open
 **Stage objects & toggles** in the right
 panel. Drag an item into place and choose **Pin here**, or **Choose pin point**
 and click the avatar. Live2D pins follow the selected mesh's animated vertices;
@@ -204,8 +236,8 @@ See [the detailed import guide](docs/live2d.md) for limits and troubleshooting.
 
 ## Included in this first copy
 
-- Native desktop app with an original animated test puppet, PNG/JPEG loading and
-  an optional talking image, neutral-pose calibration, smoothing, gains and axis correction.
+- Native desktop app with an original animated test puppet, PNG/JPEG/GIF artwork, microphone input and
+  configurable image action states, neutral-pose calibration, smoothing, gains and axis correction.
 - Actual `.moc3` model loading, texture atlas rendering, regular/inverted clipping,
   multiply/screen colors, parameter range clamping and editable tracking assignments.
 - Automatic adjacent `.vtube.json` assignment import, including custom mouth/cheek
@@ -273,7 +305,7 @@ To build a portable bundle with its documentation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 ```
 
-The script runs tests and writes `dist/aria-0.14.0-windows-x64.zip`. See
+The script runs tests and writes `dist/aria-0.15.0-windows-x64.zip`. See
 [architecture](docs/architecture.md) for crate boundaries and
 [validation](docs/validation.md) for what has actually been exercised.
 

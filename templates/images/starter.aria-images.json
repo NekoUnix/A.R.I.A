@@ -1,0 +1,94 @@
+{
+  "enabled": true,
+  "states": [
+    {
+      "id": 1,
+      "name": "Idle",
+      "path": "artwork/idle.png",
+      "enabled": true,
+      "trigger": "Idle",
+      "priority": 0,
+      "fade_in": 0.12,
+      "fade_out": 0.16,
+      "minimum_hold": 0.1,
+      "transition": "Crossfade",
+      "motion": {
+        "kind": "None",
+        "strength": 0.06,
+        "duration": 0.4,
+        "frequency": 5,
+        "repeat": false
+      },
+      "gif_speed": 1,
+      "gif_loop": true,
+      "restart_gif": true
+    },
+    {
+      "id": 2,
+      "name": "Talking",
+      "path": "artwork/talking.png",
+      "enabled": true,
+      "trigger": "Talking",
+      "priority": 10,
+      "fade_in": 0.12,
+      "fade_out": 0.16,
+      "minimum_hold": 0.1,
+      "transition": "Crossfade",
+      "motion": {
+        "kind": "Jump",
+        "strength": 0.06,
+        "duration": 0.4,
+        "frequency": 5,
+        "repeat": false
+      },
+      "gif_speed": 1,
+      "gif_loop": true,
+      "restart_gif": true
+    },
+    {
+      "id": 3,
+      "name": "Blink",
+      "path": "artwork/blink.png",
+      "enabled": true,
+      "trigger": "Blink",
+      "priority": 20,
+      "fade_in": 0.12,
+      "fade_out": 0.16,
+      "minimum_hold": 0.1,
+      "transition": "Crossfade",
+      "motion": {
+        "kind": "None",
+        "strength": 0.06,
+        "duration": 0.4,
+        "frequency": 5,
+        "repeat": false
+      },
+      "gif_speed": 1,
+      "gif_loop": true,
+      "restart_gif": true
+    },
+    {
+      "id": 4,
+      "name": "Excited GIF",
+      "path": "artwork/excited.gif",
+      "enabled": true,
+      "trigger": "Manual",
+      "priority": 30,
+      "fade_in": 0.12,
+      "fade_out": 0.16,
+      "minimum_hold": 0.1,
+      "transition": "Crossfade",
+      "motion": {
+        "kind": "Shake",
+        "strength": 0.06,
+        "duration": 0.4,
+        "frequency": 5,
+        "repeat": false
+      },
+      "gif_speed": 1,
+      "gif_loop": true,
+      "restart_gif": true
+    }
+  ],
+  "manual": null
+}

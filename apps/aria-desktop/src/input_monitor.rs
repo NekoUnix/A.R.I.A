@@ -17,6 +17,8 @@ pub enum Tab {
     Raw,
     Items,
     Effects,
+    Images,
+    Microphone,
 }
 pub struct InputMonitor {
     pub effect_requests: Vec<u64>,
@@ -128,6 +130,12 @@ impl InputMonitor {
         let Some(preset) = self.saved.presets.get(index) else {
             return false;
         };
+        let mut candidate = self.saved.clone();
+        candidate.config = preset.rig.clone();
+        if let Err(error) = candidate.validate_image_hotkeys() {
+            self.message = Some(format!("Preset not applied: {error:#}"));
+            return false;
+        }
         self.saved.config = preset.rig.clone();
         self.reset_item_rules = true;
         self.saved.config.reset_filters();
@@ -169,6 +177,10 @@ impl InputMonitor {
                 }
             }
             crate::hotkeys::Action::Effect(id) => self.effect_requests.push(id),
+            crate::hotkeys::Action::Image(id) => {
+                self.saved.config.images.toggle(id);
+                self.save_requested = true;
+            }
         }
     }
     pub fn hotkey_keys(&self) -> Vec<crate::hotkeys::Registration> {
@@ -213,6 +225,12 @@ impl InputMonitor {
                 action: Action::Effect(d.id),
             })
         }));
+        keys.extend(self.saved.config.images.states.iter().filter_map(|s| {
+            s.hotkey.map(|shortcut| Registration {
+                shortcut,
+                action: Action::Image(s.id),
+            })
+        }));
         keys
     }
     fn expression_uses_key(&self, key: Option<u8>) -> bool {
@@ -227,6 +245,14 @@ impl InputMonitor {
                         .designs
                         .iter()
                         .filter_map(|d| d.hotkey.as_ref()),
+                )
+                .chain(
+                    self.saved
+                        .config
+                        .images
+                        .states
+                        .iter()
+                        .filter_map(|s| s.hotkey.as_ref()),
                 )
                 .any(|shortcut| *shortcut == aria_core::shortcuts::Shortcut::preset(key))
         })
@@ -285,6 +311,22 @@ impl InputMonitor {
         {
             self.tab = Tab::Effects;
         }
+        ui.columns(2, |columns| {
+            for (column, tab, label) in [
+                (0, Tab::Images, "PNG / GIF actions"),
+                (1, Tab::Microphone, "Microphone"),
+            ] {
+                if columns[column]
+                    .add_sized(
+                        [columns[column].available_width(), 26.0],
+                        egui::Button::new(label).selected(self.tab == tab),
+                    )
+                    .clicked()
+                {
+                    self.tab = tab;
+                }
+            }
+        });
         crate::help::label(
             ui,
             "About this tab",
@@ -297,6 +339,8 @@ impl InputMonitor {
                 Tab::Raw => "diagnostics",
                 Tab::Items => "png-items",
                 Tab::Effects => "effects",
+                Tab::Images => "image-actions",
+                Tab::Microphone => "microphone",
             },
         );
         if let Some(message) = &self.message {
@@ -349,7 +393,7 @@ impl InputMonitor {
                     ui.colored_label(egui::Color32::LIGHT_RED, error);
                 }
             }
-            Tab::Raw | Tab::Items | Tab::Effects => {}
+            Tab::Raw | Tab::Items | Tab::Effects | Tab::Images | Tab::Microphone => {}
         }
     }
     fn filter_ui(&mut self, ui: &mut egui::Ui) {

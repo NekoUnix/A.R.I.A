@@ -1,6 +1,6 @@
 //! Stage assets, mesh anchors, and interaction. All persisted data lives in RigConfig.
 use crate::{avatar::Sprite, live2d::Avatar, output::Scene};
-use anyhow::{Context, Result, ensure};
+use anyhow::Result;
 use aria_core::{
     items::{Item, MAX_ITEMS, Pin, RuleMode, RuleState, SignalKind},
     movement::RigConfig,
@@ -160,13 +160,14 @@ struct Frame {
     origin: Pos2,
     scale: f32,
     angle: f32,
+    stretch: Vec2,
 }
 impl Frame {
     fn to_screen(self, point: Vec2) -> Pos2 {
-        self.origin + rotate(point, self.angle) * self.scale
+        self.origin + rotate(point * self.stretch, self.angle) * self.scale
     }
     fn local(self, point: Pos2) -> Vec2 {
-        rotate(point - self.origin, -self.angle) / self.scale
+        rotate(point - self.origin, -self.angle) / self.scale / self.stretch
     }
 }
 fn rotate(v: Vec2, angle: f32) -> Vec2 {
@@ -176,6 +177,7 @@ fn frame(scene: &Scene, canvas: Rect, zoom: f32, moving: bool) -> Frame {
     if let Some(model) = scene.model {
         let rect = model.rect(canvas, zoom);
         return Frame {
+            stretch: Vec2::splat(1.0),
             origin: rect.center(),
             scale: rect.height(),
             angle: 0.0,
@@ -189,16 +191,24 @@ fn frame(scene: &Scene, canvas: Rect, zoom: f32, moving: bool) -> Frame {
             * zoom;
         let offset = if moving {
             vec2(
-                p[0] * canvas.width() * 0.0015,
+                p[0] * canvas.width() * 0.002,
                 -p[1] * canvas.height() * 0.001,
             )
         } else {
             Vec2::ZERO
         };
+        let motion = if moving {
+            scene.images.last().map(|d| d.transform).unwrap_or_default()
+        } else {
+            Default::default()
+        };
         Frame {
-            origin: canvas.center() + offset,
+            stretch: vec2(motion.scale[0], motion.scale[1]),
+            origin: canvas.center()
+                + offset
+                + vec2(motion.offset[0], motion.offset[1]) * sprite.size.y * scale,
             scale: sprite.size.y * scale,
-            angle,
+            angle: angle + motion.rotation,
         }
     } else {
         let scale = (canvas.width() / 480.0).min(canvas.height() / 560.0) * zoom;
@@ -208,6 +218,7 @@ fn frame(scene: &Scene, canvas: Rect, zoom: f32, moving: bool) -> Frame {
             vec2(0.0, 22.0)
         };
         Frame {
+            stretch: Vec2::splat(1.0),
             origin: canvas.center() + offset * scale,
             scale: 560.0 * scale,
             angle,
@@ -291,6 +302,7 @@ pub fn paint_list(
 
 #[derive(Default)]
 pub struct Items {
+    pub clock: f32,
     pub models: crate::object_models::ObjectModels,
     assets: BTreeMap<PathBuf, Result<Sprite, String>>,
     rules: BTreeMap<u64, RuleState>,
@@ -409,7 +421,7 @@ impl Items {
             }
             if !is_item(&path) {
                 errors.push(format!(
-                    "{} is not a PNG, moc3 or model3 export.",
+                    "{} is not a PNG, GIF, moc3 or model3 export.",
                     path.display()
                 ));
                 continue;
@@ -484,7 +496,7 @@ impl Items {
                     .assets
                     .values()
                     .filter_map(|r| r.as_ref().ok())
-                    .map(|s| (s.size.x * s.size.y * 4.0) as u64)
+                    .map(Sprite::bytes)
                     .sum();
                 let result = load_png(ctx, state, &item.path, used).map_err(|e| format!("{e:#}"));
                 self.assets.insert(item.path.clone(), result);
@@ -537,7 +549,13 @@ impl Items {
                 let image = if aria_core::items::is_model(&item.path) {
                     self.models.image(item.id)?
                 } else {
-                    ItemImage::Png(self.assets.get(&item.path)?.as_ref().ok()?.clone())
+                    ItemImage::Png(
+                        self.assets
+                            .get(&item.path)?
+                            .as_ref()
+                            .ok()?
+                            .at(self.clock, 1.0, true),
+                    )
                 };
                 Some(DrawItem {
                     deformation: None,
@@ -758,7 +776,7 @@ fn degrees(angle: f32) -> f32 {
 }
 pub fn is_png(path: &Path) -> bool {
     path.extension()
-        .is_some_and(|s| s.eq_ignore_ascii_case("png"))
+        .is_some_and(|s| s.eq_ignore_ascii_case("png") || s.eq_ignore_ascii_case("gif"))
 }
 pub fn is_item(path: &Path) -> bool {
     is_png(path) || aria_core::items::is_model(path)
@@ -778,67 +796,7 @@ pub(crate) fn load_png(
     path: &Path,
     used: u64,
 ) -> Result<Sprite> {
-    use std::io::{Cursor, Read};
-    ensure!(
-        path.metadata()?.len() <= 32 * 1024 * 1024,
-        "PNG exceeds 32 MiB"
-    );
-    let mut bytes = Vec::new();
-    std::fs::File::open(path)?
-        .take(32 * 1024 * 1024 + 1)
-        .read_to_end(&mut bytes)?;
-    ensure!(bytes.len() <= 32 * 1024 * 1024, "PNG exceeds 32 MiB");
-    // Inspect and decode the same bounded bytes, including during external file edits.
-    let mut reader = image::ImageReader::new(Cursor::new(&bytes)).with_guessed_format()?;
-    ensure!(
-        reader.format() == Some(image::ImageFormat::Png),
-        "Choose a real PNG image"
-    );
-    let mut limits = image::Limits::default();
-    limits.max_image_width = Some(4096);
-    limits.max_image_height = Some(4096);
-    limits.max_alloc = Some(128 * 1024 * 1024);
-    reader.limits(limits);
-    let (width, height) =
-        image::ImageReader::with_format(Cursor::new(&bytes), image::ImageFormat::Png)
-            .into_dimensions()?;
-    ensure!(
-        u64::from(width) * u64::from(height) * 4 + used <= 256 * 1024 * 1024,
-        "PNG items exceed the 256 MiB decoded image budget; use smaller images"
-    );
-    let rgba = reader
-        .decode()
-        .context("Cannot decode PNG (maximum 4096 × 4096)")?
-        .into_rgba8();
-    let mut palette = crate::chroma::Palette::default();
-    palette.add_rgba(&rgba);
-    let image = egui::ColorImage::from_rgba_unmultiplied([width as usize, height as usize], &rgba);
-    let texture = ctx.load_texture(
-        path.display().to_string(),
-        image.clone(),
-        egui::TextureOptions::LINEAR,
-    );
-    // Spout and exports render during update, before eframe uploads its texture delta.
-    // Upload once here as well so the very first output frame can use this PNG.
-    if let Some(state) = state {
-        state.renderer.write().update_texture(
-            &state.device,
-            &state.queue,
-            texture.id(),
-            &egui::epaint::ImageDelta::full(image, egui::TextureOptions::LINEAR),
-        );
-    }
-    Ok(Sprite {
-        texture,
-        name: path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned(),
-        size: vec2(width as f32, height as f32),
-        model_key: String::new(),
-        palette: Arc::new(palette),
-    })
+    crate::media::load(ctx, state, path, used, false)
 }
 
 fn model_point(canvas: aria_live2d::Canvas, point: [f32; 2]) -> Vec2 {
@@ -1024,6 +982,7 @@ mod tests {
     }
     fn sprite(ctx: &egui::Context) -> Sprite {
         Sprite {
+            animation: None,
             texture: ctx.load_texture(
                 "test item",
                 egui::ColorImage::filled([8, 8], Color32::WHITE),
@@ -1053,6 +1012,7 @@ mod tests {
         let mut manager = Items::default();
         manager.assets.insert("test.png".into(), Ok(sprite));
         let scene_base = Scene {
+            images: Default::default(),
             dents: Default::default(),
             effects: Arc::from([]),
             recoil: [0.0; 2],
@@ -1172,6 +1132,7 @@ mod tests {
             visible: true,
         };
         let scene = Scene {
+            images: Default::default(),
             dents: Default::default(),
             effects: Arc::from([]),
             recoil: [0.0; 2],

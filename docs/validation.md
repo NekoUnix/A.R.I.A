@@ -5,6 +5,27 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Local verification on 2026-09-12
 
+### v0.15 image actions, GIFs and microphone
+
+- Formatting and strict Clippy across all targets/features passed. **104 default
+  tests passed**, with ten environment-dependent tests ignored. New checks cover
+  GIF frame selection/timing, decoded budgets, action priorities, input ranges,
+  interrupted fades, freeze, animation endpoints, template import/export, shortcut
+  conflicts and microphone gate/routing. The real eframe RON storage test also
+  restores distinct image and microphone settings for two avatar profiles.
+- A separate Windows microphone test opened the default input, received **151 audio
+  callbacks**, measured finite amplitudes and closed the stream on disable. Samples
+  were not saved. The native microphone panel showed the live level and talking gate.
+- Native DX12 previews observed all **eight frames** of the starter GIF, plus a GIF
+  stage object and independently animated thrown GIFs. Freeze produced byte-identical
+  transparent PNGs before and after a pause, including animated objects and throws.
+- OBS 32.2.1/Spout2 1.12 received the image scene at **1920×1080**, **1080×1920** and
+  **1536×1024**, preserving transparent corners and visible artwork. The short check
+  reported zero skipped render frames; this is not a general performance guarantee.
+- PNG/GIF action artwork is a flat image puppet. Tracking-driven Live2D parameters
+  still use the existing rig, and microphone input feeds the same mapping path.
+  GIF disposal/transparency uses image-rs; GIF audio and speech recognition are absent.
+
 ### v0.14 impact deformation
 
 - Formatting and strict Clippy across all targets/features passed. **98 default

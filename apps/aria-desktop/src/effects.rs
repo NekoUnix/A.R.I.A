@@ -263,6 +263,7 @@ impl Effects {
             .iter()
             .filter_map(|p| {
                 let mut image = match self.cache.get(&p.asset)? {
+                    Asset::Image(ItemImage::Png(s)) => ItemImage::Png(s.at(p.age, 1.0, true)),
                     Asset::Image(i) => i.clone(),
                     Asset::Prop(p) => p.image(),
                     Asset::Moc(id) => self.mocs.image(*id)?,
@@ -437,7 +438,7 @@ impl Effects {
                     .cache
                     .values()
                     .map(|a| match a {
-                        Asset::Image(ItemImage::Png(s)) => s.size.x * s.size.y * 4.0,
+                        Asset::Image(ItemImage::Png(s)) => s.bytes() as f32,
                         _ => 0.0,
                     })
                     .sum();
@@ -447,12 +448,12 @@ impl Effects {
                     } else {
                         ensure!(
                             crate::items::is_png(path),
-                            "Use PNG, moc3/model3.json, GLB/glTF, VRM, FBX or OBJ assets"
+                            "Use PNG/GIF, moc3/model3.json, GLB/glTF, VRM, FBX or OBJ assets"
                         );
                         crate::items::load_png(ctx, state, path, used as u64)?
                     };
                 ensure!(
-                    used + sprite.size.x * sprite.size.y * 4.0 <= 256.0 * 1024.0 * 1024.0,
+                    used + sprite.bytes() as f32 <= 256.0 * 1024.0 * 1024.0,
                     "Active PNG throw assets exceed 256 MiB"
                 );
                 self.cache
@@ -521,6 +522,7 @@ fn builtin(ctx: &egui::Context, state: Option<&RenderState>, name: &str) -> Resu
         );
     }
     Ok(Sprite {
+        animation: None,
         texture,
         name: name.into(),
         size: egui::vec2(size as f32, size as f32),

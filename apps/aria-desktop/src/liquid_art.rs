@@ -58,6 +58,7 @@ impl Cache {
                     );
                 }
                 Sprite {
+                    animation: None,
                     texture,
                     name: "Anime water".into(),
                     size: egui::vec2(192.0, 192.0),

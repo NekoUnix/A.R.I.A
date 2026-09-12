@@ -1,10 +1,10 @@
 # Windows setup and operation
 
-ARIA v0.14 adds impact deformation for the avatar and thrown objects. Open
-**Throws & liquid sprays → Edit toggle / directions… → Deformation**. Configure
-each response separately, preview it on the avatar, then **Save toggle**.
-New throws use Gentle impact; enable it explicitly for existing designs.
-Hold, recovery, spring-back, dent depth, area, squash and shading are configurable.
+ARIA v0.15 adds configurable PNG/GIF image actions and microphone talking input.
+Open **PNG / GIF actions** to assign artwork to talking, blinking, custom input
+ranges or hotkeys. Configure transitions, shake/jump/blip and GIF playback per action.
+Open **Microphone** for device selection, sensitivity, smoothing and talking thresholds.
+Image states, microphone settings and presets save with each avatar.
 See the [step-by-step designer guide](../README.md#throws-liquid-sprays-and-stream-events),
 [template kit](../templates/effects/README.md) and [plugin guide](../templates/effects/plugins/README.md).
 Settings save per avatar. The previous vertical iPhone tracking correction remains.
@@ -31,7 +31,7 @@ systems and Windows ARM64 are not verified release targets yet.
 1. Visit [the Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml).
 2. Select a green, successful run on `main` for the version you want.
 3. Under **Artifacts**, download **aria-windows-x64**. Sign in to GitHub if asked.
-4. Extract the downloaded artifact. Extract `aria-0.14.0-windows-x64.zip` inside it
+4. Extract the downloaded artifact. Extract `aria-0.15.0-windows-x64.zip` inside it
    into a normal writable folder, for example `C:\Apps\ARIA`.
 5. Double-click **aria-desktop.exe**. The default source is Demo and Mica should move.
 
@@ -156,15 +156,26 @@ panel remains a separate decoded-texture estimate.
 
 ## 3. Use your own artwork
 
-Select **Open PNG…** and choose a PNG or JPEG. Transparent PNGs work best.
-Images are limited to 4096 × 4096 and 32 MiB on disk. The image rotates/translates
-with head tracking. It is a flat puppet; this does not infer a facial rig.
+Select **Open PNG / GIF…** and choose your base image. Open **PNG / GIF actions**
+to add more artwork for Talking, Quiet, Blink, a custom tracking/parameter range,
+or a manual hotkey. Use a low-priority Idle state as the fallback. Configure fades,
+transition style, motion on change and GIF playback separately for each image.
+Keep the canvas and subject position consistent between states for smooth swaps.
+The last image avatar reopens on startup, and reopening the same base image restores
+its saved action library. **Reset** restores Mica.
 
-Optionally choose **Set talking image…** for an open-mouth variant. Use the same
-dimensions, transparent margins and subject placement for both images. The app
-switches to that image above mapped mouth-open value 0.18. Blink deformation is
-implemented for Mica, not for a single imported PNG. **Reset** restores Mica.
-Avatar selections are not persisted between sessions.
+For microphone-only use, choose **Microphone / manual · no tracker** as the tracking
+source. In the **Microphone** tab, enable input, select your device, and adjust noise
+floor and talking thresholds while watching the meter. Enabling the microphone from
+Demo switches to local input automatically. Phone/JSON tracking can also be combined
+with the microphone. Samples are measured locally and discarded; voice is not recorded.
+
+**Activate / hold image** or an assigned hotkey holds an action; press that key again
+or **Resume automatic actions** to release it. **Pose → Freeze** holds the model,
+GIF frame, fades and motion together for export. Save actions/profile to persist.
+Import/export action configurations and editable artwork are supplied in
+[templates/images](../templates/images/README.md). Circled **?** controls explain
+all units, priority rules, GIF limits and microphone troubleshooting offline.
 
 **Open Live2D avatar…** loads a real exported .model3.json or .moc3 avatar with its texture atlases. Configure the official Cubism Core x64 DLL first. Follow the [detailed Live2D guide](live2d.md) for import, custom tracking assignments, compatibility and troubleshooting.
 

@@ -144,6 +144,15 @@ impl ExpressionsPanel {
         shortcut.validate()?;
         anyhow::ensure!(
             !saved
+                .config
+                .images
+                .states
+                .iter()
+                .any(|s| s.hotkey == Some(shortcut)),
+            "That shortcut belongs to an image action"
+        );
+        anyhow::ensure!(
+            !saved
                 .effects
                 .designs
                 .iter()

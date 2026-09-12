@@ -2,7 +2,9 @@
 pub mod deformation;
 pub mod effects;
 pub mod expressions;
+pub mod image_actions;
 pub mod items;
+pub mod microphone;
 pub mod movement;
 pub mod physics;
 pub mod rig;

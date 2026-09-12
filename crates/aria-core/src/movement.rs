@@ -28,6 +28,7 @@ pub struct Pose {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RigConfig {
+    pub images: crate::image_actions::Config,
     pub bindings: BTreeMap<String, Binding>,
     pub manual: BTreeMap<String, f32>,
     /// Quantization in native parameter units. Zero means continuous.
@@ -120,6 +121,7 @@ impl RigConfig {
         }
     }
     pub fn validate(&self, parameters: &[RigParameter]) -> Result<()> {
+        self.images.validate()?;
         ensure!(
             parameters.len() <= 4096 && self.bindings.len() <= parameters.len(),
             "Too many rig controls"
@@ -251,6 +253,7 @@ impl Preset {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct SavedRig {
+    pub microphone: crate::microphone::Settings,
     pub effects: crate::effects::Library,
     pub config: RigConfig,
     pub presets: Vec<Preset>,
@@ -260,7 +263,32 @@ pub struct SavedRig {
     pub expression_files: Vec<std::path::PathBuf>,
 }
 impl SavedRig {
+    pub fn validate_image_hotkeys(&self) -> Result<()> {
+        for state in &self.config.images.states {
+            if let Some(key) = state.hotkey {
+                ensure!(
+                    key != crate::shortcuts::Shortcut::pose()
+                        && !self
+                            .item_hotkeys
+                            .values()
+                            .chain(self.expression_hotkeys.values())
+                            .any(|k| *k == key)
+                        && !self.effects.designs.iter().any(|d| d.hotkey == Some(key))
+                        && !self
+                            .presets
+                            .iter()
+                            .filter_map(|p| p.hotkey)
+                            .any(|n| crate::shortcuts::Shortcut::preset(n) == key),
+                    "Image action shortcut conflicts with another action"
+                );
+            }
+        }
+        Ok(())
+    }
+
     pub fn validate(&self, parameters: &[RigParameter]) -> Result<()> {
+        self.microphone.validate()?;
+        self.validate_image_hotkeys()?;
         self.effects.validate()?;
         for d in &self.effects.designs {
             if let Some(key) = d.hotkey {
@@ -357,6 +385,9 @@ impl PresetFile {
         file.preset.validate(parameters)?;
         // Importing a file must not unexpectedly register somebody else's keys.
         file.preset.hotkey = None;
+        for state in &mut file.preset.rig.images.states {
+            state.hotkey = None;
+        }
         Ok(file)
     }
 }

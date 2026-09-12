@@ -1,57 +1,14 @@
-use anyhow::{Context, Result, ensure};
 use aria_core::Parameters;
 use eframe::egui::{self, Color32, Painter, Pos2, Rect, Shape, Stroke, Vec2, pos2, vec2};
-use std::{fs::File, io::BufReader, path::Path};
 
 #[derive(Clone)]
 pub struct Sprite {
+    pub animation: Option<std::sync::Arc<crate::media::Animation>>,
     pub texture: egui::TextureHandle,
     pub name: String,
     pub size: Vec2,
     pub model_key: String,
     pub palette: std::sync::Arc<crate::chroma::Palette>,
-}
-
-pub fn load_sprite(ctx: &egui::Context, path: &Path) -> Result<Sprite> {
-    ensure!(
-        path.metadata()?.len() <= 32 * 1024 * 1024,
-        "Image file exceeds 32 MiB"
-    );
-    let mut reader =
-        image::ImageReader::new(BufReader::new(File::open(path)?)).with_guessed_format()?;
-    let mut limits = image::Limits::default();
-    limits.max_image_width = Some(4096);
-    limits.max_image_height = Some(4096);
-    limits.max_alloc = Some(128 * 1024 * 1024);
-    reader.limits(limits);
-    let rgba = reader
-        .decode()
-        .context("Cannot decode PNG/JPEG image (maximum 4096 × 4096)")?
-        .into_rgba8();
-    let size = [rgba.width() as usize, rgba.height() as usize];
-    let mut palette = crate::chroma::Palette::default();
-    palette.add_rgba(&rgba);
-    let texture = ctx.load_texture(
-        path.display().to_string(),
-        egui::ColorImage::from_rgba_unmultiplied(size, &rgba),
-        egui::TextureOptions::LINEAR,
-    );
-    Ok(Sprite {
-        palette: std::sync::Arc::new(palette),
-        model_key: format!(
-            "image:{}x{}:{}",
-            size[0],
-            size[1],
-            aria_core::movement::model_key(&rgba)
-        ),
-        texture,
-        name: path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned(),
-        size: vec2(size[0] as f32, size[1] as f32),
-    })
 }
 
 pub fn draw(

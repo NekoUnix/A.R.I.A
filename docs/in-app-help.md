@@ -2,6 +2,72 @@
 
 This guide is bundled into the application and works offline. The topic headers also provide the short hover descriptions for the circled question-mark buttons.
 
+## image-actions | PNG and GIF image actions | Give each action its own PNG or GIF, trigger, priority and hotkey. Talking, quiet, blinking and custom input ranges select artwork automatically; manual controls hold an image for capture.
+
+### Start a PNG or GIF avatar
+
+Use Avatar & appearance → Open PNG / GIF to select your base artwork. ARIA creates an Idle action for a new image and restores that image's saved profile when reopened. The last image avatar reopens on startup unless you launch a different model explicitly. PNG/GIF image actions belong to the base avatar's content identity, so switching avatars restores separate settings. Live2D keeps its own rendered avatar; microphone and stage-object inputs also work there.
+
+Choose PNG / GIF actions in the Input Monitor. Add images accepts several PNG/GIF files; each becomes a named action. Talking image and Blink image create useful trigger defaults. Select an action in the library to configure its artwork, trigger, transition, movement and GIF playback. Replace a missing file with Choose PNG / GIF. Reload artwork rereads changed or previously missing files. A broken file is reported and skipped, allowing another valid action to show.
+
+### Choose an action
+
+Idle is an always-eligible fallback. Talking uses the microphone talking gate when enabled; otherwise it uses MouthOpen above 0.18. Quiet uses the opposite condition. Blink reacts to either tracked eye below 0.3 or the built-in periodic AutoBlink signal. Use a custom range on an eye input if you only want tracked blinking. Manual / hotkey only never wins automatically. Higher numeric Priority wins among eligible states; ties prefer the larger action ID, usually the more recently added action. Give idle a low priority and special reactions a higher one.
+
+Tracking or parameter range lets you select any available signal, including MicLevel, MicTalking, head angles, mouth, expressions' resulting parameter values or custom ARKit inputs. You can also type a signal name. Both range endpoints are inclusive. Hysteresis widens the exit range after entry so a noisy signal does not flicker. Missing inputs make that action inactive. Minimum state hold prevents automatic replacement until its hold time expires. An explicit manual activation takes precedence.
+
+### Hold, hotkeys and save
+
+Activate / hold image displays that action until Resume automatic actions. An assigned hotkey selects the action; pressing it again returns to automatic selection. Hold affects the image choice; use Pose → Freeze to hold tracking, GIF frames, fades and movement exactly for screenshots. Assigning a valid shortcut enables global hotkeys for this avatar. Conflicts with expressions, effects, items and presets are rejected. Remove action deletes only that configuration, not its image file.
+
+Save actions stores this library for the current avatar. Movement/pose presets include image action settings. Export actions writes a reusable JSON configuration; images are referenced, not embedded. Import actions replaces this avatar's image action library and clears imported hotkeys/manual selection to avoid conflicts. Relative artwork paths resolve beside the JSON file. The templates/images directory contains editable artwork and an example configuration. Up to 128 actions can be configured per avatar.
+
+## image-transitions | Image fades and transitions | Set how long each image takes to appear and disappear, choose a cut, crossfade, fade through transparency or slide, and hold states briefly to avoid rapid flicker.
+
+### Transition timing
+
+Cut switches immediately. Crossfade gradually overlays the incoming artwork while fading the outgoing artwork. Fade through transparent fades the outgoing artwork during the first half and brings in the incoming artwork during the second half. Slide & fade shifts the incoming artwork from the right and sends the outgoing image to the left while their opacity changes. These are visual transitions; they do not change the source PNG or GIF files.
+
+Fade in and Fade out range from 0 to 10 seconds. The incoming action supplies the transition style and its fade-in time; each outgoing action uses its own fade-out time. Different times can create a deliberate overlap or gap. Transparent regions remain transparent; a dissolve can also reduce the composite opacity. Set both times to zero or choose Cut for an instant swap. A new trigger during a fade starts from the currently displayed weights instead of snapping back to the prior image.
+
+Minimum state hold is 0–10 seconds and keeps automatic selection from replacing the active state immediately. It is independent of GIF duration and motion duration. Manual action selection overrides the minimum hold. Pose → Freeze pauses the transition at its current point and preserves that frame in PNG export and OBS. Settings are saved for each image action and follow the current avatar's profile.
+
+## image-motion | Image animation on change | Animate each new image with shake, jump, blip/pop, pulse, wobble or bob. Control strength, duration, frequency and whether the motion repeats while the action stays active.
+
+### Motion choices
+
+None keeps the artwork steady apart from normal tracking. Shake moves sideways. Jump makes one upward arc and returns. Blip is a brief squash/pop that springs back to normal size. Pulse expands and contracts, Wobble rotates, and Bob moves vertically. Motion restarts when the action becomes active. A changing GIF frame does not restart the action animation, so the two motions can run together.
+
+Strength ranges from 0 to 0.5. Position offsets use a fraction of the fitted image height, scale motions use relative size, and Wobble uses radians. A small strength such as 0.03–0.08 is a useful starting point. Duration is 0.05–10 seconds. Frequency controls oscillations per second from 0.1 to 30 Hz for Shake, Pulse, Wobble and Bob; Jump and Blip use their own one-shot envelope. Non-repeating motion settles exactly to the normal pose at the end.
+
+Repeat while action is active keeps the motion running. Disable it for a single reaction when talking starts or an emote activates. Jump repeats its arc; oscillations continue at the selected frequency. The motion scales with avatar zoom and output resolution. Freeze pose pauses the animation clock, GIF and fades together. Source artwork is never edited.
+
+## gif-playback | GIF playback and asset limits | Animated GIFs work as avatars, image actions, stage objects and throw/spray assets. Each image action controls speed, looping and restart behavior, with synchronized frames in stage, export and OBS.
+
+### Playback controls
+
+GIF speed ranges from 0.05× to 4×. Loop GIF repeats continuously; disable it to play once and hold the final frame. Restart GIF when action activates starts at frame one on each entry. Turn it off to select the frame using the avatar action clock, so returning to a state continues on the shared timeline. Original frame delays are respected, with a 20 ms minimum to avoid zero-delay spinning. GIF transparency and frame disposal are decoded before playback.
+
+Stage objects play from the avatar's stage clock. Each thrown GIF uses that particle's own age, so objects emitted at different times have independent playback. Pause effects stops thrown GIFs; Pose → Freeze also holds stage GIFs and image-action GIFs. Immutable frame textures are shared between copies, and only the selected frame is drawn. Deformation, tint, pinning and alpha output continue to work on animated artwork.
+
+Images may be up to 4096×4096 with a 32 MiB file limit. GIFs are limited to 256 frames and 128 MiB of decoded RGBA frames; each avatar-action, stage-item or throw-image collection has a 256 MiB decoded budget. These limits count all GIF frames, not just the compressed file size. Resize or shorten a large GIF if needed. Standard GIF palettes usually provide binary transparency; use PNG for smooth semi-transparent static edges. No GIF audio is played. Missing or invalid files show an error without replacing the main avatar.
+
+## microphone | Microphone input and talking | Choose a Windows input device, meter its volume, tune sensitivity and a stable talking gate, then drive PNG/GIF actions, Live2D mouths or arbitrary input mappings without recording audio.
+
+### Connect a microphone
+
+Choose Microphone / manual · no tracker for a stationary puppet without phone tracking. Enabling the microphone while Demo is selected switches to this local mode. Open the Microphone tab and enable microphone input. Choose Windows default input or a named device. Refresh devices updates the list; Retry input reopens a disconnected or failed device. A missing explicitly selected device produces an error instead of silently choosing another microphone. If Windows blocks access, enable microphone access and access for desktop apps in Windows Settings → Privacy & security → Microphone, then Retry. Device selection and sensitivity settings save with this avatar. Disabling input or switching avatars closes the current audio stream.
+
+The meter shows a normalized 0–1 level and TALKING/QUIET state. Raw dBFS is the measured RMS volume before gain: values closer to 0 are louder. Gain adds sensitivity in decibels. Noise floor maps quiet sound to zero, and Full mouth maps a louder level to one. The full-mouth value must remain above the floor. Set noise floor from current level samples the current meter plus 6 dB; remain quiet when pressing it, then test normal speech. This is an amplitude detector and can respond to music or room noise; it is not speech recognition.
+
+### Smooth the talking control
+
+Attack controls how quickly the level rises; Release controls how quickly it falls. Talk starts at opens the talking gate, Talk ends below closes it, and Quiet hold requires that quieter level to last for the chosen time before closing. The closing threshold cannot exceed the opening threshold. Increase Quiet hold if short gaps between words flicker; lower it for quicker mouth closure. Excessive gain or a floor below room noise can leave the gate open.
+
+Replace tracking mouth drives MouthOpen and ParamMouthOpenY with the microphone envelope. Combine uses the larger of tracking and microphone levels. Image actions / inputs only leaves the tracked mouth unchanged while keeping microphone signals available. The Talking image action uses the microphone gate whenever input is enabled. An input loss releases the meter to silence; Retry is required after a device error. Pose → Freeze keeps the rendered mouth and images held while the live microphone meter continues measuring.
+
+MicLevel is the normalized envelope, MicTalking is 0 or 1, and MicEnabled reports an open enabled stream. These signals can drive any tracking-input binding, image range, or stage-object toggle. Talking also supplies the current microphone gate or, without a microphone, the tracked mouth level. Audio samples are reduced to an amplitude measurement locally and immediately discarded. ARIA does not record, transmit, recognize speech or monitor the audio through your speakers. Capture voice separately in OBS if desired.
+
 ## effect-deformation | Impact dents and deformation | Configure the avatar and thrown objects separately: dent depth, affected area, squash, hold, recovery, elastic spring-back and shading. Preview the impact, then save it per avatar.
 
 ### Enable and preview
@@ -435,7 +501,7 @@ Select the official Windows x64 Cubism Core DLL in Cubism runtime setup before l
 
 ### Image puppets
 
-Open PNG loads an image puppet; PNG, JPG and JPEG are supported by the picker. Use transparent PNG artwork for clean alpha edges. Set talking image adds an optional image that replaces the idle image when the common mouth-open value exceeds 0.18. Both images move with the head; this is not mesh deformation. Reset returns to the built-in Mica puppet without deleting your source files or saved avatar profiles.
+Open PNG / GIF loads an image puppet; PNG, GIF, JPG and JPEG are supported by the picker. Use transparent PNG artwork for smooth alpha edges or GIF for frame animation. Set talking image creates a Talking action. The PNG / GIF actions tab configures additional images, triggers, fades, transitions and motion. Microphone input can control talking without a phone. Reopening the base image restores its profile and the last image avatar reopens on startup. Reset returns to Mica without deleting artwork or saved profiles.
 
 ### Studio zoom and model details
 
@@ -833,7 +899,7 @@ Use the color swatch picker or type a six-digit value such as #00FF00 and click 
 
 ### Detect safer color
 
-Detection scans nontransparent atlas colors, including hidden artwork, and the current rendered Live2D model. PNG puppets include both idle and talking artwork; Mica has a built-in palette. ARIA searches saturated colors for the greatest chroma separation from the sampled artwork and applies its best candidate. This can be more expensive than a normal frame, so it runs only when requested.
+Detection scans nontransparent atlas colors, including hidden artwork, and the current rendered Live2D model. Image puppets include loaded action artwork and all decoded GIF frames; Mica has a built-in palette. ARIA searches saturated colors for the greatest chroma separation from the sampled artwork and applies its best candidate. This can be more expensive than a normal frame, so it runs only when requested.
 
 ### Match OBS and inspect edges
 

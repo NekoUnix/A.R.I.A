@@ -25,11 +25,13 @@ enum Source {
     Demo,
     Vts,
     Json,
+    Local,
 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 struct Settings {
+    image_avatar: Option<PathBuf>,
     effect_api: crate::effect_api::Settings,
     #[serde(default)]
     vts_pitch_revision: u8,
@@ -52,6 +54,7 @@ struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            image_avatar: None,
             effect_api: Default::default(),
             vts_pitch_revision: 1,
             source: Source::Demo,
@@ -143,6 +146,8 @@ impl ModelPreferences {
 }
 
 pub struct AriaApp {
+    images: crate::image_actions::Images,
+    microphone: crate::microphone::Microphone,
     effects: crate::effects::Effects,
     effect_api: crate::effect_api::Api,
     settings: Settings,
@@ -179,6 +184,7 @@ pub struct AriaApp {
 impl AriaApp {
     fn scene(&self) -> crate::output::Scene {
         crate::output::Scene {
+            images: self.images.draws.clone(),
             dents: self.effects.dents.clone(),
             effects: self.effects.draws.clone(),
             recoil: self.effects.simulation.impulse,
@@ -189,7 +195,10 @@ impl AriaApp {
                 .live2d
                 .as_ref()
                 .map_or(egui::Rect::NOTHING, |a| a.image_bounds()),
-            sprite: self.active_sprite().cloned(),
+            sprite: self.images.primary().cloned().or_else(|| {
+                self.active_sprite()
+                    .map(|s| s.at(self.animation_time, 1.0, true))
+            }),
             params: self.params,
         }
     }
@@ -234,6 +243,8 @@ impl AriaApp {
             OutputSettings::from_legacy(settings.background, settings.zoom, settings.always_on_top)
         }));
         let app = Self {
+            images: Default::default(),
+            microphone: Default::default(),
             effects: Default::default(),
             effect_api: Default::default(),
             settings,
@@ -280,7 +291,22 @@ impl AriaApp {
             app.pipeline.restore_calibration(preferences.calibration);
         }
         if let Some(path) = std::env::args_os().nth(1) {
-            app.open_model(Path::new(&path));
+            let path = Path::new(&path);
+            if path.extension().is_some_and(|e| {
+                ["png", "gif", "jpg", "jpeg"]
+                    .iter()
+                    .any(|x| e.eq_ignore_ascii_case(x))
+            }) {
+                app.open_image(&cc.egui_ctx, path, false);
+            } else {
+                app.open_model(path);
+            }
+        }
+        if !crate::smoke_mode()
+            && std::env::args_os().nth(1).is_none()
+            && let Some(path) = app.settings.image_avatar.clone()
+        {
+            app.open_image(&cc.egui_ctx, &path, false);
         }
         #[cfg(feature = "screenshots")]
         let app = {
@@ -303,6 +329,71 @@ impl AriaApp {
                     .expect("Smoke model load");
                 }
                 match std::env::var("ARIA_SMOKE_SCENARIO").as_deref() {
+                    Ok("image-actions") | Ok("output-images") | Ok("microphone") => {
+                        let root =
+                            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../templates/images");
+                        app.open_image(&cc.egui_ctx, &root.join("artwork/idle.png"), false);
+                        app.input_monitor.saved.config.images =
+                            crate::image_actions::import_config(
+                                &root.join("starter.aria-images.json"),
+                            )
+                            .unwrap();
+                        app.input_monitor.saved.config.images.manual = Some(4);
+                        app.input_monitor.saved.config.images.states[3]
+                            .motion
+                            .repeat = true;
+                        app.images.select_smoke(4);
+                        app.input_monitor
+                            .saved
+                            .config
+                            .items
+                            .push(aria_core::items::Item {
+                                id: 901,
+                                name: "Animated GIF accessory".into(),
+                                path: root.join("artwork/excited.gif"),
+                                position: [-0.32, -0.12],
+                                height: 0.22,
+                                ..Default::default()
+                            });
+                        app.input_monitor.saved.effects.muted = true;
+                        app.input_monitor
+                            .saved
+                            .effects
+                            .designs
+                            .push(aria_core::effects::Design {
+                                id: 66,
+                                name: "Animated GIF throws".into(),
+                                assets: vec![root.join("artwork/excited.gif")],
+                                count: 3,
+                                interval: 0.25,
+                                flight: 0.4,
+                                lifetime: 15.0,
+                                stickiness: Some(1.0),
+                                size: 0.15,
+                                deformation: aria_core::deformation::Settings::gentle(),
+                                ..Default::default()
+                            });
+                        app.effects.pending.push(66);
+                        let scenario = std::env::var("ARIA_SMOKE_SCENARIO").unwrap();
+                        if scenario == "microphone" {
+                            app.input_monitor.saved.microphone.enabled = true;
+                            app.settings.source = Source::Local;
+                            app.input_monitor.tab = Tab::Microphone;
+                        } else {
+                            app.input_monitor.tab = Tab::Images;
+                        }
+                        if scenario == "output-images" {
+                            for i in 0..3 {
+                                app.outputs.set_open(i, true);
+                                app.outputs
+                                    .edit_canvas(i, |c| c.background = Background::Transparent);
+                            }
+                            app.outputs.edit_canvas(2, |c| {
+                                c.freeform_size = [1536, 1024];
+                                c.freeform_window = [480, 320];
+                            });
+                        }
+                    }
                     Ok("effect-deformation") => {
                         app.input_monitor.tab = Tab::Effects;
                         app.input_monitor.saved.effects.muted = true;
@@ -485,6 +576,8 @@ impl AriaApp {
     fn connection_status(&self) -> &str {
         if self.settings.source == Source::Demo {
             "Demo input"
+        } else if self.settings.source == Source::Local {
+            "Local microphone / manual input"
         } else if self.receiver.is_none() {
             "Disconnected"
         } else {
@@ -557,9 +650,15 @@ impl AriaApp {
                     Source::Demo => "Demo · no device needed",
                     Source::Vts => "iPhone · VTube Studio",
                     Source::Json => "External tool · ARIA JSON",
+                    Source::Local => "Microphone / manual · no tracker",
                 })
                 .width(230.0)
                 .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.settings.source,
+                        Source::Local,
+                        "Microphone / manual · no tracker",
+                    );
                     ui.selectable_value(
                         &mut self.settings.source,
                         Source::Demo,
@@ -586,10 +685,19 @@ impl AriaApp {
             if self.settings.source == Source::Json {
                 crate::help::label(ui, "Packet format & external tools", "json");
             }
-            if self.settings.source == Source::Demo {
+            if matches!(self.settings.source, Source::Demo | Source::Local) {
+                if self.settings.source == Source::Local
+                    && ui.button("Configure microphone").clicked()
+                {
+                    self.input_monitor.tab = Tab::Microphone;
+                }
                 ui.label(
-                    RichText::new("Synthetic movement for checking your avatar and output.")
-                        .color(MUTED),
+                    RichText::new(if self.settings.source == Source::Local {
+                        "No tracker connected. Use microphone, hotkeys or manual controls."
+                    } else {
+                        "Synthetic movement for checking your avatar and output."
+                    })
+                    .color(MUTED),
                 );
             } else {
                 ui.scope(|ui| {
@@ -732,7 +840,7 @@ impl AriaApp {
             ui.label(if self.live2d.is_some() {
                 "Live2D Cubism avatar"
             } else if self.idle.is_some() {
-                "PNG puppet"
+                "PNG / GIF puppet"
             } else {
                 "Mica · built-in test puppet"
             });
@@ -740,7 +848,8 @@ impl AriaApp {
                 ui.label(RichText::new(&sprite.name).small().color(MUTED));
             }
             ui.horizontal(|ui| {
-                if crate::help::control(ui, "avatar", |ui| ui.button("Open PNG…")).clicked() {
+                if crate::help::control(ui, "avatar", |ui| ui.button("Open PNG / GIF…")).clicked()
+                {
                     self.load_image(ctx, false);
                 }
                 if crate::help::control(ui, "avatar", |ui| {
@@ -753,6 +862,7 @@ impl AriaApp {
                 {
                     self.idle = None;
                     self.talking = None;
+                    self.settings.image_avatar = None;
                     self.use_preview_rig();
                 }
             });
@@ -769,7 +879,10 @@ impl AriaApp {
                             .color(MUTED),
                     );
                 }
-                ui.label(RichText::new("Images move with your head. Optional talking image switches when your mouth opens.").small().color(MUTED));
+                ui.label(RichText::new("Use Image actions for tracking, microphone and hotkey states, GIFs, transitions and movement animations.").small().color(MUTED));
+            }
+            if ui.button("Configure PNG / GIF actions").clicked() {
+                self.input_monitor.tab = Tab::Images;
             }
             crate::help::control(ui, "avatar", |ui| {
                 ui.add(egui::Slider::new(&mut self.settings.zoom, 0.5..=1.5).text("Zoom"))
@@ -919,6 +1032,7 @@ impl AriaApp {
                 avatar::mica_palette()
             };
             self.items.merge_palette(&mut palette);
+            self.images.merge_palette(&mut palette);
             palette.suggest()
         })();
         self.outputs.apply_suggestion(index, result);
@@ -926,28 +1040,50 @@ impl AriaApp {
 
     fn load_image(&mut self, ctx: &egui::Context, talking: bool) {
         if let Some(path) = rfd::FileDialog::new()
-            .add_filter("Avatar image", &["png", "jpg", "jpeg"])
+            .add_filter("Avatar image", &["png", "gif", "jpg", "jpeg"])
             .pick_file()
         {
-            match avatar::load_sprite(ctx, &path) {
-                Ok(sprite) => {
-                    if !talking || self.live2d.is_some() {
-                        self.use_puppet_rig(&sprite.model_key);
-                    }
-                    if talking {
-                        self.talking = Some(sprite);
-                    } else {
-                        self.idle = Some(sprite);
-                        self.talking = None;
-                    }
-                    self.status_message = None;
+            self.open_image(ctx, &path, talking);
+        }
+    }
+    fn open_image(&mut self, ctx: &egui::Context, path: &Path, talking: bool) {
+        match crate::media::load(ctx, self.render_state.as_ref(), path, 0, true) {
+            Ok(sprite) => {
+                if !talking || self.live2d.is_some() {
+                    self.use_puppet_rig(&sprite.model_key);
                 }
-                Err(e) => self.status_message = Some(format!("{e:#}")),
+                if talking {
+                    self.images.add(
+                        &mut self.input_monitor.saved.config.images,
+                        path.to_owned(),
+                        aria_core::image_actions::Trigger::Talking,
+                    );
+                    self.talking = Some(sprite.clone());
+                } else {
+                    if self.input_monitor.saved.config.images.states.is_empty() {
+                        self.images.add(
+                            &mut self.input_monitor.saved.config.images,
+                            path.to_owned(),
+                            aria_core::image_actions::Trigger::Idle,
+                        );
+                    }
+                    self.settings.image_avatar = Some(path.to_owned());
+                    self.idle = Some(sprite.clone());
+                    self.talking = None;
+                }
+                self.images.seed(path.to_owned(), sprite);
+                self.input_monitor.tab = Tab::Images;
+                self.input_monitor.save_requested = true;
+                self.status_message = None;
             }
+            Err(e) => self.status_message = Some(format!("{e:#}")),
         }
     }
 
     fn active_sprite(&self) -> Option<&Sprite> {
+        if let Some(sprite) = self.images.primary() {
+            return Some(sprite);
+        }
         if self.params.0[5] > 0.18 {
             self.talking.as_ref().or(self.idle.as_ref())
         } else {
@@ -988,6 +1124,7 @@ impl AriaApp {
         self.hotkeys.configure(Vec::new());
         self.animation_time = 0.0;
         self.live2d = Some(avatar);
+        self.settings.image_avatar = None;
         self.idle = None;
         self.talking = None;
         self.status_message = None;
@@ -1033,6 +1170,8 @@ impl AriaApp {
     fn restore_model_preferences(&mut self, key: &str) {
         self.items.reset();
         self.effects.reset();
+        self.images.reset();
+        self.microphone.stop();
         self.scene_revision = self.scene_revision.wrapping_add(1);
         let preferences = self
             .settings
@@ -1140,6 +1279,29 @@ impl AriaApp {
                 }
                 if let Some(error) = &self.input_monitor.hotkey_status {
                     ui.colored_label(egui::Color32::LIGHT_RED, error);
+                }
+            }
+            if self.input_monitor.tab == Tab::Images {
+                self.input_monitor.save_requested |= self.images.panel(
+                    ui,
+                    &mut self.input_monitor.saved,
+                    &self.live_inputs,
+                    &parameters,
+                    self.idle.is_some() && self.live2d.is_none(),
+                );
+            }
+            if self.input_monitor.tab == Tab::Microphone {
+                let enabled = self.input_monitor.saved.microphone.enabled;
+                self.input_monitor.save_requested |= self
+                    .microphone
+                    .panel(ui, &mut self.input_monitor.saved.microphone);
+                if !enabled
+                    && self.input_monitor.saved.microphone.enabled
+                    && self.settings.source == Source::Demo
+                {
+                    self.settings.source = Source::Local;
+                    self.pipeline.reset();
+                    self.raw = None;
                 }
             }
             if self.input_monitor.tab == Tab::Effects {
@@ -1377,6 +1539,10 @@ impl eframe::App for AriaApp {
                 self.settings.mapping.mirror,
                 self.animation_time,
             );
+            self.microphone
+                .update(&self.input_monitor.saved.microphone, dt);
+            self.microphone
+                .inject(&self.input_monitor.saved.microphone, &mut self.live_inputs);
             if let Some(avatar) = &mut self.live2d {
                 if std::mem::take(&mut self.input_monitor.reset_motion) {
                     avatar.reset_motion();
@@ -1408,6 +1574,19 @@ impl eframe::App for AriaApp {
                 }
             }
             let parameters = self.current_parameters();
+            if self.live2d.is_none() {
+                self.images.update(
+                    ctx,
+                    self.render_state.as_ref(),
+                    &self.input_monitor.saved.config.images,
+                    &self.live_inputs,
+                    &parameters,
+                    (dt, self.input_monitor.saved.config.pose.mode),
+                );
+            }
+            if self.input_monitor.saved.config.pose.mode != PoseMode::Frozen {
+                self.items.clock += dt.min(0.25);
+            }
             if self.items.evaluate(
                 &mut self.input_monitor.saved.config,
                 &self.live_inputs,
@@ -1440,7 +1619,7 @@ impl eframe::App for AriaApp {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            RichText::new("v0.14 · WINDOWS PREVIEW")
+                            RichText::new("v0.15 · WINDOWS PREVIEW")
                                 .small()
                                 .color(MUTED),
                         );
@@ -1482,9 +1661,16 @@ impl eframe::App for AriaApp {
             .resizable(true)
             .frame(Frame::new().fill(PANEL).inner_margin(12.0))
             .show(ctx, |ui| {
-                egui::ScrollArea::vertical()
-                    .id_salt("diagnostics-scroll")
-                    .show(ui, |ui| self.diagnostics(ui));
+                let area = egui::ScrollArea::vertical().id_salt("diagnostics-scroll");
+                #[cfg(feature = "screenshots")]
+                let area = if crate::smoke_mode()
+                    && std::env::var_os("ARIA_SMOKE_IMAGE_CONTROLS").is_some()
+                {
+                    area.vertical_scroll_offset(650.0)
+                } else {
+                    area
+                };
+                area.show(ui, |ui| self.diagnostics(ui));
             });
         let output_settings = self.outputs.snapshot();
         let stage_output = output_settings.canvas(output_settings.selected);
@@ -1498,7 +1684,7 @@ impl eframe::App for AriaApp {
                         RichText::new(if self.live2d.is_some() {
                             "LIVE2D / CUBISM"
                         } else if self.idle.is_some() {
-                            "PNG PUPPET"
+                            "PNG / GIF PUPPET"
                         } else {
                             "MICA / TEST PUPPET"
                         })
@@ -1509,7 +1695,10 @@ impl eframe::App for AriaApp {
                 ui.label(RichText::new(self.connection_status()).color(MINT));
                 ui.horizontal_wrapped(|ui| {
                     crate::help::button(ui, "png-items");
-                    if ui.small_button("Drop PNG / moc3 here · objects").clicked() {
+                    if ui
+                        .small_button("Drop PNG / GIF / moc3 here · objects")
+                        .clicked()
+                    {
                         self.input_monitor.tab = Tab::Items;
                     }
                 });
@@ -1638,7 +1827,9 @@ impl eframe::App for AriaApp {
                     rect.left_bottom() + egui::vec2(16.0, -18.0),
                     egui::Align2::LEFT_BOTTOM,
                     if self.settings.source == Source::Demo {
-                        "DEMO INPUT  /  Connect your iPhone to go live"
+                        "DEMO INPUT  /  Choose microphone or phone tracking"
+                    } else if self.settings.source == Source::Local {
+                        "LOCAL INPUT  /  Microphone, image actions and hotkeys"
                     } else {
                         "TRACKING PREVIEW  /  Open the capture window for OBS"
                     },
@@ -1792,6 +1983,24 @@ impl eframe::App for AriaApp {
                 assert!(
                     self.snapshot.fresh_frame().is_some_and(|f| f.face_found),
                     "Smoke run needs fresh VTS tracking, not a disconnected screenshot"
+                );
+            }
+            if crate::smoke_mode()
+                && matches!(
+                    std::env::var("ARIA_SMOKE_SCENARIO").as_deref(),
+                    Ok("image-actions") | Ok("output-images") | Ok("microphone")
+                )
+                && let Some(state) = &self.render_state
+            {
+                let scene = self.scene();
+                let parameters = self.current_parameters();
+                crate::image_actions::verify_smoke(
+                    ctx,
+                    state,
+                    &scene,
+                    &mut self.input_monitor.saved.config,
+                    &parameters,
+                    self.started.elapsed().as_secs_f32(),
                 );
             }
             screenshot_capture(ctx, self.started, false);
@@ -2000,6 +2209,17 @@ mod tests {
                 config: RigConfig::from_parameters(&parameters),
                 ..Default::default()
             };
+            saved
+                .config
+                .images
+                .states
+                .push(aria_core::image_actions::State {
+                    path: format!("{key}.gif").into(),
+                    name: key.into(),
+                    gif_speed: strength,
+                    ..Default::default()
+                });
+            saved.microphone.gain_db = angle;
             saved.config.capture_pose(&parameters);
             saved.config.pose.frozen.insert("ParamAngleX".into(), angle);
             saved.config.items.push(aria_core::items::Item {
@@ -2114,6 +2334,16 @@ mod tests {
             restored.saved_rigs["avatar-b"].config.physics.groups["Custom spring"].strength,
             1.7
         );
+        assert_eq!(
+            restored.saved_rigs["avatar-a"].config.images.states[0].gif_speed,
+            0.4
+        );
+        assert_eq!(
+            restored.saved_rigs["avatar-b"].config.images.states[0].gif_speed,
+            1.7
+        );
+        assert_eq!(restored.saved_rigs["avatar-a"].microphone.gain_db, 12.0);
+        assert_eq!(restored.saved_rigs["avatar-b"].microphone.gain_db, -8.0);
         for rig in restored.saved_rigs.values() {
             rig.validate(&parameters).unwrap();
         }

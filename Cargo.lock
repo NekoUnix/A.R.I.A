@@ -182,7 +182,7 @@ dependencies = [
 
 [[package]]
 name = "aria-cli"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "aria-core",
@@ -194,7 +194,7 @@ dependencies = [
 
 [[package]]
 name = "aria-core"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -203,7 +203,7 @@ dependencies = [
 
 [[package]]
 name = "aria-desktop"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "aria-core",
@@ -212,6 +212,7 @@ dependencies = [
  "aria-tracking",
  "base64",
  "bytemuck",
+ "cpal",
  "eframe",
  "getrandom 0.3.4",
  "glam",
@@ -230,7 +231,7 @@ dependencies = [
 
 [[package]]
 name = "aria-live2d"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "aria-core",
@@ -239,7 +240,7 @@ dependencies = [
 
 [[package]]
 name = "aria-model"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -249,7 +250,7 @@ dependencies = [
 
 [[package]]
 name = "aria-tracking"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "aria-core",
@@ -723,6 +724,12 @@ checksum = "fe6d2e5af09e8c8ad56c969f2157a3d4238cebc7c55f0a517728c38f7b200f81"
 dependencies = [
  "unicode-width",
 ]
+
+[[package]]
+name = "color_quant"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
 
 [[package]]
 name = "colorchoice"
@@ -1382,6 +1389,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gif"
+version = "0.14.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee8cfcc411d9adbbaba82fb72661cc1bcca13e8bba98b364e62b2dba8f960159"
+dependencies = [
+ "color_quant",
+ "weezl",
+]
+
+[[package]]
 name = "gl_generator"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1744,6 +1761,8 @@ checksum = "85ab80394333c02fe689eaf900ab500fbd0c2213da414687ebf995a65d5a6104"
 dependencies = [
  "bytemuck",
  "byteorder-lite",
+ "color_quant",
+ "gif",
  "moxcms",
  "num-traits",
  "png",

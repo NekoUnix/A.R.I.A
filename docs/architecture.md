@@ -1,5 +1,28 @@
 # Architecture and next steps
 
+## PNG/GIF actions and microphone input (v0.15)
+
+`aria-core::image_actions` stores action triggers, priorities, motion, playback and
+transition settings in `RigConfig`. Its deterministic player selects states from
+tracking/parameter inputs or a manual hotkey override, and preserves current blend
+weights when a transition is interrupted. `SavedRig` owns microphone device and
+gate settings. Legacy serialized profiles default to disabled new features.
+
+Desktop `media` bounds encoded files and decoded frame memory, then uses image-rs
+for PNG/JPEG and composed GIF frames. Immutable frame textures are shared by clones.
+Action GIFs use the action/global clock; stage GIFs use the stage clock; thrown GIFs
+use each particle's age. The same selected texture and transforms reach the stage,
+PNG export and Spout. Frozen poses stop image/transition clocks while the microphone
+meter remains live. Artwork caches retain failures until the user reloads assets.
+
+Desktop `microphone` opens a cpal input stream using a stable device ID. The callback
+reduces interleaved samples to RMS and discards them, publishing only atomics for the
+UI thread. A smoothed core envelope and hysteretic gate produce MicLevel, MicTalking
+and Talking. Mouth routing replaces or maximizes the existing MouthOpen input before
+normal rig evaluation. Device errors stop the stream and expose a retry control;
+missing samples decay to silence. No voice recording, networking or speech recognition
+is part of this path. Local input mode avoids synthetic demo movement without a tracker.
+
 ## Current flow
 
 ```text

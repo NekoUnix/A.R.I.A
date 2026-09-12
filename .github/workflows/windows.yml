@@ -35,6 +35,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: aria-windows-x64
-          path: dist/aria-0.14.0-windows-x64.zip
+          path: dist/aria-0.15.0-windows-x64.zip
           if-no-files-found: error
           retention-days: 30

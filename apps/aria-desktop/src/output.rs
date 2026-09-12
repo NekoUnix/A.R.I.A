@@ -554,6 +554,7 @@ impl OutputWindows {
 
 #[derive(Clone)]
 pub struct Scene {
+    pub images: Arc<[crate::image_actions::Draw]>,
     pub dents: Arc<[crate::deformation::AvatarDent]>,
     pub effects: Arc<[crate::items::DrawItem]>,
     pub recoil: [f32; 2],
@@ -610,7 +611,16 @@ impl Scene {
         };
         crate::items::paint(painter, self, translated, config.zoom, true);
         let fields = crate::deformation::avatar_fields(self, translated, zoom);
-        if let Some(model) = self.model {
+        if !self.images.is_empty() {
+            crate::image_actions::paint(
+                painter,
+                translated,
+                self.params,
+                zoom,
+                &self.images,
+                &fields,
+            );
+        } else if let Some(model) = self.model {
             if fields.is_empty() {
                 model.draw(painter, translated, config.zoom);
             } else {
@@ -715,6 +725,7 @@ mod tests {
         for size in [egui::vec2(960.0, 540.0), egui::vec2(540.0, 960.0)] {
             let ctx = egui::Context::default();
             let scene = Scene {
+                images: Default::default(),
                 dents: Default::default(),
                 effects: Arc::from([]),
                 recoil: [0.0; 2],
@@ -853,6 +864,7 @@ mod tests {
         for size in [[480., 270.], [270., 480.], [480., 320.]] {
             let ctx = egui::Context::default();
             let scene = Scene {
+                images: Default::default(),
                 dents: Default::default(),
                 effects: Arc::from([]),
                 recoil: [0.0; 2],

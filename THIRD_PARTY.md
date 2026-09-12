@@ -12,7 +12,7 @@ Primary dependencies (exact versions are recorded in Cargo.lock):
 | egui / eframe | Native UI, viewports and 2D drawing integration | https://github.com/emilk/egui |
 | wgpu | GPU abstraction | https://github.com/gfx-rs/wgpu |
 | serde / serde_json | Structured data and wire parsing | https://github.com/serde-rs/serde / https://github.com/serde-rs/json |
-| image | PNG/JPEG decoding | https://github.com/image-rs/image |
+| image | PNG/JPEG/GIF decoding | https://github.com/image-rs/image |
 | rfd | Native file dialogs | https://github.com/PolyMeilex/rfd |
 | clap | CLI parsing | https://github.com/clap-rs/clap |
 | anyhow | Error reporting | https://github.com/dtolnay/anyhow |
@@ -24,11 +24,11 @@ Primary dependencies (exact versions are recorded in Cargo.lock):
 | gltf-rs | Static GLB/glTF and VRM geometry import | https://github.com/gltf-rs/gltf |
 | ufbx | Static FBX and OBJ parsing | https://github.com/ufbx/ufbx |
 | glam | 3D prop transforms | https://github.com/bitshifter/glam-rs |
-| rodio / cpal / Symphonia | Windows audio playback and WAV, MP3, Vorbis and FLAC decoding | https://github.com/RustAudio/rodio / https://github.com/RustAudio/cpal / https://github.com/pdeljanov/Symphonia |
+| rodio / cpal / Symphonia | Windows microphone amplitude capture, audio playback and WAV, MP3, Vorbis and FLAC decoding | https://github.com/RustAudio/rodio / https://github.com/RustAudio/cpal / https://github.com/pdeljanov/Symphonia |
 | getrandom / base64 | Local API keys and embedded glTF buffers | https://github.com/rust-random/getrandom / https://github.com/marshallpierce/rust-base64 |
 
 Effect starter artwork, static cube files, WAV and synthesis/export templates in
-`templates/effects` are original ARIA materials under the repository MIT license.
+`templates/effects` and `templates/images` are original ARIA materials under the repository MIT license.
 The Streamer.bot adapter is original integration code using its public C# API;
 Streamer.bot and Twitch are separate applications/services and are not bundled.
 

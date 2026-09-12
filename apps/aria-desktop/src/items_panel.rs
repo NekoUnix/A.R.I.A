@@ -25,7 +25,10 @@ impl Items {
         ui.horizontal_wrapped(|ui| {
             if help::control(ui, "model-items", |ui| ui.button("Add objects…")).clicked()
                 && let Some(paths) = rfd::FileDialog::new()
-                    .add_filter("PNG / Live2D objects", &["png", "moc3", "json"])
+                    .add_filter(
+                        "PNG / GIF / Live2D objects",
+                        &["png", "gif", "moc3", "json"],
+                    )
                     .pick_files()
             {
                 self.add(paths, &mut saved.config, [0.0; 2]);
@@ -48,7 +51,7 @@ impl Items {
         }
         theme::category(ui, "png-library", "Stage objects", true, |ui| {
             if saved.config.items.is_empty() {
-                ui.label("No objects yet. Drop a PNG or moc3 onto the stage.");
+                ui.label("No objects yet. Drop a PNG, GIF or moc3 onto the stage.");
             }
             for item in &mut saved.config.items {
                 ui.push_id(item.id, |ui| {
@@ -108,7 +111,7 @@ impl Items {
                 ui.small(item.path.file_name().unwrap_or_default().to_string_lossy());
                 if let Some(error) = self.error(&item.path) { ui.colored_label(egui::Color32::LIGHT_RED,error); }
                 if help::control(ui,"model-items",|ui| ui.button("Replace object / locate file…")).clicked()
-                    && let Some(path) = rfd::FileDialog::new().add_filter("PNG / Live2D objects", &["png","moc3","json"]).pick_file()
+                    && let Some(path) = rfd::FileDialog::new().add_filter("PNG / GIF / Live2D objects", &["png","gif","moc3","json"]).pick_file()
                     && crate::items::is_item(&path) {
                         if aria_core::items::is_model(&path) && !aria_core::items::is_model(&item.path) && model_count >= aria_core::items::MAX_MODEL_ITEMS {
                             self.message = Some("Maximum four Live2D objects per avatar. Remove one before adding another.".into());
@@ -249,6 +252,15 @@ impl Items {
     }
     pub fn assign(saved: &mut SavedRig, id: u64, shortcut: Shortcut) -> anyhow::Result<()> {
         shortcut.validate()?;
+        anyhow::ensure!(
+            !saved
+                .config
+                .images
+                .states
+                .iter()
+                .any(|s| s.hotkey == Some(shortcut)),
+            "That shortcut belongs to an image action"
+        );
         anyhow::ensure!(
             !saved
                 .effects

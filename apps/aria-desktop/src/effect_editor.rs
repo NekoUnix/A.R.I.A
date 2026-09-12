@@ -440,7 +440,9 @@ impl Editor {
             && let Some(paths) = rfd::FileDialog::new()
                 .add_filter(
                     "Effect assets",
-                    &["png", "moc3", "json", "glb", "gltf", "vrm", "fbx", "obj"],
+                    &[
+                        "png", "gif", "moc3", "json", "glb", "gltf", "vrm", "fbx", "obj",
+                    ],
                 )
                 .pick_files()
         {
@@ -668,6 +670,12 @@ pub fn validate_save(d: &Design, saved: &SavedRig) -> anyhow::Result<()> {
         anyhow::ensure!(
             key != Shortcut::pose()
                 && !saved
+                    .config
+                    .images
+                    .states
+                    .iter()
+                    .any(|s| s.hotkey == Some(key))
+                && !saved
                     .expression_hotkeys
                     .values()
                     .chain(saved.item_hotkeys.values())
@@ -807,6 +815,7 @@ mod tests {
         let ctx = egui::Context::default();
         let rect = Rect::from_min_size(Pos2::ZERO, vec2(600.0, 500.0));
         let scene = Scene {
+            images: Default::default(),
             dents: Default::default(),
             effects: Default::default(),
             recoil: [0.02, -0.01],
