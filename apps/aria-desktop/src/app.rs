@@ -173,6 +173,7 @@ pub struct AriaApp {
     chats: crate::chat::Chats,
     images: crate::image_actions::Images,
     microphone: crate::microphone::Microphone,
+    controller: crate::controller::Controller,
     effects: crate::effects::Effects,
     effect_api: crate::effect_api::Api,
     settings: Settings,
@@ -286,6 +287,7 @@ impl AriaApp {
             chats: Default::default(),
             images: Default::default(),
             microphone: Default::default(),
+            controller: Default::default(),
             effects: Default::default(),
             effect_api: Default::default(),
             settings,
@@ -646,6 +648,24 @@ impl AriaApp {
                                 .expressions
                                 .insert(entry.file.id.clone());
                         }
+                    }
+                    Ok("controller") => {
+                        app.input_monitor.tab = Tab::Controller;
+                        if let Some(entry) = app
+                            .input_monitor
+                            .expressions
+                            .entries
+                            .iter()
+                            .find(|e| e.is_controller_pose())
+                        {
+                            app.input_monitor
+                                .saved
+                                .config
+                                .expressions
+                                .insert(entry.file.id.clone());
+                        }
+                        app.controller
+                            .prepare_smoke(&mut app.input_monitor.saved.controller);
                     }
                     Ok("pose") | Ok("presets") | Ok("inputs") => {
                         let parameters = app.current_parameters();
@@ -1770,6 +1790,21 @@ impl AriaApp {
                     self.raw = None;
                 }
             }
+            if self.input_monitor.tab == Tab::Controller {
+                let actions = self
+                    .input_monitor
+                    .expressions
+                    .controller_poses_ui(ui, &mut self.input_monitor.saved);
+                self.input_monitor.save_requested |= actions.save;
+                if actions.message.is_some() {
+                    self.input_monitor.message = actions.message;
+                }
+                self.input_monitor.save_requested |= self.controller.panel(
+                    ui,
+                    &mut self.input_monitor.saved.controller,
+                    &self.live_inputs,
+                );
+            }
             if self.input_monitor.tab == Tab::Effects {
                 self.input_monitor.save_requested |= self.effects.panel(
                     ui,
@@ -2049,6 +2084,12 @@ impl eframe::App for AriaApp {
                 .update(&self.input_monitor.saved.microphone, dt);
             self.microphone
                 .inject(&self.input_monitor.saved.microphone, &mut self.live_inputs);
+            self.controller.update(
+                &self.input_monitor.saved.controller,
+                &self.input_monitor.model_key,
+                dt,
+                &mut self.live_inputs,
+            );
             if let Some(avatar) = &mut self.live2d {
                 if std::mem::take(&mut self.input_monitor.reset_motion) {
                     avatar.reset_motion();
@@ -2158,7 +2199,7 @@ impl eframe::App for AriaApp {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            RichText::new("v0.20 · WINDOWS PREVIEW")
+                            RichText::new("v0.21 · WINDOWS PREVIEW")
                                 .small()
                                 .color(MUTED),
                         );
@@ -2392,11 +2433,13 @@ impl eframe::App for AriaApp {
             });
         #[cfg(feature = "screenshots")]
         if crate::smoke_mode()
-            && std::env::var_os("ARIA_TEST_VRM").is_some()
+            && (std::env::var_os("ARIA_TEST_VRM").is_some()
+                || (std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("controller")
+                    && self.live2d.is_some()))
             && self.started.elapsed() > Duration::from_secs(5)
         {
             assert!(
-                self.vrm.is_some(),
+                self.vrm.is_some() || self.live2d.is_some(),
                 "VRM smoke import failed: {:?}",
                 self.status_message
             );

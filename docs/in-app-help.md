@@ -1185,3 +1185,84 @@ Stage/OBS zoom and position are separate controls. Zooming in or dragging an ava
 beyond an output edge can intentionally crop that output; reduce zoom or reset
 its placement to show the whole avatar. Automatic framing cannot restore missing
 artwork or parts hidden by the model's own opacity parameters or clipping masks.
+
+## controller | Connect a gamepad | Read Xbox, PlayStation, Switch and other SDL-compatible controllers alongside phone tracking. Settings save per avatar.
+
+Connect USB or pair Bluetooth in Windows, then enable controller input. Auto keeps
+the first available gamepad; choose a named controller if several are connected.
+Connected confirms the reader. Refresh / retry detects new devices or retries a
+failed start. A deliberately selected missing device stays neutral until it returns.
+Identical controllers without a serial number use connection order; select again
+if you reconnect them in a different order. USB/Bluetooth identities can differ.
+
+The phone continues driving the face while the controller drives NP_* assignments.
+Input works while another application has focus. ARIA does not inject game buttons
+or send rumble. Disable input to release the reader. Disabled/disconnected inputs
+return to zero, including NP_ON, which often hides the rig's controller artwork.
+
+Keep the avatar's .vtube.json beside its .model3.json on import. The artist's
+controller mappings and ranges are imported automatically. Existing profiles gain
+previously rejected mappings once, preserving your customized assignments. This
+does not add controller artwork to a model that has none. Independent Live2D stage
+items and image actions can also use these inputs. Frozen poses and held values
+override live movement until you resume live mode.
+
+Some avatars also need an expression to show their controller arms. Avatar
+controller poses offers shortcuts to imported expressions whose names or targets
+refer to a controller/gamepad. Enable the intended pose there; the Vespera export
+uses ControllerArms. These toggles are shared with Avatar → Expressions, where
+you can assign hotkeys. ARIA suggests available expressions and leaves the choice
+to you, since expressions may conflict or show different sets of artwork.
+
+Expand Live controller values to see all 33 NP_* signals. Move one axis at a time:
+left/right changes X; up/down changes Y. Buttons and triggers should return to zero
+on release. NP_ON is 1 only with an enabled, connected selection. Under Tracking →
+Inputs, search NP_ or expand Controller & hands to edit individual assignments.
+
+## controller-response | Controller response and hands | Adjust drift filtering, press animation, D-pad movement and stick inversion without changing your game's controls.
+
+Stick dead zone removes a circular area around center, then rescales remaining
+travel to the normal −1…1 range. Default 0.12; 0 disables filtering. Increase it if
+a resting stick drifts, or lower it if small intentional movements disappear.
+Trigger dead zone does the same for the 0…1 trigger range; default 0.03. Both allow
+0–0.5. These settings only affect ARIA, not your game or Windows calibration.
+
+X is horizontal and Y is vertical. Right and up are positive. The two Invert Y
+options flip vertical direction independently and never swap axes. D-pad also
+moves the left stick sends D-pad motion to a stick-only rig; diagonal travel is
+normalized. Face-button names describe positions: A bottom, B right, X left, Y top.
+The letters on PlayStation or Nintendo hardware can differ from these signal names.
+
+NP_L/RButtonDown stay at 1 while any D-pad/face button is held. NP_L/RButtonPress
+rise on a new press, including stick clicks and Back/Start, then decay. Press release
+is that decay time in milliseconds: default 100, range 0–1000. Zero gives a
+one-frame pulse. A second button retriggers the pulse even if the first is held.
+It is separate from each output binding's smoothing in Tracking → Inputs.
+
+Thumb X/Y remember the last D-pad/face direction. OnStick remembers whether the
+thumb last used a stick or buttons. IndexPos remembers bumper (0) or trigger (1),
+with bumper priority when both are held. These are inferred hand animations,
+not physical finger tracking. Disconnecting or changing devices resets that state.
+NP_L1/R1 are bumpers and NP_L2/R2 are analog triggers. Every parameter's output
+range, response curve, smoothing and manual hold remain independently editable.
+
+## controller-compatibility | Other controllers and custom layouts | Built-in SDL layouts cover common gamepads. Import a Windows SDL2 mapping file for a recognized joystick without a standard layout.
+
+Xbox-compatible, DualShock/DualSense, Switch Pro/Joy-Con and other gamepads are
+read through SDL's Windows controller drivers. USB/Bluetooth mode, drivers and
+device support matter; no app can guarantee every proprietary or future controller.
+Flight sticks and wheels need an appropriate mapping to gamepad controls.
+
+Needs mapping lists an unrecognized joystick's name and GUID. Import a Windows
+SDL2 gamecontrollerdb.txt or .map file for that device, or create a layout with an
+SDL2 controller mapping tool. Text is limited to 1 MiB, saved with this avatar,
+and validated by SDL. Restore built-in controller layouts clears the override.
+Do not use an incompatible SDL3 mapping. A mapping can rearrange buttons or invert
+axes, but cannot supply driver support for a device the operating system cannot read.
+
+If a game sees the device but ARIA does not, check selection and retry after
+reconnecting. Steam Input, emulators, exclusive drivers or device-hiding utilities
+may expose a different virtual device or hide the physical controller. Choose the
+available device and avoid reading a duplicate. Live controller values distinguish
+an input problem from an avatar mapping problem: if NP_* values move, inspect the
+model's assignments, visibility parameters and manual/frozen poses next.

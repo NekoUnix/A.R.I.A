@@ -29,6 +29,12 @@ Primary dependencies (exact versions are recorded in Cargo.lock):
 | reqwest / rustls | HTTPS OAuth and YouTube API requests | https://github.com/seanmonstar/reqwest / https://github.com/rustls/rustls |
 | tungstenite / native-tls | Twitch secure IRC WebSocket connection using Windows TLS | https://github.com/snapview/tungstenite-rs / https://github.com/sfackler/rust-native-tls |
 | sha2 | SHA-256 PKCE challenge generation | https://github.com/RustCrypto/hashes |
+| Rust-SDL2 / SDL2 | Background gamepad input, device layouts and hot-plug support (MIT / zlib) | https://github.com/Rust-SDL2/rust-sdl2 / https://github.com/libsdl-org/SDL |
+
+The controller input names and meaning follow the public Nyarupad VTS interface
+at https://github.com/maruseu/Nyarupad-VTS. ARIA implements its own signal mapping;
+no Nyarupad code, artwork or executable is bundled. SDL2 is statically linked;
+its source license is included in the portable dependency notices.
 
 Twitch and YouTube are separate services. Their APIs require user-configured OAuth
 applications and account authorization; ARIA includes no publisher-owned client

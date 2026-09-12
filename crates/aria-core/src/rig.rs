@@ -41,11 +41,24 @@ pub const INPUT_NAMES: &[&str] = &[
 
 pub type Inputs = BTreeMap<String, f32>;
 
+pub const FACE_ALIASES: &[(&str, &str)] = &[
+    ("JawOpen", "jawopen"),
+    ("TongueOut", "tongueout"),
+    ("BrowInnerUp", "browinnerup"),
+];
+/// Newly supported imports that need an additive migration in pre-0.21 profiles.
+pub fn upgraded_input(name: &str) -> bool {
+    crate::controller::INPUT_NAMES.contains(&name)
+        || FACE_ALIASES.iter().any(|(alias, _)| *alias == name)
+}
+
 pub fn input_range(name: &str) -> (f32, f32) {
     if let Some(spec) = PARAMETER_SPECS.iter().find(|s| s.0 == name) {
         return (spec.1, spec.2);
     }
     match name {
+        "NP_LStickX" | "NP_LStickY" | "NP_RStickX" | "NP_RStickY" | "NP_LThumbX" | "NP_LThumbY"
+        | "NP_RThumbX" | "NP_RThumbY" => (-1.0, 1.0),
         "FaceAngleX" | "FaceAngleY" | "FaceAngleZ" => (-30.0, 30.0),
         "EyeLeftX" | "EyeLeftY" | "EyeRightX" | "EyeRightY" => (-0.5, 0.5),
         "MouthX" | "MouthPressLipOpen" | "BrowLeftY" | "BrowRightY" => (-1.0, 1.0),
@@ -108,6 +121,11 @@ pub fn tracking_inputs(
             .iter()
             .zip(p.0)
             .map(|(s, v)| (s.0.into(), v)),
+    );
+    inputs.extend(
+        FACE_ALIASES
+            .iter()
+            .map(|(alias, key)| ((*alias).into(), b(key))),
     );
     if let Some(frame) = frame {
         inputs.extend(
@@ -318,7 +336,10 @@ pub fn import_profile(bytes: &[u8], parameters: &[RigParameter]) -> Result<Impor
             ));
             continue;
         }
-        if !INPUT_NAMES.contains(&input) && !PARAMETER_SPECS.iter().any(|s| s.0 == input) {
+        if !INPUT_NAMES.contains(&input)
+            && !upgraded_input(input)
+            && !PARAMETER_SPECS.iter().any(|s| s.0 == input)
+        {
             imported.warnings.push(format!(
                 "Unsupported profile input {input} for {}",
                 a.output
@@ -393,6 +414,65 @@ pub fn apply_bindings(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn imports_controller_and_raw_face_inputs_with_authored_ranges() {
+        let names: Vec<_> = crate::controller::INPUT_NAMES
+            .iter()
+            .copied()
+            .chain(FACE_ALIASES.iter().map(|p| p.0))
+            .collect();
+        let parameters: Vec<_> = names
+            .iter()
+            .map(|n| RigParameter {
+                id: format!("Output{n}"),
+                min: -10.0,
+                max: 10.0,
+                default: 0.0,
+                value: 0.0,
+            })
+            .collect();
+        let settings: Vec<_> = names
+            .iter()
+            .map(|n| {
+                let (lo, hi) = input_range(n);
+                serde_json::json!({"Input":n,"OutputLive2D":format!("Output{n}"),
+                "InputRangeLower":lo,"InputRangeUpper":hi,
+                "OutputRangeLower":2.0,"OutputRangeUpper":-3.0,"ClampInput":true})
+            })
+            .collect();
+        let profile = import_profile(
+            &serde_json::to_vec(&serde_json::json!({"ParameterSettings":settings})).unwrap(),
+            &parameters,
+        )
+        .unwrap();
+        assert!(profile.warnings.is_empty(), "{:?}", profile.warnings);
+        assert_eq!(profile.bindings.len(), 36);
+        for mut b in profile.bindings.into_values() {
+            assert_eq!(b.evaluate(b.input_min, 0.016), 2.0);
+            assert_eq!(b.evaluate(b.input_max, 0.016), -3.0);
+        }
+        assert_eq!(input_range("NP_LStickY"), (-1.0, 1.0));
+        assert_eq!(input_range("NP_L2"), (0.0, 1.0));
+    }
+    #[test]
+    fn raw_face_aliases_follow_phone_and_clear_on_tracking_loss() {
+        let mut frame = TrackingFrame {
+            face_found: true,
+            ..Default::default()
+        };
+        for (_, key) in FACE_ALIASES {
+            frame.blend_shapes.insert((*key).into(), 0.75);
+        }
+        let live = tracking_inputs(Some(&frame), Parameters::default(), false, 0.0);
+        for (alias, _) in FACE_ALIASES {
+            assert_eq!(live[*alias], 0.75);
+        }
+        frame.face_found = false;
+        let lost = tracking_inputs(Some(&frame), Parameters::default(), false, 0.0);
+        for (alias, _) in FACE_ALIASES {
+            assert_eq!(lost[*alias], 0.0);
+        }
+    }
     #[test]
     fn imports_custom_ranges_and_inverted_gaze() {
         let p = RigParameter {

@@ -257,6 +257,8 @@ impl Preset {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct SavedRig {
+    pub controller: crate::controller::Settings,
+    pub input_compat_revision: u32,
     pub microphone: crate::microphone::Settings,
     pub effects: crate::effects::Library,
     pub config: RigConfig,
@@ -267,6 +269,29 @@ pub struct SavedRig {
     pub expression_files: Vec<std::path::PathBuf>,
 }
 impl SavedRig {
+    /// Repair only assignments that older versions rejected, once per saved model.
+    /// Existing edits and unrelated unmapped parameters remain authoritative.
+    pub fn upgrade_inputs(&mut self, imported: &RigConfig) -> usize {
+        if self.input_compat_revision >= 1 {
+            return 0;
+        }
+        let mut count = 0;
+        for config in
+            std::iter::once(&mut self.config).chain(self.presets.iter_mut().map(|p| &mut p.rig))
+        {
+            for (id, binding) in &imported.bindings {
+                if crate::rig::upgraded_input(&binding.input)
+                    && let std::collections::btree_map::Entry::Vacant(entry) =
+                        config.bindings.entry(id.clone())
+                {
+                    entry.insert(binding.clone());
+                    count += 1;
+                }
+            }
+        }
+        self.input_compat_revision = 1;
+        count
+    }
     pub fn validate_image_hotkeys(&self) -> Result<()> {
         for state in &self.config.images.states {
             if let Some(key) = state.hotkey {
@@ -291,6 +316,7 @@ impl SavedRig {
     }
 
     pub fn validate(&self, parameters: &[RigParameter]) -> Result<()> {
+        self.controller.validate()?;
         self.microphone.validate()?;
         self.validate_image_hotkeys()?;
         self.effects.validate()?;
@@ -420,6 +446,46 @@ pub fn preview_parameters(values: Parameters) -> Vec<RigParameter> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn older_rigs_gain_missing_inputs_once_without_losing_customizations() {
+        let mut imported = RigConfig::default();
+        for (id, input) in [
+            ("Pad", "NP_ON"),
+            ("Stick", "NP_LStickY"),
+            ("Tongue", "TongueOut"),
+            ("Unrelated", "FaceAngleX"),
+        ] {
+            imported
+                .bindings
+                .insert(id.into(), crate::rig::Binding::direct(input, 0.0, 1.0));
+        }
+        let mut old: SavedRig =
+            serde_json::from_str(r#"{"config":{},"microphone":{"enabled":true}}"#).unwrap();
+        old.config.bindings.insert(
+            "Stick".into(),
+            crate::rig::Binding::direct("MyCustomInput", -2.0, 4.0),
+        );
+        old.presets.push(Preset {
+            name: "Movement".into(),
+            kind: PresetKind::Movement,
+            rig: old.config.clone(),
+            mapping: MappingSettings::default(),
+            hotkey: None,
+        });
+        assert_eq!(old.upgrade_inputs(&imported), 4);
+        assert_eq!(old.config.bindings["Stick"].input, "MyCustomInput");
+        assert_eq!(old.presets[0].rig.bindings["Stick"].output_max, 4.0);
+        assert!(!old.config.bindings.contains_key("Unrelated"));
+        assert!(old.microphone.enabled);
+        old.config.bindings.remove("Pad");
+        old.controller.stick_dead_zone = 0.25;
+        let mut reloaded: SavedRig =
+            serde_json::from_slice(&serde_json::to_vec(&old).unwrap()).unwrap();
+        assert_eq!(reloaded.upgrade_inputs(&imported), 0);
+        assert!(!reloaded.config.bindings.contains_key("Pad"));
+        assert_eq!(reloaded.controller.stick_dead_zone, 0.25);
+        assert_eq!(SavedRig::default().controller.stick_dead_zone, 0.12);
+    }
     #[test]
     fn freeze_is_exact_and_partial_overrides_release() {
         let mut p = preview_parameters(Parameters::default());

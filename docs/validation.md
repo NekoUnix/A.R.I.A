@@ -5,6 +5,29 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Local verification on 2026-09-12
 
+### v0.21 Live2D controller input
+
+- **135 default tests passed**, with seventeen environment-dependent tests ignored.
+  Formatting and strict Clippy passed across workspace targets/features.
+- Added regression coverage for all 33 Nyarupad signals, the three raw face aliases,
+  authored inverted ranges, stick-axis independence, drift filtering, button pulse
+  decay, quick taps, latched hand animation, and neutral disconnected/disabled input.
+  Saved rigs/presets migrate once; existing customized assignments survive.
+- A separate native SDL test attached process-local virtual controllers, selected
+  devices, moved axes/pressed buttons, switched pads, disconnected a chosen pad,
+  and checked neutral behavior. No system driver or virtual input device was installed.
+  The background-input hint was verified with no SDL window owning focus.
+- The supplied Vespera export imported all 43 VTS assignments without warnings,
+  including its 15 controller bindings. Native Cubism parameters followed the
+  controller samples. Its ControllerArms expression changed the actual mesh
+  geometry/visibility and enabled the separate controller-arm set.
+- Native UI inspection verified the controller panel, imported pose shortcut and
+  the visible controller arms. Transparent export succeeded. The public guide image
+  uses only Mica; private model screenshots remain outside the repository/bundle.
+- No physical controller was connected during these checks. Xbox, PlayStation,
+  Switch, Bluetooth, unusual adapters and custom mapping files still need a physical
+  hardware matrix; SDL support is not a guarantee for every proprietary device.
+
 ### v0.20 nested exports, full-body rendering and shared pins
 
 - Formatting and strict Clippy passed for every workspace target/feature.

@@ -20,6 +20,7 @@ pub enum Tab {
     Images,
     Vrm,
     Microphone,
+    Controller,
 }
 pub struct InputMonitor {
     pub effect_requests: Vec<u64>,
@@ -84,7 +85,7 @@ impl InputMonitor {
     ) -> Self {
         let mut message = None;
         let physics_defaults = default.physics.clone();
-        let saved = saved
+        let mut saved = saved
             .filter(|s| match s.validate(parameters) {
                 Ok(()) => true,
                 Err(error) => {
@@ -93,9 +94,16 @@ impl InputMonitor {
                 }
             })
             .unwrap_or(SavedRig {
-                config: default,
+                config: default.clone(),
+                input_compat_revision: 1,
                 ..Default::default()
             });
+        let repaired = saved.upgrade_inputs(&default);
+        if repaired > 0 {
+            message = Some(format!(
+                "Restored {repaired} previously unsupported input assignments. Your existing mappings were preserved."
+            ));
+        }
         Self {
             effect_requests: Vec::new(),
             saved,
@@ -103,7 +111,7 @@ impl InputMonitor {
             tab: Tab::Inputs,
             message,
             hotkey_status: None,
-            save_requested: false,
+            save_requested: repaired > 0,
             reset_motion: true,
             reset_item_rules: true,
             export_png: None,
@@ -274,7 +282,7 @@ impl InputMonitor {
             self.tab = Tab::Inputs;
         }
         let mut group = match self.tab {
-            Tab::Inputs | Tab::Microphone | Tab::Raw => 0,
+            Tab::Inputs | Tab::Microphone | Tab::Controller | Tab::Raw => 0,
             Tab::Physics | Tab::Expressions | Tab::Images | Tab::Vrm => 1,
             Tab::Items | Tab::Effects => 2,
             Tab::Pose | Tab::Presets => 3,
@@ -289,6 +297,7 @@ impl InputMonitor {
             0 => &[
                 (Tab::Inputs, "Inputs"),
                 (Tab::Microphone, "Microphone"),
+                (Tab::Controller, "Controller"),
                 (Tab::Raw, "Diagnostics"),
             ],
             1 => match kind {
@@ -348,6 +357,7 @@ impl InputMonitor {
                 Tab::Effects => "effects",
                 Tab::Images => "image-actions",
                 Tab::Microphone => "microphone",
+                Tab::Controller => "controller",
             },
         );
         if let Some(message) = &self.message {
@@ -405,6 +415,7 @@ impl InputMonitor {
             | Tab::Effects
             | Tab::Images
             | Tab::Microphone
+            | Tab::Controller
             | Tab::Vrm
             | Tab::Physics => {}
         }
@@ -444,6 +455,12 @@ impl InputMonitor {
         let mut names: Vec<_> = rig::INPUT_NAMES
             .iter()
             .map(|n| n.to_string())
+            .chain(
+                aria_core::controller::INPUT_NAMES
+                    .iter()
+                    .map(|n| n.to_string()),
+            )
+            .chain(rig::FACE_ALIASES.iter().map(|(n, _)| n.to_string()))
             .chain(aria_core::PARAMETER_SPECS.iter().map(|s| s.0.into()))
             .chain(inputs.keys().cloned())
             .collect();
@@ -953,19 +970,26 @@ impl InputMonitor {
     }
 }
 
-const CATEGORIES: [&str; 6] = [
+const CATEGORIES: [&str; 7] = [
     "Head & body",
     "Eyes & brows",
     "Mouth & expression",
     "Hair, ears & tail",
     "Clothing & accessories",
     "Other controls",
+    "Controller & hands",
 ];
 
 fn control_category(p: &RigParameter, labels: &BTreeMap<String, String>) -> &'static str {
     let name = format!("{} {}", p.id, labels.get(&p.id).map_or("", String::as_str)).to_lowercase();
     // Presentation only: never change a binding based on a guessed category.
-    if ["hair", "ear", "tail"].iter().any(|s| name.contains(s)) {
+    if ["pad", "stick", "button", "lindex", "rindex"]
+        .iter()
+        .any(|s| name.contains(s))
+        || ["ParamL1", "ParamL2", "ParamR1", "ParamR2"].contains(&p.id.as_str())
+    {
+        CATEGORIES[6]
+    } else if ["hair", "ear", "tail"].iter().any(|s| name.contains(s)) {
         CATEGORIES[3]
     } else if ["eye", "brow", "pupil", "iris"]
         .iter()

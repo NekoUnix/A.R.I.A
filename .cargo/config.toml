@@ -1,0 +1,5 @@
+[env]
+# SDL2's bundled CMake project predates CMake 4's minimum policy version.
+CMAKE_POLICY_VERSION_MINIMUM = "3.5"
+# SDL2 predates C23's bool keywords; keep native GNU C dependencies on C11.
+CFLAGS_x86_64_pc_windows_gnu = "-std=gnu11"

@@ -16,6 +16,18 @@ pub struct Entry {
     expression: Expression,
     missing: Vec<String>,
 }
+impl Entry {
+    /// Suggestions only: imported expressions still require the user's toggle.
+    pub fn is_controller_pose(&self) -> bool {
+        let name = self.file.name.to_ascii_lowercase();
+        name.contains("controller")
+            || name.contains("gamepad")
+            || self.expression.parameters.iter().any(|p| {
+                let id = p.id.to_ascii_lowercase();
+                id.contains("controller") || id.contains("gamepad") || id == "parampadon"
+            })
+    }
+}
 #[derive(Default)]
 pub struct ExpressionsPanel {
     pub entries: Vec<Entry>,
@@ -34,6 +46,37 @@ pub struct Actions {
     pub message: Option<String>,
 }
 impl ExpressionsPanel {
+    pub fn controller_poses_ui(&self, ui: &mut egui::Ui, saved: &mut SavedRig) -> Actions {
+        let mut actions = Actions::default();
+        if !self.entries.iter().any(Entry::is_controller_pose) {
+            return actions;
+        }
+        crate::theme::category(
+            ui,
+            "controller-poses",
+            "Avatar controller poses",
+            true,
+            |ui| {
+                ui.label("This avatar has expressions for its controller artwork. Enable the appropriate pose to show its arms or gamepad.");
+                for entry in self.entries.iter().filter(|e| e.is_controller_pose()) {
+                    let mut enabled = saved.config.expressions.contains(&entry.file.id);
+                    if crate::help::control(ui, "controller", |ui| {
+                        ui.add_enabled(
+                            saved.config.pose.mode != PoseMode::Frozen,
+                            egui::Checkbox::new(&mut enabled, &entry.file.name),
+                        )
+                    })
+                    .changed()
+                    {
+                        actions.message = self.toggle(&entry.file.id, saved);
+                        actions.save = true;
+                    }
+                }
+                ui.small("These are the same toggles as Avatar → Expressions, where you can assign hotkeys. They save with this avatar.");
+            },
+        );
+        actions
+    }
     pub fn load(
         &mut self,
         files: &[ExpressionFile],

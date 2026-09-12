@@ -1,5 +1,11 @@
 # Windows setup and operation
 
+ARIA v0.21 adds direct gamepad input and fixes rejected Live2D `NP_*` assignments.
+Open **Inspector → Tracking → Controller** to select a device and adjust response.
+Xbox, PlayStation, Switch and other SDL-mapped controllers work alongside iPhone
+tracking; unrecognized joysticks can use a custom SDL2 layout.
+[Setup, input meanings and troubleshooting](controllers.md).
+
 ARIA v0.19 adds animated VRM 0.x / 1.0 avatars to guided import.
 Choose **Avatar & appearance → Import VRM avatar**, select your `.vrm`, review
 its metadata, then Import. No Cubism SDK is needed for VRM. Phone tracking,
@@ -46,7 +52,7 @@ systems and Windows ARM64 are not verified release targets yet.
 1. Visit [the Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml).
 2. Select a green, successful run on `main` for the version you want.
 3. Under **Artifacts**, download **aria-windows-x64**. Sign in to GitHub if asked.
-4. Extract the downloaded artifact. Extract `aria-0.20.0-windows-x64.zip` inside it
+4. Extract the downloaded artifact. Extract `aria-0.21.0-windows-x64.zip` inside it
    into a normal writable folder, for example `C:\Apps\ARIA`.
 5. Double-click **aria-desktop.exe**. The default source is Demo and Mica should move.
 
@@ -69,6 +75,10 @@ is optional; neither replaces the compiler/linker.
 2. Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022).
    In the installer select **Desktop development with C++**. Include the MSVC x64/x86
    compiler and a Windows 10 or Windows 11 SDK. The full Visual Studio IDE is optional.
+   Include **C++ CMake tools for Windows**, or install CMake separately and add it
+   to PATH (`cmake --version`). SDL2 builds from its pinned dependency source and
+   links statically; end users need no separate SDL DLL. The repository supplies
+   CMake 4 compatibility and a GNU C11 flag for newer MinGW compilers.
 3. Install Rust using the official [Windows rustup installer](https://rust-lang.org/install.html).
    Keep the `x86_64-pc-windows-msvc` default. Rustup may offer to install the C++
    prerequisites itself. See the official [Windows Rust setup guide](https://learn.microsoft.com/en-us/windows/dev-environment/rust/setup).

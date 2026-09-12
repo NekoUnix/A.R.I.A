@@ -6,6 +6,7 @@ mod avatar_import;
 mod broadcast;
 mod chat;
 mod chroma;
+mod controller;
 mod cubism_render;
 mod deformation;
 mod effect_api;

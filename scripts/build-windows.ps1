@@ -8,6 +8,9 @@ $ariaRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
     throw 'Cargo was not found. Install Rust and MSVC C++ Build Tools; see docs/windows.md.'
 }
+if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
+    throw 'CMake was not found. Install C++ CMake tools for Windows; see docs/windows.md.'
+}
 Push-Location -LiteralPath $ariaRoot
 try {
     $ariaHost = (& rustc -vV | Select-String '^host: ').ToString().Substring(6).Trim()
@@ -21,7 +24,7 @@ try {
     & cargo build --locked --release --workspace
     if ($LASTEXITCODE -ne 0) { throw 'Rust build failed; no package was produced.' }
 
-    $ariaVersion = '0.20.0'
+    $ariaVersion = '0.21.0'
     $ariaDist = Join-Path $ariaRoot 'dist'
     $ariaStage = Join-Path $ariaDist ('staging\' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force -Path $ariaStage | Out-Null
