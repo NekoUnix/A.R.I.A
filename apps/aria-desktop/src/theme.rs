@@ -1,12 +1,51 @@
 use eframe::egui::{self, Color32, RichText, Stroke};
 
-pub const BG: Color32 = Color32::from_rgb(28, 28, 30);
-pub const PANEL: Color32 = Color32::from_rgb(36, 36, 38);
-pub const CARD: Color32 = Color32::from_rgb(44, 44, 46);
-pub const MINT: Color32 = Color32::from_rgb(10, 132, 255);
-pub const MUTED: Color32 = Color32::from_rgb(162, 162, 169);
-pub const TEXT: Color32 = Color32::from_rgb(242, 242, 247);
-pub const BORDER: Color32 = Color32::from_rgb(58, 58, 62);
+pub const BG: Color32 = Color32::from_rgb(23, 25, 32);
+pub const PANEL: Color32 = Color32::from_rgb(30, 33, 42);
+pub const CARD: Color32 = Color32::from_rgb(40, 44, 56);
+pub const MINT: Color32 = Color32::from_rgb(100, 173, 255);
+pub const MUTED: Color32 = Color32::from_rgb(169, 179, 197);
+pub const TEXT: Color32 = Color32::from_rgb(240, 244, 250);
+pub const BORDER: Color32 = Color32::from_rgb(61, 66, 83);
+pub const TEAL: Color32 = Color32::from_rgb(100, 215, 200);
+pub const PURPLE: Color32 = Color32::from_rgb(188, 157, 255);
+pub const ORANGE: Color32 = Color32::from_rgb(255, 183, 112);
+pub const PINK: Color32 = Color32::from_rgb(244, 146, 188);
+
+/// Solid category accents; no blur, extra render targets or animated decoration.
+pub fn accent(title: &str) -> Color32 {
+    let title = title.to_ascii_lowercase();
+    if ["physics", "spring", "tracking", "input", "microphone"]
+        .iter()
+        .any(|s| title.contains(s))
+    {
+        TEAL
+    } else if ["expression", "image", "appearance", "avatar", "vrm", "view"]
+        .iter()
+        .any(|s| title.contains(s))
+    {
+        PURPLE
+    } else if ["object", "pin", "placement", "throw", "liquid", "effect"]
+        .iter()
+        .any(|s| title.contains(s))
+    {
+        ORANGE
+    } else if ["chat", "preset", "pose", "hotkey", "keyboard"]
+        .iter()
+        .any(|s| title.contains(s))
+    {
+        PINK
+    } else {
+        MINT
+    }
+}
+fn wash(color: Color32) -> Color32 {
+    Color32::from_rgb(
+        ((u16::from(CARD.r()) * 4 + u16::from(color.r())) / 5) as u8,
+        ((u16::from(CARD.g()) * 4 + u16::from(color.g())) / 5) as u8,
+        ((u16::from(CARD.b()) * 4 + u16::from(color.b())) / 5) as u8,
+    )
+}
 
 pub fn install(ctx: &egui::Context) {
     ctx.set_theme(egui::Theme::Dark);
@@ -46,14 +85,14 @@ pub fn install(ctx: &egui::Context) {
         &mut style.visuals.widgets.open,
         &mut style.visuals.widgets.noninteractive,
     ] {
-        widget.corner_radius = 5.into();
+        widget.corner_radius = 7.into();
         widget.bg_stroke = Stroke::new(1.0_f32, BORDER);
         widget.fg_stroke = Stroke::new(1.0_f32, TEXT);
     }
-    style.visuals.widgets.inactive.weak_bg_fill = Color32::from_rgb(58, 58, 62);
-    style.visuals.widgets.inactive.bg_fill = Color32::from_rgb(58, 58, 62);
-    style.visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(72, 72, 77);
-    style.visuals.widgets.hovered.bg_fill = Color32::from_rgb(72, 72, 77);
+    style.visuals.widgets.inactive.weak_bg_fill = Color32::from_rgb(50, 55, 70);
+    style.visuals.widgets.inactive.bg_fill = Color32::from_rgb(50, 55, 70);
+    style.visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(64, 72, 91);
+    style.visuals.widgets.hovered.bg_fill = Color32::from_rgb(64, 72, 91);
     style.visuals.widgets.active.bg_fill = Color32::from_rgb(42, 84, 132);
     style.visuals.widgets.active.weak_bg_fill = Color32::from_rgb(42, 84, 132);
     style.visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, BORDER);
@@ -82,7 +121,7 @@ pub fn card(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
     egui::Frame::new()
         .fill(CARD)
         .stroke(Stroke::new(1.0_f32, BORDER))
-        .corner_radius(8)
+        .corner_radius(10)
         .inner_margin(8.0)
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -131,6 +170,9 @@ pub fn category(
             state.set_open(title == "Streaming chat");
         }
         ui.horizontal(|ui| {
+            let color = accent(title);
+            let (badge, _) = ui.allocate_exact_size(egui::vec2(7.0, 16.0), egui::Sense::hover());
+            ui.painter().rect_filled(badge, 3.0, color);
             let (_, toggle) = ui.allocate_exact_size(egui::vec2(16.0, 22.0), egui::Sense::click());
             egui::collapsing_header::paint_default_icon(ui, state.openness(ui.ctx()), &toggle);
             if toggle.clicked() {
@@ -138,7 +180,7 @@ pub fn category(
             }
             if ui
                 .add(
-                    egui::Label::new(RichText::new(title).strong().color(TEXT))
+                    egui::Label::new(RichText::new(title).strong().color(color))
                         .sense(egui::Sense::click()),
                 )
                 .clicked()
@@ -173,16 +215,24 @@ pub fn segments<T: Copy + PartialEq>(ui: &mut egui::Ui, selected: &mut T, option
                         RichText::new(label)
                             .size(12.0)
                             .color(if active { TEXT } else { MUTED });
+                    let color = accent(label);
                     let button = egui::Button::new(text)
                         .fill(if active {
-                            CARD
+                            wash(color)
                         } else {
                             egui::Color32::TRANSPARENT
                         })
                         .stroke(Stroke::NONE)
                         .corner_radius(5)
                         .selected(active);
-                    if ui.add_sized([width, 25.0], button).clicked() {
+                    let response = ui
+                        .scope(|ui| {
+                            ui.visuals_mut().selection.bg_fill = wash(color);
+                            ui.visuals_mut().selection.stroke = Stroke::new(1.0_f32, color);
+                            ui.add_sized([width, 25.0], button)
+                        })
+                        .inner;
+                    if response.clicked() {
                         *selected = value;
                     }
                 }

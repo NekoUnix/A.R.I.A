@@ -81,6 +81,13 @@ impl Default for InputRule {
 /// Surface vertices are stable within a model's content-based profile identity.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Pin {
+    VrmSurface {
+        geometry: usize,
+        vertices: [u32; 3],
+        weights: [f32; 3],
+        angle: f32,
+        length: f32,
+    },
     Surface {
         mesh: usize,
         vertices: [u16; 3],
@@ -205,6 +212,29 @@ pub fn validate(items: &[Item]) -> Result<()> {
             "Invalid Object input rule"
         );
         match &item.pin {
+            Some(Pin::VrmSurface {
+                geometry,
+                vertices,
+                weights,
+                angle,
+                length,
+            }) => {
+                ensure!(
+                    *geometry < 100_000
+                        && vertices.iter().all(|v| *v < 2_000_000)
+                        && vertices[0] != vertices[1]
+                        && vertices[1] != vertices[2]
+                        && vertices[0] != vertices[2]
+                        && weights
+                            .iter()
+                            .all(|v| v.is_finite() && (-0.001..=1.001).contains(v))
+                        && (weights.iter().sum::<f32>() - 1.0).abs() < 0.001
+                        && angle.is_finite()
+                        && length.is_finite()
+                        && *length > 1e-7,
+                    "Invalid VRM surface pin"
+                );
+            }
             Some(Pin::Surface {
                 mesh,
                 vertices,

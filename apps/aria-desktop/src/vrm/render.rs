@@ -53,6 +53,7 @@ pub struct Renderer {
     pub lease: Arc<ModelTexture>,
     pub bytes: u64,
     palette: crate::chroma::Palette,
+    projection: Mat4,
 }
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 impl Renderer {
@@ -317,10 +318,30 @@ impl Renderer {
             lease,
             bytes,
             palette,
+            projection: Mat4::IDENTITY,
         })
     }
     pub fn palette(&self) -> crate::chroma::Palette {
         self.palette.clone()
+    }
+    /// Same morphed vertices and skin matrices as the GPU, evaluated only for pins.
+    pub fn projected_vertex(&self, geometry: usize, vertex: u32) -> Option<Vec3> {
+        let g = self.geometry.get(geometry)?;
+        let v = g.staging.get(vertex as usize)?;
+        let mut world = glam::Vec4::ZERO;
+        for (&joint, &weight) in v.joints.iter().zip(&v.weights) {
+            if weight == 0.0 {
+                continue;
+            }
+            let m = Mat4::from_cols_array_2d(&g.palette.get(joint as usize)?.position);
+            world += (m * Vec3::from(v.position).extend(1.0)) * weight;
+        }
+        let clip = self.projection * world;
+        if !clip.is_finite() || clip.w.abs() < 1e-6 {
+            return None;
+        }
+        let ndc = clip.truncate() / clip.w;
+        Some(Vec3::new(ndc.x * 0.375, -ndc.y * 0.5, ndc.z))
     }
     pub fn render(
         &mut self,
@@ -390,6 +411,7 @@ impl Renderer {
             0.01,
             distance * 3.,
         );
+        self.projection = projection * view * asset.front;
         let frame = Frame {
             vp: (projection * view).to_cols_array_2d(),
             front: asset.front.to_cols_array_2d(),

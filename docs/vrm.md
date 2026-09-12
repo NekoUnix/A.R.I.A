@@ -6,7 +6,7 @@ renders them using wgpu/DX12. Unity and Cubism Core are not required for VRM.
 
 ## Import and run
 
-1. Extract `aria-0.19.0-windows-x64.zip` and run `aria-desktop.exe`.
+1. Extract `aria-0.20.0-windows-x64.zip` and run `aria-desktop.exe`.
 2. Open **Avatar & appearance → Import VRM avatar…**. If another avatar is active,
    use **Change avatar / type… → VRM 3D avatar**.
 3. Choose a `.vrm` file, review its author, declared license and rig summary,
@@ -86,8 +86,10 @@ Landscape, portrait and freeform outputs use the existing output controls,
 Spout senders, backgrounds, chroma-color selection, dragging and mouse-wheel zoom.
 They all share one transparent 3D render; they do not simulate three independent
 avatars. Their camera angle is shared, while output position and scale are separate.
-PNG/stage objects and throw/spray effects remain available. Live2D ArtMesh pins
-are specific to Live2D; VRM does not expose bone/surface attachment selection yet.
+PNG/stage objects and throw/spray effects remain available. VRM surface pins follow the clicked triangle through skinning, morphs and camera
+changes. Choose a pin point in Stage objects, then drag to adjust its offset.
+Accessories are flat stage overlays with front/behind ordering; they do not
+become 3D props or receive per-pixel depth occlusion.
 
 VRM quality sets the transparent canvas height: 512, 1024, 1536, 2048, 3072 or 4096
 pixels, with a 3:4 aspect ratio and four-sample anti-aliasing. Higher quality uses

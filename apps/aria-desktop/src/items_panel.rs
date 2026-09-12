@@ -20,7 +20,7 @@ impl Items {
         let global = saved.global_hotkeys;
         theme::caption(
             ui,
-            "Drop PNGs or Live2D exports onto Your stage. Select and drag an object, then pin it to your avatar. Each object keeps its own settings.",
+            "Drop PNGs, GIFs or Live2D exports onto Your stage. Select and drag an object, then pin it to your avatar. Each object keeps its own settings.",
         );
         ui.horizontal_wrapped(|ui| {
             if help::control(ui, "model-items", |ui| ui.button("Add objects…")).clicked()
@@ -134,7 +134,7 @@ impl Items {
             });
             self.models.panel(ui,item);
             theme::category(ui,"png-pin","Pin to avatar",true,|ui| {
-                help::label(ui,match &item.pin { None => "Free on canvas".into(), Some(Pin::Puppet {..}) => "Pinned to puppet movement".into(), Some(Pin::Surface { mesh,..}) => format!("Pinned to ArtMesh #{}",mesh+1) },"png-pins");
+                help::label(ui,match &item.pin { None => "Free on canvas".into(), Some(Pin::Puppet {..}) => "Pinned to PNG / GIF movement".into(), Some(Pin::VrmSurface {geometry,..}) => format!("Pinned to VRM surface #{}",geometry+1), Some(Pin::Surface { mesh,..}) => format!("Pinned to ArtMesh #{}",mesh+1) },"png-pins");
                 if self.draws.iter().any(|d| d.item.id == id && d.anchor == crate::items::Anchor::Missing) {
                     ui.colored_label(egui::Color32::LIGHT_RED,"Pin surface unavailable. Choose a new pin point.");
                 }
@@ -143,7 +143,7 @@ impl Items {
                     if help::control(ui,"png-pins",|ui| ui.button("Pin here")).clicked() { self.pin_here = true; }
                     if help::control(ui,"png-pins",|ui| ui.add_enabled(item.pin.is_some(),egui::Button::new("Unpin"))).clicked() { self.unpin = true; }
                 });
-                theme::caption(ui,"Choose pin point, then click the model where this object should attach. Pin here uses the object's center. Drag a pinned object to fine-tune its offset.");
+                theme::caption(ui,"Choose pin point, then click the avatar. Live2D and VRM pins follow mesh motion; PNG/GIF pins follow the artwork, tracking and action animations. Pin here uses the object's center. Drag a pinned object to fine-tune its offset. Unlock stage dragging if it will not move.");
                 help::control(ui,"png-pins",|ui| ui.checkbox(&mut item.follow_rotation,"Follow pin rotation"));
                 help::control(ui,"png-pins",|ui| ui.checkbox(&mut item.follow_scale,"Follow surface stretch"));
                 help::control(ui,"png-pins",|ui| ui.checkbox(&mut item.follow_visibility,"Follow surface visibility"));

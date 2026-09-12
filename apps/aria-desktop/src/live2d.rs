@@ -119,6 +119,9 @@ impl Avatar {
     pub fn image_bounds(&self) -> eframe::egui::Rect {
         self.renderer.bounds
     }
+    pub fn view_canvas(&self) -> aria_live2d::Canvas {
+        self.renderer.view_canvas
+    }
     pub fn reset_motion(&mut self) {
         if let Some(physics) = &mut self.physics {
             physics.reset();
@@ -194,6 +197,63 @@ fn read_labels(path: &Path) -> Result<BTreeMap<String, String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[cfg(windows)]
+    #[ignore = "requires ARIA_TEST_MODEL_FOLDER, Cubism Core and DX12"]
+    fn nested_model_library_renders_full_geometry() {
+        let state = crate::spout::tests::gpu_state();
+        let root = std::env::var_os("ARIA_TEST_MODEL_FOLDER").unwrap();
+        let core = std::env::var_os("ARIA_CUBISM_CORE").unwrap();
+        let models = aria_model::discover_models(Path::new(&root)).unwrap();
+        assert!(!models.is_empty());
+        for (index, path) in models.iter().enumerate() {
+            let mut a = Avatar::load(
+                &state,
+                Path::new(&core),
+                aria_model::load_files(path).unwrap(),
+            )
+            .unwrap();
+            let original = a.model.canvas;
+            let view = a.view_canvas();
+            println!(
+                "Export {index}: {} | {} atlases, {} meshes | declared {:?}, full view {:?}",
+                a.name,
+                a.files.textures.len(),
+                a.model.drawables.len(),
+                original.size,
+                view.size
+            );
+            if let Some(folder) = std::env::var_os("ARIA_TEST_RENDER_DIR") {
+                a.save_png(&Path::new(&folder).join(format!("friend-{index}.png")))
+                    .unwrap();
+            }
+            for extreme in [false, true] {
+                for p in a.model.parameters().to_vec().iter().filter(|p| {
+                    p.id.starts_with("ParamAngle") || p.id.starts_with("ParamBodyAngle")
+                }) {
+                    a.model
+                        .set_parameter(&p.id, if extreme { p.max } else { p.min });
+                }
+                a.model.update().unwrap();
+                a.renderer.render(original, &a.model.drawables).unwrap();
+                let c = a.view_canvas();
+                for p in a
+                    .model
+                    .drawables
+                    .iter()
+                    .filter(|d| d.visible && d.opacity > 0.0)
+                    .flat_map(|d| &d.positions)
+                {
+                    for (axis, coordinate) in p.iter().enumerate() {
+                        let v = (coordinate * c.pixels_per_unit + c.origin[axis]) / c.size[axis];
+                        assert!((0.0..=1.0).contains(&v), "Clipped mesh in {}", a.name);
+                    }
+                }
+            }
+            let (rgba, _) = a.renderer.read_rgba_for_test().unwrap();
+            assert!(rgba.as_chunks::<4>().0.iter().any(|p| p[3] > 0));
+        }
+    }
     #[test]
     #[cfg(windows)]
     #[ignore = "requires local Cubism Core, test model and DX12 GPU"]

@@ -56,6 +56,8 @@ pub struct Wizard {
     pub artwork: Vec<Artwork>,
     pub budget: u32,
     pub model: Option<PathBuf>,
+    folder: Option<PathBuf>,
+    candidates: Vec<PathBuf>,
     step: usize,
     model_summary: Option<Result<String, String>>,
     pub error: Option<String>,
@@ -69,6 +71,8 @@ impl Default for Wizard {
             artwork: Vec::new(),
             budget: aria_core::asset_limits::GIF_PLAYBACK_MIB,
             model: None,
+            folder: None,
+            candidates: Vec::new(),
             step: 0,
             model_summary: None,
             error: None,
@@ -80,6 +84,8 @@ impl Wizard {
     fn choose(&mut self, kind: Kind) {
         if self.kind != Some(kind) {
             self.model = None;
+            self.folder = None;
+            self.candidates.clear();
             self.model_summary = None;
             self.error = None;
         }
@@ -93,6 +99,19 @@ impl Wizard {
             kind,
             ..Self::default()
         };
+    }
+    pub fn folder(&mut self, path: PathBuf) {
+        self.start(Some(Kind::Live2d));
+        match aria_model::discover_models(&path) {
+            Ok(paths) => {
+                if paths.len() == 1 {
+                    self.model = paths.first().cloned();
+                }
+                self.candidates = paths;
+                self.folder = Some(path.canonicalize().unwrap_or(path));
+            }
+            Err(e) => self.error = Some(format!("{e:#}")),
+        }
     }
     pub fn add(&mut self, paths: Vec<PathBuf>) {
         for path in paths {
@@ -206,6 +225,17 @@ impl Wizard {
                     } else {
                         ui.label("Choose the exported .model3.json, or its .moc3 with a matching manifest beside it. Keep the atlas PNGs, physics and expressions in the exported folder structure.");
                         if ui.button("Choose Live2D export…").clicked() && let Some(path)=rfd::FileDialog::new().add_filter("Cubism export",&["json","moc3"]).pick_file(){self.model=Some(path);self.model_summary=None;self.error=None;}
+                        if help::control(ui,"live2d-folders",|ui|ui.button("Choose model folder…")).clicked() && let Some(path)=rfd::FileDialog::new().pick_folder(){self.folder(path);}
+                        if let Some(folder)=&self.folder {
+                            theme::caption(ui,format!("{} exports found in {}",self.candidates.len(),folder.display()));
+                            egui::ScrollArea::vertical().id_salt("folder-models").max_height(165.0).show(ui,|ui|{
+                                for path in &self.candidates {
+                                    let label=path.strip_prefix(folder).unwrap_or(path).display().to_string();
+                                    if ui.selectable_label(self.model.as_ref()==Some(path),label).clicked(){self.model=Some(path.clone());self.model_summary=None;self.error=None;}
+                                }
+                            });
+                        }
+                        theme::caption(ui,"Nested folders, spaces and Unicode names are supported. Extract ZIP/RAR downloads first. For OneDrive, choose Always keep on this device before importing.");
                         if let Some(path)=&self.model {ui.label(path.display().to_string());}
                         help::label(ui,"Cubism Core x64 runtime","runtime");
                         ui.label("Select Core/dll/windows/x86_64/Live2DCubismCore.dll from the official Native SDK. ARIA remembers this path.");

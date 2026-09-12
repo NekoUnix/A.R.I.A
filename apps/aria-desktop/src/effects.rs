@@ -192,7 +192,7 @@ impl Effects {
                 if p.hit && !p.pin_checked {
                     let surface = if let Some(a) = avatar {
                         crate::items::pick_surface(
-                            a.model.canvas,
+                            a.view_canvas(),
                             &a.model.drawables,
                             egui::vec2(p.target[0], p.target[1]),
                         )

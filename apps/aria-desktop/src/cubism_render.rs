@@ -8,6 +8,52 @@ use std::{fs::File, io::BufReader, num::NonZeroU64, ops::Range, path::PathBuf};
 use wgpu::util::DeviceExt;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+
+/// Grow the view to contain every visible ArtMesh, including revealed expressions.
+/// Keep the texture's aspect ratio and never shrink on animation frames, avoiding
+/// breathing/zoom jitter. Only projection changes; GPU allocations remain fixed.
+fn fit_canvas(original: Canvas, drawables: &[Drawable], previous: Option<Canvas>) -> Canvas {
+    let base = previous.unwrap_or(original);
+    let mut min = if previous.is_some() {
+        egui::vec2(-base.origin[0], -base.origin[1])
+    } else {
+        egui::Vec2::INFINITY
+    };
+    let mut max = if previous.is_some() {
+        min + egui::vec2(base.size[0], base.size[1])
+    } else {
+        -egui::Vec2::INFINITY
+    };
+    let old_min = min;
+    let old_max = max;
+    for p in drawables
+        .iter()
+        .filter(|d| d.visible && d.opacity > 0.0)
+        .flat_map(|d| &d.positions)
+    {
+        let p = egui::vec2(p[0], p[1]) * original.pixels_per_unit;
+        if p.is_finite() {
+            min = min.min(p);
+            max = max.max(p);
+        }
+    }
+    if !min.is_finite() || !max.is_finite() || (max - min).max_elem() < 1e-5 {
+        return base;
+    }
+    if previous.is_some() && min == old_min && max == old_max {
+        return base;
+    }
+    let center = (min + max) * 0.5;
+    let aspect = original.size[0] / original.size[1];
+    let height = (max.y - min.y).max((max.x - min.x) / aspect) * 1.04;
+    let size = egui::vec2(height * aspect, height);
+    let origin = size * 0.5 - center;
+    Canvas {
+        size: [size.x, size.y],
+        origin: [origin.x, origin.y],
+        pixels_per_unit: original.pixels_per_unit,
+    }
+}
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct Vertex {
@@ -70,9 +116,14 @@ pub struct ModelRenderer {
     style_staging: Vec<u8>,
     order: Vec<usize>,
     pub bounds: egui::Rect,
+    pub view_canvas: Canvas,
 }
 
 impl ModelRenderer {
+    #[cfg(test)]
+    pub fn read_rgba_for_test(&self) -> Result<(Vec<u8>, [u32; 2])> {
+        self.read_rgba()
+    }
     #[cfg(test)]
     pub fn vertex_staging_capacity(&self) -> usize {
         self.vertex_staging.capacity()
@@ -277,6 +328,7 @@ impl ModelRenderer {
                 ],
             }));
         }
+        let view_canvas = fit_canvas(canvas, drawables, None);
         let canvas = canvas.size;
         let scale = 2048.0 / canvas[0].max(canvas[1]);
         let width = (canvas[0] * scale).round().max(16.0) as u32;
@@ -441,6 +493,7 @@ impl ModelRenderer {
             import_notes,
             palette,
             bounds: egui::Rect::NOTHING,
+            view_canvas,
         })
     }
 
@@ -450,10 +503,11 @@ impl ModelRenderer {
                 && self.vertex_count == drawables.iter().map(|d| d.positions.len()).sum::<usize>(),
             "Model topology changed unexpectedly"
         );
+        self.view_canvas = fit_canvas(canvas, drawables, Some(self.view_canvas));
         let vertices = &mut self.vertex_staging;
         vertices.clear();
         let uniform_bytes = &mut self.style_staging;
-        let c = canvas;
+        let c = self.view_canvas;
         let mut bounds = egui::Rect::NOTHING;
         for (i, d) in drawables.iter().enumerate() {
             vertices.extend(d.positions.iter().zip(&d.uvs).map(|(p, &uv)| Vertex {
@@ -801,6 +855,37 @@ mod tests {
                 "Actual {actual:?}, expected {expected:?}"
             );
         }
+    }
+    #[test]
+    fn canvas_fits_off_canvas_meshes_and_grows_without_shrinking_or_reallocating() {
+        let canvas = Canvas {
+            size: [100., 200.],
+            origin: [50., 100.],
+            pixels_per_unit: 100.,
+        };
+        let mut d = quad(0, 0, 1.0);
+        d.positions = vec![[-1.4, -2.2], [1.8, -2.2], [1.8, 2.3], [-1.4, 2.3]];
+        d.visible = true;
+        let view = fit_canvas(canvas, &[d.clone()], None);
+        let check = |view: Canvas, d: &Drawable| {
+            assert!((view.size[0] / view.size[1] - 0.5).abs() < 1e-6);
+            for p in &d.positions {
+                for (axis, coordinate) in p.iter().enumerate() {
+                    let value =
+                        (coordinate * view.pixels_per_unit + view.origin[axis]) / view.size[axis];
+                    assert!((0.0..1.0).contains(&value), "Clipped axis {axis}: {value}");
+                }
+            }
+        };
+        check(view, &d);
+        d.positions[0][0] = -3.0;
+        let grown = fit_canvas(canvas, &[d.clone()], Some(view));
+        check(grown, &d);
+        assert!(grown.size[1] > view.size[1]);
+        d.positions = vec![[0., 0.]; 4];
+        let settled = fit_canvas(canvas, &[d], Some(grown));
+        assert_eq!(settled.size, grown.size);
+        assert_eq!(settled.origin, grown.origin);
     }
     #[test]
     #[ignore = "requires a graphics adapter; no Cubism SDK or model needed"]

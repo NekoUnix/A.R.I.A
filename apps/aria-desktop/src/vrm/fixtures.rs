@@ -235,6 +235,12 @@ fn both_versions_render_and_morph_on_gpu() {
             .unwrap();
         let before = a.renderer.read_rgba().unwrap();
         assert!(before.as_chunks::<4>().0.iter().any(|p| p[3] > 0));
+        let pin = a
+            .pick_pin(eframe::egui::Vec2::ZERO)
+            .expect("Pick rendered triangle");
+        let pin: aria_core::items::Pin =
+            serde_json::from_str(&serde_json::to_string(&pin).unwrap()).unwrap();
+        let before_pin = a.resolve_pin(&pin);
         a.update(
             &Inputs::from([("ParamMouthOpenY".into(), 1.)]),
             &mut config,
@@ -246,5 +252,25 @@ fn both_versions_render_and_morph_on_gpu() {
             before != a.renderer.read_rgba().unwrap(),
             "Morph must change rendered fixture"
         );
+        let morphed_pin = a.resolve_pin(&pin);
+        assert_ne!(before_pin, morphed_pin, "Pin must follow facial morphs");
+        config.vrm.yaw = 25.;
+        a.update(
+            &Inputs::from([("ParamMouthOpenY".into(), 1.)]),
+            &mut config,
+            &mut expressions,
+            1. / 60.,
+        )
+        .unwrap();
+        assert_ne!(
+            morphed_pin,
+            a.resolve_pin(&pin),
+            "Pin follows camera projection"
+        );
+        let mut broken = pin.clone();
+        if let aria_core::items::Pin::VrmSurface { vertices, .. } = &mut broken {
+            vertices[0] = u32::MAX;
+        }
+        assert_eq!(a.resolve_pin(&broken), crate::items::Anchor::Missing);
     }
 }

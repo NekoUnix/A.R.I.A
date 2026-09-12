@@ -297,10 +297,74 @@ fn discover_expressions(
     files
 }
 
-/// Accept a model3.json, or locate its manifest when the user selects a moc3.
+/// Find exports inside nested download/extraction folders, preserving their layout.
+pub fn discover_models(folder: &Path) -> Result<Vec<PathBuf>> {
+    let root = folder.canonicalize().context("Cannot open avatar folder")?;
+    ensure!(root.is_dir(), "Choose an extracted model folder");
+    let mut pending = vec![(root.clone(), 0)];
+    let mut seen = BTreeSet::new();
+    let mut models = BTreeSet::new();
+    let mut count = 0;
+    while let Some((dir, depth)) = pending.pop() {
+        if !seen.insert(dir.clone()) {
+            continue;
+        }
+        for entry in fs::read_dir(&dir).with_context(|| format!("Cannot read {}", dir.display()))? {
+            count += 1;
+            ensure!(
+                count <= 20000,
+                "Folder scan exceeds 20,000 entries; choose a smaller model folder"
+            );
+            let path = entry?.path();
+            // Windows junctions and OneDrive entries are resolved before traversal.
+            let resolved = path.canonicalize().with_context(|| {
+                format!(
+                    "Cannot access {}; make this OneDrive folder available offline",
+                    path.display()
+                )
+            })?;
+            if !resolved.starts_with(&root) {
+                continue;
+            }
+            if resolved.is_dir() {
+                ensure!(
+                    depth < 16,
+                    "Folder nesting exceeds 16 levels; choose a folder closer to the export"
+                );
+                pending.push((resolved, depth + 1));
+            } else if resolved.file_name().is_some_and(|n| {
+                n.to_string_lossy()
+                    .to_ascii_lowercase()
+                    .ends_with(".model3.json")
+            }) {
+                models.insert(resolved);
+                ensure!(
+                    models.len() <= 256,
+                    "More than 256 exports found; choose a smaller folder"
+                );
+            }
+        }
+    }
+    ensure!(
+        !models.is_empty(),
+        "No .model3.json exports found. Extract ZIP/RAR downloads first, then select the extracted folder. Keep each model's textures and sidecar files together."
+    );
+    Ok(models.into_iter().collect())
+}
+
+/// Accept a model3.json, a folder with one export, or locate a moc3's manifest.
 /// Never guess texture ordering from filenames. Bare moc3 files need explicit textures.
 pub fn load_files(path: &Path) -> Result<ModelFiles> {
     let source = path.canonicalize().context("Cannot open avatar")?;
+    if source.is_dir() {
+        let models = discover_models(&source)?;
+        ensure!(
+            models.len() == 1,
+            "Found {} exports. Use the guided folder importer to choose one model.",
+            models.len()
+        );
+        return load_files(&models[0]);
+    }
     if source
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("moc3"))
@@ -440,6 +504,42 @@ pub fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn nested_folders_unicode_spaces_and_ambiguous_libraries_preserve_references() {
+        let dir = tempfile::tempdir().unwrap();
+        let nested = dir.path().join("Friend's Models/下載/yumii-20260506/yumii");
+        fs::create_dir_all(nested.join("Yumii .2048")).unwrap();
+        fs::write(nested.join("Yumii .moc3"), b"fixture").unwrap();
+        fs::write(nested.join("Yumii .2048/texture_00.png"), b"fixture").unwrap();
+        let manifest = nested.join("Yumii .model3.json");
+        fs::write(&manifest, br#"{"Version":3,"FileReferences":{"Moc":"Yumii .moc3","Textures":["Yumii .2048/texture_00.png"]}}"#).unwrap();
+        fs::write(dir.path().join("archive.zip"), b"not an extracted export").unwrap();
+        let found = discover_models(dir.path()).unwrap();
+        assert_eq!(found, vec![manifest.canonicalize().unwrap()]);
+        let files = load_files(dir.path()).unwrap();
+        assert_eq!(
+            files.textures[0],
+            nested
+                .join("Yumii .2048/texture_00.png")
+                .canonicalize()
+                .unwrap()
+        );
+        fs::copy(&manifest, nested.join("alternate.model3.json")).unwrap();
+        assert_eq!(discover_models(dir.path()).unwrap().len(), 2);
+        assert!(
+            load_files(dir.path())
+                .unwrap_err()
+                .to_string()
+                .contains("guided")
+        );
+        let empty = tempfile::tempdir().unwrap();
+        assert!(
+            discover_models(empty.path())
+                .unwrap_err()
+                .to_string()
+                .contains("Extract")
+        );
+    }
     #[test]
     fn large_manifest_loads_and_still_enforces_new_ceiling() {
         use std::io::Write;

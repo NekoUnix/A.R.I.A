@@ -3,6 +3,7 @@ pub mod asset;
 #[cfg(test)]
 mod fixtures;
 pub mod panel;
+mod pins;
 mod render;
 pub mod spring;
 use anyhow::Result;

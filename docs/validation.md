@@ -5,6 +5,31 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Local verification on 2026-09-12
 
+### v0.20 nested exports, full-body rendering and shared pins
+
+- Formatting and strict Clippy passed for every workspace target/feature.
+  **129 default tests passed**, with sixteen environment-dependent tests ignored.
+- The library importer discovered and loaded all four extracted exports then
+  present in the supplied Friend Models folder: 1, 14, 4 and 5 texture atlases,
+  with 167, 284, 455 and 220 ArtMeshes respectively. Nested folders, apostrophes,
+  whitespace before extensions and relative atlas paths remained intact.
+- Native DX12 tests rendered every export and checked that all visible vertices
+  stayed inside the fitted view at minimum/maximum head and body angles. The
+  original mask, inverted-mask, blending, culling and draw-order GPU test passed.
+  Exported images were inspected for complete bodies, hair, feet, wings and tails.
+- Initial fitting ignores hidden off-canvas meshes; newly visible geometry can
+  expand the view. A regression checks that it never shrinks on following frames.
+  The existing transparent texture dimensions and GPU allocation count are retained.
+- Five VRM checks passed, including generated VRM 0.x/1.0 surface selection,
+  serialized pins that follow morphs and camera changes, invalid-index rejection,
+  and the supplied avatar's skinning, expressions, springs and frozen poses.
+- GIF attachment tests compare the pin position to the actual painted artwork
+  during translation, rotation and nonuniform scaling in three canvas shapes.
+  Pointer events verify that a pinned GIF accessory remains draggable.
+- Native UI previews verified the folder chooser, category colors and pinned
+  objects on the supplied GIF and VRM, including transparent composition exports.
+  Private avatars/screenshots stay local. The public screenshot shows only Mica.
+
 ### v0.19 primary VRM avatars
 
 - Formatting and strict Clippy passed for all workspace targets/features.

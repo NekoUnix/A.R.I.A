@@ -378,7 +378,7 @@ Behind the avatar draws the item before the avatar. Otherwise it draws after the
 
 Free items stay in the avatar's canvas framing but do not follow face motion. Pin an item when it should follow a head, hair strand or other animated part. Changing the output's position or wheel zoom moves the complete avatar-and-accessory composition.
 
-## png-pins | Pin an object to a moving surface | Pin here attaches at the item's center. Choose pin point lets you click a moving part of the avatar. Live2D pins follow that mesh's animated vertices.
+## png-pins | Pin an object to a moving surface | Pin here attaches at the item's center. Choose pin point lets you click a moving part of the avatar. Live2D and VRM pins follow mesh animation; PNG/GIF pins follow artwork movement.
 
 @diagram pin
 
@@ -394,7 +394,7 @@ Follow pin rotation uses the triangle's longest edge as an orientation reference
 
 Follow surface visibility multiplies item opacity by the selected mesh's visibility and opacity. Disable it to keep an accessory visible when an expression hides that mesh. This does not apply that mesh's clipping mask to the accessory. If a pin's geometry is missing or collapsed, the accessory is hidden until a usable surface returns or you repin it.
 
-Mica and PNG puppets do not have Cubism meshes, so their pins follow the puppet's head translation and rotation. Surface stretch and mesh-visibility options have no extra effect on those puppets. Unpin keeps the accessory's current position, scale and orientation, then stops motion following. The pin is stored with this avatar's content-based profile, not with the test model or a global mapping.
+PNG/GIF pins follow the incoming artwork state, tracking translation/rotation and action animations such as shake, jump and blip. Follow surface stretch uses the geometric mean of the image's two scale axes; follow visibility includes its action opacity and fade. Crossfades attach to the incoming layer. Mica pins follow its head movement. VRM pins follow the nearest projected mesh triangle through skeletal animation, morphs and camera changes. Selection is triangle-based, so transparent texture holes can require choosing another point. VRM accessories are flat overlays; front/behind ordering is available, but per-pixel 3D occlusion is not applied. Unpin keeps the accessory's current position, scale and orientation, then stops motion following. The pin is stored with this avatar's content-based profile, not with the test model or a global mapping.
 
 ## png-toggles | Named toggles, input rules & hotkeys | Each object has a named visibility toggle. Show it manually, assign a custom keyboard shortcut, or use a tracking input or model parameter to drive its visibility.
 
@@ -1155,3 +1155,33 @@ Each expression exposes a VRMExpression parameter from 0 to 1 in Inputs and Pose
 Eye opening drives separate left/right blink presets when both exist, otherwise the combined blink. Mouth opening drives A (VRM 0.x) or aa (VRM 1.0). The microphone feeds this same input; it is amplitude-based talking, not phoneme recognition. Other vowels and emotions can be toggled or mapped manually. Gaze rotates eye bones or uses look expressions according to the export. Named ARKit custom morph expressions receive matching ARKit input assignments, avoiding duplicate jaw-open/blink/look drivers. Shapes absent from an avatar cannot be manufactured by the runtime.
 
 Automatic blinking adds a short blink about every 4.2 seconds, useful with microphone-only talking. Turn it off when the phone already supplies your blinks. Frozen pose holds both expressions and eye state, with no timed blinking. Resume live before toggling expressions. Save profile persists these choices.
+
+## live2d-folders | Import nested Live2D folders | Choose an extracted folder and select one of the .model3.json exports found inside its subfolders. Names, spaces and Unicode are preserved.
+
+Choose Avatar & appearance → Change avatar / type → Live2D → Choose model folder.
+You can choose an individual export folder or a library containing many models.
+The guide lists relative paths so identical filenames in different folders remain
+distinct. Select one result, review its textures and rig, then import. Dropping a
+folder onto Your stage opens the same guide. A folder passed at launch opens it too.
+
+Extract ZIP/RAR files first with your archive tool. Keep the exported directories,
+atlas ordering and sidecar files intact. ARIA reads each manifest's relative paths;
+it does not rename or flatten the model. For OneDrive, use Always keep on this
+device and wait for its download to finish. A missing file is reported explicitly.
+Scans stay inside the selected folder, resolve duplicate junctions and stop at
+20,000 entries, 256 models or 16 nested levels; choose a smaller folder if needed.
+
+## live2d-framing | Keep the full Live2D avatar visible | The transparent renderer fits the visible ArtMeshes instead of cropping them at the export's declared canvas edge.
+
+On import, ARIA centers all visible geometry with a small margin. Hidden meshes
+parked outside the canvas do not make the avatar tiny. When tracking, physics or
+an expression reveals geometry beyond the current view, that view expands. It
+does not shrink each frame, so normal movement cannot cause repeated zoom jitter.
+Reimport the avatar to refit the current starting view. Mesh masks, attachment
+picking and exports use the same fitted projection. The GPU canvas resolution
+stays fixed, so this fix adds no extra render targets.
+
+Stage/OBS zoom and position are separate controls. Zooming in or dragging an avatar
+beyond an output edge can intentionally crop that output; reduce zoom or reset
+its placement to show the whole avatar. Automatic framing cannot restore missing
+artwork or parts hidden by the model's own opacity parameters or clipping masks.

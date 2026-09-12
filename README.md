@@ -58,7 +58,7 @@ without Unity or Godot.
 > blending remain future work. SDK binaries and model art are not bundled.
 > [Live2D setup and compatibility →](docs/live2d.md)
 
-![A.R.I.A. v0.19 guided avatar import](docs/images/workspace-v19.png)
+![A.R.I.A. v0.19 guided avatar import](docs/images/workspace-v20.png)
 
 Hover a **circled ?** beside a control for its explanation. Click it for the full
 guide in a separate resizable window, or open **Help & documentation** from the
@@ -72,6 +72,13 @@ and performance. Avatar-specific context is captured when you click the control;
 reopen its question mark to refresh those values.
 
 ![Offline help with an input-range diagram](docs/images/help.png)
+
+**New in v0.20:** choose an extracted Live2D folder and select from nested exports;
+automatic full-body framing includes off-canvas meshes. Pin and drag accessories on
+PNG/GIF and VRM avatars using the same stage controls as Live2D. The compact dark
+workspace now uses macOS-style rounded controls and distinct category accents.
+See [model folders and attachments](docs/model-folders-and-pins.md).
+
 
 ## Twitch and YouTube chat
 
@@ -353,7 +360,7 @@ To build a portable bundle with its documentation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 ```
 
-The script runs tests and writes `dist/aria-0.19.0-windows-x64.zip`. See
+The script runs tests and writes `dist/aria-0.20.0-windows-x64.zip`. See
 [architecture](docs/architecture.md) for crate boundaries and
 [validation](docs/validation.md) for what has actually been exercised.
 

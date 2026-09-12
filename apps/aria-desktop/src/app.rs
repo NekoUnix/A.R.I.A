@@ -722,7 +722,7 @@ impl AriaApp {
 
     fn controls_header(&mut self, ui: &mut egui::Ui) {
         section(ui, "WORKSPACE");
-        ui.horizontal_wrapped(|ui| {
+        ui.horizontal(|ui| {
             let name = self
                 .live2d
                 .as_ref()
@@ -730,7 +730,11 @@ impl AriaApp {
                 .or_else(|| self.vrm.as_ref().map(|a| a.asset.summary.name.as_str()))
                 .or_else(|| self.idle.as_ref().map(|s| s.name.as_str()))
                 .unwrap_or("Mica");
-            ui.add(egui::Label::new(RichText::new(name).strong()).truncate());
+            ui.add_sized(
+                [(ui.available_width() - 112.0).max(60.0), 26.0],
+                egui::Label::new(RichText::new(name).strong()).truncate(),
+            )
+            .on_hover_text(name);
             if crate::help::control(ui, "profiles", |ui| ui.small_button("Save profile")).clicked()
             {
                 self.input_monitor.save_requested = true;
@@ -1053,6 +1057,11 @@ impl AriaApp {
                     Some(crate::avatar_import::Kind::Live2d) => {
                         ui.strong("Live2D avatar");
                         if let Some(avatar) = &self.live2d {
+                            crate::help::label(
+                                ui,
+                                "Automatic full-avatar framing",
+                                "live2d-framing",
+                            );
                             ui.label(&avatar.name);
                             ui.small(format!(
                                 "{} parameters · {} physics groups · {} expressions",
@@ -1561,6 +1570,10 @@ impl AriaApp {
         }
     }
     fn open_model(&mut self, path: &Path) {
+        if path.is_dir() {
+            self.importer.folder(path.to_owned());
+            return;
+        }
         if path
             .extension()
             .is_some_and(|e| e.eq_ignore_ascii_case("vrm"))
@@ -1903,6 +1916,8 @@ impl eframe::App for AriaApp {
         #[cfg(feature = "screenshots")]
         if crate::smoke_mode()
             && ctx.current_pass_index() == 0
+            && self.pending_vrm.is_none()
+            && self.pending_image.is_none()
             && let Some(path) = std::env::var_os("ARIA_SMOKE_ITEM")
         {
             let key = egui::Id::new("smoke-drop-png");
@@ -1931,6 +1946,12 @@ impl eframe::App for AriaApp {
             } else {
                 Vec::new()
             };
+        if let Some(path) = dropped_items.iter().find(|p| p.is_dir()).cloned() {
+            self.pending_vrm = None;
+            self.pending_image = None;
+            self.importer.folder(path);
+            dropped_items.retain(|p| !p.is_dir());
+        }
         if let Some(path) = dropped_items
             .iter()
             .find(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("vrm")))
@@ -2137,7 +2158,7 @@ impl eframe::App for AriaApp {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            RichText::new("v0.19 · WINDOWS PREVIEW")
+                            RichText::new("v0.20 · WINDOWS PREVIEW")
                                 .small()
                                 .color(MUTED),
                         );
@@ -2272,17 +2293,22 @@ impl eframe::App for AriaApp {
                         dt,
                     );
                 }
-                self.items
-                    .refresh(&self.input_monitor.saved.config, self.live2d.as_ref());
+                self.items.refresh(
+                    &self.input_monitor.saved.config,
+                    (self.live2d.as_ref(), self.vrm.as_ref()),
+                );
                 let scene = self.scene();
                 let previous_selection = self.items.selected;
                 #[cfg(feature = "screenshots")]
-                if crate::smoke_mode() && std::env::var_os("ARIA_SMOKE_ITEM").is_some() {
+                if crate::smoke_mode()
+                    && std::env::var_os("ARIA_SMOKE_ITEM").is_some()
+                    && !self.input_monitor.saved.config.items.is_empty()
+                {
                     let key = egui::Id::new("smoke-pinned-png");
                     if !ctx.data(|d| d.get_temp::<bool>(key).unwrap_or(false)) {
                         self.items.prepare_smoke(
                             &mut self.input_monitor.saved.config,
-                            self.live2d.as_ref(),
+                            (self.live2d.as_ref(), self.vrm.as_ref()),
                         );
                         ctx.data_mut(|d| d.insert_temp(key, true));
                     }
@@ -2292,7 +2318,7 @@ impl eframe::App for AriaApp {
                     rect,
                     &scene,
                     &mut self.input_monitor.saved.config,
-                    self.live2d.as_ref(),
+                    (self.live2d.as_ref(), self.vrm.as_ref()),
                     self.settings.zoom,
                 ) {
                     self.items.edited();
@@ -2300,8 +2326,10 @@ impl eframe::App for AriaApp {
                 if self.items.selected.is_some() && self.items.selected != previous_selection {
                     self.input_monitor.tab = Tab::Items;
                 }
-                self.items
-                    .refresh(&self.input_monitor.saved.config, self.live2d.as_ref());
+                self.items.refresh(
+                    &self.input_monitor.saved.config,
+                    (self.live2d.as_ref(), self.vrm.as_ref()),
+                );
                 if self.items.revision != old_revision {
                     self.scene_revision = self.scene_revision.wrapping_add(1);
                 }

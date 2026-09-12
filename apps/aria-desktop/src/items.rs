@@ -25,6 +25,48 @@ pub enum Anchor {
     Puppet(Vec2),
     Missing,
 }
+
+#[derive(Clone, Copy)]
+pub enum Target<'a> {
+    Live2d(&'a Avatar),
+    Vrm(&'a crate::vrm::Avatar),
+    Puppet,
+}
+impl<'a> From<Option<&'a Avatar>> for Target<'a> {
+    fn from(value: Option<&'a Avatar>) -> Self {
+        value.map_or(Self::Puppet, Self::Live2d)
+    }
+}
+impl<'a> From<(Option<&'a Avatar>, Option<&'a crate::vrm::Avatar>)> for Target<'a> {
+    fn from((live2d, vrm): (Option<&'a Avatar>, Option<&'a crate::vrm::Avatar>)) -> Self {
+        live2d
+            .map(Self::Live2d)
+            .or_else(|| vrm.map(Self::Vrm))
+            .unwrap_or(Self::Puppet)
+    }
+}
+impl Target<'_> {
+    fn is_puppet(self) -> bool {
+        matches!(self, Self::Puppet)
+    }
+    fn pick(self, point: Vec2) -> Option<Pin> {
+        match self {
+            Self::Live2d(a) => pick_surface(a.view_canvas(), &a.model.drawables, point),
+            Self::Vrm(a) => a.pick_pin(point),
+            Self::Puppet => Some(Pin::Puppet {
+                point: bounded(point),
+            }),
+        }
+    }
+    fn anchor(self, pin: Option<&Pin>) -> Anchor {
+        match (self, pin) {
+            (_, None) => Anchor::Free,
+            (Self::Vrm(a), Some(pin @ Pin::VrmSurface { .. })) => a.resolve_pin(pin),
+            (Self::Live2d(a), pin) => anchor(pin, Some(a)),
+            (_, pin) => anchor(pin, None),
+        }
+    }
+}
 #[derive(Clone)]
 pub enum ItemImage {
     Png(Sprite),
@@ -100,7 +142,15 @@ impl DrawItem {
             } => (base.to_screen(point), angle, scale, opacity),
             Anchor::Puppet(point) => {
                 let moving = frame(scene, canvas, zoom, true);
-                (moving.to_screen(point), moving.angle, 1.0, 1.0)
+                (
+                    moving.to_screen(point),
+                    moving.angle,
+                    (moving.stretch.x * moving.stretch.y).abs().sqrt(),
+                    scene
+                        .images
+                        .last()
+                        .map_or(1.0, |d| d.opacity * d.transform.opacity),
+                )
             }
         };
         let angle = if self.item.follow_rotation {
@@ -191,7 +241,12 @@ fn frame(scene: &Scene, canvas: Rect, zoom: f32, moving: bool) -> Frame {
             * zoom;
         let offset = if moving {
             vec2(
-                p[0] * canvas.width() * 0.002,
+                p[0] * canvas.width()
+                    * if scene.images.is_empty() {
+                        0.0015
+                    } else {
+                        0.002
+                    },
                 -p[1] * canvas.height() * 0.001,
             )
         } else {
@@ -248,7 +303,15 @@ pub fn dent_field(
         } => (base.to_screen(point), angle, scale, opacity),
         Anchor::Puppet(point) => {
             let moving = frame(scene, canvas, zoom, true);
-            (moving.to_screen(point), moving.angle, 1.0, 1.0)
+            (
+                moving.to_screen(point),
+                moving.angle,
+                (moving.stretch.x * moving.stretch.y).abs().sqrt(),
+                scene
+                    .images
+                    .last()
+                    .map_or(1.0, |d| d.opacity * d.transform.opacity),
+            )
         }
         _ => return None,
     };
@@ -322,7 +385,8 @@ pub struct Items {
 }
 impl Items {
     #[cfg(feature = "screenshots")]
-    pub fn prepare_smoke(&mut self, config: &mut RigConfig, avatar: Option<&Avatar>) {
+    pub fn prepare_smoke<'a>(&mut self, config: &mut RigConfig, avatar: impl Into<Target<'a>>) {
+        let avatar = avatar.into();
         assert_eq!(
             config.items.len(),
             1,
@@ -332,19 +396,12 @@ impl Items {
         item.name = "Head sparkle".into();
         item.height = 0.16;
         item.position = [0.0; 2];
-        item.pin = Some(if let Some(avatar) = avatar {
-            pick_surface(
-                avatar.model.canvas,
-                &avatar.model.drawables,
-                vec2(0.06, -0.16),
-            )
-            .or_else(|| pick_surface(avatar.model.canvas, &avatar.model.drawables, Vec2::ZERO))
-            .expect("Smoke surface must hit the real avatar")
-        } else {
-            Pin::Puppet {
-                point: [0.2, -0.28],
-            }
-        });
+        item.pin = Some(
+            avatar
+                .pick(vec2(0.06, -0.16))
+                .or_else(|| avatar.pick(Vec2::ZERO))
+                .expect("Smoke surface must hit the avatar"),
+        );
         self.selected = Some(item.id);
         if aria_core::items::is_model(&item.path) {
             item.name = "Pinned Live2D object".into();
@@ -541,7 +598,8 @@ impl Items {
         }
         changed
     }
-    pub fn refresh(&mut self, config: &RigConfig, avatar: Option<&Avatar>) {
+    pub fn refresh<'a>(&mut self, config: &RigConfig, avatar: impl Into<Target<'a>>) {
+        let avatar = avatar.into();
         let draws: Vec<_> = config
             .items
             .iter()
@@ -562,7 +620,7 @@ impl Items {
                     tint: Color32::WHITE,
                     item: item.clone(),
                     image,
-                    anchor: anchor(item.pin.as_ref(), avatar),
+                    anchor: avatar.anchor(item.pin.as_ref()),
                     visible: item.visible
                         && (item.rule.mode != RuleMode::WhileInRange || item.condition),
                 })
@@ -575,15 +633,16 @@ impl Items {
             self.revision = self.revision.wrapping_add(1);
         }
     }
-    pub fn stage(
+    pub fn stage<'a>(
         &mut self,
         ui: &mut egui::Ui,
         canvas: Rect,
         scene: &Scene,
         config: &mut RigConfig,
-        avatar: Option<&Avatar>,
+        avatar: impl Into<Target<'a>>,
         zoom: f32,
     ) -> bool {
+        let avatar = avatar.into();
         if ui.ctx().current_pass_index() != 0 {
             return false;
         }
@@ -635,18 +694,8 @@ impl Items {
         };
         self.pin_here = false;
         if let Some(point) = point {
-            let base = frame(scene, canvas, zoom, avatar.is_none());
-            let pin = if let Some(avatar) = avatar {
-                pick_surface(
-                    avatar.model.canvas,
-                    &avatar.model.drawables,
-                    base.local(point),
-                )
-            } else {
-                Some(Pin::Puppet {
-                    point: bounded(base.local(point)),
-                })
-            };
+            let base = frame(scene, canvas, zoom, avatar.is_puppet());
+            let pin = avatar.pick(base.local(point));
             if let Some(pin) = pin
                 && let Some(item) = config
                     .items
@@ -654,14 +703,23 @@ impl Items {
                     .find(|i| Some(i.id) == self.selected)
             {
                 if let Some(pose) = selected.and_then(|d| d.pose(scene, canvas, zoom)) {
-                    let angle = if avatar.is_none() && item.follow_rotation {
+                    let angle = if avatar.is_puppet() && item.follow_rotation {
                         frame(scene, canvas, zoom, true).angle
                     } else {
                         0.0
                     };
                     item.rotation = degrees(pose.angle - angle);
-                    item.height =
-                        (pose.size.y / frame(scene, canvas, zoom, false).scale).clamp(0.005, 4.0);
+                    let moving = frame(scene, canvas, zoom, true);
+                    let stretch = if avatar.is_puppet() && item.follow_scale {
+                        (moving.stretch.x * moving.stretch.y)
+                            .abs()
+                            .sqrt()
+                            .max(0.001)
+                    } else {
+                        1.0
+                    };
+                    item.height = (pose.size.y / frame(scene, canvas, zoom, false).scale / stretch)
+                        .clamp(0.005, 4.0);
                 }
                 item.pin = Some(pin);
                 item.position = [0.0; 2];
@@ -821,7 +879,7 @@ pub fn anchor(pin: Option<&Pin>, avatar: Option<&Avatar>) -> Anchor {
                 return Anchor::Missing;
             };
             resolve_surface(
-                avatar.model.canvas,
+                avatar.view_canvas(),
                 &avatar.model.drawables,
                 *mesh,
                 *vertices,
@@ -867,7 +925,7 @@ fn resolve_surface(
         },
     }
 }
-fn barycentric(point: Vec2, p: [Vec2; 3]) -> Option<[f32; 3]> {
+pub(crate) fn barycentric(point: Vec2, p: [Vec2; 3]) -> Option<[f32; 3]> {
     let cross = |a: Vec2, b: Vec2| a.x * b.y - a.y * b.x;
     let a = p[1] - p[0];
     let b = p[2] - p[0];
@@ -944,6 +1002,145 @@ pub fn pick_surface(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn gif_pins_match_rendered_artwork_during_motion_and_drag_in_all_canvases() {
+        let ctx = egui::Context::default();
+        let mut artwork = sprite(&ctx);
+        artwork.size = vec2(800., 1200.);
+        let point = vec2(0.2 * 800. / 1200., -0.2);
+        let item = Item {
+            path: "badge.png".into(),
+            pin: Some(Pin::Puppet {
+                point: [point.x, point.y],
+            }),
+            height: 0.1,
+            follow_scale: true,
+            ..Default::default()
+        };
+        let draw = DrawItem {
+            deformation: None,
+            tint: Color32::WHITE,
+            item: item.clone(),
+            image: ItemImage::Png(sprite(&ctx)),
+            anchor: Anchor::Puppet(point),
+            visible: true,
+        };
+        let mut params = aria_core::Parameters::default();
+        params.0[0] = -20.;
+        params.0[1] = 17.;
+        params.0[2] = -14.;
+        let motion = aria_core::image_actions::Transform {
+            offset: [0.1, -0.1],
+            scale: [0.8, 1.2],
+            rotation: 0.3,
+            opacity: 0.8,
+        };
+        let scene = Scene {
+            images: vec![crate::image_actions::Draw {
+                sprite: artwork.clone(),
+                transform: motion,
+                opacity: 0.7,
+            }]
+            .into(),
+            dents: Default::default(),
+            effects: Default::default(),
+            recoil: [0.; 2],
+            _model_lease: None,
+            model: None,
+            model_bounds: Rect::NOTHING,
+            sprite: Some(artwork),
+            params,
+            items: vec![draw].into(),
+        };
+        for size in [vec2(1920., 1080.), vec2(1080., 1920.), vec2(750., 610.)] {
+            let canvas = Rect::from_min_size(Pos2::ZERO, size);
+            let pose = scene.items[0].pose(&scene, canvas, 0.9).unwrap();
+            let out = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(canvas),
+                    ..Default::default()
+                },
+                |ctx| {
+                    crate::image_actions::paint(
+                        &ctx.layer_painter(egui::LayerId::background()),
+                        canvas,
+                        params,
+                        0.9,
+                        &scene.images,
+                        &[],
+                    );
+                },
+            );
+            let mesh = out
+                .shapes
+                .iter()
+                .find_map(|s| {
+                    if let egui::Shape::Mesh(m) = &s.shape {
+                        Some(m)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap();
+            let origin = mesh.vertices[0].pos;
+            let expected = origin
+                + (mesh.vertices[1].pos - origin) * 0.7
+                + (mesh.vertices[2].pos - origin) * 0.3;
+            assert!(
+                (pose.center - expected).length() < 0.001,
+                "GIF pin slipped away from rendered artwork"
+            );
+            assert!((pose.opacity - 0.56).abs() < 1e-6);
+        }
+        let canvas = Rect::from_min_size(Pos2::ZERO, vec2(800., 800.));
+        let mut config = RigConfig {
+            items: vec![item],
+            ..Default::default()
+        };
+        let mut manager = Items::default();
+        manager.assets.insert("badge.png".into(), Ok(sprite(&ctx)));
+        let start = scene.items[0].pose(&scene, canvas, 1.).unwrap().center;
+        let end = start + vec2(80., 31.);
+        let mut time = 1.0;
+        let mut run = |events: Vec<egui::Event>| {
+            time += 0.1;
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(canvas),
+                    events,
+                    time: Some(time),
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        manager.refresh(&config, None);
+                        let scene = Scene {
+                            items: manager.draws.clone(),
+                            ..scene.clone()
+                        };
+                        manager.stage(ui, canvas, &scene, &mut config, None, 1.);
+                    });
+                },
+            );
+        };
+        let button = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            pressed,
+            button: egui::PointerButton::Primary,
+            modifiers: egui::Modifiers::NONE,
+        };
+        run(vec![egui::Event::PointerMoved(start)]);
+        run(vec![button(start, true)]);
+        run(vec![egui::Event::PointerMoved(end)]);
+        run(vec![button(end, false)]);
+        manager.refresh(&config, None);
+        let after = manager.draws[0].pose(&scene, canvas, 1.).unwrap();
+        assert!(
+            (after.center - end).length() < 0.001,
+            "Pinned GIF accessory must remain draggable"
+        );
+        assert!(config.items[0].pin.is_some());
+    }
     #[test]
     fn png_assets_validate_format_and_budget_cache_failures_and_reload_without_losing_other_items()
     {
