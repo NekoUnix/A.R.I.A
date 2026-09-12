@@ -1,6 +1,6 @@
 # Windows setup and operation
 
-ARIA v0.21 adds direct gamepad input and fixes rejected Live2D `NP_*` assignments.
+ARIA v0.22 adds a guided personal tracking setup with per-avatar ranges and temporary live preview. See [Tracking setup](tracking-setup.md). Direct gamepad input and Live2D `NP_*` assignments remain available.
 Open **Inspector → Tracking → Controller** to select a device and adjust response.
 Xbox, PlayStation, Switch and other SDL-mapped controllers work alongside iPhone
 tracking; unrecognized joysticks can use a custom SDL2 layout.
@@ -52,7 +52,7 @@ systems and Windows ARM64 are not verified release targets yet.
 1. Visit [the Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml).
 2. Select a green, successful run on `main` for the version you want.
 3. Under **Artifacts**, download **aria-windows-x64**. Sign in to GitHub if asked.
-4. Extract the downloaded artifact. Extract `aria-0.21.0-windows-x64.zip` inside it
+4. Extract the downloaded artifact. Extract `aria-0.22.0-windows-x64.zip` inside it
    into a normal writable folder, for example `C:\Apps\ARIA`.
 5. Double-click **aria-desktop.exe**. The default source is Demo and Mica should move.
 
@@ -369,6 +369,11 @@ hardware. The UI footer identifies the actual adapter/backend; frame-rate target
 are subject to display refresh, GPU capacity and extra UI events.
 
 ## Updating
+
+For a separate testing or portable profile, set `ARIA_PROFILE_DIR` to a writable
+folder before launching ARIA. Both the app configuration and window layout use
+that directory. Unset it to return to your normal Windows profile. Screenshot
+test builds use their own temporary profile automatically.
 
 Close the app before replacing binaries. Download a new successful artifact, or
 update your checkout and rebuild. Preserve any uncommitted work before pulling.

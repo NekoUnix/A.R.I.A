@@ -28,6 +28,7 @@ pub struct Pose {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RigConfig {
+    pub tracking: crate::calibration::Profile,
     pub vrm: crate::vrm::Settings,
     pub vrm_pose: crate::vrm::Pose,
     pub images: crate::image_actions::Config,
@@ -123,6 +124,7 @@ impl RigConfig {
         }
     }
     pub fn validate(&self, parameters: &[RigParameter]) -> Result<()> {
+        self.tracking.validate()?;
         self.vrm.validate()?;
         self.images.validate()?;
         ensure!(

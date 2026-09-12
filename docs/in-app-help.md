@@ -1266,3 +1266,27 @@ may expose a different virtual device or hide the physical controller. Choose th
 available device and avoid reading a duplicate. Live controller values distinguish
 an input problem from an avatar mapping problem: if NP_* values move, inspect the
 model's assignments, visibility parameters and manual/frozen poses next.
+
+## tracking-guide | Guided personal tracking setup | Learn a comfortable neutral pose and movement range for the current avatar.
+
+Open **Tracking → Tracking & connection → Guided tracking setup**, use the button in **Inspector → Tracking → Inputs**, or choose **Set up personal tracking** after guided import. It works with the active Live2D, VRM or PNG/GIF avatar and uses that avatar's existing assignments. The importer's VTube Studio profile assignments and the artist's output ranges, inversions, response curves and physics remain intact.
+
+Connect a real face tracker first. For iPhone VTube Studio, enable 3rd Party PC Clients on the phone, enter its IPv4 address and request port in ARIA, choose a free PC receive port, and connect. Both devices must be reachable on the same network. The guide shows the current connection status. Demo animation and microphone-only mode do not provide personal face measurements and cannot start capture. Microphone talking calibration remains in Microphone.
+
+Sit at your normal distance with even lighting. Capture neutral with your eyes naturally open and lips relaxed and closed. After a three-second countdown, hold still for three seconds. Next capture comfortable head turns, nods and tilts for eight seconds; facial expressions for ten; and eye gaze for six. Each page advances when enough fresh face data has arrived. It pauses on face loss or a missing connection. Unsupported eye gaze can be skipped. Hold each comfortable movement briefly and repeat; do not strain to reach extremes.
+
+The guide measures before global smoothing and head/mouth display limits. It uses the middle neutral value and robust movement percentiles, so a brief bad tracking spike does not become your normal maximum. Flat or weak signals and noisy neutral poses get a review message instead of automatic amplification. The tracker cannot generate expressions it does not measure. Unknown rig controls may need a manual input assignment in Inputs; many unassigned controls are correctly driven by physics or expression files.
+
+In review, expand an input to see the model parameters it drives and edit **Low / Rest / High**. Choose which new ranges to use. Skipped or unselected signals keep their prior settings. Enable **Preview new calibration on stage** and move or collapse the window to inspect the avatar. Turn preview off for comparison. Preview is temporary; Cancel, the window close button, or changing the avatar, connection settings or mapping discards the draft. Resume live movement if a screenshot pose is hiding tracking. Microphone mouth control may override the phone's mouth input.
+
+Click **Save calibration for this avatar** to persist the result. **Movement & calibration → Use personal tracking calibration** enables or bypasses it. New movement presets and exported presets include it; older presets restore their original settings. Run setup again after moving the camera or changing the tracker, gains, axes or neutral pose. The one-click neutral pose button disables old personal ranges because their origin has changed. This provides a personalized starting point; arbitrary artistic rigs may need final adjustment of input/output ranges and directions in Inputs.
+
+## tracking-guide-ranges | Personal range controls | Low, Rest and High describe your measured movement before it reaches model assignments.
+
+**Low** is the smallest comfortable input, **Rest** is your relaxed pose, and **High** is the largest comfortable input. These are tracker units: head angles use degrees after your head gain and axis settings; many facial signals use normalized values. They are measured before global smoothing and head/mouth display clipping. Drag a value or double-click it to type.
+
+Your measured Low → standard minimum; Rest → standard neutral; High → standard maximum. An asymmetric head range such as −18 / 4 / 46 maps to −30 / 0 / 30. Both sides of the resting point are mapped independently, so a relaxed pose stays centered. Eyes-open signals rest at 1; mouth-open signals rest at 0. Low and High must be different. Rest must lie between them, with room on each active side. Invalid enabled rows block saving. Motion beyond the learned range stays at the corresponding standard endpoint.
+
+Personal measurement → neutral-centered standard input → model's authored input/output mapping → expression and physics → avatar.
+
+This does not replace your model's bindings. A model with deliberately narrow artistic input ranges may still reach its output limits early; adjust that binding in Inputs after previewing. Uncheck Apply this new range to keep the saved behavior for that signal. A signal with no sufficient capture stays unchanged. Retrying neutral restarts the baseline for all movement captures; retrying a movement replaces that group's samples. Tracking loss returns calibrated signals toward standard neutral through normal smoothing, rather than reusing the measured resting offset.

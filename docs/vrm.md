@@ -6,7 +6,7 @@ renders them using wgpu/DX12. Unity and Cubism Core are not required for VRM.
 
 ## Import and run
 
-1. Extract `aria-0.21.0-windows-x64.zip` and run `aria-desktop.exe`.
+1. Extract `aria-0.22.0-windows-x64.zip` and run `aria-desktop.exe`.
 2. Open **Avatar & appearance → Import VRM avatar…**. If another avatar is active,
    use **Change avatar / type… → VRM 3D avatar**.
 3. Choose a `.vrm` file, review its author, declared license and rig summary,

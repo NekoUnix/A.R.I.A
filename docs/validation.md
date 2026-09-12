@@ -5,6 +5,23 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Local verification on 2026-09-12
 
+### v0.22 personal tracking setup
+
+- **143 default tests passed**, with eighteen environment-dependent tests ignored.
+  Formatting and strict Clippy passed across workspace targets/features.
+- Regression coverage includes asymmetric resting poses, full head/mouth values
+  before clipping, outliers, noisy/flat signals, missing/duplicate packets, tracking
+  loss, retained model output inversions, cancellation, retries/skips, old settings,
+  and serialization of per-avatar ranges and their original head reference.
+- A full deterministic tour reached review through the capture state machine.
+  The native Cubism check separately verified **21 learned assignments** on the
+  supplied Vespera model. These use generated tracking traces; no physical iPhone
+  calibration session was available during these checks.
+- Native Windows UI checks covered the connection guide and review screen on Mica
+  and the supplied Live2D avatar. The latter also exported a transparent PNG.
+  Only a Mica illustration is included in the documentation; private avatar files
+  and screenshots remain outside the repository and portable package.
+
 ### v0.21 Live2D controller input
 
 - **135 default tests passed**, with seventeen environment-dependent tests ignored.

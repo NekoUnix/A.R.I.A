@@ -37,6 +37,7 @@ mod screenshot;
 #[cfg(windows)]
 mod spout;
 mod theme;
+mod tracking_guide;
 mod vrm;
 
 fn smoke_mode() -> bool {
@@ -60,6 +61,15 @@ fn main() -> eframe::Result {
         renderer: eframe::Renderer::Wgpu,
         wgpu_options,
         persist_window: !smoke_mode(),
+        // Windows known-folder APIs ignore APPDATA overrides. Give test and
+        // portable sessions an explicit storage directory instead.
+        persistence_path: std::env::var_os("ARIA_PROFILE_DIR")
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                smoke_mode().then(|| {
+                    std::env::temp_dir().join(format!("aria-smoke-{}", std::process::id()))
+                })
+            }),
         ..Default::default()
     };
     let result = eframe::run_native(

@@ -166,6 +166,8 @@ struct PendingImage {
     job: crate::media::LoadJob,
 }
 pub struct AriaApp {
+    tracking_guide: crate::tracking_guide::Guide,
+    tracking_filter: aria_core::calibration::Filter,
     importer: crate::avatar_import::Wizard,
     pending_image: Option<PendingImage>,
     pending_vrm: Option<crate::vrm::LoadJob>,
@@ -280,6 +282,8 @@ impl AriaApp {
             OutputSettings::from_legacy(settings.background, settings.zoom, settings.always_on_top)
         }));
         let app = Self {
+            tracking_guide: Default::default(),
+            tracking_filter: Default::default(),
             importer: Default::default(),
             pending_image: None,
             pending_vrm: None,
@@ -784,6 +788,13 @@ impl AriaApp {
                 true,
                 |ui| {
                     crate::help::label(ui, "Tracking source", "tracking");
+                    if crate::help::control(ui, "tracking-guide", |ui| {
+                        ui.button("Guided tracking setup…")
+                    })
+                    .clicked()
+                    {
+                        self.input_monitor.setup_tracking_requested = true;
+                    }
                     let old = self.settings.source;
                     egui::ComboBox::from_id_salt("source")
                         .selected_text(match old {
@@ -929,6 +940,22 @@ impl AriaApp {
                 "Movement & calibration",
                 false,
                 |ui| {
+                    if !self.input_monitor.saved.config.tracking.ranges.is_empty() {
+                        if crate::help::control(ui, "tracking-guide", |ui| {
+                            ui.checkbox(
+                                &mut self.input_monitor.saved.config.tracking.enabled,
+                                "Use personal tracking calibration",
+                            )
+                        })
+                        .changed()
+                        {
+                            self.input_monitor.save_requested = true;
+                        }
+                        theme::caption(
+                            ui,
+                            "Personal ranges are saved with this avatar and movement presets. Rerun guided setup after changing gains, axes or the camera.",
+                        );
+                    }
                     if crate::help::control(ui, "calibration", |ui| {
                         ui.add_enabled(
                             self.raw.as_ref().is_some_and(|f| f.face_found),
@@ -939,6 +966,9 @@ impl AriaApp {
                         && let Some(f) = &self.raw
                     {
                         self.pipeline.calibrate(f);
+                        self.input_monitor.saved.config.tracking.enabled = false;
+                        self.input_monitor.save_requested = true;
+                        self.input_monitor.message = Some("Neutral pose updated. Personal range calibration was disabled; rerun guided setup to match the new origin.".into());
                     }
                     crate::help::control(ui, "smoothing", |ui| {
                         ui.add(
@@ -987,6 +1017,8 @@ impl AriaApp {
                         {
                             self.settings.mapping = MappingSettings::default();
                             self.pipeline.reset();
+                            self.input_monitor.saved.config.tracking = Default::default();
+                            self.input_monitor.save_requested = true;
                         }
                     });
                 },
@@ -1440,6 +1472,10 @@ impl AriaApp {
                 self.input_monitor.tab = Tab::Microphone;
                 self.importer.open = false;
             }
+            Some(crate::avatar_import::Request::Tracking) => {
+                self.importer.open = false;
+                self.start_tracking_guide();
+            }
             Some(crate::avatar_import::Request::Controls) => {
                 self.input_monitor.tab = if self.live2d.is_some() {
                     Tab::Physics
@@ -1630,6 +1666,64 @@ impl AriaApp {
             |a| a.model.parameters().to_vec(),
         )
     }
+    fn tracking_context(&self) -> String {
+        // A draft must never follow another model, changed assignment or tracker.
+        format!(
+            "{}:{}:{}:{}:{}:{}",
+            self.input_monitor.model_key,
+            serde_json::to_string(&self.settings.source).unwrap_or_default(),
+            self.settings.sender_ip,
+            self.settings.request_port,
+            self.settings.listen_port,
+            serde_json::to_string(&(
+                &self.settings.mapping,
+                self.pipeline.calibration(),
+                &self.input_monitor.saved.config.bindings,
+                &self.input_monitor.saved.config.tracking
+            ))
+            .unwrap_or_default()
+        )
+    }
+    fn start_tracking_guide(&mut self) {
+        self.controls_page = ControlsPage::Tracking;
+        self.tracking_guide.start(
+            self.tracking_context(),
+            &self.input_monitor.saved.config,
+            &self.current_parameters(),
+            &self.live_inputs,
+            self.pipeline.calibration(),
+        );
+    }
+    fn tracking_guide_window(&mut self, ctx: &egui::Context) {
+        if std::mem::take(&mut self.input_monitor.setup_tracking_requested) {
+            self.start_tracking_guide();
+        }
+        let status = self.connection_status().to_owned();
+        match self.tracking_guide.show(
+            ctx,
+            &status,
+            self.input_monitor.saved.config.pose.mode == PoseMode::Live,
+            self.input_monitor.saved.microphone.enabled,
+        ) {
+            Some(crate::tracking_guide::Action::Connection) => {
+                self.controls_page = ControlsPage::Tracking;
+                self.tracking_guide.open = false;
+                theme::open_category(ctx, "Tracking & connection");
+            }
+            Some(crate::tracking_guide::Action::Resume) => {
+                self.input_monitor.saved.config.pose.mode = PoseMode::Live;
+                self.input_monitor.reset_motion = true;
+            }
+            Some(crate::tracking_guide::Action::Save(profile)) => {
+                self.input_monitor.saved.config.tracking = profile;
+                self.tracking_filter.reset();
+                self.input_monitor.saved.config.reset_filters();
+                self.input_monitor.save_requested = true;
+                self.input_monitor.message = Some("Personal tracking calibration saved for this avatar. Save a movement preset to keep a named version or assign it a hotkey.".into());
+            }
+            None => {}
+        }
+    }
     fn remember_current_rig(&mut self) {
         self.settings.outputs = Some(self.outputs.snapshot());
         self.settings.saved_rigs.insert(
@@ -1643,6 +1737,7 @@ impl AriaApp {
             .insert(self.input_monitor.model_key.clone(), preferences);
     }
     fn restore_model_preferences(&mut self, key: &str) {
+        self.tracking_filter.reset();
         self.items.reset();
         self.effects.reset();
         self.images.reset();
@@ -2080,6 +2175,53 @@ impl eframe::App for AriaApp {
                 self.settings.mapping.mirror,
                 self.animation_time,
             );
+            if self.tracking_guide.open {
+                self.tracking_guide.check_context(&self.tracking_context());
+                if let Some(message) = self.tracking_guide.message.take() {
+                    self.input_monitor.message = Some(message);
+                }
+            }
+            if self.tracking_guide.open || self.input_monitor.saved.config.tracking.enabled {
+                let measured = if self.tracking_guide.open {
+                    self.tracking_guide.measure(
+                        self.raw.as_ref(),
+                        &self.settings.mapping,
+                        self.animation_time,
+                    )
+                } else {
+                    self.input_monitor.saved.config.tracking.measure(
+                        self.raw.as_ref(),
+                        &self.settings.mapping,
+                        self.animation_time,
+                    )
+                };
+                let face_found = self
+                    .raw
+                    .as_ref()
+                    .is_some_and(|f| f.face_found && f.is_finite());
+                self.tracking_guide.observe(
+                    self.snapshot.packets,
+                    self.started.elapsed().as_secs_f64(),
+                    face_found
+                        && self.receiver.is_some()
+                        && matches!(self.settings.source, Source::Vts | Source::Json),
+                    &measured,
+                );
+                let preview = self.tracking_guide.profile();
+                let profile = preview
+                    .as_ref()
+                    .unwrap_or(&self.input_monitor.saved.config.tracking);
+                self.tracking_filter.apply(
+                    profile,
+                    &measured,
+                    &mut self.live_inputs,
+                    face_found,
+                    self.settings.mapping.smoothing_ms,
+                    dt,
+                );
+            } else {
+                self.tracking_filter.reset();
+            }
             self.microphone
                 .update(&self.input_monitor.saved.microphone, dt);
             self.microphone
@@ -2199,7 +2341,7 @@ impl eframe::App for AriaApp {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            RichText::new("v0.21 · WINDOWS PREVIEW")
+                            RichText::new("v0.22 · WINDOWS PREVIEW")
                                 .small()
                                 .color(MUTED),
                         );
@@ -2434,8 +2576,10 @@ impl eframe::App for AriaApp {
         #[cfg(feature = "screenshots")]
         if crate::smoke_mode()
             && (std::env::var_os("ARIA_TEST_VRM").is_some()
-                || (std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("controller")
-                    && self.live2d.is_some()))
+                || (matches!(
+                    std::env::var("ARIA_SMOKE_SCENARIO").as_deref(),
+                    Ok("controller" | "tracking-guide-review")
+                ) && self.live2d.is_some()))
             && self.started.elapsed() > Duration::from_secs(5)
         {
             assert!(
@@ -2476,6 +2620,27 @@ impl eframe::App for AriaApp {
         self.model_window(ctx);
         self.bare_import_window(ctx);
         self.import_tour(ctx);
+        #[cfg(feature = "screenshots")]
+        if crate::smoke_mode()
+            && self.pending_image.is_none()
+            && self.pending_vrm.is_none()
+            && std::env::var("ARIA_SMOKE_SCENARIO").is_ok_and(|s| s.starts_with("tracking-guide"))
+        {
+            let key = egui::Id::new("tracking-guide-smoke");
+            if !ctx.data(|d| d.get_temp::<bool>(key).unwrap_or(false)) {
+                self.input_monitor.saved.config.pose.mode = PoseMode::Live;
+                self.start_tracking_guide();
+                if std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("tracking-guide-review") {
+                    self.tracking_guide.rehearsal();
+                    self.tracking_guide.preview = true;
+                    eprintln!(
+                        "Tracking guide rehearsal reached review; synthetic samples only; persistent profile unchanged"
+                    );
+                }
+                ctx.data_mut(|d| d.insert_temp(key, true));
+            }
+        }
+        self.tracking_guide_window(ctx);
         if !self.hotkeys.available() {
             self.input_monitor.hotkey_status =
                 Some("Hotkey worker could not start. Preset buttons remain available.".into());

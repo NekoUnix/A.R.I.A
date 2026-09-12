@@ -6,6 +6,12 @@ tracking into avatar parameters, and animates **VRM 0.x / 1.0 3D avatars**,
 **Live2D `.moc3` avatars**, a built-in 2D test puppet, or your PNG/GIF artwork. The UI and preview run on **egui + wgpu**,
 without Unity or Godot.
 
+**v0.22 adds guided personal tracking setup:** capture your neutral pose, head
+movement, expressions and eye gaze; review learned ranges, compare them on stage,
+and save per avatar or in movement presets. Works with Live2D, VRM and PNG/GIF.
+Start from **Tracking → Guided tracking setup**, the Inputs inspector, or the
+guided avatar importer. [Personal tracking guide](docs/tracking-setup.md).
+
 **v0.21 fixes Live2D controller support:** direct Windows gamepad input, all 33
 Nyarupad `NP_*` signals, editable per-avatar response, device selection and
 custom controller mapping files. Old profiles gain missing assignments without
@@ -366,7 +372,7 @@ To build a portable bundle with its documentation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 ```
 
-The script runs tests and writes `dist/aria-0.21.0-windows-x64.zip`. See
+The script runs tests and writes `dist/aria-0.22.0-windows-x64.zip`. See
 [architecture](docs/architecture.md) for crate boundaries and
 [validation](docs/validation.md) for what has actually been exercised.
 

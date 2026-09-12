@@ -23,6 +23,7 @@ pub enum Tab {
     Controller,
 }
 pub struct InputMonitor {
+    pub setup_tracking_requested: bool,
     pub effect_requests: Vec<u64>,
     pub saved: SavedRig,
     pub model_key: String,
@@ -105,6 +106,7 @@ impl InputMonitor {
             ));
         }
         Self {
+            setup_tracking_requested: false,
             effect_requests: Vec::new(),
             saved,
             model_key,
@@ -330,6 +332,14 @@ impl InputMonitor {
         mapping: &mut MappingSettings,
         can_export: bool,
     ) {
+        if self.tab == Tab::Inputs
+            && crate::help::control(ui, "tracking-guide", |ui| {
+                ui.button("Set up tracking for this avatar…")
+            })
+            .clicked()
+        {
+            self.setup_tracking_requested = true;
+        }
         crate::help::label(
             ui,
             "About this tab",

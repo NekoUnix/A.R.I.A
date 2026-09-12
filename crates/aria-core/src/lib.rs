@@ -1,5 +1,6 @@
 //! Platform-independent tracking values and a small, deterministic parameter pipeline.
 pub mod asset_limits;
+pub mod calibration;
 pub mod controller;
 pub mod deformation;
 pub mod effects;
@@ -15,7 +16,7 @@ pub mod vrm;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize, Serialize)]
 pub struct Vec3 {
     pub x: f32,
     pub y: f32,
@@ -175,6 +176,12 @@ impl ParameterPipeline {
         settings: &MappingSettings,
         dt: f32,
     ) -> Parameters {
+        let target = self.measure(frame, settings);
+        self.smooth(target, settings, dt)
+    }
+
+    /// Unsmoothed measurements before display limits, for personal range capture.
+    pub fn measure(&self, frame: Option<&TrackingFrame>, settings: &MappingSettings) -> Parameters {
         let mut target = Parameters::default();
         if let Some(f) = frame.filter(|f| f.face_found && f.is_finite()) {
             let b = |name| f.blend(name);
@@ -220,6 +227,10 @@ impl ParameterPipeline {
                 target.0.swap(7, 8);
             }
         }
+        target
+    }
+
+    fn smooth(&mut self, target: Parameters, settings: &MappingSettings, dt: f32) -> Parameters {
         let tau = if settings.smoothing_ms.is_finite() {
             settings.smoothing_ms.clamp(0.0, 500.0) / 1000.0
         } else {

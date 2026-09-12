@@ -48,6 +48,7 @@ pub enum Request {
     Vrm(PathBuf),
     Cancel,
     Microphone,
+    Tracking,
     Controls,
 }
 pub struct Wizard {
@@ -157,6 +158,7 @@ impl Wizard {
                         ui.label("Use Tracking for phone/microphone inputs, and Avatar in the Inspector for physics groups and expression hotkeys. The exported model defines the available controls.");
                     }
                     if ui.button("Open avatar controls").clicked() { request=Some(Request::Controls); }
+                    if ui.button("Set up personal tracking…").clicked() { request=Some(Request::Tracking); }
                     return;
                 }
                 if let Some(message)=&vrm_progress {

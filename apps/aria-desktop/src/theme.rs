@@ -129,6 +129,10 @@ pub fn card(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
         });
 }
 
+pub fn open_category(ctx: &egui::Context, title: &str) {
+    ctx.data_mut(|data| data.insert_temp(egui::Id::new(("open-category", title)), true));
+}
+
 pub fn category(
     ui: &mut egui::Ui,
     id: impl std::hash::Hash,
@@ -142,6 +146,13 @@ pub fn category(
             ui.make_persistent_id(id),
             default_open,
         );
+        if ui
+            .ctx()
+            .data_mut(|data| data.remove_temp::<bool>(egui::Id::new(("open-category", title))))
+            .unwrap_or(false)
+        {
+            state.set_open(true);
+        }
         #[cfg(feature = "screenshots")]
         if crate::smoke_mode()
             && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("capture-controls")
