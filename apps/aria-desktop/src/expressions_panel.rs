@@ -161,6 +161,10 @@ impl ExpressionsPanel {
                 .any(|(other, key)| other != id && *key == shortcut),
             "That shortcut is assigned to another expression"
         );
+        anyhow::ensure!(
+            !saved.item_hotkeys.values().any(|key| *key == shortcut),
+            "That shortcut is assigned to a PNG toggle"
+        );
         saved.expression_hotkeys.insert(id.into(), shortcut);
         saved.global_hotkeys = true;
         Ok(())

@@ -541,7 +541,7 @@ impl ModelRenderer {
     }
 }
 
-fn straight_alpha(pixel: [u8; 4]) -> [u8; 4] {
+pub(crate) fn straight_alpha(pixel: [u8; 4]) -> [u8; 4] {
     let alpha = u32::from(pixel[3]);
     if alpha == 0 {
         return [0; 4];

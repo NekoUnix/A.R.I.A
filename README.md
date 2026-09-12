@@ -6,7 +6,10 @@ tracking into avatar parameters, and animates **Live2D `.moc3` avatars**, a buil
 2D test puppet, or your PNG artwork. The UI and preview run on **egui + wgpu**,
 without Unity or Godot.
 
-> **v0.9:** circled question marks throughout the studio, hover explanations,
+> **v0.10:** drop PNG accessories onto the stage and pin them to animated model surfaces.
+> Per-avatar item layouts include named toggles, custom hotkeys, input-range rules,
+> layering and screenshot presets. Accessories appear in all three outputs and PNG exports.
+> Question-mark buttons are half their previous size, with hover explanations,
 > and a separate searchable offline help window with examples and diagrams.
 > Contextual help includes the loaded avatar's parameters, ranges, physics groups
 > and expression values. Includes landscape, portrait and Freeform outputs with compact previews,
@@ -33,6 +36,24 @@ and performance. Avatar-specific context is captured when you click the control;
 reopen its question mark to refresh those values.
 
 ![Offline help with an input-range diagram](docs/images/help.png)
+
+## PNG accessories and toggles
+
+![PNG accessories and pin controls on the Mica puppet](docs/images/png-items.png)
+
+Drop PNG files onto **Your stage**, then open **PNG items & toggles** in the right
+panel. Drag an item into place and choose **Pin here**, or **Choose pin point**
+and click the avatar. Live2D pins follow the selected mesh's animated vertices;
+Mica and PNG puppet pins follow head movement. Configure size, offsets, rotation,
+opacity, front/back layers, drag locking and optional rotation/stretch/visibility following.
+
+Each item gets a name and master visibility toggle. Use **Input toggle** to show
+it while a tracking input or final model parameter is in a chosen range, or to
+toggle once on entry. Hysteresis prevents boundary flicker. **Keyboard toggle**
+accepts a custom shortcut. Frozen pose presets preserve accessory visibility;
+manual toggles remain available for screenshots. Movement and pose presets
+store layouts per avatar. Keep PNG files in a stable folder: profiles reference
+their paths and do not embed the artwork. See the [complete item guide](docs/in-app-help.md).
 
 ## Run on Windows
 
@@ -175,7 +196,7 @@ To build a portable bundle with its documentation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 ```
 
-The script runs tests and writes `dist/aria-0.9.0-windows-x64.zip`. See
+The script runs tests and writes `dist/aria-0.10.0-windows-x64.zip`. See
 [architecture](docs/architecture.md) for crate boundaries and
 [validation](docs/validation.md) for what has actually been exercised.
 

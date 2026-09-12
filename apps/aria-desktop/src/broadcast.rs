@@ -239,3 +239,109 @@ fn render_canvas(
         .queue
         .submit(commands.into_iter().chain([encoder.finish()]));
 }
+
+/// One-shot readback for image export. Live outputs continue to share GPU textures.
+pub fn save_png(
+    ctx: &egui::Context,
+    state: &RenderState,
+    scene: &Scene,
+    path: &std::path::Path,
+) -> anyhow::Result<()> {
+    use anyhow::Context;
+    let size = scene
+        .model
+        .map_or([1200, 1400], |m| [m.size.x as u32, m.size.y as u32]);
+    let bgra = matches!(
+        state.target_format,
+        wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb
+    );
+    anyhow::ensure!(
+        bgra || matches!(
+            state.target_format,
+            wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Rgba8UnormSrgb
+        ),
+        "PNG export requires an 8-bit renderer"
+    );
+    let texture = state.device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("ARIA avatar and PNG items export"),
+        size: wgpu::Extent3d {
+            width: size[0],
+            height: size[1],
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: state.target_format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let config = CanvasSettings {
+        background: crate::output::Background::Transparent,
+        zoom: 1.0,
+        position: [0.0; 2],
+        ..Default::default()
+    };
+    render_canvas(
+        ctx,
+        &egui::Context::default(),
+        state,
+        &texture.create_view(&Default::default()),
+        scene,
+        &config,
+    );
+    let stride = (size[0] * 4).div_ceil(256) * 256;
+    let buffer = state.device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("ARIA composition PNG readback"),
+        size: u64::from(stride) * u64::from(size[1]),
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+    let mut encoder = state.device.create_command_encoder(&Default::default());
+    encoder.copy_texture_to_buffer(
+        texture.as_image_copy(),
+        wgpu::TexelCopyBufferInfo {
+            buffer: &buffer,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(stride),
+                rows_per_image: Some(size[1]),
+            },
+        },
+        texture.size(),
+    );
+    let submission = state.queue.submit([encoder.finish()]);
+    let (tx, rx) = std::sync::mpsc::channel();
+    buffer
+        .slice(..)
+        .map_async(wgpu::MapMode::Read, move |result| {
+            let _ = tx.send(result);
+        });
+    state.device.poll(wgpu::PollType::Wait {
+        submission_index: Some(submission),
+        timeout: Some(Duration::from_secs(5)),
+    })?;
+    rx.recv_timeout(Duration::from_secs(1))??;
+    let mapped = buffer.slice(..).get_mapped_range();
+    let mut rgba = Vec::with_capacity(size[0] as usize * size[1] as usize * 4);
+    for row in mapped.chunks_exact(stride as usize) {
+        for pixel in row[..size[0] as usize * 4].as_chunks::<4>().0 {
+            let mut pixel = *pixel;
+            if bgra {
+                pixel.swap(0, 2);
+            }
+            rgba.extend_from_slice(&crate::cubism_render::straight_alpha(pixel));
+        }
+    }
+    drop(mapped);
+    buffer.unmap();
+    image::save_buffer_with_format(
+        path,
+        &rgba,
+        size[0],
+        size[1],
+        image::ColorType::Rgba8,
+        image::ImageFormat::Png,
+    )
+    .context("Cannot save avatar and items PNG")
+}

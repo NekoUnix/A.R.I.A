@@ -106,6 +106,15 @@ pub fn category(
         {
             state.set_open(title == "Capture & performance");
         }
+        #[cfg(feature = "screenshots")]
+        if crate::smoke_mode()
+            && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("items-pin-controls")
+        {
+            state.set_open(matches!(
+                title,
+                "PNG items" | "Pin to avatar" | "Input toggle"
+            ));
+        }
         ui.horizontal(|ui| {
             let (_, toggle) = ui.allocate_exact_size(egui::vec2(16.0, 22.0), egui::Sense::click());
             egui::collapsing_header::paint_default_icon(ui, state.openness(ui.ctx()), &toggle);

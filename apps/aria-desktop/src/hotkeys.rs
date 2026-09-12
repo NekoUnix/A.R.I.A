@@ -14,6 +14,7 @@ pub enum Action {
     Preset(u8),
     TogglePose,
     Expression(String),
+    ItemToggle(u64),
 }
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Registration {

@@ -140,6 +140,7 @@ pub struct AriaApp {
     broadcasts: crate::broadcast::Broadcasts,
     priority_status: Option<String>,
     input_monitor: InputMonitor,
+    items: crate::items::Items,
     hotkeys: crate::hotkeys::Hotkeys,
     live_inputs: Inputs,
     animation_time: f32,
@@ -154,6 +155,18 @@ pub struct AriaApp {
 }
 
 impl AriaApp {
+    fn scene(&self) -> crate::output::Scene {
+        crate::output::Scene {
+            items: self.items.draws.clone(),
+            model: self.live2d.as_ref().map(|a| a.image()),
+            model_bounds: self
+                .live2d
+                .as_ref()
+                .map_or(egui::Rect::NOTHING, |a| a.image_bounds()),
+            sprite: self.active_sprite().cloned(),
+            params: self.params,
+        }
+    }
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         theme::install(&cc.egui_ctx);
         let mut settings: Settings = if crate::smoke_mode() {
@@ -211,6 +224,7 @@ impl AriaApp {
             broadcasts: Default::default(),
             priority_status: None,
             input_monitor,
+            items: Default::default(),
             hotkeys: crate::hotkeys::Hotkeys::new(cc.egui_ctx.clone()),
             live_inputs: Inputs::new(),
             animation_time: 0.0,
@@ -757,7 +771,7 @@ impl AriaApp {
 
     fn detect_key_color(&mut self, index: usize) {
         let result = (|| -> anyhow::Result<crate::chroma::Suggestion> {
-            let palette = if let Some(avatar) = &self.live2d {
+            let mut palette = if let Some(avatar) = &self.live2d {
                 avatar.key_palette()?
             } else if let Some(idle) = &self.idle {
                 let mut palette = (*idle.palette).clone();
@@ -768,6 +782,7 @@ impl AriaApp {
             } else {
                 avatar::mica_palette()
             };
+            self.items.merge_palette(&mut palette);
             palette.suggest()
         })();
         self.outputs.apply_suggestion(index, result);
@@ -880,6 +895,7 @@ impl AriaApp {
             .insert(self.input_monitor.model_key.clone(), preferences);
     }
     fn restore_model_preferences(&mut self, key: &str) {
+        self.items.reset();
         self.scene_revision = self.scene_revision.wrapping_add(1);
         let preferences = self
             .settings
@@ -974,8 +990,21 @@ impl AriaApp {
                 &labels,
                 &self.live_inputs,
                 &mut self.settings.mapping,
-                self.live2d.is_some(),
+                true,
             );
+            if self.input_monitor.tab == Tab::Items {
+                if self.items.panel(
+                    ui,
+                    &mut self.input_monitor.saved,
+                    &self.live_inputs,
+                    &parameters,
+                ) {
+                    self.items.edited();
+                }
+                if let Some(error) = &self.input_monitor.hotkey_status {
+                    ui.colored_label(egui::Color32::LIGHT_RED, error);
+                }
+            }
         });
         if self.input_monitor.tab == Tab::Raw {
             crate::help::label(ui, "Received tracking data", "diagnostics");
@@ -1090,6 +1119,22 @@ impl AriaApp {
 
 impl eframe::App for AriaApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        #[cfg(feature = "screenshots")]
+        if crate::smoke_mode()
+            && ctx.current_pass_index() == 0
+            && let Some(path) = std::env::var_os("ARIA_SMOKE_ITEM")
+        {
+            let key = egui::Id::new("smoke-drop-png");
+            if !ctx.data(|d| d.get_temp::<bool>(key).unwrap_or(false)) {
+                ctx.input_mut(|i| {
+                    i.raw.dropped_files.push(egui::DroppedFile {
+                        path: Some(path.into()),
+                        ..Default::default()
+                    })
+                });
+                ctx.data_mut(|d| d.insert_temp(key, true));
+            }
+        }
         let dropped = ctx.input(|i| {
             i.raw
                 .dropped_files
@@ -1097,9 +1142,19 @@ impl eframe::App for AriaApp {
                 .filter_map(|f| f.path.clone())
                 .collect::<Vec<_>>()
         });
-        if let Some(path) = dropped.first() {
+        if ctx.current_pass_index() == 0
+            && let Some(path) = dropped.iter().find(|p| !crate::items::is_png(p))
+        {
             self.open_model(path);
         }
+        let mut dropped_pngs: Vec<_> = if ctx.current_pass_index() == 0 {
+            dropped
+                .into_iter()
+                .filter(|p| crate::items::is_png(p))
+                .collect()
+        } else {
+            Vec::new()
+        };
         let now = Instant::now();
         // A layout discard can call update twice for the same frame.
         let dt = self
@@ -1144,6 +1199,9 @@ impl eframe::App for AriaApp {
                 _ => {}
             }
         }
+        if std::mem::take(&mut self.input_monitor.reset_item_rules) {
+            self.items.reset_rules();
+        }
         if dt > 0.0 {
             self.params = self
                 .pipeline
@@ -1187,20 +1245,20 @@ impl eframe::App for AriaApp {
                     *value = p.value;
                 }
             }
-            if let Some(path) = self.input_monitor.export_png.take() {
-                self.input_monitor.message = Some(
-                    match self
-                        .live2d
-                        .as_ref()
-                        .ok_or_else(|| anyhow::anyhow!("Load a Live2D avatar first"))
-                        .and_then(|avatar| avatar.save_png(&path))
-                    {
-                        Ok(()) => format!("Saved PNG: {}", path.display()),
-                        Err(error) => format!("PNG export failed: {error:#}"),
-                    },
-                );
+            let parameters = self.current_parameters();
+            if self.items.evaluate(
+                &mut self.input_monitor.saved.config,
+                &self.live_inputs,
+                &parameters,
+            ) {
+                self.items.edited();
             }
         }
+        self.items.sync_assets(
+            ctx,
+            self.render_state.as_ref(),
+            &self.input_monitor.saved.config,
+        );
 
         self.metrics.update(self.render_state.as_ref());
         egui::TopBottomPanel::top("header")
@@ -1214,7 +1272,11 @@ impl eframe::App for AriaApp {
                         crate::help::open(ctx, "welcome", String::new());
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(RichText::new("v0.9 · WINDOWS PREVIEW").small().color(MUTED));
+                        ui.label(
+                            RichText::new("v0.10 · WINDOWS PREVIEW")
+                                .small()
+                                .color(MUTED),
+                        );
                     });
                 });
             });
@@ -1278,7 +1340,82 @@ impl eframe::App for AriaApp {
                     );
                 });
                 ui.label(RichText::new(self.connection_status()).color(MINT));
+                ui.horizontal_wrapped(|ui| {
+                    crate::help::button(ui, "png-items");
+                    if ui
+                        .small_button("Drop PNGs here · items & toggles")
+                        .clicked()
+                    {
+                        self.input_monitor.tab = Tab::Items;
+                    }
+                });
                 let (rect, _) = ui.allocate_exact_size(ui.available_size(), egui::Sense::hover());
+                let old_revision = self.items.revision;
+                if !dropped_pngs.is_empty() {
+                    let pointer = ctx.input(|i| i.pointer.latest_pos());
+                    if pointer.is_none_or(|p| rect.contains(p)) {
+                        let scene = self.scene();
+                        let position = crate::items::Items::drop_position(
+                            &scene,
+                            rect,
+                            self.settings.zoom,
+                            pointer.or(self.items.last_hover),
+                        );
+                        if self.items.add(
+                            std::mem::take(&mut dropped_pngs),
+                            &mut self.input_monitor.saved.config,
+                            position,
+                        ) {
+                            self.items.edited();
+                        }
+                        self.input_monitor.tab = Tab::Items;
+                    } else {
+                        self.items.message = Some(
+                            "Drop PNG images inside Your stage, or use Add PNGs in the items tab."
+                                .into(),
+                        );
+                        self.input_monitor.tab = Tab::Items;
+                    }
+                }
+                self.items.sync_assets(
+                    ctx,
+                    self.render_state.as_ref(),
+                    &self.input_monitor.saved.config,
+                );
+                self.items
+                    .refresh(&self.input_monitor.saved.config, self.live2d.as_ref());
+                let scene = self.scene();
+                let previous_selection = self.items.selected;
+                #[cfg(feature = "screenshots")]
+                if crate::smoke_mode() && std::env::var_os("ARIA_SMOKE_ITEM").is_some() {
+                    let key = egui::Id::new("smoke-pinned-png");
+                    if !ctx.data(|d| d.get_temp::<bool>(key).unwrap_or(false)) {
+                        self.items.prepare_smoke(
+                            &mut self.input_monitor.saved.config,
+                            self.live2d.as_ref(),
+                        );
+                        ctx.data_mut(|d| d.insert_temp(key, true));
+                    }
+                }
+                if self.items.stage(
+                    ui,
+                    rect,
+                    &scene,
+                    &mut self.input_monitor.saved.config,
+                    self.live2d.as_ref(),
+                    self.settings.zoom,
+                ) {
+                    self.items.edited();
+                }
+                if self.items.selected.is_some() && self.items.selected != previous_selection {
+                    self.input_monitor.tab = Tab::Items;
+                }
+                self.items
+                    .refresh(&self.input_monitor.saved.config, self.live2d.as_ref());
+                if self.items.revision != old_revision {
+                    self.scene_revision = self.scene_revision.wrapping_add(1);
+                }
+                let scene = self.scene();
                 let painter = ui.painter_at(rect);
                 painter.rect_filled(
                     rect,
@@ -1303,6 +1440,7 @@ impl eframe::App for AriaApp {
                         Stroke::new(1.0_f32, Color32::from_rgb(45, 60, 69)),
                     );
                 }
+                crate::items::paint(&painter, &scene, rect, self.settings.zoom, true);
                 if let Some(avatar) = &self.live2d {
                     avatar.image().draw(&painter, rect, self.settings.zoom);
                 } else {
@@ -1314,6 +1452,9 @@ impl eframe::App for AriaApp {
                         self.settings.zoom,
                     );
                 }
+                crate::items::paint(&painter, &scene, rect, self.settings.zoom, false);
+                self.items
+                    .selection(&painter, &scene, rect, self.settings.zoom);
                 painter.text(
                     rect.left_bottom() + egui::vec2(16.0, -18.0),
                     egui::Align2::LEFT_BOTTOM,
@@ -1326,6 +1467,26 @@ impl eframe::App for AriaApp {
                     MUTED,
                 );
             });
+        if let Some(path) = self.input_monitor.export_png.take() {
+            let scene = self.scene();
+            let result = if scene.items.is_empty()
+                && let Some(avatar) = &self.live2d
+            {
+                avatar.save_png(&path)
+            } else {
+                self.render_state
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("GPU renderer unavailable"))
+                    .and_then(|state| crate::broadcast::save_png(ctx, state, &scene, &path))
+            };
+            self.input_monitor.message = Some(match result {
+                Ok(()) => format!(
+                    "Saved transparent PNG with avatar and items: {}",
+                    path.display()
+                ),
+                Err(e) => format!("PNG export failed: {e:#}"),
+            });
+        }
         self.model_window(ctx);
         self.bare_import_window(ctx);
         if !self.hotkeys.available() {
@@ -1334,6 +1495,7 @@ impl eframe::App for AriaApp {
         }
         self.hotkeys.configure(self.input_monitor.hotkey_keys());
         self.input_monitor.save_requested |= self.outputs.take_dirty();
+        self.input_monitor.save_requested |= self.items.take_save();
         if std::mem::take(&mut self.input_monitor.save_requested) && !crate::smoke_mode() {
             self.remember_current_rig();
             if let Some(storage) = frame.storage_mut() {
@@ -1343,6 +1505,36 @@ impl eframe::App for AriaApp {
         }
         #[cfg(feature = "screenshots")]
         {
+            if crate::smoke_mode()
+                && std::env::var_os("ARIA_SMOKE_ITEM").is_some()
+                && self.started.elapsed()
+                    > crate::screenshot::delay().saturating_sub(Duration::from_millis(750))
+            {
+                let key = egui::Id::new("smoke-verify-png");
+                if !ctx.data(|d| d.get_temp::<bool>(key).unwrap_or(false)) {
+                    assert_eq!(self.items.draws.len(), 2, "Both PNG textures must load");
+                    assert!(
+                        self.items
+                            .draws
+                            .iter()
+                            .all(|d| d.anchor != crate::items::Anchor::Missing && d.visible)
+                    );
+                    if std::env::var_os("ARIA_TEST_MODEL").is_some() {
+                        assert!(
+                            self.live2d.is_some(),
+                            "PNG drop must preserve the loaded avatar"
+                        );
+                    }
+                    eprintln!(
+                        "PNG drop and pin smoke verified: {:?}",
+                        self.items.draws[0].anchor
+                    );
+                    if let Some(path) = std::env::var_os("ARIA_SMOKE_AVATAR_PNG") {
+                        self.input_monitor.export_png = Some(path.into());
+                    }
+                    ctx.data_mut(|d| d.insert_temp(key, true));
+                }
+            }
             if crate::smoke_mode()
                 && self.settings.source == Source::Vts
                 && self.started.elapsed() > crate::screenshot::delay()
@@ -1355,15 +1547,7 @@ impl eframe::App for AriaApp {
             screenshot_capture(ctx, self.started, false);
         }
         if self.outputs.any_open() {
-            let scene = crate::output::Scene {
-                model: self.live2d.as_ref().map(|a| a.image()),
-                model_bounds: self
-                    .live2d
-                    .as_ref()
-                    .map_or(egui::Rect::NOTHING, |a| a.image_bounds()),
-                sprite: self.active_sprite().cloned(),
-                params: self.params,
-            };
+            let scene = self.scene();
             if let Some(state) = &self.render_state {
                 self.broadcasts.update(
                     ctx,
@@ -1543,6 +1727,13 @@ mod tests {
             };
             saved.config.capture_pose(&parameters);
             saved.config.pose.frozen.insert("ParamAngleX".into(), angle);
+            saved.config.items.push(aria_core::items::Item {
+                id: 1_800_000_000_000_000_001,
+                name: key.into(),
+                path: format!("{key}.png").into(),
+                position: [angle / 30.0, 0.0],
+                ..Default::default()
+            });
             saved.config.physics.groups.insert(
                 "Custom spring".into(),
                 aria_core::physics::GroupSettings {
@@ -1593,6 +1784,18 @@ mod tests {
         eframe::set_value(&mut storage, "aria-settings-v1", &settings);
         let mut restored: Settings =
             eframe::get_value(&storage, "aria-settings-v1").expect("RON settings restore");
+        assert_eq!(
+            restored.saved_rigs["avatar-a"].config.items[0].name,
+            "avatar-a"
+        );
+        assert_eq!(
+            restored.saved_rigs["avatar-b"].config.items[0].name,
+            "avatar-b"
+        );
+        assert_ne!(
+            restored.saved_rigs["avatar-a"].config.items[0].position,
+            restored.saved_rigs["avatar-b"].config.items[0].position
+        );
         for _ in 0..3 {
             restored.model_preferences["avatar-a"]
                 .clone()

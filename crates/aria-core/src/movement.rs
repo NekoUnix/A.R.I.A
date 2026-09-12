@@ -36,6 +36,7 @@ pub struct RigConfig {
     pub physics: PhysicsSettings,
     /// Active expression file identities for this avatar, also captured in presets.
     pub expressions: BTreeSet<String>,
+    pub items: Vec<crate::items::Item>,
 }
 impl RigConfig {
     pub fn from_parameters(parameters: &[RigParameter]) -> Self {
@@ -180,6 +181,7 @@ impl RigConfig {
             );
         }
         self.physics.validate()?;
+        crate::items::validate(&self.items)?;
         ensure!(
             self.expressions.len() <= 256
                 && self
@@ -253,11 +255,32 @@ pub struct SavedRig {
     pub presets: Vec<Preset>,
     pub global_hotkeys: bool,
     pub expression_hotkeys: BTreeMap<String, crate::shortcuts::Shortcut>,
+    pub item_hotkeys: BTreeMap<u64, crate::shortcuts::Shortcut>,
     pub expression_files: Vec<std::path::PathBuf>,
 }
 impl SavedRig {
     pub fn validate(&self, parameters: &[RigParameter]) -> Result<()> {
         self.config.validate(parameters)?;
+        ensure!(
+            self.item_hotkeys.len() <= 4096,
+            "Too many PNG item shortcuts"
+        );
+        let mut item_keys = BTreeSet::new();
+        for (id, key) in &self.item_hotkeys {
+            key.validate()?;
+            ensure!(
+                *id != 0
+                    && item_keys.insert(*key)
+                    && *key != crate::shortcuts::Shortcut::pose()
+                    && !self.expression_hotkeys.values().any(|k| k == key)
+                    && !self
+                        .presets
+                        .iter()
+                        .filter_map(|p| p.hotkey)
+                        .any(|n| crate::shortcuts::Shortcut::preset(n) == *key),
+                "PNG shortcut conflicts with another action"
+            );
+        }
         ensure!(self.presets.len() <= 128, "Maximum 128 presets per model");
         let mut keys = BTreeSet::new();
         for preset in &self.presets {
@@ -378,6 +401,12 @@ mod tests {
     fn presets_round_trip_ranges_pose_and_keys_but_not_filter_state() {
         let p = preview_parameters(Parameters::default());
         let mut config = RigConfig::from_parameters(&p);
+        config.items.push(crate::items::Item {
+            name: "Sunglasses".into(),
+            path: "accessories/glasses.png".into(),
+            pin: Some(crate::items::Pin::Puppet { point: [0.1, -0.2] }),
+            ..Default::default()
+        });
         let b = config.bindings.get_mut("ParamAngleX").unwrap();
         b.input_min = -12.0;
         b.output_max = 20.0;
@@ -410,6 +439,7 @@ mod tests {
         let loaded: SavedRig = serde_json::from_slice(&json).unwrap();
         loaded.validate(&p).unwrap();
         assert_eq!(loaded.presets[0].hotkey, Some(3));
+        assert_eq!(loaded.presets[0].rig.items, loaded.config.items);
         assert_eq!(loaded.config.bindings["ParamAngleX"].input_min, -12.0);
         assert_eq!(loaded.config.steps["ParamAngleX"], 0.25);
         assert_eq!(

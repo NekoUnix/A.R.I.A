@@ -554,6 +554,7 @@ impl OutputWindows {
 
 #[derive(Clone)]
 pub struct Scene {
+    pub items: std::sync::Arc<[crate::items::DrawItem]>,
     pub model: Option<ModelImage>,
     pub model_bounds: Rect,
     pub sprite: Option<Sprite>,
@@ -594,6 +595,7 @@ impl Scene {
         painter.rect_filled(canvas, 0.0, config.background.color(config.key));
         let translated =
             canvas.translate(egui::vec2(config.position[0], config.position[1]) * canvas.size());
+        crate::items::paint(painter, self, translated, config.zoom, true);
         if let Some(model) = self.model {
             model.draw(painter, translated, config.zoom);
         } else {
@@ -605,6 +607,7 @@ impl Scene {
                 config.zoom,
             );
         }
+        crate::items::paint(painter, self, translated, config.zoom, false);
     }
 }
 fn size_fields(
@@ -683,6 +686,7 @@ mod tests {
         for size in [egui::vec2(960.0, 540.0), egui::vec2(540.0, 960.0)] {
             let ctx = egui::Context::default();
             let scene = Scene {
+                items: Default::default(),
                 model: None,
                 model_bounds: Rect::NOTHING,
                 sprite: None,
@@ -816,6 +820,7 @@ mod tests {
         for size in [[480., 270.], [270., 480.], [480., 320.]] {
             let ctx = egui::Context::default();
             let scene = Scene {
+                items: Default::default(),
                 model: None,
                 model_bounds: Rect::NOTHING,
                 sprite: None,

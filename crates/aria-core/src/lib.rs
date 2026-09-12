@@ -1,5 +1,6 @@
 //! Platform-independent tracking values and a small, deterministic parameter pipeline.
 pub mod expressions;
+pub mod items;
 pub mod movement;
 pub mod physics;
 pub mod rig;

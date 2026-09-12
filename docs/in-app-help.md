@@ -2,6 +2,80 @@
 
 This guide is bundled into the application and works offline. The topic headers also provide the short hover descriptions for the circled question-mark buttons.
 
+## png-items | PNG items & avatar accessories | Drop PNG images onto Your stage to add accessories. Each item has its own placement, pin, visibility toggle and optional input rule, saved with this avatar.
+
+### Add and select items
+
+Drag one or more .png files from File Explorer into the central stage, or open PNG items & toggles in the right panel and click Add PNGs. Dropping a PNG adds an accessory to the current avatar. To replace the underlying PNG puppet, use Avatar & appearance instead. Model exports still load through the existing model importer.
+
+Click an accessory or its name in the item list to select it. Drag its rectangle on the stage to position it. Transparent padding is part of that rectangle, so tightly cropped PNGs are easier to handle. The highlighted border and name are editing aids; they do not appear in clean outputs or exported images. Hidden items remain selectable in the list. The checkbox beside a name controls master visibility.
+
+### Files, performance and saving
+
+Use a stable local folder for your PNGs. Profiles and presets reference the image path; they do not embed or copy the file. If an image is moved, choose Replace PNG / locate file. Reload images retries missing files and rereads edited artwork. Removing an item removes its settings and shortcut, leaving the original file on disk.
+
+Each avatar can have up to 32 items. Each image must be a real PNG, at most 4096 pixels in either dimension and 32 MiB on disk. The combined decoded image budget is 256 MiB, counting shared paths once. Texture assets are cached; moving or toggling an item does not decode or upload the PNG again. Changes save locally after editing settles; Save item settings saves immediately. Missing or oversized files show an error beside the selected item without preventing other items from working.
+
+### Presets, screenshots and outputs
+
+Movement and pose presets include the item list, placement, pins, visibility and input rules. Shortcut assignments belong to the avatar's profile; importing a preset does not install someone else's shortcuts. A shortcut is active only when its item is present in the current layout. Deleting an item clears its shortcut even if an older preset still contains the item.
+
+All three output canvases include the same accessories, with each canvas's framing, zoom and background. Mouse-wheel avatar scaling in an output scales its accessories too. The automatic key-color suggestion includes loaded PNG item colors, including hidden items. Save transparent PNG in Pose saves the avatar and visible accessories on the model's rendering canvas (maximum model edge 2048 pixels); Mica and PNG puppets use a 1200 × 1400 image. Artwork outside that canvas is clipped. Selection outlines and the studio grid are excluded.
+
+## png-placement | PNG size, position & layers | Position accessories by dragging or editing their offsets. Size is relative to the avatar canvas height, so the same layout follows every output resolution and zoom.
+
+### Size, rotation and opacity
+
+Size is the PNG's height divided by the avatar canvas height. For example, 0.20 means one fifth of that height; it does not mean 20 pixels. The PNG keeps its aspect ratio. Rotation is an added clockwise angle in screen space, between -180 and 180 degrees. Opacity ranges from 0 (invisible) to 1 (fully visible); the PNG's own alpha still applies.
+
+X offset increases toward the right; Y offset increases downward. Both use canvas-height units, independent of desktop DPI or OBS resolution. A free item's offset is measured from the avatar canvas center (Mica uses its drawing origin). A pinned item's offset is measured from its pin. Follow pin rotation rotates this offset with the surface; Follow surface stretch scales it with the surface. Dragging a pinned item edits the offset without removing its pin. Reset offset returns it to the pin, or to the canvas origin if it is free.
+
+### Layers and locking
+
+Behind the avatar draws the item before the avatar. Otherwise it draws after the avatar. Backward and Forward change its order relative to other items on the same side of the avatar; later items are in front. Accessories cannot be inserted between individual Live2D ArtMeshes in this version. Lock stage dragging prevents accidental movement while leaving sidebar editing, toggles and pin following available. Size, rotation and visibility still work when dragging is locked.
+
+Free items stay in the avatar's canvas framing but do not follow face motion. Pin an item when it should follow a head, hair strand or other animated part. Changing the output's position or wheel zoom moves the complete avatar-and-accessory composition.
+
+## png-pins | Pin a PNG to a moving surface | Pin here attaches at the item's center. Choose pin point lets you click a moving part of the avatar. Live2D pins follow that mesh's animated vertices.
+
+@diagram pin
+
+### Pick a surface
+
+Select the PNG. Choose pin point, then click the model where its center should attach. The PNG moves to that point and its offset becomes zero. Pin here uses the current PNG center; place it over the avatar first. Escape or Cancel pin leaves the existing placement unchanged. After pinning, drag the accessory to adjust its offset.
+
+Live2D picking selects the frontmost visible triangle at the clicked location. A pin stores that triangle's vertices and a weighted position inside it. Each frame, the updated mesh supplies the anchor, including changes caused by tracking, expressions and physics. ArtMesh numbers identify the selected mesh in this avatar. Picking uses mesh triangles, not individual texture alpha or clipping-mask pixels; if the wrong layer moves the item, try a nearby point on the intended part. Invisible and zero-opacity meshes are skipped during selection.
+
+### Following options
+
+Follow pin rotation uses the triangle's longest edge as an orientation reference at pin time. Turning it off keeps the PNG and its offset upright while its center still follows the anchor. Follow surface stretch changes accessory size and offset with that edge's length; its multiplier is limited to 0.25–4 to prevent extreme deformation. This is rigid attachment movement, not a Live2D warp of the PNG itself.
+
+Follow surface visibility multiplies item opacity by the selected mesh's visibility and opacity. Disable it to keep an accessory visible when an expression hides that mesh. This does not apply that mesh's clipping mask to the accessory. If a pin's geometry is missing or collapsed, the accessory is hidden until a usable surface returns or you repin it.
+
+Mica and PNG puppets do not have Cubism meshes, so their pins follow the puppet's head translation and rotation. Surface stretch and mesh-visibility options have no extra effect on those puppets. Unpin keeps the accessory's current position, scale and orientation, then stops motion following. The pin is stored with this avatar's content-based profile, not with the test model or a global mapping.
+
+## png-toggles | Named toggles, input rules & hotkeys | Each PNG has a named visibility toggle. Show it manually, assign a custom keyboard shortcut, or use a tracking input or model parameter to drive its visibility.
+
+@diagram item-toggle
+
+### Choose a behavior
+
+Rename Toggle name to describe the action, such as Sunglasses or Talking sparkle. Manual / hotkey uses the master checkbox and assigned shortcut. Visible while in range shows the item only while master visibility is on and the chosen signal is inside the range. Toggle on entering range flips master visibility once when the signal enters the range from outside. Staying inside does not keep flipping it.
+
+Select Tracking input for a processed input such as MouthOpen, FaceAngleX or EyeOpenLeft. Select Model parameter for an actual parameter on the current avatar, including the final effects of mappings, expressions, held values and physics. The list comes from the current signals or model. You can type an exact custom ID; spelling and case matter. The current signal value helps choose thresholds. If an ID is unavailable, a range-gated item hides and a latched toggle keeps its last master state. ARIA's standard tracking inputs may return neutral values when tracking disconnects, so use thresholds appropriate to those values.
+
+### Ranges, stepping and hysteresis
+
+Start and End are inclusive and use the selected signal's units. For a sparkle that appears while talking, choose MouthOpen, Visible while in range, Start 0.35, End 1.0 and Hysteresis 0.05. The signal enters at 0.35, but must fall below 0.30 (or rise above 1.05) to leave. This margin reduces flicker near a threshold. It does not change the signal or the avatar mapping.
+
+To toggle sunglasses with a blink, use EyeOpenLeft, Toggle on entering range, Start 0, End 0.2 and Hysteresis 0.05. A first sample establishes the baseline; opening a profile or reconnecting an unavailable signal does not fabricate a toggle. Leave the range before entering it again. For stepped model-parameter triggers, configure that parameter's Step in Inputs; the rule reads its final stepped value. The rule itself uses the inclusive range and hysteresis, without an extra stepping filter.
+
+### Keyboard shortcuts and frozen poses
+
+Choose Ctrl, Alt, Shift or Win modifiers and a main key, then Assign shortcut. ARIA rejects duplicates assigned to expressions, presets, other PNGs or the reserved pose shortcut. Enable global hotkeys applies to all actions for this avatar. Clear shortcut removes only this item's assignment. A shortcut flips master visibility; in Visible while in range mode, the input condition must also match. A key without modifiers can intercept normal typing in other applications. Windows reserves F12, and another application can own a shortcut; registration failures appear in the panel.
+
+Freeze pose pauses input rules and captures the current gated visibility with the pose preset. Manual master toggles and hotkeys still work so you can choose accessories for screenshots without moving the model. Resume live reevaluates the input conditions. Save a pose or movement preset to keep multiple accessory layouts for the same avatar.
+
 ## welcome | Getting started & finding help | Hover a circled question mark for a quick explanation. Click it to open a separate, searchable help window without pausing your avatar.
 
 ### Your first session
@@ -311,19 +385,19 @@ With pose mode active, turn off Freeze all animation to use partial overrides. C
 
 ### Save or export
 
-Save pose as preset opens Presets, where Save pose stores a named frozen snapshot along with the rig settings. Ctrl+Alt+P toggles freeze/resume when global hotkeys are enabled. Save transparent PNG exports the rendered Live2D avatar without studio UI or the selected output background. Use output framing and OBS when you need a particular composition or canvas format.
+Save pose as preset opens Presets, where Save pose stores a named frozen snapshot along with the rig settings and PNG items. Ctrl+Alt+P toggles freeze/resume when global hotkeys are enabled. Save transparent PNG exports the rendered avatar and visible PNG items without studio UI or the selected output background. Use output framing and OBS when you need a particular composition or canvas format.
 
 If expressions seem unavailable or physics is still, check for POSE FROZEN before changing mappings. Frozen mode intentionally pauses live animation. Holds and frozen values belong to the active avatar's rig and can be included in its saved profile.
 
-## png | Saving a transparent avatar PNG | Save transparent PNG writes the current rendered Live2D avatar with alpha, excluding studio controls and output backgrounds.
+## png | Saving a transparent avatar PNG | Save transparent PNG writes the current avatar and visible PNG accessories with alpha, excluding studio controls and output backgrounds.
 
 ### Make a still image
 
-Capture a frozen pose, adjust the desired parameters and use Save transparent PNG. Choose a destination and PNG filename in the save dialog. Canceling the dialog leaves the app unchanged. The export uses the Live2D renderer's model texture; it is not a screenshot of the studio window or an independently framed OBS canvas.
+Capture a frozen pose, adjust the desired parameters and accessory visibility, then use Save transparent PNG. Choose a destination and PNG filename in the save dialog. Canceling the dialog leaves the app unchanged. The export composes visible accessories with the avatar; it is not a screenshot of the studio window or an independently framed OBS canvas.
 
 ### Transparency and availability
 
-The PNG preserves transparent pixels around the model. Its dimensions come from the model render target rather than the compact preview window or a selected output resolution. The button is available when a Live2D avatar is loaded. Image puppets and the built-in Mica preview do not use this Live2D export path.
+The PNG preserves transparent pixels around the model. Live2D exports use the model render target dimensions, with a maximum edge of 2048 pixels. Image puppets and the built-in Mica preview export to a 1200 × 1400 canvas. Neither the compact preview size nor a selected output resolution changes this export. Accessories outside the export canvas are clipped. Use OBS and an output canvas for a different framing or resolution.
 
 For a posed landscape or portrait composition, frame an output and capture that source in OBS instead. A frozen pose makes repeated image exports predictable. Check the app's status if the destination cannot be written or GPU readback fails; choosing a path does not guarantee a successful save.
 
@@ -331,7 +405,7 @@ For a posed landscape or portrait composition, frame an output and capture that 
 
 ### Create a preset
 
-Enter a unique name of up to 80 characters, choose No hotkey or Ctrl+Alt+F1–F11, then click Save movement or Save pose. Movement saves current input bindings, manual values, steps, mapping, physics and active expressions. It clears full frozen mode for live movement, but partial Hold overrides remain part of the rig. Pose captures the current final parameter values and freezes them. Up to 128 presets can be stored per avatar.
+Enter a unique name of up to 80 characters, choose No hotkey or Ctrl+Alt+F1–F11, then click Save movement or Save pose. Movement saves current input bindings, manual values, steps, mapping, physics, active expressions and PNG item layouts. It clears full frozen mode for live movement, but partial Hold overrides remain part of the rig. Pose captures the current final parameter values and accessory visibility and freezes them. Up to 128 presets can be stored per avatar.
 
 ### Use and edit the library
 

@@ -116,7 +116,7 @@ pub fn context_button(
     let a = article(topic);
     // A painted circle and ASCII question mark work even without symbol fonts.
     // Button sense includes keyboard activation and an accessible button role.
-    let (rect, response) = ui.allocate_exact_size(Vec2::splat(22.0), egui::Sense::click());
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(11.0), egui::Sense::click());
     response.widget_info(|| {
         egui::WidgetInfo::labeled(
             egui::WidgetType::Button,
@@ -129,14 +129,14 @@ pub fn context_button(
     } else {
         theme::MUTED
     };
-    ui.painter().circle_filled(rect.center(), 8.5, theme::CARD);
+    ui.painter().circle_filled(rect.center(), 4.25, theme::CARD);
     ui.painter()
-        .circle_stroke(rect.center(), 8.5, Stroke::new(1.25_f32, color));
+        .circle_stroke(rect.center(), 4.25, Stroke::new(0.625_f32, color));
     ui.painter().text(
         rect.center(),
         Align2::CENTER_CENTER,
         "?",
-        FontId::proportional(13.0),
+        FontId::proportional(6.5),
         color,
     );
     if response.has_focus() {
@@ -191,6 +191,11 @@ pub fn category_topic(title: &str) -> &'static str {
         "Expression library" | "Selected expression" => "expressions",
         "Files needing attention" => "expression-files",
         "Connection diagnostics & export" => "diagnostics",
+        "PNG items" => "png-items",
+        "Placement & appearance" => "png-placement",
+        "Pin to avatar" => "png-pins",
+        "Input toggle" => "png-toggles",
+        "Keyboard toggle" => "hotkeys",
         _ => "welcome",
     }
 }
@@ -396,6 +401,24 @@ fn diagram(ui: &mut egui::Ui, kind: &str) {
         return;
     }
     let (labels, note): (&[&str], &str) = match kind {
+        "pin" => (
+            &[
+                "Choose a point on the avatar",
+                "Remember triangle + weights",
+                "Tracking / physics move vertices",
+                "PNG follows anchor + your offset",
+            ],
+            "The accessory is a rigid image attached to the moving surface. Rotation, stretch and visibility following are optional.",
+        ),
+        "item-toggle" => (
+            &[
+                "Tracking input / final parameter",
+                "Inclusive range + hysteresis",
+                "Gate visibility / flip on entry",
+                "Master toggle → PNG shown or hidden",
+            ],
+            "Frozen poses pause input rules. Manual checkboxes and keyboard toggles remain available for screenshots.",
+        ),
         "pipeline" => (
             &[
                 "Tracker / demo",
@@ -631,6 +654,7 @@ mod tests {
             include_str!("input_monitor.rs"),
             include_str!("physics_panel.rs"),
             include_str!("expressions_panel.rs"),
+            include_str!("items_panel.rs"),
             include_str!("output.rs"),
             include_str!("metrics.rs"),
         ] {
@@ -746,7 +770,16 @@ mod tests {
                     .filter_map(|s| s.strip_prefix("@diagram "))
                 {
                     assert!(
-                        ["mapping", "pipeline", "network", "physics", "capture"].contains(&block)
+                        [
+                            "mapping",
+                            "pipeline",
+                            "network",
+                            "physics",
+                            "capture",
+                            "pin",
+                            "item-toggle"
+                        ]
+                        .contains(&block)
                     );
                 }
             }

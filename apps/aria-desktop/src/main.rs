@@ -9,6 +9,8 @@ mod expressions_panel;
 mod help;
 mod hotkeys;
 mod input_monitor;
+mod items;
+mod items_panel;
 mod live2d;
 mod metrics;
 mod output;

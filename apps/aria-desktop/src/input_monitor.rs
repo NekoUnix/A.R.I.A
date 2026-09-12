@@ -15,6 +15,7 @@ pub enum Tab {
     Expressions,
     Presets,
     Raw,
+    Items,
 }
 pub struct InputMonitor {
     pub saved: SavedRig,
@@ -24,6 +25,7 @@ pub struct InputMonitor {
     pub hotkey_status: Option<String>,
     pub save_requested: bool,
     pub reset_motion: bool,
+    pub reset_item_rules: bool,
     pub export_png: Option<PathBuf>,
     search: String,
     mapped_only: bool,
@@ -97,6 +99,7 @@ impl InputMonitor {
             hotkey_status: None,
             save_requested: false,
             reset_motion: true,
+            reset_item_rules: true,
             export_png: None,
             search: String::new(),
             mapped_only: true,
@@ -123,6 +126,7 @@ impl InputMonitor {
             return false;
         };
         self.saved.config = preset.rig.clone();
+        self.reset_item_rules = true;
         self.saved.config.reset_filters();
         *mapping = preset.mapping.clone();
         self.reset_motion = true;
@@ -155,6 +159,12 @@ impl InputMonitor {
                 self.message = self.expressions.toggle(&id, &mut self.saved);
                 self.save_requested = true;
             }
+            crate::hotkeys::Action::ItemToggle(id) => {
+                if let Some(item) = self.saved.config.items.iter_mut().find(|i| i.id == id) {
+                    item.visible = !item.visible;
+                    self.save_requested = true;
+                }
+            }
         }
     }
     pub fn hotkey_keys(&self) -> Vec<crate::hotkeys::Registration> {
@@ -185,6 +195,14 @@ impl InputMonitor {
                 });
             }
         }
+        for item in &self.saved.config.items {
+            if let Some(&shortcut) = self.saved.item_hotkeys.get(&item.id) {
+                keys.push(Registration {
+                    shortcut,
+                    action: Action::ItemToggle(item.id),
+                });
+            }
+        }
         keys
     }
     fn expression_uses_key(&self, key: Option<u8>) -> bool {
@@ -192,6 +210,7 @@ impl InputMonitor {
             self.saved
                 .expression_hotkeys
                 .values()
+                .chain(self.saved.item_hotkeys.values())
                 .any(|shortcut| *shortcut == aria_core::shortcuts::Shortcut::preset(key))
         })
     }
@@ -231,6 +250,15 @@ impl InputMonitor {
                 }
             });
         }
+        if ui
+            .add_sized(
+                [ui.available_width(), 26.0],
+                egui::Button::new("PNG items & toggles").selected(self.tab == Tab::Items),
+            )
+            .clicked()
+        {
+            self.tab = Tab::Items;
+        }
         crate::help::label(
             ui,
             "About this tab",
@@ -241,6 +269,7 @@ impl InputMonitor {
                 Tab::Expressions => "expressions",
                 Tab::Presets => "presets",
                 Tab::Raw => "diagnostics",
+                Tab::Items => "png-items",
             },
         );
         if let Some(message) = &self.message {
@@ -293,7 +322,7 @@ impl InputMonitor {
                     ui.colored_label(egui::Color32::LIGHT_RED, error);
                 }
             }
-            Tab::Raw => {}
+            Tab::Raw | Tab::Items => {}
         }
     }
     fn filter_ui(&mut self, ui: &mut egui::Ui) {
@@ -488,7 +517,7 @@ impl InputMonitor {
             if crate::help::control(ui, "png", |ui| {
                 ui.add_enabled(can_export, egui::Button::new("Save transparent PNG…"))
             })
-            .on_hover_text("Save the rendered Live2D avatar without the studio UI or background.")
+            .on_hover_text("Save the rendered avatar and visible PNG items without the studio UI or background.")
             .clicked()
                 && let Some(path) = rfd::FileDialog::new()
                     .set_file_name("aria-pose.png")
@@ -734,7 +763,7 @@ impl InputMonitor {
                         });
                         if conflict || self.expression_uses_key(preset.hotkey) {
                             self.message =
-                                Some("Name or hotkey is already used by another preset.".into());
+                                Some("Name or hotkey is already assigned to a preset, expression or PNG toggle.".into());
                         } else if let Err(error) = preset.validate(parameters) {
                             self.message = Some(error.to_string());
                         } else {

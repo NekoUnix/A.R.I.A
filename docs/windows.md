@@ -1,6 +1,13 @@
 # Windows setup and operation
 
-ARIA v0.9 includes an offline help window: hover a circled **?** beside a control
+ARIA v0.10 adds PNG accessories: drop files onto Your stage, then configure pins,
+layers, visibility, input rules and hotkeys in **PNG items & toggles**. Settings
+and presets belong to the loaded avatar. All output canvases and transparent
+PNG exports include visible accessories. Keep their files in a stable folder;
+use Replace PNG / locate file when moving artwork. The circled **?** buttons are
+now half their previous size.
+
+ARIA includes an offline help window: hover a circled **?** beside a control
 for a short explanation, or click it for detailed instructions and diagrams.
 **Help & documentation** in the studio header opens the searchable guide. The
 window can stay open while tracking continues; closing it leaves ARIA running.
@@ -19,7 +26,7 @@ systems and Windows ARM64 are not verified release targets yet.
 1. Visit [the Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml).
 2. Select a green, successful run on `main` for the version you want.
 3. Under **Artifacts**, download **aria-windows-x64**. Sign in to GitHub if asked.
-4. Extract the downloaded artifact. Extract `aria-0.9.0-windows-x64.zip` inside it
+4. Extract the downloaded artifact. Extract `aria-0.10.0-windows-x64.zip` inside it
    into a normal writable folder, for example `C:\Apps\ARIA`.
 5. Double-click **aria-desktop.exe**. The default source is Demo and Mica should move.
 
