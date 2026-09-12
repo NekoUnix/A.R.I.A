@@ -257,7 +257,15 @@ impl InputMonitor {
                 .any(|shortcut| *shortcut == aria_core::shortcuts::Shortcut::preset(key))
         })
     }
-    pub fn navigation(&mut self, ui: &mut egui::Ui) {
+    pub fn navigation(&mut self, ui: &mut egui::Ui, kind: Option<crate::avatar_import::Kind>) {
+        if kind == Some(crate::avatar_import::Kind::Live2d) && self.tab == Tab::Images {
+            self.tab = Tab::Physics;
+        }
+        if kind == Some(crate::avatar_import::Kind::Images)
+            && matches!(self.tab, Tab::Physics | Tab::Expressions)
+        {
+            self.tab = Tab::Images;
+        }
         let mut group = match self.tab {
             Tab::Inputs | Tab::Microphone | Tab::Raw => 0,
             Tab::Physics | Tab::Expressions | Tab::Images => 1,
@@ -276,11 +284,13 @@ impl InputMonitor {
                 (Tab::Microphone, "Microphone"),
                 (Tab::Raw, "Diagnostics"),
             ],
-            1 => &[
-                (Tab::Physics, "Physics"),
-                (Tab::Expressions, "Expressions"),
-                (Tab::Images, "PNG / GIF"),
-            ],
+            1 => match kind {
+                Some(crate::avatar_import::Kind::Images) => &[(Tab::Images, "Artwork & actions")],
+                Some(crate::avatar_import::Kind::Live2d) => {
+                    &[(Tab::Physics, "Physics"), (Tab::Expressions, "Expressions")]
+                }
+                None => &[(Tab::Physics, "Physics"), (Tab::Images, "PNG / GIF")],
+            },
             2 => &[(Tab::Items, "Objects"), (Tab::Effects, "Throws & sprays")],
             _ => &[(Tab::Pose, "Pose controls"), (Tab::Presets, "Presets")],
         };
@@ -1026,6 +1036,30 @@ fn hotkey_combo(ui: &mut egui::Ui, id: &str, key: &mut Option<u8>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn imported_avatar_type_selects_only_relevant_controls() {
+        use crate::avatar_import::Kind;
+        let params = aria_core::movement::preview_parameters(aria_core::Parameters::default());
+        let mut monitor = InputMonitor::new(
+            "test".into(),
+            RigConfig::from_parameters(&params),
+            None,
+            &params,
+        );
+        let ctx = egui::Context::default();
+        for (kind, initial, expected) in [
+            (Kind::Images, Tab::Physics, Tab::Images),
+            (Kind::Images, Tab::Expressions, Tab::Images),
+            (Kind::Live2d, Tab::Images, Tab::Physics),
+            (Kind::Live2d, Tab::Items, Tab::Items),
+        ] {
+            monitor.tab = initial;
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| monitor.navigation(ui, Some(kind)));
+            });
+            assert!(monitor.tab == expected);
+        }
+    }
     #[test]
     fn effect_shortcuts_dispatch_and_conflicts_are_rejected() {
         let parameters = aria_core::movement::preview_parameters(aria_core::Parameters::default());

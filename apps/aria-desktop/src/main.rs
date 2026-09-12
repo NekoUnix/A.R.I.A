@@ -1,7 +1,8 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(all(not(debug_assertions), not(test)), windows_subsystem = "windows")]
 
 mod app;
 mod avatar;
+mod avatar_import;
 mod broadcast;
 mod chat;
 mod chroma;

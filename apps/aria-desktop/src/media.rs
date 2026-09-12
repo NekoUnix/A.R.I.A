@@ -77,20 +77,75 @@ impl Sprite {
         sprite
     }
 }
-pub fn load(
-    ctx: &egui::Context,
-    state: Option<&RenderState>,
-    path: &Path,
-    used: u64,
-    allow_jpeg: bool,
-) -> Result<Sprite> {
+#[derive(Clone, Debug)]
+pub struct Info {
+    pub size: [u32; 2],
+    pub frames: usize,
+    pub duration: f32,
+    pub file_bytes: u64,
+}
+impl Info {
+    pub fn source_bytes(&self) -> u64 {
+        u64::from(self.size[0]) * u64::from(self.size[1]) * 4 * self.frames as u64
+    }
+    pub fn playback_size(&self, maximum: u32, budget: u64) -> [u32; 2] {
+        let per_frame = budget / self.frames.max(1) as u64;
+        let pixels = u64::from(self.size[0]) * u64::from(self.size[1]) * 4;
+        let ratio = (per_frame as f64 / pixels.max(1) as f64).sqrt().min(1.0);
+        let edge = ((self.size[0].max(self.size[1]) as f64 * ratio).floor() as u32).max(1);
+        limits::texture_size(self.size[0], self.size[1], maximum.min(edge))
+    }
+}
+fn inspect_bytes(bytes: &[u8], format: image::ImageFormat) -> Result<Info> {
+    let (size, frames, duration) = if format == image::ImageFormat::Gif {
+        let mut options = gif::DecodeOptions::new();
+        options.skip_frame_decoding(true);
+        options.set_memory_limit(gif::MemoryLimit::Bytes(
+            limits::IMAGE_FILE.try_into().unwrap(),
+        ));
+        let mut reader = options.read_info(Cursor::new(bytes))?;
+        let size = [u32::from(reader.width()), u32::from(reader.height())];
+        let mut frames = 0;
+        let mut duration = 0.0;
+        while let Some(frame) = reader.read_next_frame()? {
+            frames += 1;
+            ensure!(frames <= limits::GIF_FRAMES, "GIF exceeds 4096 frames");
+            duration += (f32::from(frame.delay) / 100.0).clamp(0.02, 60.0);
+        }
+        (size, frames, duration)
+    } else {
+        let (w, h) =
+            image::ImageReader::with_format(Cursor::new(bytes), format).into_dimensions()?;
+        ([w, h], 1, 1.0)
+    };
+    ensure!(
+        frames > 0 && size.iter().all(|&v| v > 0 && v <= limits::IMAGE_SIDE),
+        "Image must have frames and source edges of at most 40960 pixels"
+    );
+    ensure!(
+        u64::from(size[0]) * u64::from(size[1]) * 4 <= limits::IMAGE_DECODED,
+        "Source image canvas exceeds 4096 MiB decoded"
+    );
+    let info = Info {
+        size,
+        frames,
+        duration,
+        file_bytes: bytes.len() as u64,
+    };
+    ensure!(
+        info.source_bytes() <= limits::GIF_SOURCE_TOTAL,
+        "GIF exceeds 256 GiB of source frame data"
+    );
+    Ok(info)
+}
+fn read_image(path: &Path, allow_jpeg: bool) -> Result<(Vec<u8>, image::ImageFormat)> {
     let mut bytes = Vec::new();
     std::fs::File::open(path)?
         .take(limits::IMAGE_FILE + 1)
         .read_to_end(&mut bytes)?;
     ensure!(
         bytes.len() as u64 <= limits::IMAGE_FILE,
-        "Image exceeds 320 MiB on disk"
+        "Image exceeds 512 MiB on disk"
     );
     let format = image::guess_format(&bytes)?;
     ensure!(
@@ -98,85 +153,87 @@ pub fn load(
             || (allow_jpeg && format == image::ImageFormat::Jpeg),
         "Choose a real PNG or GIF image"
     );
-    let mut limits = image::Limits::default();
-    limits.max_image_width = Some(limits::IMAGE_SIDE);
-    limits.max_image_height = Some(limits::IMAGE_SIDE);
-    limits.max_alloc = Some(limits::IMAGE_DECODED);
+    Ok((bytes, format))
+}
+pub fn inspect(path: &Path) -> Result<Info> {
+    let (bytes, format) = read_image(path, true)?;
+    inspect_bytes(&bytes, format)
+}
+pub fn load(
+    ctx: &egui::Context,
+    state: Option<&RenderState>,
+    path: &Path,
+    used: u64,
+    allow_jpeg: bool,
+) -> Result<Sprite> {
+    load_with_progress(
+        ctx,
+        state,
+        path,
+        used,
+        allow_jpeg,
+        limits::GIF_PLAYBACK_MIB,
+        &|_, _| Ok(()),
+    )
+}
+fn load_with_progress(
+    ctx: &egui::Context,
+    state: Option<&RenderState>,
+    path: &Path,
+    used: u64,
+    allow_jpeg: bool,
+    playback_mib: u32,
+    progress: &dyn Fn(usize, usize) -> Result<()>,
+) -> Result<Sprite> {
+    progress(0, 0)?;
+    let (bytes, format) = read_image(path, allow_jpeg)?;
+    let info = inspect_bytes(&bytes, format)?;
     let maximum = state.map_or_else(
         || ctx.input(|i| i.max_texture_side as u32),
         |s| s.device.limits().max_texture_dimension_2d,
     );
-    // Imports also run before the first eframe input event updates this value.
     ctx.input_mut(|i| i.max_texture_side = maximum as usize);
-    let mut decoded = Vec::new();
-    let mut total = 0_u64;
-    if format == image::ImageFormat::Gif {
-        let mut decoder = image::codecs::gif::GifDecoder::new(Cursor::new(&bytes))?;
-        decoder.set_limits(limits)?;
-        for frame in decoder.into_frames() {
-            ensure!(
-                decoded.len() < 256,
-                "GIF exceeds 256 frames; shorten or resize the animation"
-            );
-            let frame = frame.context("Cannot decode GIF frame")?;
-            total += frame.buffer().len() as u64;
-            ensure!(
-                total <= limits::IMAGE_DECODED
-                    && total.saturating_add(used) <= limits::IMAGE_COLLECTION,
-                "GIF/image assets exceed the decoded image budget (1280 MiB per GIF, 2560 MiB per collection)"
-            );
-            let (n, d) = frame.delay().numer_denom_ms();
-            let delay = (n as f32 / d as f32 / 1000.0).clamp(0.02, 60.0);
-            decoded.push((frame.into_buffer(), delay));
-        }
-    } else {
-        let mut reader = image::ImageReader::with_format(Cursor::new(&bytes), format);
-        reader.limits(limits);
-        let (w, h) =
-            image::ImageReader::with_format(Cursor::new(&bytes), format).into_dimensions()?;
-        total = u64::from(w).saturating_mul(u64::from(h)).saturating_mul(4);
-        ensure!(
-            total <= limits::IMAGE_DECODED
-                && total.saturating_add(used) <= limits::IMAGE_COLLECTION,
-            "Image exceeds the decoded image budget (1280 MiB per image, 2560 MiB per collection)"
-        );
-        decoded.push((reader.decode()?.into_rgba8(), 1.0));
-    }
-    ensure!(!decoded.is_empty(), "Image contains no frames");
-    let width = decoded[0].0.width();
-    let height = decoded[0].0.height();
-    let model_key = if format == image::ImageFormat::Gif {
-        format!("gif:{}", aria_core::movement::model_key(&bytes))
-    } else {
-        format!(
-            "image:{width}x{height}:{}",
-            aria_core::movement::model_key(&decoded[0].0)
+    let [w, h] = if format == image::ImageFormat::Gif {
+        info.playback_size(
+            maximum,
+            u64::from(playback_mib.clamp(32, 1024)) * limits::MIB,
         )
+    } else {
+        limits::texture_size(info.size[0], info.size[1], maximum)
     };
+    let retained = u64::from(w) * u64::from(h) * 4 * info.frames as u64;
+    ensure!(
+        retained.saturating_add(used) <= limits::IMAGE_COLLECTION,
+        "Image collection exceeds 2560 MiB of playback textures; lower the GIF memory setting or remove artwork"
+    );
+    let mut decode_limits = image::Limits::default();
+    decode_limits.max_image_width = Some(limits::IMAGE_SIDE);
+    decode_limits.max_image_height = Some(limits::IMAGE_SIDE);
+    decode_limits.max_alloc = Some(limits::IMAGE_DECODED);
     let mut palette = crate::chroma::Palette::default();
     let mut frames = Vec::new();
     let mut ends = Vec::new();
     let mut elapsed = 0.0;
-    let [texture_width, texture_height] = limits::texture_size(width, height, maximum);
-    let mut uploaded_bytes = 0;
-    for (i, (rgba, delay)) in decoded.into_iter().enumerate() {
+    let model_key;
+    let mut upload = |rgba: image::RgbaImage, delay: f32| -> Result<()> {
+        progress(frames.len(), info.frames)?;
         ensure!(
-            rgba.width() == width && rgba.height() == height,
-            "GIF frame canvas mismatch"
+            [rgba.width(), rgba.height()] == info.size,
+            "GIF canvas changed during decode"
         );
-        let rgba = fit_texture(rgba, maximum);
-        uploaded_bytes += rgba.len() as u64;
+        let rgba = fit_texture(rgba, w.max(h));
+        ensure!(
+            [rgba.width(), rgba.height()] == [w, h],
+            "Unexpected fitted texture dimensions"
+        );
         palette.add_rgba(&rgba);
-        let pixels = egui::ColorImage::from_rgba_unmultiplied(
-            [texture_width as usize, texture_height as usize],
-            &rgba,
-        );
+        let pixels = egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba);
         let texture = ctx.load_texture(
-            format!("{}:{i}", path.display()),
+            format!("{}:{}", path.display(), frames.len()),
             pixels.clone(),
             egui::TextureOptions::LINEAR,
         );
-        // Offscreen PNG/Spout render before eframe's end-of-frame texture upload.
+        // Required for the offscreen/Spout pass, which precedes eframe's texture upload.
         if let Some(state) = state {
             state.renderer.write().update_texture(
                 &state.device,
@@ -188,11 +245,46 @@ pub fn load(
         frames.push(texture);
         elapsed += delay;
         ends.push(elapsed);
+        progress(frames.len(), info.frames)?;
+        ctx.request_repaint();
+        Ok(())
+    };
+    if format == image::ImageFormat::Gif {
+        model_key = format!("gif:{}", aria_core::movement::model_key(&bytes));
+        // The source canvas was checked independently above. The compositor may
+        // hold its previous canvas, the current frame and its output together.
+        // This is a ceiling, not an allocation or a retained playback budget.
+        decode_limits.max_alloc = Some(limits::IMAGE_DECODED * 3);
+        let mut decoder = image::codecs::gif::GifDecoder::new(Cursor::new(&bytes))?;
+        decoder.set_limits(decode_limits)?;
+        // Composite and fit one source frame at a time; never retain the full source animation.
+        for frame in decoder.into_frames() {
+            let frame = frame.context("Cannot decode GIF frame")?;
+            let (n, d) = frame.delay().numer_denom_ms();
+            upload(
+                frame.into_buffer(),
+                (n as f32 / d as f32 / 1000.0).clamp(0.02, 60.0),
+            )?;
+        }
+    } else {
+        let mut reader = image::ImageReader::with_format(Cursor::new(&bytes), format);
+        reader.limits(decode_limits);
+        let rgba = reader.decode()?.into_rgba8();
+        model_key = format!(
+            "image:{}x{}:{}",
+            info.size[0],
+            info.size[1],
+            aria_core::movement::model_key(&rgba)
+        );
+        upload(rgba, 1.0)?;
     }
+    ensure!(
+        frames.len() == info.frames,
+        "Decoded frame count does not match GIF metadata"
+    );
     Ok(Sprite {
         texture: frames[0].clone(),
-        // Geometry keeps the exact source aspect; accounting uses uploaded dimensions.
-        size: egui::vec2(width as f32, height as f32),
+        size: egui::vec2(info.size[0] as f32, info.size[1] as f32),
         name: path
             .file_name()
             .unwrap_or_default()
@@ -200,21 +292,210 @@ pub fn load(
             .into_owned(),
         model_key,
         palette: Arc::new(palette),
-        animation: if frames.len() > 1 {
-            Some(Arc::new(Animation {
+        animation: (frames.len() > 1).then(|| {
+            Arc::new(Animation {
                 frames,
                 ends,
-                bytes: uploaded_bytes,
-            }))
-        } else {
-            None
-        },
+                bytes: retained,
+            })
+        }),
     })
+}
+
+/// One bounded import worker at a time across avatar, image-library and accessory jobs.
+pub struct LoadJob {
+    result: std::sync::mpsc::Receiver<Result<Sprite, String>>,
+    progress: Arc<std::sync::Mutex<(usize, usize)>>,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+}
+impl LoadJob {
+    pub fn start(
+        ctx: &egui::Context,
+        state: Option<&RenderState>,
+        path: &Path,
+        used: u64,
+        playback_mib: u32,
+    ) -> Result<Self> {
+        use std::sync::{
+            Mutex,
+            atomic::{AtomicBool, Ordering},
+            mpsc,
+        };
+        static GATE: Mutex<()> = Mutex::new(());
+        let (tx, result) = mpsc::channel();
+        let progress = Arc::new(Mutex::new((0, 0)));
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let (report, stop) = (progress.clone(), cancelled.clone());
+        let (ctx, state, path) = (ctx.clone(), state.cloned(), path.to_owned());
+        std::thread::Builder::new()
+            .name("aria-image-import".into())
+            .spawn(move || {
+                let _permit = GATE.lock().unwrap_or_else(|e| e.into_inner());
+                let outcome = load_with_progress(
+                    &ctx,
+                    state.as_ref(),
+                    &path,
+                    used,
+                    true,
+                    playback_mib,
+                    &|done, total| {
+                        ensure!(!stop.load(Ordering::Relaxed), "Image import cancelled");
+                        *report.lock().unwrap() = (done, total);
+                        Ok(())
+                    },
+                )
+                .map_err(|e| format!("{e:#}"));
+                let _ = tx.send(outcome);
+                ctx.request_repaint();
+            })?;
+        Ok(Self {
+            result,
+            progress,
+            cancelled,
+        })
+    }
+    pub fn progress(&self) -> (usize, usize) {
+        *self.progress.lock().unwrap()
+    }
+    pub fn poll(&self) -> Option<Result<Sprite, String>> {
+        match self.result.try_recv() {
+            Ok(result) => Some(result),
+            Err(std::sync::mpsc::TryRecvError::Empty) => None,
+            Err(_) => Some(Err("Image import worker stopped unexpectedly".into())),
+        }
+    }
+}
+impl Drop for LoadJob {
+    fn drop(&mut self) {
+        self.cancelled
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn tenfold_sources_and_long_gifs_fit_a_bounded_playback_budget() {
+        const {
+            assert!(limits::IMAGE_FILE >= 10 * 44_179_519);
+        }
+        for (size, frames) in [
+            ([3500, 2500], 63),
+            ([35000, 25000], 63),
+            ([3500, 2500], 630),
+        ] {
+            let info = Info {
+                size,
+                frames,
+                duration: 4.2,
+                file_bytes: 44_179_519,
+            };
+            assert!(u64::from(size[0]) * u64::from(size[1]) * 4 <= limits::IMAGE_DECODED);
+            assert!(info.source_bytes() <= limits::GIF_SOURCE_TOTAL);
+            let [w, h] = info.playback_size(8192, 256 * limits::MIB);
+            assert!(u64::from(w) * u64::from(h) * 4 * frames as u64 <= 256 * limits::MIB);
+            assert!(w <= 8192 && h <= 8192);
+        }
+    }
+    #[test]
+    fn background_import_returns_image_and_reports_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("idle.png");
+        image::RgbaImage::from_pixel(32, 24, image::Rgba([120, 80, 60, 128]))
+            .save(&file)
+            .unwrap();
+        let ctx = egui::Context::default();
+        for path in [&file, &dir.path().join("missing.gif")] {
+            let job = LoadJob::start(&ctx, None, path, 0, 256).unwrap();
+            let start = std::time::Instant::now();
+            let result = loop {
+                if let Some(result) = job.poll() {
+                    break result;
+                }
+                assert!(start.elapsed().as_secs() < 10);
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            };
+            assert_eq!(result.is_ok(), path == &file);
+            if let Ok(sprite) = result {
+                assert_eq!(sprite.size, egui::vec2(32.0, 24.0));
+                assert_eq!(job.progress(), (1, 1));
+            }
+        }
+    }
+    #[test]
+    #[cfg(windows)]
+    #[ignore = "requires ARIA_TEST_GIF_DIR and a Windows GPU; retains the complete local GIF set"]
+    fn local_gif_set_imports_with_bounded_textures_and_original_timing() {
+        let root = std::path::PathBuf::from(
+            std::env::var_os("ARIA_TEST_GIF_DIR").expect("ARIA_TEST_GIF_DIR"),
+        );
+        let state = crate::spout::tests::gpu_state();
+        let ctx = egui::Context::default();
+        let mut paths: Vec<_> = std::fs::read_dir(root)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("gif")))
+            .collect();
+        paths.sort();
+        assert!(!paths.is_empty());
+        // Exercise a real GIF container at 10x the largest supplied file's byte
+        // size. Padding after its trailer changes disk size, not image detail.
+        let dir = tempfile::tempdir().unwrap();
+        let largest = paths
+            .iter()
+            .max_by_key(|p| p.metadata().unwrap().len())
+            .unwrap();
+        let padded = dir.path().join("tenfold-file-bytes.gif");
+        std::fs::copy(largest, &padded).unwrap();
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&padded)
+            .unwrap()
+            .set_len(largest.metadata().unwrap().len() * 10)
+            .unwrap();
+        paths.push(padded);
+        let mut loaded = Vec::<Sprite>::new();
+        for path in paths {
+            let info = inspect(&path).unwrap();
+            let used = loaded.iter().map(Sprite::bytes).sum();
+            let job = LoadJob::start(&ctx, Some(&state), &path, used, 256).unwrap();
+            let start = std::time::Instant::now();
+            let sprite = loop {
+                // Drain eframe texture deltas just as the application does each frame;
+                // the worker has already uploaded these to the offscreen renderer.
+                let _ = ctx.run(Default::default(), |_| {});
+                if let Some(result) = job.poll() {
+                    break result.unwrap();
+                }
+                assert!(start.elapsed().as_secs() < 300, "GIF import timed out");
+                std::thread::sleep(std::time::Duration::from_millis(16));
+            };
+            let animation = sprite.animation.as_ref().unwrap();
+            assert_eq!(animation.frames.len(), info.frames);
+            assert!((animation.ends.last().unwrap() - info.duration).abs() < 0.01);
+            assert!(sprite.bytes() <= 256 * limits::MIB);
+            assert_eq!(
+                sprite.size,
+                egui::vec2(info.size[0] as f32, info.size[1] as f32)
+            );
+            assert_ne!(
+                sprite.at(0.0, 1.0, true).texture.id(),
+                sprite.at(info.duration * 0.5, 1.0, true).texture.id()
+            );
+            eprintln!(
+                "{}: {} source frames, {:?} playback, {:.1} MiB in {:.1}s",
+                path.file_name().unwrap().to_string_lossy(),
+                info.frames,
+                sprite.texture.size(),
+                sprite.bytes() as f64 / 1048576.0,
+                start.elapsed().as_secs_f64()
+            );
+            loaded.push(sprite);
+        }
+        assert!(loaded.iter().map(Sprite::bytes).sum::<u64>() <= limits::IMAGE_COLLECTION);
+    }
     #[test]
     fn gif_frames_timing_alpha_budget_and_independent_clocks() {
         let dir = tempfile::tempdir().unwrap();

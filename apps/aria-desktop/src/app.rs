@@ -156,7 +156,16 @@ enum ControlsPage {
     Chat,
 }
 
+struct PendingImage {
+    path: PathBuf,
+    talking: bool,
+    artwork: Vec<crate::avatar_import::Artwork>,
+    budget: u32,
+    job: crate::media::LoadJob,
+}
 pub struct AriaApp {
+    importer: crate::avatar_import::Wizard,
+    pending_image: Option<PendingImage>,
     controls_page: ControlsPage,
     chats: crate::chat::Chats,
     images: crate::image_actions::Images,
@@ -256,6 +265,8 @@ impl AriaApp {
             OutputSettings::from_legacy(settings.background, settings.zoom, settings.always_on_top)
         }));
         let app = Self {
+            importer: Default::default(),
+            pending_image: None,
             controls_page: ControlsPage::default(),
             chats: Default::default(),
             images: Default::default(),
@@ -353,6 +364,38 @@ impl AriaApp {
                 } else {
                     ControlsPage::Avatar
                 };
+                if scenario == "odette-gifs" {
+                    let root = PathBuf::from(
+                        std::env::var_os("ARIA_TEST_GIF_DIR").expect("ARIA_TEST_GIF_DIR"),
+                    );
+                    let mut paths: Vec<_> = std::fs::read_dir(root)
+                        .unwrap()
+                        .filter_map(Result::ok)
+                        .map(|e| e.path())
+                        .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("gif")))
+                        .collect();
+                    paths.sort();
+                    app.importer.start(Some(crate::avatar_import::Kind::Images));
+                    app.importer.add(paths);
+                    let artwork = app.importer.artwork.clone();
+                    let path = artwork
+                        .iter()
+                        .find(|a| a.trigger == aria_core::image_actions::Trigger::Idle)
+                        .unwrap()
+                        .path
+                        .clone();
+                    app.begin_image(&cc.egui_ctx, &path, false, artwork, 256);
+                    app.importer.open = false;
+                }
+                if scenario == "import-choice" {
+                    app.importer.start(None);
+                }
+                if scenario == "import-images" {
+                    app.importer.start(Some(crate::avatar_import::Kind::Images));
+                }
+                if scenario == "import-live2d" {
+                    app.importer.start(Some(crate::avatar_import::Kind::Live2d));
+                }
                 match std::env::var("ARIA_SMOKE_SCENARIO").as_deref() {
                     Ok("image-actions") | Ok("output-images") | Ok("microphone") => {
                         let root =
@@ -897,140 +940,143 @@ impl AriaApp {
             );
         }
         if self.controls_page == ControlsPage::Avatar {
-            theme::category(ui, "avatar-card-v17", "Avatar & appearance", true, |ui| {
-                ui.label(if self.live2d.is_some() {
-                    "Live2D Cubism avatar"
-                } else if self.idle.is_some() {
-                    "PNG / GIF puppet"
-                } else {
-                    "Mica · built-in test puppet"
-                });
-                if let Some(sprite) = &self.idle {
-                    ui.label(RichText::new(&sprite.name).small().color(MUTED));
-                }
-                ui.horizontal(|ui| {
-                    if crate::help::control(ui, "avatar", |ui| ui.button("Open PNG / GIF…"))
-                        .clicked()
-                    {
-                        self.load_image(ctx, false);
+            theme::category(ui, "avatar-card-v18", "Avatar & appearance", true, |ui| {
+                let kind = self.avatar_kind();
+                match kind {
+                    None => {
+                        ui.heading("Bring your avatar to life");
+                        theme::caption(
+                            ui,
+                            "Choose a type to start a guided import. The built-in puppet stays on stage until your avatar is ready.",
+                        );
+                        if ui.button("Import PNG / GIF avatar…").clicked() {
+                            self.pending_image = None;
+                            self.importer
+                                .start(Some(crate::avatar_import::Kind::Images));
+                        }
+                        if ui.button("Import Live2D avatar…").clicked() {
+                            self.pending_image = None;
+                            self.importer
+                                .start(Some(crate::avatar_import::Kind::Live2d));
+                        }
                     }
-                    if crate::help::control(ui, "avatar", |ui| {
-                        ui.add_enabled(
-                            self.idle.is_some() || self.live2d.is_some(),
-                            egui::Button::new("Reset"),
+                    Some(crate::avatar_import::Kind::Images) => {
+                        ui.strong("PNG / GIF avatar");
+                        if let Some(sprite) = &self.idle {
+                            ui.label(&sprite.name);
+                            ui.small(format!(
+                                "{} × {} source · {} × {} base playback",
+                                sprite.size.x as u32,
+                                sprite.size.y as u32,
+                                sprite.texture.size()[0],
+                                sprite.texture.size()[1]
+                            ));
+                        }
+                        if ui.button("Artwork, actions & transitions").clicked() {
+                            self.input_monitor.tab = Tab::Images;
+                        }
+                        if ui.button("Microphone & talking").clicked() {
+                            self.input_monitor.tab = Tab::Microphone;
+                        }
+                        if ui.button("Choose talking image…").clicked() {
+                            self.load_image(ctx, true);
+                        }
+                        let previous = self.input_monitor.saved.config.images.playback_mib;
+                        help_image_memory(
+                            ui,
+                            &mut self.input_monitor.saved.config.images.playback_mib,
+                        );
+                        self.input_monitor.save_requested |=
+                            previous != self.input_monitor.saved.config.images.playback_mib;
+                    }
+                    Some(crate::avatar_import::Kind::Live2d) => {
+                        ui.strong("Live2D avatar");
+                        if let Some(avatar) = &self.live2d {
+                            ui.label(&avatar.name);
+                            ui.small(format!(
+                                "{} parameters · {} physics groups · {} expressions",
+                                avatar.model.parameters().len(),
+                                self.input_monitor.physics_groups.len(),
+                                self.input_monitor.expressions.entries.len()
+                            ));
+                        }
+                        if ui.button("Tracking & parameters").clicked() {
+                            self.input_monitor.tab = Tab::Inputs;
+                        }
+                        if ui.button("Avatar physics").clicked() {
+                            self.input_monitor.tab = Tab::Physics;
+                        }
+                        if ui.button("Expressions & hotkeys").clicked() {
+                            self.input_monitor.tab = Tab::Expressions;
+                        }
+                        if let Some(avatar) = &self.live2d {
+                            ui.collapsing("Model details", |ui| {
+                                crate::help::button(ui, "avatar");
+                                ui.small(format!(
+                                    "{} meshes · {:.0} MiB atlases · Core {} · {} imported assignments",
+                                    avatar.model.drawables.len(),
+                                    avatar.atlas_mib(),
+                                    avatar.model.version, avatar.imported_count
+                                ));
+                                for note in &avatar.files.warnings {
+                                    ui.small(note);
+                                }
+                                if avatar.files.source.extension().is_some_and(|e| e.eq_ignore_ascii_case("json"))
+                                    && ui.button("Inspect exported files…").clicked()
+                                {
+                                    match aria_model::inspect(&avatar.files.source) {
+                                        Ok(report) => {self.model=Some(report);self.model_open=true;}
+                                        Err(e) => self.status_message=Some(format!("{e:#}")),
+                                    }
+                                }
+                            });
+                        }
+                        ui.collapsing("Cubism runtime", |ui| {
+                            crate::help::label(ui, "Core DLL path", "runtime");
+                            ui.text_edit_singleline(&mut self.settings.cubism_core);
+                            if ui.button("Choose Core DLL…").clicked()
+                                && let Some(path) = rfd::FileDialog::new()
+                                    .add_filter("Cubism Core", &["dll"])
+                                    .pick_file()
+                            {
+                                self.settings.cubism_core = path.display().to_string();
+                            }
+                        });
+                    }
+                }
+                if kind.is_some() {
+                    crate::help::control(ui, "avatar", |ui| {
+                        ui.add(
+                            egui::Slider::new(&mut self.settings.zoom, 0.5..=1.5)
+                                .text("Stage zoom"),
                         )
-                    })
-                    .clicked()
-                    {
+                    });
+                    ui.separator();
+                    if ui.button("Change avatar / type…").clicked() {
+                        self.pending_image = None;
+                        self.importer.start(None);
+                    }
+                    if ui.button("Guided import tour…").clicked() {
+                        self.pending_image = None;
+                        self.importer.start(kind);
+                    }
+                    if ui.small_button("Use built-in puppet").clicked() {
+                        self.pending_image = None;
+                        self.importer.open = false;
                         self.idle = None;
                         self.talking = None;
                         self.settings.image_avatar = None;
                         self.use_preview_rig();
                     }
-                });
-                if self.idle.is_some() && self.live2d.is_none() {
-                    if crate::help::control(ui, "avatar", |ui| ui.button("Set talking image…"))
-                        .clicked()
-                    {
-                        self.load_image(ctx, true);
-                    }
-                    if let Some(sprite) = &self.talking {
-                        ui.label(
-                            RichText::new(format!("Talking: {}", sprite.name))
-                                .small()
-                                .color(MUTED),
-                        );
-                    }
-                    ui.label(RichText::new("Use Image actions for tracking, microphone and hotkey states, GIFs, transitions and movement animations.").small().color(MUTED));
                 }
-                crate::help::label(ui, "Large artwork · import limits", "asset-limits");
-                if ui.button("Configure PNG / GIF actions").clicked() {
-                    self.input_monitor.tab = Tab::Images;
-                }
-                crate::help::control(ui, "avatar", |ui| {
-                    ui.add(egui::Slider::new(&mut self.settings.zoom, 0.5..=1.5).text("Zoom"))
-                });
-                if crate::help::control(ui, "avatar", |ui| ui.button("Open Live2D avatar…"))
-                    .clicked()
-                    && let Some(path) = rfd::FileDialog::new()
-                        .add_filter("Cubism export", &["moc3", "json"])
-                        .pick_file()
-                {
-                    self.open_model(&path);
-                }
-                if let Some(avatar) = &mut self.live2d {
-                    ui.label(RichText::new(&avatar.name).color(MINT));
-                    ui.collapsing("Model details", |ui| {
-                        crate::help::button(ui, "avatar");
-                        ui.label(
-                            RichText::new(format!(
-                                "{} meshes · {} tracked parameters\n{:.0} MiB atlases · Core {}",
-                                avatar.model.drawables.len(),
-                                self.input_monitor.saved.config.bindings.len(),
-                                avatar.atlas_mib(),
-                                avatar.model.version
-                            ))
-                            .small(),
-                        );
-                        for warning in &avatar.files.warnings {
-                            ui.label(RichText::new(warning).small().color(MUTED));
-                        }
-                    });
-                    if crate::help::control(ui, "inputs", |ui| ui.button("Model parameters…"))
-                        .clicked()
-                    {
-                        self.input_monitor.tab = Tab::Inputs;
-                    }
-                    ui.label(
-                        RichText::new(format!(
-                            "{} assignments from VTS profile",
-                            avatar.imported_count
-                        ))
-                        .small(),
-                    );
-                    if crate::help::control(ui, "physics", |ui| {
-                        ui.button("Configure avatar physics…")
-                    })
-                    .clicked()
-                    {
-                        self.input_monitor.tab = Tab::Physics;
+                crate::help::label(ui, "Import guide & size limits", "guided-import");
+                if let Some(pending) = &self.pending_image {
+                    let (done, total) = pending.job.progress();
+                    ui.label(format!("Loading artwork · {done}/{total} frames"));
+                    if ui.button("Cancel image import").clicked() {
+                        self.pending_image = None;
                     }
                 }
-                ui.collapsing("Cubism runtime setup", |ui| {
-            ui.label("Choose Core/dll/windows/x86_64/Live2DCubismCore.dll from the official Native SDK. The path is saved locally.");
-            crate::help::control(ui, "runtime", |ui| ui.text_edit_singleline(&mut self.settings.cubism_core));
-            if crate::help::control(ui, "runtime", |ui| ui.button("Select Core DLL…")).clicked() && let Some(path) = rfd::FileDialog::new().add_filter("Cubism Core", &["dll"]).pick_file() {
-                self.settings.cubism_core = path.display().to_string();
-            }
-            ui.hyperlink_to("Download the official SDK ↗", "https://www.live2d.com/en/sdk/download/native/");
-            ui.hyperlink_to("Avatar import instructions ↗", "https://github.com/NekoUnix/A.R.I.A/blob/main/docs/live2d.md");
-        });
-                ui.collapsing("Inspect model files", |ui| {
-                    if crate::help::control(ui, "inspection", |ui| {
-                        ui.button("Inspect Live2D .model3.json…")
-                    })
-                    .clicked()
-                        && let Some(path) = rfd::FileDialog::new()
-                            .add_filter("Cubism model3 JSON", &["json"])
-                            .pick_file()
-                    {
-                        match aria_model::inspect(&path) {
-                            Ok(report) => {
-                                self.model = Some(report);
-                                self.model_open = true;
-                                self.status_message = None;
-                            }
-                            Err(e) => self.status_message = Some(format!("{e:#}")),
-                        }
-                    }
-                });
-                ui.label(
-                RichText::new(
-                    "Use Open Live2D avatar to replace the main model. Stage drops add objects.",
-                )
-                .small()
-                .color(MUTED),
-            );
             });
         }
         if self.controls_page == ControlsPage::Chat {
@@ -1126,36 +1172,172 @@ impl AriaApp {
         }
     }
     fn open_image(&mut self, ctx: &egui::Context, path: &Path, talking: bool) {
-        match crate::media::load(ctx, self.render_state.as_ref(), path, 0, true) {
-            Ok(sprite) => {
-                if !talking || self.live2d.is_some() {
-                    self.use_puppet_rig(&sprite.model_key);
-                }
-                if talking {
-                    self.images.add(
-                        &mut self.input_monitor.saved.config.images,
-                        path.to_owned(),
-                        aria_core::image_actions::Trigger::Talking,
-                    );
-                    self.talking = Some(sprite.clone());
-                } else {
-                    if self.input_monitor.saved.config.images.states.is_empty() {
-                        self.images.add(
-                            &mut self.input_monitor.saved.config.images,
-                            path.to_owned(),
-                            aria_core::image_actions::Trigger::Idle,
-                        );
-                    }
-                    self.settings.image_avatar = Some(path.to_owned());
-                    self.idle = Some(sprite.clone());
-                    self.talking = None;
-                }
-                self.images.seed(path.to_owned(), sprite);
-                self.input_monitor.tab = Tab::Images;
-                self.input_monitor.save_requested = true;
-                self.status_message = None;
+        if crate::smoke_mode()
+            && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() != Ok("odette-gifs")
+        {
+            match crate::media::load(ctx, self.render_state.as_ref(), path, 0, true) {
+                Ok(sprite) => self.apply_image(
+                    path,
+                    talking,
+                    sprite,
+                    aria_core::asset_limits::GIF_PLAYBACK_MIB,
+                ),
+                Err(e) => self.status_message = Some(format!("{e:#}")),
             }
-            Err(e) => self.status_message = Some(format!("{e:#}")),
+        } else {
+            self.begin_image(
+                ctx,
+                path,
+                talking,
+                Vec::new(),
+                self.input_monitor.saved.config.images.playback_mib,
+            );
+        }
+    }
+    fn begin_image(
+        &mut self,
+        ctx: &egui::Context,
+        path: &Path,
+        talking: bool,
+        artwork: Vec<crate::avatar_import::Artwork>,
+        budget: u32,
+    ) {
+        self.pending_image = None;
+        match crate::media::LoadJob::start(ctx, self.render_state.as_ref(), path, 0, budget) {
+            Ok(job) => {
+                self.pending_image = Some(PendingImage {
+                    path: path.to_owned(),
+                    talking,
+                    artwork,
+                    budget,
+                    job,
+                })
+            }
+            Err(e) => {
+                self.status_message = Some(e.to_string());
+                self.importer.error = Some(e.to_string());
+            }
+        }
+    }
+    fn apply_image(&mut self, path: &Path, talking: bool, sprite: Sprite, budget: u32) {
+        if !talking || self.live2d.is_some() {
+            self.use_puppet_rig(&sprite.model_key);
+        }
+        if talking {
+            self.images.add(
+                &mut self.input_monitor.saved.config.images,
+                path.to_owned(),
+                aria_core::image_actions::Trigger::Talking,
+            );
+            self.talking = Some(sprite.clone());
+        } else {
+            if self.input_monitor.saved.config.images.states.is_empty() {
+                self.images.add(
+                    &mut self.input_monitor.saved.config.images,
+                    path.to_owned(),
+                    aria_core::image_actions::Trigger::Idle,
+                );
+            }
+            self.settings.image_avatar = Some(path.to_owned());
+            self.idle = Some(sprite.clone());
+            self.talking = None;
+        }
+        self.images.seed(path.to_owned(), sprite, budget);
+        self.input_monitor.tab = Tab::Images;
+        self.input_monitor.save_requested = true;
+        self.status_message = None;
+    }
+    fn poll_image_import(&mut self) {
+        let result = self.pending_image.as_ref().and_then(|p| p.job.poll());
+        if let Some(result) = result {
+            let pending = self.pending_image.take().unwrap();
+            match result {
+                Ok(sprite) => {
+                    self.apply_image(&pending.path, pending.talking, sprite, pending.budget);
+                    // Only the guided importer explicitly changes this setting.
+                    // Reopening artwork must preserve its restored avatar profile.
+                    if !pending.artwork.is_empty() {
+                        self.input_monitor.saved.config.images.playback_mib = pending.budget;
+                    }
+                    for art in pending.artwork {
+                        if !self
+                            .input_monitor
+                            .saved
+                            .config
+                            .images
+                            .states
+                            .iter()
+                            .any(|s| s.path == art.path)
+                        {
+                            self.images.add(
+                                &mut self.input_monitor.saved.config.images,
+                                art.path,
+                                art.trigger,
+                            );
+                        }
+                    }
+                    self.importer.finished();
+                }
+                Err(error) => {
+                    self.status_message = Some(error.clone());
+                    self.importer.error = Some(error);
+                }
+            }
+        }
+    }
+    fn avatar_kind(&self) -> Option<crate::avatar_import::Kind> {
+        if self.live2d.is_some() {
+            Some(crate::avatar_import::Kind::Live2d)
+        } else if self.idle.is_some() {
+            Some(crate::avatar_import::Kind::Images)
+        } else {
+            None
+        }
+    }
+    fn import_tour(&mut self, ctx: &egui::Context) {
+        let progress = self.pending_image.as_ref().map(|p| p.job.progress());
+        match self
+            .importer
+            .show(ctx, &mut self.settings.cubism_core, progress)
+        {
+            Some(crate::avatar_import::Request::Images { artwork, budget }) => {
+                if let Some(base) = artwork
+                    .iter()
+                    .find(|a| a.trigger == aria_core::image_actions::Trigger::Idle)
+                {
+                    let path = base.path.clone();
+                    self.begin_image(ctx, &path, false, artwork, budget);
+                }
+            }
+            Some(crate::avatar_import::Request::Live2d(path)) => {
+                self.pending_image = None;
+                self.open_model(&path);
+                if let Some(error) = &self.status_message {
+                    self.importer.error = Some(error.clone());
+                    if self.bare_moc.is_some() {
+                        self.importer.open = false;
+                    }
+                } else {
+                    self.importer.finished();
+                }
+            }
+            Some(crate::avatar_import::Request::Cancel) => {
+                self.pending_image = None;
+                self.importer.open = false;
+            }
+            Some(crate::avatar_import::Request::Microphone) => {
+                self.input_monitor.tab = Tab::Microphone;
+                self.importer.open = false;
+            }
+            Some(crate::avatar_import::Request::Controls) => {
+                self.input_monitor.tab = if self.live2d.is_some() {
+                    Tab::Physics
+                } else {
+                    Tab::Images
+                };
+                self.importer.open = false;
+            }
+            None => {}
         }
     }
 
@@ -1171,6 +1353,7 @@ impl AriaApp {
     }
 
     fn import_model(&mut self, files: aria_model::ModelFiles) -> anyhow::Result<()> {
+        self.pending_image = None;
         anyhow::ensure!(
             !self.settings.cubism_core.trim().is_empty(),
             "First choose the official x64 Cubism Core DLL under Cubism runtime setup."
@@ -1510,6 +1693,7 @@ impl AriaApp {
 
 impl eframe::App for AriaApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.poll_image_import();
         self.input_monitor.save_requested |=
             self.chats.update(&mut self.settings.chat_accounts, ctx);
         #[cfg(feature = "screenshots")]
@@ -1680,6 +1864,16 @@ impl eframe::App for AriaApp {
                     &parameters,
                     (dt, self.input_monitor.saved.config.pose.mode),
                 );
+                // Release an old fallback after changing the playback budget.
+                if let Some(path) = &self.settings.image_avatar
+                    && let Some(sprite) = self.images.artwork(path)
+                    && self
+                        .idle
+                        .as_ref()
+                        .is_none_or(|s| s.texture.id() != sprite.texture.id())
+                {
+                    self.idle = Some(sprite.clone());
+                }
             }
             if self.input_monitor.saved.config.pose.mode != PoseMode::Frozen {
                 self.items.clock += dt.min(0.25);
@@ -1721,7 +1915,7 @@ impl eframe::App for AriaApp {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            RichText::new("v0.17 · WINDOWS PREVIEW")
+                            RichText::new("v0.18 · WINDOWS PREVIEW")
                                 .small()
                                 .color(MUTED),
                         );
@@ -1765,7 +1959,8 @@ impl eframe::App for AriaApp {
             .frame(Frame::new().fill(PANEL).inner_margin(12.0))
             .show(ctx, |ui| {
                 section(ui, "INSPECTOR");
-                self.input_monitor.navigation(ui);
+                let kind = self.avatar_kind();
+                self.input_monitor.navigation(ui, kind);
                 let area = egui::ScrollArea::vertical()
                     .id_salt(("inspector-scroll-v17", self.input_monitor.tab));
                 #[cfg(feature = "screenshots")]
@@ -1967,6 +2162,7 @@ impl eframe::App for AriaApp {
         }
         self.model_window(ctx);
         self.bare_import_window(ctx);
+        self.import_tour(ctx);
         if !self.hotkeys.available() {
             self.input_monitor.hotkey_status =
                 Some("Hotkey worker could not start. Preset buttons remain available.".into());
@@ -2109,7 +2305,19 @@ impl eframe::App for AriaApp {
                     self.started.elapsed().as_secs_f32(),
                 );
             }
-            screenshot_capture(ctx, self.started, false);
+            if std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("odette-gifs") {
+                if self.pending_image.is_none()
+                    && self
+                        .images
+                        .all_loaded(&self.input_monitor.saved.config.images)
+                {
+                    let key = egui::Id::new("odette-ready");
+                    let ready = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(key, Instant::now));
+                    screenshot_capture(ctx, ready, false);
+                }
+            } else {
+                screenshot_capture(ctx, self.started, false);
+            }
         }
         if self.outputs.any_open() {
             let scene = self.scene();
@@ -2249,6 +2457,18 @@ fn meter(ui: &mut egui::Ui, label: &str, value: f32, min: f32, max: f32) {
             .fill(MINT),
     );
     ui.add_space(3.0);
+}
+
+fn help_image_memory(ui: &mut egui::Ui, budget: &mut u32) {
+    crate::help::control(ui, "gif-memory", |ui| {
+        egui::ComboBox::from_id_salt("avatar-gif-memory")
+            .selected_text(format!("{} MiB per GIF", budget))
+            .show_ui(ui, |ui| {
+                for n in [64, 128, 256, 512, 1024] {
+                    ui.selectable_value(budget, n, format!("{n} MiB playback"));
+                }
+            })
+    });
 }
 
 #[cfg(test)]

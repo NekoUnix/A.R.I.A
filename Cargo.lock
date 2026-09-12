@@ -182,7 +182,7 @@ dependencies = [
 
 [[package]]
 name = "aria-cli"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "anyhow",
  "aria-core",
@@ -194,7 +194,7 @@ dependencies = [
 
 [[package]]
 name = "aria-core"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -203,7 +203,7 @@ dependencies = [
 
 [[package]]
 name = "aria-desktop"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "anyhow",
  "aria-core",
@@ -215,6 +215,7 @@ dependencies = [
  "cpal",
  "eframe",
  "getrandom 0.3.4",
+ "gif",
  "glam",
  "gltf",
  "image",
@@ -234,7 +235,7 @@ dependencies = [
 
 [[package]]
 name = "aria-live2d"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "anyhow",
  "aria-core",
@@ -243,7 +244,7 @@ dependencies = [
 
 [[package]]
 name = "aria-model"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "anyhow",
  "aria-core",
@@ -254,7 +255,7 @@ dependencies = [
 
 [[package]]
 name = "aria-tracking"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "anyhow",
  "aria-core",

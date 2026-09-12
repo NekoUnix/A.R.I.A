@@ -5,6 +5,41 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Local verification on 2026-09-12
 
+### v0.18 guided import and large GIF playback
+
+- Formatting and strict Clippy passed for every workspace target and feature.
+  **122 default tests passed**, with thirteen environment-dependent tests ignored
+  by default. Coverage includes background success/failure, file-role suggestions,
+  duplicate selection, per-avatar budget migration and preset storage, contextual
+  Inspector tabs, source identity, transparency, timing and texture accounting.
+- Loaded all four supplied Odette GIFs on the Windows DX12 GPU. Each has a
+  3500 × 2500 logical canvas and 63 frames; each retains **255.9 MiB** at
+  **1221 × 872** with the default 256 MiB budget. The test keeps the entire set
+  resident, checks frame selection and duration, and completed imports in about
+  6–7 seconds per file on this machine. These timings are observations, not guarantees.
+- Loaded a temporary valid GIF padded to **441,795,190 bytes**, ten times the
+  largest supplied file, through the same GPU importer. Padding tests the file-size
+  ceiling; it does not simulate increased image detail. Budget calculations cover
+  35000 × 25000 canvases and 630-frame animations. Those very large source canvases
+  were not allocated in the native test and still require sufficient working RAM.
+- Rendered the supplied **full Version 4 Live2D model**, including its 18 atlases,
+  208 parameters, 62 physics groups and 18 expressions. The native frozen-avatar
+  regression verified that 60 unchanged updates skip Core/GPU work and an edited
+  parameter refreshes the model before returning to the frozen state.
+- Inspected native screenshots of the type chooser, PNG/GIF preparation,
+  Live2D preparation, loaded GIF action library and full Live2D physics page.
+  Image avatars show Artwork & actions; Live2D shows Physics and Expressions.
+  The published screenshot uses bundled Mica artwork. Private GIF/model art and
+  the proprietary Core DLL remain outside the repository and package.
+- `scripts/test-local-assets.ps1` repeats the optional local asset tests from
+  user-supplied paths. Large GIF playback is fitted once at import; it does not
+  promise full-resolution GPU residency for every accepted source file.
+- The native action regression observed all eight starter GIF frames, animated
+  stage/throw GIFs and byte-identical transparent exports while frozen. The extracted
+  v0.18 portable app started with both the full model and the supplied inactive GIF
+  using a system-only Windows PATH and isolated preferences. ZIP CRCs, template
+  references and the absence of private artwork/SDK binaries were verified.
+
 ### v0.17 large imports and compact workspace
 
 - Formatting and strict Clippy passed for every workspace target and feature.

@@ -164,18 +164,33 @@ impl Default for State {
         }
     }
 }
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    pub playback_mib: u32,
     pub enabled: bool,
     pub states: Vec<State>,
     pub manual: Option<u64>,
+}
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            playback_mib: crate::asset_limits::GIF_PLAYBACK_MIB,
+            enabled: false,
+            states: Vec::new(),
+            manual: None,
+        }
+    }
 }
 fn finite(v: f32, min: f32, max: f32) -> bool {
     v.is_finite() && (min..=max).contains(&v)
 }
 impl Config {
     pub fn validate(&self) -> Result<()> {
+        ensure!(
+            (32..=1024).contains(&self.playback_mib),
+            "GIF playback budget must be 32–1024 MiB"
+        );
         ensure!(
             self.states.len() <= 128,
             "Maximum 128 image actions per avatar"
@@ -417,7 +432,20 @@ mod tests {
                 },
             ],
             manual: None,
+            ..Default::default()
         }
+    }
+    #[test]
+    fn legacy_image_configs_receive_budget_and_presets_retain_it() {
+        let mut config: Config =
+            serde_json::from_str(r#"{"enabled":true,"states":[],"manual":null}"#).unwrap();
+        assert_eq!(config.playback_mib, 256);
+        config.playback_mib = 512;
+        let restored: Config =
+            serde_json::from_slice(&serde_json::to_vec(&config).unwrap()).unwrap();
+        assert_eq!(restored.playback_mib, 512);
+        config.playback_mib = 0;
+        assert!(config.validate().is_err());
     }
     #[test]
     fn actions_transition_interrupt_freeze_and_manual_return() {

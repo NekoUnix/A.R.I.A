@@ -2,11 +2,39 @@
 
 This guide is bundled into the application and works offline. The topic headers also provide the short hover descriptions for the circled question-mark buttons.
 
+## guided-import | Guided avatar import | Choose PNG/GIF or Live2D, prepare its files, review the import and follow the next steps. Once loaded, Avatar and Inspector controls match the primary avatar type.
+
+### Choose and prepare
+
+Open Avatar & appearance. For a new session choose Import PNG / GIF avatar or Import Live2D avatar. Change avatar / type opens the type picker later. Guided import tour opens preparation for the current type. The old avatar stays active until the new import succeeds. Closing or cancelling an in-progress image import keeps the old avatar and its profile.
+
+PNG/GIF: select one file, several files or an artwork folder. Folder import includes its immediate PNG/GIF files, not unrelated project files. Mark exactly one file Idle / base. Talking responds to MicTalking when the microphone is enabled, otherwise the mouth input; Blink follows eye input or auto-blink. Quiet reacts when talking stops. Manual / hotkey files display only when activated. Names containing inactive or idle suggest the base; talking suggests Talking; muted or deafened files suggest Manual. ARIA does not read Discord mute/deafen status. Assign those actions hotkeys or your own input rules after import.
+
+Live2D: select the exported model3.json or its matching moc3 and choose the official Cubism Native Core x64 DLL. Keep relative atlas, physics and expression paths intact. The review summarizes the export. A bare moc3 can be paired with ordered atlas textures in the follow-up dialog. Import restores this model's own parameter settings, groups, expressions and saved profile.
+
+### Review, import and create
+
+Image review shows estimated playback texture dimensions for the current graphics device and memory setting. Frame timing, source files and artwork identity are retained. Large GIFs are composited one source frame at a time in a background worker, then fitted for playback. A progress bar reports completed frames; the stage stays responsive. Extra image states continue loading in the background after the base is ready. Invalid files remain visible as errors and do not erase the working avatar. Reimporting the same base restores its profile and adds new selected artwork without clearing existing triggers and hotkeys.
+
+After image import, use Artwork, actions & transitions for roles, fades, movement and hotkeys, or Microphone & talking to select an audio device. After Live2D import, use Tracking & parameters, Avatar physics, and Expressions & hotkeys. The Inspector hides Cubism physics/expressions for image avatars and hides PNG/GIF avatar actions for Live2D. Stage accessories, throws, outputs and microphone inputs remain available to both types because they are independent scene tools.
+
+## gif-memory | GIF detail and memory budget | Large animations are fitted once to a configurable playback budget instead of loading every full-resolution frame. Source artwork and frame timing remain unchanged.
+
+### Source limits versus playback memory
+
+PNG/GIF files may be up to 512 MiB on disk, with source edges up to 40960 pixels and up to 4096 MiB decoded per source canvas. GIFs may contain 4096 frames and up to 256 GiB of accumulated source-frame data. Every limit applies together. These ceilings cover files ten times the size of the tested 42.1 MiB, 3500 × 2500, 63-frame GIFs. Huge source canvases still require enough RAM to decode and composite one frame and working buffers.
+
+The tested animations expand to about 2103 MiB each at original resolution. At the default 256 MiB playback budget, ARIA fits their frames to approximately 1221 × 872; it does not retain all of the original 3500 × 2500 frames. All 63 frames keep their original timing. Resizing preserves transparency and the original display aspect ratio. Normal small animations bypass resizing. Files and profile identity are not modified.
+
+Choose 64, 128, 256, 512 or 1024 MiB per GIF in Avatar & appearance or PNG/GIF actions. Higher values keep more detail and use more RAM/VRAM. The image-action, stage-image and throw-image collections each allow up to 2560 MiB of retained textures; total usage also includes working buffers and the rendered stage. A higher setting may not fit many different GIFs at once. Lower the budget or remove artwork when a collection is full. The selected action shows its actual playback dimensions, frame count and texture usage.
+
+Changing the budget reloads the action library in the background. Only one image import worker decodes at a time; cancellation stops at a frame boundary. Playback, fading, pinning and throws reuse immutable fitted frame textures. They do not decode or resize the original GIF every frame. An invalid file reports its error beside the action. Save profile and image-action presets retain this avatar's chosen playback budget.
+
 ## workspace | Finding controls in the workspace | Left: Avatar, Tracking, Output and Chat setup. Right: Tracking, Avatar, Stage and Poses tools. Category buttons remain visible while their settings scroll.
 
 ### Studio setup on the left
 
-Avatar opens PNG/GIF artwork or Live2D exports and contains Cubism runtime setup, model details and stage zoom. Tracking contains phone/network connection, source selection, calibration and movement mapping. Output contains landscape, portrait and freeform canvases, OBS/Spout settings, chroma color, frame rate and Windows priority. Chat contains Twitch and YouTube account setup and chat appearance.
+Avatar opens PNG/GIF artwork or Live2D exports and contains Cubism runtime, model details and stage zoom. Tracking contains phone/network connection, source selection, calibration and movement mapping. Output contains landscape, portrait and freeform canvases, OBS/Spout settings, chroma color, frame rate and Windows priority. Chat contains Twitch and YouTube account setup and chat appearance.
 
 ### Inspector on the right
 
@@ -18,11 +46,11 @@ Each page scrolls separately and remembers its scroll position. The navigation s
 
 The graphite palette, blue accent and compact controls use the existing native renderer and installed Windows font. There are no blur passes, animated interface transitions, new font downloads or decorative image textures. Only the selected page's controls are laid out.
 
-## asset-limits | Large PNG, GIF and Live2D imports | Import size ceilings are 10× larger. PNG/GIF: 320 MiB files and 40960px source edges. Live2D: 1280 MiB moc3 files and 81920px atlas edges. Oversized textures are fitted once to your GPU.
+## asset-limits | Large PNG, GIF and Live2D imports | Import size ceilings are 10× larger. PNG/GIF: 512 MiB files and 40960px source edges. Live2D: 1280 MiB moc3 files and 81920px atlas edges. Oversized textures are fitted once to your GPU.
 
 ### Images and animation
 
-PNG/GIF artwork may be up to 320 MiB on disk and 40960 pixels on either source edge, with a 1280 MiB decoded RGBA budget per image or entire GIF. The dimension and byte limits both apply: a full 40960 × 40960 RGBA canvas is larger than that memory budget. GIFs still allow up to 256 frames. Each image-action, stage-image or throw-image collection has a 2560 MiB budget. Animated budgets count every frame. These are import ceilings, not preallocated memory.
+PNG/GIF artwork may be up to 512 MiB on disk and 40960 pixels on either source edge, with a 4096 MiB decoded RGBA budget per source canvas. The dimension and byte limits both apply: a full 40960 × 40960 RGBA canvas is larger than that memory budget. GIFs allow up to 4096 frames and 256 GiB of accumulated source frames; their retained playback textures are fitted to the selected memory budget. Each image-action, stage-image or throw-image collection has a 2560 MiB budget. Animated budgets count every frame. These are import ceilings, not preallocated memory.
 
 ### Live2D exports
 
@@ -38,7 +66,7 @@ Normal-size images bypass resizing. Uploaded textures and animation frames are r
 
 ### Start a PNG or GIF avatar
 
-Use Avatar & appearance → Open PNG / GIF to select your base artwork. ARIA creates an Idle action for a new image and restores that image's saved profile when reopened. The last image avatar reopens on startup unless you launch a different model explicitly. PNG/GIF image actions belong to the base avatar's content identity, so switching avatars restores separate settings. Live2D keeps its own rendered avatar; microphone and stage-object inputs also work there.
+Use Avatar & appearance → Import PNG / GIF avatar to select your base artwork. ARIA creates an Idle action for a new image and restores that image's saved profile when reopened. The last image avatar reopens on startup unless you launch a different model explicitly. PNG/GIF image actions belong to the base avatar's content identity, so switching avatars restores separate settings. Live2D keeps its own rendered avatar; microphone and stage-object inputs also work there.
 
 Choose PNG / GIF actions in the Inspector. Add images accepts several PNG/GIF files; each becomes a named action. Talking image and Blink image create useful trigger defaults. Select an action in the library to configure its artwork, trigger, transition, movement and GIF playback. Replace a missing file with Choose PNG / GIF. Reload artwork rereads changed or previously missing files. A broken file is reported and skipped, allowing another valid action to show.
 
@@ -82,7 +110,7 @@ GIF speed ranges from 0.05× to 4×. Loop GIF repeats continuously; disable it t
 
 Stage objects play from the avatar's stage clock. Each thrown GIF uses that particle's own age, so objects emitted at different times have independent playback. Pause effects stops thrown GIFs; Pose → Freeze also holds stage GIFs and image-action GIFs. Immutable frame textures are shared between copies, and only the selected frame is drawn. Deformation, tint, pinning and alpha output continue to work on animated artwork.
 
-Images may be up to 40960×40960 source edges with a 320 MiB file limit. GIFs are limited to 256 frames and 1280 MiB of decoded RGBA frames; each avatar-action, stage-item or throw-image collection has a 2560 MiB decoded budget. All size and memory limits apply together; source textures above the GPU edge limit are fitted once on import. These limits count all GIF frames, not just the compressed file size. Resize or shorten a large GIF if needed. Standard GIF palettes usually provide binary transparency; use PNG for smooth semi-transparent static edges. No GIF audio is played. Missing or invalid files show an error without replacing the main avatar.
+Images may be up to 40960×40960 source edges with a 512 MiB file limit. GIFs are limited to 4096 frames and 256 GiB of accumulated source RGBA frames, fitted to a configurable playback memory budget; each avatar-action, stage-item or throw-image collection has a 2560 MiB decoded budget. All size and memory limits apply together; source textures above the GPU edge limit are fitted once on import. These limits count all GIF frames, not just the compressed file size. Resize or shorten a large GIF if needed. Standard GIF palettes usually provide binary transparency; use PNG for smooth semi-transparent static edges. No GIF audio is played. Missing or invalid files show an error without replacing the main avatar.
 
 ## microphone | Microphone input and talking | Choose a Windows input device, meter its volume, tune sensitivity and a stable talking gate, then drive PNG/GIF actions, Live2D mouths or arbitrary input mappings without recording audio.
 
@@ -294,7 +322,7 @@ Click an accessory or its name in the item list to select it. Drag its rectangle
 
 Use a stable local folder for your objects. Profiles and presets reference the asset path; they do not embed or copy the file. If an image is moved, choose Replace object / locate file. Reload assets retries missing files and rereads edited artwork. Removing an item removes its settings and shortcut, leaving the original file on disk.
 
-Each avatar can have up to 32 items, including at most four Live2D objects. Each PNG image must be a real PNG, at most 40960 pixels in either source dimension and 320 MiB on disk. The combined decoded PNG image budget is 2560 MiB, counting shared paths once. Texture assets are cached; moving or toggling an item does not decode or upload the PNG again. Changes save locally after editing settles; Save item settings saves immediately. Missing or oversized files show an error beside the selected item without preventing other items from working.
+Each avatar can have up to 32 items, including at most four Live2D objects. Each PNG image must be a real PNG, at most 40960 pixels in either source dimension and 512 MiB on disk. The combined decoded PNG image budget is 2560 MiB, counting shared paths once. Texture assets are cached; moving or toggling an item does not decode or upload the PNG again. Changes save locally after editing settles; Save item settings saves immediately. Missing or oversized files show an error beside the selected item without preventing other items from working.
 
 ### Presets, screenshots and outputs
 
@@ -308,7 +336,7 @@ All three output canvases include the same accessories, with each canvas's frami
 
 Drag the .moc3 into Your stage, or use Stage objects & toggles → Add objects. Keep the matching .model3.json beside it and preserve all referenced texture folders. ARIA finds the manifest that references that exact moc3 and loads its atlases in the authored order. Dropping the .model3.json itself works too. Drop only one of those two files to create one object; dropping both creates two independent objects. A moc3 contains compiled geometry and parameters, not the texture images.
 
-Each object has a separate Cubism instance, parameter list and optional physics simulation. Adding, removing or posing it does not replace the main avatar, change the main profile identity, or edit its mappings, expressions or physics. The Cubism Core DLL selected under Avatar & appearance → Cubism runtime setup is shared as a runtime library. Set that DLL once before loading models. Main-avatar selection still uses Open Live2D avatar in the left panel.
+Each object has a separate Cubism instance, parameter list and optional physics simulation. Adding, removing or posing it does not replace the main avatar, change the main profile identity, or edit its mappings, expressions or physics. The Cubism Core DLL selected under Avatar & appearance → Cubism runtime is shared as a runtime library. Set that DLL once before loading models. Main-avatar selection still uses Import Live2D avatar in the left panel.
 
 ### Bare moc3 texture setup
 
@@ -527,13 +555,13 @@ Open Inputs, find the affected head parameter and inspect its Source. Verify the
 
 ### Live2D exports
 
-Prefer Open Live2D avatar with the exported .model3.json file. It describes the .moc3 geometry, texture atlases and optional physics, expressions and display metadata. Keep the exported folder structure intact. Dropping a .model3.json or .moc3 onto Your stage adds a separate pinnable object and preserves the main avatar. Use Open Live2D avatar to change the main model. A bare .moc3 can be used with its correct textures, but cannot provide all manifest metadata by itself.
+Prefer Import Live2D avatar with the exported .model3.json file. It describes the .moc3 geometry, texture atlases and optional physics, expressions and display metadata. Keep the exported folder structure intact. Dropping a .model3.json or .moc3 onto Your stage adds a separate pinnable object and preserves the main avatar. Use Import Live2D avatar to change the main model. A bare .moc3 can be used with its correct textures, but cannot provide all manifest metadata by itself.
 
-Select the official Windows x64 Cubism Core DLL in Cubism runtime setup before loading Live2D. ARIA does not bundle the proprietary Core or your model. A .cmo3 editor project is not the same as a runtime .moc3 export. Re-export from Cubism when needed. The model's own metadata and supported VTS profile assignments populate the rig; unrecognized controls remain available for manual mapping.
+Select the official Windows x64 Cubism Core DLL in Cubism runtime before loading Live2D. ARIA does not bundle the proprietary Core or your model. A .cmo3 editor project is not the same as a runtime .moc3 export. Re-export from Cubism when needed. The model's own metadata and supported VTS profile assignments populate the rig; unrecognized controls remain available for manual mapping.
 
 ### Image puppets
 
-Open PNG / GIF loads an image puppet; PNG, GIF, JPG and JPEG are supported by the picker. Use transparent PNG artwork for smooth alpha edges or GIF for frame animation. Set talking image creates a Talking action. The PNG / GIF actions tab configures additional images, triggers, fades, transitions and motion. Microphone input can control talking without a phone. Reopening the base image restores its profile and the last image avatar reopens on startup. Reset returns to Mica without deleting artwork or saved profiles.
+Import PNG / GIF avatar guides you through choosing PNG/GIF artwork and action roles. JPEG remains supported by command-line opening and action pickers. Use transparent PNG artwork for smooth alpha edges or GIF for frame animation. Set talking image creates a Talking action. The PNG / GIF actions tab configures additional images, triggers, fades, transitions and motion. Microphone input can control talking without a phone. Reopening the base image restores its profile and the last image avatar reopens on startup. Use built-in puppet returns to Mica without deleting artwork or saved profiles.
 
 ### Studio zoom and model details
 
@@ -571,7 +599,7 @@ Inspect Live2D .model3.json opens a report for that manifest. Type identifies th
 
 ### What it does not prove
 
-The inspector does not load or draw the Cubism model, validate its internal moc3 data, or guarantee every optional file's runtime behavior. A manifest can list motions without the current ARIA UI offering a motion player. Use Open Live2D avatar for actual loading and rendering. Closing the inspector leaves your current avatar unchanged.
+The inspector does not load or draw the Cubism model, validate its internal moc3 data, or guarantee every optional file's runtime behavior. A manifest can list motions without the current ARIA UI offering a motion player. Use Import Live2D avatar for actual loading and rendering. Closing the inspector leaves your current avatar unchanged.
 
 For missing assets, restore the expected exported folder structure or export the model again. Do not rename individual atlases without updating the manifest. The report is read-only and does not repair, copy or modify source assets.
 

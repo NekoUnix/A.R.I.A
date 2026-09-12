@@ -1,7 +1,7 @@
 # Windows setup and operation
 
-ARIA v0.17 increases PNG/GIF and Live2D import ceilings 10× and reorganizes the
-interface into compact setup pages and Inspector categories. The graphite palette
+ARIA v0.18 adds guided PNG/GIF and Live2D import, background loading of large GIFs,
+and Inspector categories that match the imported avatar. The graphite palette
 and blue accent use the same renderer and Windows font, with no blur or UI animation.
 [See the import limits and workspace guide](in-app-help.md).
 
@@ -40,7 +40,7 @@ systems and Windows ARM64 are not verified release targets yet.
 1. Visit [the Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml).
 2. Select a green, successful run on `main` for the version you want.
 3. Under **Artifacts**, download **aria-windows-x64**. Sign in to GitHub if asked.
-4. Extract the downloaded artifact. Extract `aria-0.17.0-windows-x64.zip` inside it
+4. Extract the downloaded artifact. Extract `aria-0.18.0-windows-x64.zip` inside it
    into a normal writable folder, for example `C:\Apps\ARIA`.
 5. Double-click **aria-desktop.exe**. The default source is Demo and Mica should move.
 
@@ -165,13 +165,25 @@ panel remains a separate decoded-texture estimate.
 
 ## 3. Use your own artwork
 
-Select **Open PNG / GIF…** and choose your base image. Open **PNG / GIF actions**
-to add more artwork for Talking, Quiet, Blink, a custom tracking/parameter range,
+Select **Avatar & appearance → Import PNG / GIF avatar…**. Choose files or a folder,
+mark one image **Idle / base**, and review the roles and fitted playback dimensions.
+Import prepares the base in the background, reports progress and offers Cancel;
+the old avatar stays active until success. Remaining actions load next. Open
+**Artwork & actions** to add Talking, Quiet, Blink, a custom tracking/parameter range,
 or a manual hotkey. Use a low-priority Idle state as the fallback. Configure fades,
 transition style, motion on change and GIF playback separately for each image.
 Keep the canvas and subject position consistent between states for smooth swaps.
 The last image avatar reopens on startup, and reopening the same base image restores
-its saved action library. **Reset** restores Mica.
+its saved action library. **Use built-in puppet** restores Mica.
+
+Choose a per-GIF playback budget of 64–1024 MiB (default 256 MiB). The tested
+3500 × 2500, 63-frame GIFs would occupy about 2103 MiB each at full resolution;
+the default retains all frames at 1221 × 872. Files up to 512 MiB and 40960px source
+edges are accepted, subject to the 4096 MiB source-canvas limit. GIFs can contain
+4096 frames and 256 GiB of accumulated source data. These are ceilings, not startup
+allocations; large canvases still need RAM for source-frame working buffers.
+Collections retain at most 2560 MiB of playback textures. The review blocks a new
+selection that exceeds that total. Source artwork is never resized on disk.
 
 For microphone-only use, choose **Microphone / manual · no tracker** as the tracking
 source. In the **Microphone** tab, enable input, select your device, and adjust noise
@@ -186,9 +198,35 @@ Import/export action configurations and editable artwork are supplied in
 [templates/images](../templates/images/README.md). Circled **?** controls explain
 all units, priority rules, GIF limits and microphone troubleshooting offline.
 
-**Open Live2D avatar…** loads a real exported .model3.json or .moc3 avatar with its texture atlases. Configure the official Cubism Core x64 DLL first. Follow the [detailed Live2D guide](live2d.md) for import, custom tracking assignments, compatibility and troubleshooting.
+**Import Live2D avatar…** guides you through selecting an exported .model3.json
+or .moc3 and the official Cubism Core x64 DLL. Review the detected atlas textures,
+physics and expressions, then import. Follow the [Live2D guide](live2d.md) for details.
 
-**Inspect Live2D .model3.json…** remains available as a separate asset report. It checks references and file sizes; only Open Live2D avatar performs native model evaluation and rendering.
+After import, **Model details** summarizes the current Live2D export. Live2D
+shows Physics and Expressions, while PNG/GIF avatars show Artwork & actions.
+**Change avatar / type** opens the type chooser; **Guided import tour** reopens
+preparation for the current type. Tracking, outputs, chat and independent scene
+objects remain available for either avatar format.
+
+### Test your local assets
+
+From a Rust-enabled PowerShell in the repository, run:
+
+```powershell
+.\scripts\test-local-assets.ps1 `
+  -GifDirectory 'C:\Avatars\My GIF Tuber' `
+  -Live2DModel 'C:\Avatars\My Live2D\Avatar.model3.json' `
+  -CubismCore 'C:\Tools\CubismSdkForNative-5-r.5\Core\dll\windows\x86_64\Live2DCubismCore.dll'
+```
+
+Use the actual export directory. VTube Studio normally stores it under
+`VTube Studio_Data\StreamingAssets\Live2DModels`, without an extra `VTube Studio`
+directory before `_Data`. The script loads every GIF in place on the Windows GPU,
+checks retained texture budgets and timing, tests a temporary copy padded to ten
+times the largest GIF's file size, then checks the selected Live2D model through
+the native Core and renderer. Padding tests byte-size handling, not extra image
+detail. Sources and the SDK remain local. These optional tests require enough
+RAM/VRAM for the selected assets and are excluded from ordinary CI.
 
 ## 4. Connect iPhone tracking
 

@@ -1,5 +1,32 @@
 # Architecture and next steps
 
+## Guided avatar import and bounded GIF playback (v0.18)
+
+`avatar_import::Wizard` separates type choice, file preparation, review and
+completion. PNG/GIF selection can populate an action library from a folder,
+suggests roles from names, requires one base, and previews playback dimensions
+and retained texture usage. Live2D selection checks the export and Core path.
+The selected primary avatar drives the Avatar and Inspector controls; independent
+accessories are available regardless of that selection. Profile identity still
+comes from the source artwork or moc3, never the fitted texture size.
+
+`media::inspect` scans GIF frame metadata without decoding all pixel data. A
+square-root fit selects a playback size using frame count, device limits and the
+avatar's serialized `images.playback_mib`. `LoadJob` composites, fits and uploads
+one source frame at a time on a cancellable worker. A shared gate serializes image
+import workers. GIF disposal and transparency use image-rs; the decoder's working
+limit allows its three compositing buffers after independently checking the source
+canvas. Completed GIFs retain immutable fitted frame textures and their timing.
+The base replaces the old avatar only after success; other actions load sequentially
+with progress and per-file errors. Playback reuses textures without frame decoding.
+Raising source ceilings allocates nothing until an asset is imported.
+
+The default 256 MiB budget fits each tested 3500 × 2500, 63-frame GIF to 1221 × 872.
+This trades playback resolution for bounded retained memory; it does not promise
+that arbitrary full-resolution animations fit in VRAM. Temporary source buffers,
+old fallback artwork during reload and GPU staging add to reported texture bytes.
+Saved avatar budgets survive reopening; changing one rebuilds its action cache.
+
 ## Import budgets and compact workspace (v0.17)
 
 `aria-core::asset_limits` defines shared import ceilings. The PNG/GIF loader,

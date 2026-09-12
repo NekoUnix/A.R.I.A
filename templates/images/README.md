@@ -1,7 +1,8 @@
 # PNG/GIF action template
 
-1. Open `artwork/idle.png` using **Avatar & appearance → Open PNG / GIF**.
-2. Open **PNG / GIF actions → Import actions** and choose `starter.aria-images.json`.
+1. Choose **Avatar & appearance → Import PNG / GIF avatar**, select `artwork/idle.png`,
+   mark it Idle / base, review and import.
+2. Open **Inspector → Avatar → Artwork & actions → Import actions** and choose `starter.aria-images.json`.
 3. The example has Idle, Talking, Blink and a manual Excited GIF action.
 4. Enable the microphone in its tab, or use tracking for the talking image.
 5. Select an action to change its artwork, input range, priority, motion, GIF playback
@@ -30,8 +31,10 @@ Use MicLevel or MicTalking in a custom input rule to build reactions to volume.
 
 PNG/GIF files also work as pinned stage objects and throw/spray assets. Animated
 objects retain transparency and pause with the relevant scene/effect clock.
-Limits: 40960px source edges, 320 MiB per file, 256 GIF frames, 1280 MiB decoded per GIF,
-and 2560 MiB per image collection. There may be up to 128 actions per avatar.
+Limits: 40960px source edges, 512 MiB per file, 4096 MiB per source canvas,
+4096 GIF frames and 256 GiB accumulated source frames. GIFs fit a configurable
+playback budget (256 MiB default), with 2560 MiB per image collection.
+There may be up to 128 actions per avatar.
 
 To regenerate the example artwork, run `python generate_templates.py` with Pillow
 installed. Editing the supplied files in your normal drawing app does not require

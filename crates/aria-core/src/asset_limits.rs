@@ -1,8 +1,11 @@
 //! Import ceilings, not reserved memory. GPU textures still respect device limits.
 pub const MIB: u64 = 1024 * 1024;
-pub const IMAGE_FILE: u64 = 320 * MIB;
+pub const IMAGE_FILE: u64 = 512 * MIB;
 pub const IMAGE_SIDE: u32 = 40_960;
-pub const IMAGE_DECODED: u64 = 1280 * MIB;
+pub const IMAGE_DECODED: u64 = 4096 * MIB;
+pub const GIF_FRAMES: usize = 4096;
+pub const GIF_SOURCE_TOTAL: u64 = 256 * 1024 * MIB;
+pub const GIF_PLAYBACK_MIB: u32 = 256;
 pub const IMAGE_COLLECTION: u64 = 2560 * MIB;
 pub const MOC_FILE: usize = 1280 * 1024 * 1024;
 pub const MODEL_JSON: usize = 20 * 1024 * 1024;

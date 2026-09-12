@@ -13,7 +13,8 @@ Objects start in a static pose and can still follow a moving pin. Enable
 **Animate object from tracking** for independent animation. Pose presets,
 all three outputs and transparent PNG export include these objects. See
 the in-app **?** for the detailed workflow and resource limits. To replace
-the main avatar, use **Avatar & appearance → Open Live2D avatar**.
+the main avatar, use **Avatar & appearance → Import Live2D avatar** (or
+**Change avatar / type → Live2D** when an avatar is already loaded).
 
 ARIA v0.6 evaluates real `.moc3` models through Cubism Core and renders their
 ArtMeshes with wgpu/Direct3D 12. You need **the model, its texture images, and the
@@ -24,9 +25,9 @@ official Cubism Core DLL**. A moc3 contains the rig, not the texture artwork.
 1. Visit the official [Cubism SDK for Native download page](https://www.live2d.com/en/sdk/download/native/),
    review its terms, download the SDK, and extract it to a stable folder such as
    `C:\Tools\CubismSdkForNative-5-r.5`.
-2. Run ARIA. In the left **AVATAR** section, expand **Cubism runtime setup**.
-   You may need to scroll down the controls panel.
-3. Click **Select Core DLL…** and select:
+2. Run ARIA. Choose **Avatar & appearance → Import Live2D avatar**.
+   The guided importer asks for the export and runtime together.
+3. Click **Choose Cubism Core DLL…** and select:
 
    ```text
    C:\Tools\CubismSdkForNative-5-r.5\Core\dll\windows\x86_64\Live2DCubismCore.dll
@@ -62,9 +63,9 @@ MyAvatar/
   MyAvatar.physics3.json
 ```
 
-Select **Open Live2D avatar…** and choose `MyAvatar.model3.json`. Alternatively,
-drag it onto the ARIA studio window. The manifest supplies the exact texture index
-order. ARIA does not copy, modify, or upload your model files.
+In the importer, select **Choose Live2D export…** and choose `MyAvatar.model3.json`.
+Review the detected files, then click **Import Live2D avatar**. The manifest supplies
+the exact texture index order. ARIA does not copy, modify, or upload your model files.
 
 Selecting `MyAvatar.moc3` in the avatar picker also works (dropping it on the
 stage creates a separate pinnable object): ARIA searches the same folder for a
@@ -80,7 +81,9 @@ whether you supplied the correct artwork in the correct order.
 Successful imports show the avatar name, mesh count, mapped parameter count, Core
 version and decoded atlas size. The studio badge changes to **LIVE2D / CUBISM**.
 Loading errors preserve the current avatar and appear in the controls panel.
-**Reset** unloads the avatar and restores Mica. **Open PNG…** switches to a flat puppet.
+**Use built-in puppet** restores Mica. **Change avatar / type → PNG / GIF** opens
+the image-avatar import guide. Live2D's Avatar Inspector shows Physics and
+Expressions; the image-avatar action editor is hidden while Live2D is active.
 Opening another Live2D avatar replaces the current one after loading succeeds.
 
 ## 3. Animate it

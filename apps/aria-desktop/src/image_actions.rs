@@ -24,11 +24,21 @@ pub struct Images {
     pub player: Player,
     pub draws: Arc<[Draw]>,
     cache: BTreeMap<PathBuf, Result<Sprite, String>>,
+    pending: Option<(PathBuf, crate::media::LoadJob)>,
+    playback_mib: u32,
     selected: Option<u64>,
     pub message: Option<String>,
     draft: Shortcut,
 }
 impl Images {
+    #[cfg(feature = "screenshots")]
+    pub fn all_loaded(&self, config: &Config) -> bool {
+        !config.states.is_empty()
+            && config
+                .states
+                .iter()
+                .all(|s| self.cache.get(&s.path).is_some_and(|s| s.is_ok()))
+    }
     #[cfg(feature = "screenshots")]
     pub fn select_smoke(&mut self, id: u64) {
         self.selected = Some(id);
@@ -36,8 +46,12 @@ impl Images {
     pub fn reset(&mut self) {
         *self = Self::default();
     }
-    pub fn seed(&mut self, path: PathBuf, sprite: Sprite) {
+    pub fn seed(&mut self, path: PathBuf, sprite: Sprite, playback_mib: u32) {
+        self.playback_mib = playback_mib;
         self.cache.insert(path, Ok(sprite));
+    }
+    pub fn artwork(&self, path: &std::path::Path) -> Option<&Sprite> {
+        self.cache.get(path)?.as_ref().ok()
     }
     pub fn primary(&self) -> Option<&Sprite> {
         self.draws.last().map(|d| &d.sprite)
@@ -59,19 +73,56 @@ impl Images {
         let (dt, pose) = timing;
         self.cache
             .retain(|p, _| config.states.iter().any(|s| &s.path == p));
+        if self.playback_mib != 0 && self.playback_mib != config.playback_mib {
+            self.pending = None;
+            self.cache.clear();
+        }
+        self.playback_mib = config.playback_mib;
+        if self
+            .pending
+            .as_ref()
+            .is_some_and(|(p, _)| !config.states.iter().any(|s| s.path == *p))
+        {
+            self.pending = None;
+        }
+        if let Some((path, job)) = &self.pending
+            && let Some(result) = job.poll()
+        {
+            self.cache.insert(path.clone(), result);
+            self.pending = None;
+        }
         for s in &config.states {
-            if !self.cache.contains_key(&s.path) {
+            if self.pending.is_none() && !self.cache.contains_key(&s.path) {
                 let used = self
                     .cache
                     .values()
                     .filter_map(|s| s.as_ref().ok())
                     .map(Sprite::bytes)
                     .sum();
-                self.cache.insert(
-                    s.path.clone(),
-                    crate::media::load(ctx, render, &s.path, used, true)
-                        .map_err(|e| format!("{e:#}")),
-                );
+                // Existing tiny deterministic smoke fixtures can still load synchronously.
+                if cfg!(test)
+                    || (crate::smoke_mode()
+                        && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() != Ok("odette-gifs"))
+                {
+                    self.cache.insert(
+                        s.path.clone(),
+                        crate::media::load(ctx, render, &s.path, used, true)
+                            .map_err(|e| format!("{e:#}")),
+                    );
+                } else {
+                    match crate::media::LoadJob::start(
+                        ctx,
+                        render,
+                        &s.path,
+                        used,
+                        config.playback_mib,
+                    ) {
+                        Ok(job) => self.pending = Some((s.path.clone(), job)),
+                        Err(e) => {
+                            self.cache.insert(s.path.clone(), Err(e.to_string()));
+                        }
+                    }
+                }
             }
         }
         let mut available = config.clone();
@@ -184,6 +235,7 @@ impl Images {
                 }
             }
             if ui.button("Reload artwork").clicked() {
+                self.pending = None;
                 self.cache.clear();
             }
             if ui.button("Save actions").clicked() {
@@ -202,6 +254,33 @@ impl Images {
                 self.message=Some(match export_config(&saved.config.images,&path){Ok(())=>"Exported image actions; keep referenced artwork with the configuration.".into(),Err(e)=>format!("Cannot export: {e:#}")});
             }
         });
+        help::control(ui, "gif-memory", |ui| {
+            egui::ComboBox::from_id_salt("gif-memory")
+                .selected_text(format!("{} MiB per GIF", saved.config.images.playback_mib))
+                .show_ui(ui, |ui| {
+                    for (mib, label) in [
+                        (64, "Compact · 64 MiB"),
+                        (128, "Balanced · 128 MiB"),
+                        (256, "Detailed · 256 MiB"),
+                        (512, "High detail · 512 MiB"),
+                        (1024, "Maximum detail · 1024 MiB"),
+                    ] {
+                        ui.selectable_value(&mut saved.config.images.playback_mib, mib, label);
+                    }
+                })
+        });
+        if let Some((path, job)) = &self.pending {
+            let (done, total) = job.progress();
+            ui.label(format!(
+                "Loading {} · {done}/{total} frames",
+                path.file_name().unwrap_or_default().to_string_lossy()
+            ));
+            ui.add(egui::ProgressBar::new(if total > 0 {
+                done as f32 / total as f32
+            } else {
+                0.0
+            }));
+        }
         if ui.button("Resume automatic actions").clicked() {
             saved.config.images.manual = None;
         }
@@ -282,7 +361,7 @@ impl Images {
                 help::control(ui,"gif-playback",|ui|ui.add(egui::Slider::new(&mut s.gif_speed,0.05..=4.0).text("GIF speed")));
                 help::control(ui,"gif-playback",|ui|ui.checkbox(&mut s.gif_loop,"Loop GIF"));
                 help::control(ui,"gif-playback",|ui|ui.checkbox(&mut s.restart_gif,"Restart GIF when action activates"));
-                if let Some(Ok(sprite))=self.cache.get(&s.path){ui.small(sprite.animation.as_ref().map_or("Static image".into(),|a|format!("{} frames · {:.2}s · {:.1} MiB decoded",a.frames.len(),a.ends.last().unwrap(),sprite.bytes() as f64/1048576.0)));}
+                if let Some(Ok(sprite))=self.cache.get(&s.path){ui.small(sprite.animation.as_ref().map_or("Static image".into(),|a|format!("{} frames · {:.2}s · {} × {} playback · {:.1} MiB",a.frames.len(),a.ends.last().unwrap(),sprite.texture.size()[0],sprite.texture.size()[1],sprite.bytes() as f64/1048576.0)));}
             });
             theme::category(ui,"image-hotkey","Image action hotkey",true,|ui|{
                 shortcut_editor(ui,&mut self.draft);
