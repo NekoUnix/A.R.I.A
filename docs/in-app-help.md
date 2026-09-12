@@ -1114,3 +1114,44 @@ Whole chat opacity fades the entire panel's content: 1 is fully opaque and 0 mak
 Use Background to pick any RGB color, or enter its six-digit #RRGGBB hex value. Complete valid hex values apply immediately. Text chooses the default author/message color. Use Twitch username colors uses the sender's supplied name color when available; disable it to use your selected text color for every author. Some username colors are difficult to read on a similar background, so test with messages. YouTube authors use your text color.
 
 Text size ranges from 10 to 30 UI points. Panel height ranges from 140 to 600 points per service; Chat width ranges from 280 to 900 points. Both panels share that width and have independent scrolling. Windows display scaling determines their physical pixel sizes. Reset appearance restores only that service's default color, opacity, font and height. These settings automatically save with the current avatar's output layout; account credentials are separate.
+
+
+## vrm-import | Import a VRM avatar | VRM 0.x and 1.0 humanoids bring their meshes, textures, facial expressions and spring bones into the studio.
+
+Choose Avatar & appearance → Import VRM avatar, or Change avatar / type → VRM 3D avatar. Select a .vrm export, review the author and declared license, then Import. Dropping a VRM onto the stage starts the same guide. The original file stays unchanged. Import prepares textures and shared meshes in a background worker; cancellation leaves the previous avatar active. GPU resources are created after validation succeeds.
+
+A VRM is a self-contained binary glTF avatar. No Unity install, Cubism DLL or paid runtime is needed. Supported exports have an embedded buffer, embedded textures, a humanoid skeleton and triangle meshes. File size is limited to 512 MiB; decoded textures to 2 GiB and 16384 pixels per side; unique geometry to two million vertices and six million triangle indices. Large textures are fitted to the GPU's limit, at most 8192 pixels. Invalid data produces an import message.
+
+ARIA animates skinned meshes, facial morph expressions, bone/expression eye look and spring bones. Toon rendering handles base/shade/normal/emission/matcap textures, alpha cutout/blending and outlines. Appearance can differ from Unity's MToon renderer. Material-color and texture-transform expression binds, node constraints, embedded animation playback, UV animation, outline-width textures and full PBR rendering are not supported in this release. Model details lists detected expression/constraint limitations. A plain GLB without a VRM humanoid extension is not a primary VRM avatar.
+
+Every avatar has a content-based profile. Tracking mappings, camera, spring groups, poses, expressions, shortcuts, microphone and output settings restore only for that avatar. Updating the file changes its identity. A source path remembered on this PC is reopened at launch; the file is not copied into ARIA or uploaded anywhere.
+
+## vrm-view | VRM view and quality | Frame the avatar, orbit the camera and choose a shared render resolution for all outputs.
+
+Portrait crop blends between full body (0) and head/shoulders (1). Camera orbit turns around the avatar in degrees; 0 faces the model and ±180 shows the back. Camera elevation looks from above or below. These camera controls do not change the tracking calibration. Reset framing returns all three controls to zero. Each output still has its own position and scale; drag to move and scroll to resize.
+
+The avatar canvas is a transparent 3:4 image with four-sample anti-aliasing, rendered once and shared by the stage, landscape, portrait and freeform outputs. The quality selector sets its pixel height (512–4096); width is three quarters of height. Higher quality gives sharper enlarged avatars but increases rendering cost and GPU memory quadratically. Canvas color, anti-aliasing and depth attachments use about 36 bytes per pixel: approximately 61 MiB at 1152 × 1536 or 432 MiB at 3072 × 4096, plus the avatar's textures and meshes. Small preview windows still send the separately configured full OBS output resolution.
+
+Toon lighting scales the lit/shaded colors; emissive materials keep their own glow. Authored outlines enables the widths/colors exported with the VRM. The renderer approximates MToon; world-space outlines and the main lighting controls are supported. See Model details for import notes.
+
+Relax arms is a pose parameter: 0° uses the authored T-pose and 65° lowers the arms for streaming. Input monitor lets you remap, hold or step it like other parameters. Save profile persists camera/quality changes; movement and pose presets include them too.
+
+## vrm-physics | VRM spring physics | Tune the current avatar's hair, clothes and accessory chains globally or by exported group.
+
+Humanoid pose moves the spring roots. A fixed 60 Hz solver carries tail momentum, pulls each joint toward its authored direction, applies gravity/wind, preserves segment length and resolves sphere or capsule colliders. Rendering shares the resulting pose across outputs. Spring groups and their names come from each VRM, not from a test model.
+
+Motion strength blends the simulated rotation with the posed skeleton. Zero disables the visible spring result; values above one are capped at the full simulated rotation. Inertia scales retained motion after the authored drag, with a stability cap. Stiffness / response scales the authored return force: increase it for a quicker return, lower it for softer motion. Gravity multiplier scales each joint's exported gravity vector and strength; a joint authored with zero gravity stays at zero. Side wind adds a small sideways force in model space. Global and group multipliers combine. Increasing these values changes motion, not the original file.
+
+Enable spring bones controls all groups. A group's toggle affects only that chain. Settle motion clears momentum at the current pose. Restore authored physics resets global and group modifiers to one (wind zero); Reset this group affects only its modifiers. Click the small ? beside a group to see authored joint stiffness, drag, gravity and collision radii.
+
+Save profile and presets store these settings per avatar. Frozen poses stop the spring simulation and keep the final joint rotations and blink state in saved presets for reproducible screenshots; changing a held driver still refreshes the model. Resume live restarts motion. Different VRM files can export different groups or none.
+
+## vrm-expressions | VRM expressions and face tracking | Use embedded expressions from phone inputs, manual controls or your own keyboard shortcuts.
+
+ARIA lists the preset and custom expressions embedded in the current VRM. A .exp3 file belongs to Live2D and is not used by a VRM avatar. Use the expression checkbox to toggle it, choose a key with optional Ctrl/Alt/Shift/Win, then Assign shortcut. Enable global shortcuts in the existing hotkey controls if they must work while OBS or another app is focused. Shortcuts and active expressions belong to this avatar; movement/pose presets also keep the expression selection.
+
+Each expression exposes a VRMExpression parameter from 0 to 1 in Inputs and Pose controls. The visible label is the expression's exported name. Expressions combine weighted morph targets. Toggle transitions fade over 0.15 seconds; binary expressions switch at a weight above 0.5. VRM 1.0 blink, look and mouth overrides reduce or block the automatic channels while a conflicting expression is active.
+
+Eye opening drives separate left/right blink presets when both exist, otherwise the combined blink. Mouth opening drives A (VRM 0.x) or aa (VRM 1.0). The microphone feeds this same input; it is amplitude-based talking, not phoneme recognition. Other vowels and emotions can be toggled or mapped manually. Gaze rotates eye bones or uses look expressions according to the export. Named ARKit custom morph expressions receive matching ARKit input assignments, avoiding duplicate jaw-open/blink/look drivers. Shapes absent from an avatar cannot be manufactured by the runtime.
+
+Automatic blinking adds a short blink about every 4.2 seconds, useful with microphone-only talking. Turn it off when the phone already supplies your blinks. Frozen pose holds both expressions and eye state, with no timed blinking. Resume live before toggling expressions. Save profile persists these choices.

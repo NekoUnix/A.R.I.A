@@ -10,6 +10,7 @@ pub mod movement;
 pub mod physics;
 pub mod rig;
 pub mod shortcuts;
+pub mod vrm;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 

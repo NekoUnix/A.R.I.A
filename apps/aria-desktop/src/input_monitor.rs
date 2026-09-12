@@ -18,6 +18,7 @@ pub enum Tab {
     Items,
     Effects,
     Images,
+    Vrm,
     Microphone,
 }
 pub struct InputMonitor {
@@ -266,9 +267,15 @@ impl InputMonitor {
         {
             self.tab = Tab::Images;
         }
+        if kind == Some(crate::avatar_import::Kind::Vrm) && self.tab == Tab::Images {
+            self.tab = Tab::Vrm;
+        }
+        if kind != Some(crate::avatar_import::Kind::Vrm) && self.tab == Tab::Vrm {
+            self.tab = Tab::Inputs;
+        }
         let mut group = match self.tab {
             Tab::Inputs | Tab::Microphone | Tab::Raw => 0,
-            Tab::Physics | Tab::Expressions | Tab::Images => 1,
+            Tab::Physics | Tab::Expressions | Tab::Images | Tab::Vrm => 1,
             Tab::Items | Tab::Effects => 2,
             Tab::Pose | Tab::Presets => 3,
         };
@@ -289,6 +296,11 @@ impl InputMonitor {
                 Some(crate::avatar_import::Kind::Live2d) => {
                     &[(Tab::Physics, "Physics"), (Tab::Expressions, "Expressions")]
                 }
+                Some(crate::avatar_import::Kind::Vrm) => &[
+                    (Tab::Vrm, "View"),
+                    (Tab::Physics, "Springs"),
+                    (Tab::Expressions, "Expressions"),
+                ],
                 None => &[(Tab::Physics, "Physics"), (Tab::Images, "PNG / GIF")],
             },
             2 => &[(Tab::Items, "Objects"), (Tab::Effects, "Throws & sprays")],
@@ -315,8 +327,21 @@ impl InputMonitor {
             match self.tab {
                 Tab::Inputs => "inputs",
                 Tab::Pose => "pose",
-                Tab::Physics => "physics",
-                Tab::Expressions => "expressions",
+                Tab::Physics => {
+                    if self.model_key.starts_with("vrm:") {
+                        "vrm-physics"
+                    } else {
+                        "physics"
+                    }
+                }
+                Tab::Vrm => "vrm-view",
+                Tab::Expressions => {
+                    if self.model_key.starts_with("vrm:") {
+                        "vrm-expressions"
+                    } else {
+                        "expressions"
+                    }
+                }
                 Tab::Presets => "presets",
                 Tab::Raw => "diagnostics",
                 Tab::Items => "png-items",
@@ -349,7 +374,7 @@ impl InputMonitor {
             Tab::Inputs => self.inputs_ui(ui, parameters, labels, inputs),
             Tab::Pose => self.pose_ui(ui, parameters, labels, can_export),
             Tab::Presets => self.presets_ui(ui, parameters, mapping),
-            Tab::Physics => {
+            Tab::Physics if !self.model_key.starts_with("vrm:") => {
                 let actions = self.physics_panel.show(
                     ui,
                     &mut self.saved.config.physics,
@@ -375,7 +400,13 @@ impl InputMonitor {
                     ui.colored_label(egui::Color32::LIGHT_RED, error);
                 }
             }
-            Tab::Raw | Tab::Items | Tab::Effects | Tab::Images | Tab::Microphone => {}
+            Tab::Raw
+            | Tab::Items
+            | Tab::Effects
+            | Tab::Images
+            | Tab::Microphone
+            | Tab::Vrm
+            | Tab::Physics => {}
         }
     }
     fn filter_ui(&mut self, ui: &mut egui::Ui) {

@@ -28,6 +28,8 @@ pub struct Pose {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RigConfig {
+    pub vrm: crate::vrm::Settings,
+    pub vrm_pose: crate::vrm::Pose,
     pub images: crate::image_actions::Config,
     pub bindings: BTreeMap<String, Binding>,
     pub manual: BTreeMap<String, f32>,
@@ -121,6 +123,7 @@ impl RigConfig {
         }
     }
     pub fn validate(&self, parameters: &[RigParameter]) -> Result<()> {
+        self.vrm.validate()?;
         self.images.validate()?;
         ensure!(
             parameters.len() <= 4096 && self.bindings.len() <= parameters.len(),
@@ -183,6 +186,7 @@ impl RigConfig {
             );
         }
         self.physics.validate()?;
+        self.vrm_pose.validate()?;
         crate::items::validate(&self.items)?;
         ensure!(
             self.expressions.len() <= 256

@@ -5,6 +5,38 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Local verification on 2026-09-12
 
+### v0.19 primary VRM avatars
+
+- Formatting and strict Clippy passed for all workspace targets/features.
+  **126 default tests passed**, with fifteen environment-dependent tests ignored
+  by default. The optional VRM GPU tests were then run separately.
+- Imported the user's local VRM 0.x in place: **54 humanoid bones, 70 expressions,
+  28 spring groups, 64,557 unique vertices and 42 draw sections**. Material sections
+  reuse three geometry buffers rather than duplicating their shared accessors.
+- Five VRM tests passed on Windows DX12: generated 0.x/1.0 import and GPU morph
+  rendering, malformed/truncated/external-resource rejection, fixed-step springs
+  at 60/120 Hz, and the supplied avatar's animated skinning/expressions/pose flow.
+  Head yaw and pitch change independent axes with the correct sign. Generated
+  fixtures cover old sphere-offset conversion and VRM 1.0 capsule metadata.
+- The native test assigns a custom expression hotkey through the actual input
+  monitor, toggles it through the action handler, checks its fade and release,
+  and validates serialized shortcut/profile data. This checks application routing;
+  it does not synthesize a physical Windows keypress or connect a physical phone.
+- Frozen updates skip further GPU draws and leave the image byte-identical. Saved
+  pose reload restores joint matrices bit for bit and identical morph weights.
+  A fresh DX12 draw permits less than 0.1% changed color channels at overlapping
+  transparent edge samples; uninterrupted frozen frames require exact equality.
+- The provided avatar's textures, geometry and default 1152 × 1536 MSAA canvas
+  account for approximately **414.8 MiB** of application GPU allocations. The
+  process GPU metric also includes window/compositor/driver resources. In the
+  native UI check it ran near the selected 60 FPS with about 0.3–0.5% process CPU
+  on this machine's RTX 5090. These are observations, not performance guarantees.
+- Inspected the native full-body and portrait views, spring groups and embedded
+  expression controls. Captured the guided importer and all three output formats.
+  Public documentation uses the built-in puppet/import guide; private VRM art is
+  excluded from the repository and package. `scripts/test-vrm.ps1` repeats the
+  optional local DX12 checks using a caller-supplied VRM path.
+
 ### v0.18 guided import and large GIF playback
 
 - Formatting and strict Clippy passed for every workspace target and feature.

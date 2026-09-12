@@ -1,6 +1,12 @@
 # Windows setup and operation
 
-ARIA v0.18 adds guided PNG/GIF and Live2D import, background loading of large GIFs,
+ARIA v0.19 adds animated VRM 0.x / 1.0 avatars to guided import.
+Choose **Avatar & appearance → Import VRM avatar**, select your `.vrm`, review
+its metadata, then Import. No Cubism SDK is needed for VRM. Phone tracking,
+microphone talking, expression hotkeys and spring settings use its own profile.
+See [VRM setup, controls and compatibility](vrm.md).
+
+Guided PNG/GIF and Live2D import includes background loading of large GIFs,
 and Inspector categories that match the imported avatar. The graphite palette
 and blue accent use the same renderer and Windows font, with no blur or UI animation.
 [See the import limits and workspace guide](in-app-help.md).
@@ -40,7 +46,7 @@ systems and Windows ARM64 are not verified release targets yet.
 1. Visit [the Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml).
 2. Select a green, successful run on `main` for the version you want.
 3. Under **Artifacts**, download **aria-windows-x64**. Sign in to GitHub if asked.
-4. Extract the downloaded artifact. Extract `aria-0.18.0-windows-x64.zip` inside it
+4. Extract the downloaded artifact. Extract `aria-0.19.0-windows-x64.zip` inside it
    into a normal writable folder, for example `C:\Apps\ARIA`.
 5. Double-click **aria-desktop.exe**. The default source is Demo and Mica should move.
 

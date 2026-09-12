@@ -33,6 +33,7 @@ enum Source {
 struct Settings {
     chat_accounts: crate::chat::Accounts,
     image_avatar: Option<PathBuf>,
+    vrm_avatar: Option<PathBuf>,
     effect_api: crate::effect_api::Settings,
     #[serde(default)]
     vts_pitch_revision: u8,
@@ -57,6 +58,7 @@ impl Default for Settings {
         Self {
             chat_accounts: Default::default(),
             image_avatar: None,
+            vrm_avatar: None,
             effect_api: Default::default(),
             vts_pitch_revision: 1,
             source: Source::Demo,
@@ -166,6 +168,7 @@ struct PendingImage {
 pub struct AriaApp {
     importer: crate::avatar_import::Wizard,
     pending_image: Option<PendingImage>,
+    pending_vrm: Option<crate::vrm::LoadJob>,
     controls_page: ControlsPage,
     chats: crate::chat::Chats,
     images: crate::image_actions::Images,
@@ -198,6 +201,7 @@ pub struct AriaApp {
     model: Option<ModelReport>,
     model_open: bool,
     live2d: Option<crate::live2d::Avatar>,
+    vrm: Option<crate::vrm::Avatar>,
     render_state: Option<eframe::egui_wgpu::RenderState>,
     bare_moc: Option<PathBuf>,
     bare_textures: Vec<PathBuf>,
@@ -210,13 +214,23 @@ impl AriaApp {
             dents: self.effects.dents.clone(),
             effects: self.effects.draws.clone(),
             recoil: self.effects.simulation.impulse,
-            _model_lease: self.live2d.as_ref().map(|a| a.image_lease()),
+            _model_lease: self
+                .live2d
+                .as_ref()
+                .map(|a| a.image_lease())
+                .or_else(|| self.vrm.as_ref().map(|a| a.image_lease())),
             items: self.items.draws.clone(),
-            model: self.live2d.as_ref().map(|a| a.image()),
+            model: self
+                .live2d
+                .as_ref()
+                .map(|a| a.image())
+                .or_else(|| self.vrm.as_ref().map(|a| a.image())),
             model_bounds: self
                 .live2d
                 .as_ref()
-                .map_or(egui::Rect::NOTHING, |a| a.image_bounds()),
+                .map(|a| a.image_bounds())
+                .or_else(|| self.vrm.as_ref().map(|a| a.image_bounds()))
+                .unwrap_or(egui::Rect::NOTHING),
             sprite: self.images.primary().cloned().or_else(|| {
                 self.active_sprite()
                     .map(|s| s.at(self.animation_time, 1.0, true))
@@ -267,6 +281,7 @@ impl AriaApp {
         let app = Self {
             importer: Default::default(),
             pending_image: None,
+            pending_vrm: None,
             controls_page: ControlsPage::default(),
             chats: Default::default(),
             images: Default::default(),
@@ -299,6 +314,7 @@ impl AriaApp {
             model: None,
             model_open: false,
             live2d: None,
+            vrm: None,
             render_state: cc.wgpu_render_state.clone(),
             bare_moc: None,
             bare_textures: Vec::new(),
@@ -334,6 +350,12 @@ impl AriaApp {
         {
             app.open_image(&cc.egui_ctx, &path, false);
         }
+        if !crate::smoke_mode()
+            && std::env::args_os().nth(1).is_none()
+            && let Some(path) = app.settings.vrm_avatar.clone()
+        {
+            app.begin_vrm(&path);
+        }
         #[cfg(feature = "screenshots")]
         let app = {
             let mut app = app;
@@ -353,6 +375,9 @@ impl AriaApp {
                         aria_model::load_files(Path::new(&path)).expect("Smoke model assets"),
                     )
                     .expect("Smoke model load");
+                }
+                if let Some(path) = std::env::var_os("ARIA_TEST_VRM") {
+                    app.begin_vrm(Path::new(&path));
                 }
                 let scenario = std::env::var("ARIA_SMOKE_SCENARIO").unwrap_or_default();
                 app.controls_page = if scenario.starts_with("chat") {
@@ -392,6 +417,9 @@ impl AriaApp {
                 }
                 if scenario == "import-images" {
                     app.importer.start(Some(crate::avatar_import::Kind::Images));
+                }
+                if scenario == "import-vrm" {
+                    app.importer.start(Some(crate::avatar_import::Kind::Vrm));
                 }
                 if scenario == "import-live2d" {
                     app.importer.start(Some(crate::avatar_import::Kind::Live2d));
@@ -699,6 +727,7 @@ impl AriaApp {
                 .live2d
                 .as_ref()
                 .map(|a| a.name.as_str())
+                .or_else(|| self.vrm.as_ref().map(|a| a.asset.summary.name.as_str()))
                 .or_else(|| self.idle.as_ref().map(|s| s.name.as_str()))
                 .unwrap_or("Mica");
             ui.add(egui::Label::new(RichText::new(name).strong()).truncate());
@@ -951,11 +980,18 @@ impl AriaApp {
                         );
                         if ui.button("Import PNG / GIF avatar…").clicked() {
                             self.pending_image = None;
+                            self.pending_vrm = None;
                             self.importer
                                 .start(Some(crate::avatar_import::Kind::Images));
                         }
+                        if ui.button("Import VRM avatar…").clicked() {
+                            self.pending_image = None;
+                            self.pending_vrm = None;
+                            self.importer.start(Some(crate::avatar_import::Kind::Vrm));
+                        }
                         if ui.button("Import Live2D avatar…").clicked() {
                             self.pending_image = None;
+                            self.pending_vrm = None;
                             self.importer
                                 .start(Some(crate::avatar_import::Kind::Live2d));
                         }
@@ -988,6 +1024,31 @@ impl AriaApp {
                         );
                         self.input_monitor.save_requested |=
                             previous != self.input_monitor.saved.config.images.playback_mib;
+                    }
+                    Some(crate::avatar_import::Kind::Vrm) => {
+                        ui.strong("VRM 3D avatar");
+                        if let Some(avatar) = &self.vrm {
+                            ui.label(&avatar.asset.summary.name);
+                            ui.small(format!(
+                                "VRM {} · {} bones · {} expressions",
+                                avatar.asset.summary.version,
+                                avatar.asset.bones.len(),
+                                avatar.asset.expressions.len()
+                            ));
+                        }
+                        for (label, tab) in [
+                            ("View & framing", Tab::Vrm),
+                            ("Tracking & parameters", Tab::Inputs),
+                            ("Spring physics", Tab::Physics),
+                            ("Expressions & hotkeys", Tab::Expressions),
+                        ] {
+                            if ui.button(label).clicked() {
+                                self.input_monitor.tab = tab;
+                            }
+                        }
+                        if let Some(avatar) = &self.vrm {
+                            crate::vrm::panel::details(ui, avatar);
+                        }
                     }
                     Some(crate::avatar_import::Kind::Live2d) => {
                         ui.strong("Live2D avatar");
@@ -1054,14 +1115,17 @@ impl AriaApp {
                     ui.separator();
                     if ui.button("Change avatar / type…").clicked() {
                         self.pending_image = None;
+                        self.pending_vrm = None;
                         self.importer.start(None);
                     }
                     if ui.button("Guided import tour…").clicked() {
                         self.pending_image = None;
+                        self.pending_vrm = None;
                         self.importer.start(kind);
                     }
                     if ui.small_button("Use built-in puppet").clicked() {
                         self.pending_image = None;
+                        self.pending_vrm = None;
                         self.importer.open = false;
                         self.idle = None;
                         self.talking = None;
@@ -1070,11 +1134,19 @@ impl AriaApp {
                     }
                 }
                 crate::help::label(ui, "Import guide & size limits", "guided-import");
+                if let Some(pending) = &self.pending_vrm {
+                    ui.spinner();
+                    ui.label(pending.progress());
+                    if ui.button("Cancel VRM import").clicked() {
+                        self.pending_vrm = None;
+                    }
+                }
                 if let Some(pending) = &self.pending_image {
                     let (done, total) = pending.job.progress();
                     ui.label(format!("Loading artwork · {done}/{total} frames"));
                     if ui.button("Cancel image import").clicked() {
                         self.pending_image = None;
+                        self.pending_vrm = None;
                     }
                 }
             });
@@ -1147,6 +1219,8 @@ impl AriaApp {
         let result = (|| -> anyhow::Result<crate::chroma::Suggestion> {
             let mut palette = if let Some(avatar) = &self.live2d {
                 avatar.key_palette()?
+            } else if let Some(avatar) = &self.vrm {
+                avatar.key_palette()?
             } else if let Some(idle) = &self.idle {
                 let mut palette = (*idle.palette).clone();
                 if let Some(talking) = &self.talking {
@@ -1203,6 +1277,7 @@ impl AriaApp {
         budget: u32,
     ) {
         self.pending_image = None;
+        self.pending_vrm = None;
         match crate::media::LoadJob::start(ctx, self.render_state.as_ref(), path, 0, budget) {
             Ok(job) => {
                 self.pending_image = Some(PendingImage {
@@ -1220,7 +1295,7 @@ impl AriaApp {
         }
     }
     fn apply_image(&mut self, path: &Path, talking: bool, sprite: Sprite, budget: u32) {
-        if !talking || self.live2d.is_some() {
+        if !talking || self.live2d.is_some() || self.vrm.is_some() {
             self.use_puppet_rig(&sprite.model_key);
         }
         if talking {
@@ -1288,6 +1363,8 @@ impl AriaApp {
     fn avatar_kind(&self) -> Option<crate::avatar_import::Kind> {
         if self.live2d.is_some() {
             Some(crate::avatar_import::Kind::Live2d)
+        } else if self.vrm.is_some() {
+            Some(crate::avatar_import::Kind::Vrm)
         } else if self.idle.is_some() {
             Some(crate::avatar_import::Kind::Images)
         } else {
@@ -1296,10 +1373,12 @@ impl AriaApp {
     }
     fn import_tour(&mut self, ctx: &egui::Context) {
         let progress = self.pending_image.as_ref().map(|p| p.job.progress());
-        match self
-            .importer
-            .show(ctx, &mut self.settings.cubism_core, progress)
-        {
+        match self.importer.show(
+            ctx,
+            &mut self.settings.cubism_core,
+            progress,
+            self.pending_vrm.as_ref().map(|p| p.progress()),
+        ) {
             Some(crate::avatar_import::Request::Images { artwork, budget }) => {
                 if let Some(base) = artwork
                     .iter()
@@ -1309,8 +1388,10 @@ impl AriaApp {
                     self.begin_image(ctx, &path, false, artwork, budget);
                 }
             }
+            Some(crate::avatar_import::Request::Vrm(path)) => self.begin_vrm(&path),
             Some(crate::avatar_import::Request::Live2d(path)) => {
                 self.pending_image = None;
+                self.pending_vrm = None;
                 self.open_model(&path);
                 if let Some(error) = &self.status_message {
                     self.importer.error = Some(error.clone());
@@ -1323,6 +1404,7 @@ impl AriaApp {
             }
             Some(crate::avatar_import::Request::Cancel) => {
                 self.pending_image = None;
+                self.pending_vrm = None;
                 self.importer.open = false;
             }
             Some(crate::avatar_import::Request::Microphone) => {
@@ -1332,6 +1414,8 @@ impl AriaApp {
             Some(crate::avatar_import::Request::Controls) => {
                 self.input_monitor.tab = if self.live2d.is_some() {
                     Tab::Physics
+                } else if self.vrm.is_some() {
+                    Tab::Vrm
                 } else {
                     Tab::Images
                 };
@@ -1354,6 +1438,7 @@ impl AriaApp {
 
     fn import_model(&mut self, files: aria_model::ModelFiles) -> anyhow::Result<()> {
         self.pending_image = None;
+        self.pending_vrm = None;
         anyhow::ensure!(
             !self.settings.cubism_core.trim().is_empty(),
             "First choose the official x64 Cubism Core DLL under Cubism runtime setup."
@@ -1386,13 +1471,103 @@ impl AriaApp {
         self.hotkeys.configure(Vec::new());
         self.animation_time = 0.0;
         self.live2d = Some(avatar);
+        self.vrm = None;
+        self.settings.vrm_avatar = None;
         self.settings.image_avatar = None;
         self.idle = None;
         self.talking = None;
         self.status_message = None;
         Ok(())
     }
+    fn begin_vrm(&mut self, path: &Path) {
+        self.pending_image = None;
+        self.pending_vrm = Some(crate::vrm::LoadJob::start(path.to_owned()));
+        self.status_message = None;
+        self.importer.error = None;
+    }
+    fn poll_vrm_import(&mut self) {
+        let Some(result) = self.pending_vrm.as_ref().and_then(|p| p.poll()) else {
+            return;
+        };
+        self.pending_vrm = None;
+        let result = result
+            .and_then(|asset| {
+                crate::vrm::Avatar::from_asset(
+                    self.render_state
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("GPU unavailable"))?,
+                    asset,
+                )
+            })
+            .and_then(|avatar| {
+                let expressions = avatar.embedded_expressions()?;
+                Ok((avatar, expressions))
+            });
+        match result {
+            Ok((avatar, expressions)) => {
+                self.remember_current_rig();
+                self.input_monitor = InputMonitor::new(
+                    avatar.asset.key.clone(),
+                    avatar.initial_config.clone(),
+                    self.settings.saved_rigs.get(&avatar.asset.key).cloned(),
+                    avatar.parameters(),
+                );
+                self.input_monitor.expressions.load_embedded(
+                    expressions,
+                    &self.input_monitor.saved,
+                    avatar.parameters(),
+                );
+                self.input_monitor.tab = Tab::Vrm;
+                self.restore_model_preferences(&avatar.asset.key);
+                self.hotkeys.configure(Vec::new());
+                self.animation_time = 0.;
+                self.settings.vrm_avatar = Some(avatar.asset.path.clone());
+                self.settings.image_avatar = None;
+                self.live2d = None;
+                self.idle = None;
+                self.talking = None;
+                self.vrm = Some(avatar);
+                self.input_monitor.save_requested = true;
+                self.status_message = None;
+                self.importer.finished();
+                #[cfg(feature = "screenshots")]
+                if crate::smoke_mode() {
+                    eprintln!("VRM primary avatar imported successfully");
+                    let scenario = std::env::var("ARIA_SMOKE_SCENARIO").unwrap_or_default();
+                    self.settings.source = Source::Local;
+                    if scenario == "vrm-springs" {
+                        self.input_monitor.tab = Tab::Physics;
+                    }
+                    if scenario == "vrm-expressions" {
+                        self.input_monitor.tab = Tab::Expressions;
+                    }
+                    if scenario == "vrm-portrait" {
+                        self.input_monitor.saved.config.vrm.portrait = 1.;
+                    }
+                    if scenario == "output-vrm" {
+                        for index in 0..3 {
+                            self.outputs.set_open(index, true);
+                            self.outputs
+                                .edit_canvas(index, |c| c.background = Background::Green);
+                        }
+                    }
+                }
+            }
+            Err(error) => {
+                let error = format!("{error:#}");
+                self.status_message = Some(error.clone());
+                self.importer.error = Some(error);
+            }
+        }
+    }
     fn open_model(&mut self, path: &Path) {
+        if path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("vrm"))
+        {
+            self.begin_vrm(path);
+            return;
+        }
         match aria_model::load_files(path) {
             Ok(files) => {
                 if let Err(error) = self.import_model(files) {
@@ -1413,7 +1588,12 @@ impl AriaApp {
     }
     fn current_parameters(&self) -> Vec<RigParameter> {
         self.live2d.as_ref().map_or_else(
-            || movement::preview_parameters(self.params),
+            || {
+                self.vrm.as_ref().map_or_else(
+                    || movement::preview_parameters(self.params),
+                    |a| a.parameters().to_vec(),
+                )
+            },
             |a| a.model.parameters().to_vec(),
         )
     }
@@ -1464,6 +1644,9 @@ impl AriaApp {
     fn use_puppet_rig(&mut self, key: &str) {
         self.remember_current_rig();
         self.live2d = None;
+        self.vrm = None;
+        self.settings.vrm_avatar = None;
+        self.pending_vrm = None;
         let parameters = movement::preview_parameters(Parameters::default());
         self.input_monitor = InputMonitor::new(
             key.into(),
@@ -1518,6 +1701,7 @@ impl AriaApp {
             .live2d
             .as_ref()
             .map(|a| a.labels.clone())
+            .or_else(|| self.vrm.as_ref().map(|a| a.labels.clone()))
             .unwrap_or_default();
         let monitor_key = self.input_monitor.model_key.clone();
         ui.push_id(&monitor_key, |ui| {
@@ -1529,6 +1713,14 @@ impl AriaApp {
                 &mut self.settings.mapping,
                 true,
             );
+            if let Some(avatar) = &self.vrm {
+                if self.input_monitor.tab == Tab::Vrm {
+                    crate::vrm::panel::view(ui, avatar, &mut self.input_monitor);
+                }
+                if self.input_monitor.tab == Tab::Physics {
+                    crate::vrm::panel::physics(ui, &avatar.asset.springs, &mut self.input_monitor);
+                }
+            }
             if self.input_monitor.tab == Tab::Items {
                 if self.items.panel(
                     ui,
@@ -1694,6 +1886,7 @@ impl AriaApp {
 impl eframe::App for AriaApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         self.poll_image_import();
+        self.poll_vrm_import();
         self.input_monitor.save_requested |=
             self.chats.update(&mut self.settings.chat_accounts, ctx);
         #[cfg(feature = "screenshots")]
@@ -1738,6 +1931,17 @@ impl eframe::App for AriaApp {
             } else {
                 Vec::new()
             };
+        if let Some(path) = dropped_items
+            .iter()
+            .find(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("vrm")))
+            .cloned()
+        {
+            self.pending_vrm = None;
+            self.pending_image = None;
+            self.importer.start(Some(crate::avatar_import::Kind::Vrm));
+            self.importer.model = Some(path);
+            dropped_items.retain(|p| !p.extension().is_some_and(|e| e.eq_ignore_ascii_case("vrm")));
+        }
         let now = Instant::now();
         // A layout discard can call update twice for the same frame.
         let dt = self
@@ -1841,6 +2045,24 @@ impl eframe::App for AriaApp {
                         self.use_preview_rig();
                     }
                 }
+            } else if let Some(avatar) = &mut self.vrm {
+                if std::mem::take(&mut self.input_monitor.reset_motion)
+                    && self.input_monitor.saved.config.pose.mode != PoseMode::Frozen
+                {
+                    avatar.reset_motion();
+                }
+                match avatar.update(
+                    &self.live_inputs,
+                    &mut self.input_monitor.saved.config,
+                    &mut self.input_monitor.expressions,
+                    dt,
+                ) {
+                    Ok(true) => self.scene_revision = self.scene_revision.wrapping_add(1),
+                    Ok(false) => {}
+                    Err(error) => {
+                        self.status_message = Some(format!("VRM update stopped: {error:#}"))
+                    }
+                }
             } else {
                 self.scene_revision = self.scene_revision.wrapping_add(1);
                 let mut parameters = movement::preview_parameters(self.params);
@@ -1855,7 +2077,7 @@ impl eframe::App for AriaApp {
                 }
             }
             let parameters = self.current_parameters();
-            if self.live2d.is_none() {
+            if self.live2d.is_none() && self.vrm.is_none() {
                 self.images.update(
                     ctx,
                     self.render_state.as_ref(),
@@ -1915,7 +2137,7 @@ impl eframe::App for AriaApp {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            RichText::new("v0.18 · WINDOWS PREVIEW")
+                            RichText::new("v0.19 · WINDOWS PREVIEW")
                                 .small()
                                 .color(MUTED),
                         );
@@ -1984,6 +2206,8 @@ impl eframe::App for AriaApp {
                     ui.label(
                         RichText::new(if self.live2d.is_some() {
                             "LIVE2D / CUBISM"
+                        } else if self.vrm.is_some() {
+                            "VRM / 3D HUMANOID"
                         } else if self.idle.is_some() {
                             "PNG / GIF PUPPET"
                         } else {
@@ -2138,6 +2362,24 @@ impl eframe::App for AriaApp {
                     MUTED,
                 );
             });
+        #[cfg(feature = "screenshots")]
+        if crate::smoke_mode()
+            && std::env::var_os("ARIA_TEST_VRM").is_some()
+            && self.started.elapsed() > Duration::from_secs(5)
+        {
+            assert!(
+                self.vrm.is_some(),
+                "VRM smoke import failed: {:?}",
+                self.status_message
+            );
+            let key = egui::Id::new("vrm-smoke-export");
+            if !ctx.data(|d| d.get_temp::<bool>(key).unwrap_or(false)) {
+                if let Some(path) = std::env::var_os("ARIA_SMOKE_AVATAR_PNG") {
+                    self.input_monitor.export_png = Some(path.into());
+                }
+                ctx.data_mut(|d| d.insert_temp(key, true));
+            }
+        }
         if let Some(path) = self.input_monitor.export_png.take() {
             let scene = self.scene();
             let result = if scene.items.is_empty()
@@ -2474,6 +2716,40 @@ fn help_image_memory(ui: &mut egui::Ui, budget: &mut u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn vrm_camera_springs_and_reopen_path_stay_per_avatar() {
+        let mut settings = Settings {
+            vrm_avatar: Some("test-avatar.vrm".into()),
+            ..Default::default()
+        };
+        for (key, yaw, wind) in [("vrm:one", 45., 0.3), ("vrm:two", -25., -0.4)] {
+            let mut rig = SavedRig::default();
+            rig.config.vrm.yaw = yaw;
+            rig.config.vrm.portrait = 0.7;
+            rig.config.physics.groups.insert(
+                "vrm:spring:0".into(),
+                aria_core::physics::GroupSettings {
+                    wind,
+                    ..Default::default()
+                },
+            );
+            settings.saved_rigs.insert(key.into(), rig);
+        }
+        let mut memory = Memory::default();
+        eframe::set_value(&mut memory, "settings", &settings);
+        let restored: Settings = eframe::get_value(&memory, "settings").unwrap();
+        assert_eq!(restored.vrm_avatar, settings.vrm_avatar);
+        assert_eq!(restored.saved_rigs["vrm:one"].config.vrm.yaw, 45.);
+        assert_eq!(
+            restored.saved_rigs["vrm:two"].config.physics.groups["vrm:spring:0"].wind,
+            -0.4
+        );
+        let legacy: RigConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(legacy.vrm, Default::default());
+        let mut bad = legacy;
+        bad.vrm.resolution = u32::MAX;
+        assert!(bad.validate(&[]).is_err());
+    }
     #[test]
     fn pitch_migration_runs_once_and_effect_libraries_stay_per_avatar() {
         let mut settings: Settings = serde_json::from_str("{}").unwrap();

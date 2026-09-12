@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 pub enum Kind {
     Images,
     Live2d,
+    Vrm,
 }
 #[derive(Clone)]
 pub struct Artwork {
@@ -44,6 +45,7 @@ impl Artwork {
 pub enum Request {
     Images { artwork: Vec<Artwork>, budget: u32 },
     Live2d(PathBuf),
+    Vrm(PathBuf),
     Cancel,
     Microphone,
     Controls,
@@ -75,6 +77,15 @@ impl Default for Wizard {
     }
 }
 impl Wizard {
+    fn choose(&mut self, kind: Kind) {
+        if self.kind != Some(kind) {
+            self.model = None;
+            self.model_summary = None;
+            self.error = None;
+        }
+        self.kind = Some(kind);
+        self.step = 1;
+    }
     pub fn start(&mut self, kind: Option<Kind>) {
         *self = Self {
             open: true,
@@ -105,6 +116,7 @@ impl Wizard {
         ctx: &egui::Context,
         core: &mut String,
         progress: Option<(usize, usize)>,
+        vrm_progress: Option<String>,
     ) -> Option<Request> {
         if !self.open {
             return None;
@@ -128,6 +140,12 @@ impl Wizard {
                     if ui.button("Open avatar controls").clicked() { request=Some(Request::Controls); }
                     return;
                 }
+                if let Some(message)=&vrm_progress {
+                    ui.heading("Importing VRM avatar");ui.spinner();ui.label(message);
+                    ui.label("Meshes and textures are prepared in the background. Your current avatar stays on stage until the import succeeds.");
+                    if ui.button("Cancel import").clicked(){request=Some(Request::Cancel);}
+                    return;
+                }
                 if let Some((done,total))=progress {
                     ui.heading("Importing artwork");
                     ui.label(format!("Preparing frame {done} of {total}. The current avatar stays available until import succeeds."));
@@ -138,10 +156,11 @@ impl Wizard {
                 }
                 if self.step==0 {
                     ui.heading("1. Choose your avatar type");
-                    ui.label("PNG / GIF uses artwork states for idle, talking, blinking and hotkeys. Live2D uses a rigged Cubism model with parameters, expressions and physics.");
-                    ui.columns(2,|cols| {
-                        if cols[0].add_sized([cols[0].available_width(),58.0],egui::Button::new("PNG / GIF avatar")).clicked() {self.kind=Some(Kind::Images);self.step=1;}
-                        if cols[1].add_sized([cols[1].available_width(),58.0],egui::Button::new("Live2D avatar")).clicked() {self.kind=Some(Kind::Live2d);self.step=1;}
+                    ui.label("PNG / GIF uses artwork states for idle, talking, blinking and hotkeys. Live2D uses a rigged Cubism model. VRM uses a 3D humanoid with facial expressions and spring bones.");
+                    ui.columns(3,|cols| {
+                        if cols[0].add_sized([cols[0].available_width(),58.0],egui::Button::new("PNG / GIF avatar")).clicked() {self.choose(Kind::Images);}
+                        if cols[1].add_sized([cols[1].available_width(),58.0],egui::Button::new("Live2D avatar")).clicked() {self.choose(Kind::Live2d);}
+                        if cols[2].add_sized([cols[2].available_width(),58.0],egui::Button::new("VRM 3D avatar")).clicked() {self.choose(Kind::Vrm);}
                     });
                 } else if self.step==1 {
                     ui.heading("2. Choose and prepare files");
@@ -178,6 +197,12 @@ impl Wizard {
                             for n in [64,128,256,512,1024] {ui.selectable_value(&mut self.budget,n,format!("{n} MiB per GIF"));}
                         }));
                         theme::caption(ui,"The default 256 MiB fits large animations without storing all full-size frames. Higher budgets retain more detail and consume more VRAM. Source files are unchanged.");
+                    } else if self.kind==Some(Kind::Vrm) {
+                        help::label(ui,"VRM 0.x / VRM 1.0","vrm-import");
+                        ui.label("Choose a .vrm file exported by your avatar author. The file contains the skeleton, meshes, textures, expressions and spring settings. No Cubism SDK is needed.");
+                        if ui.button("Choose VRM avatar…").clicked() && let Some(path)=rfd::FileDialog::new().add_filter("VRM avatar",&["vrm"]).pick_file(){self.model=Some(path);self.model_summary=None;self.error=None;}
+                        if let Some(path)=&self.model {ui.label(path.display().to_string());}
+                        ui.label("After import: set up phone tracking or the microphone, choose full-body or portrait framing, then tune spring bones and expression hotkeys. All changes are saved for this avatar.");
                     } else {
                         ui.label("Choose the exported .model3.json, or its .moc3 with a matching manifest beside it. Keep the atlas PNGs, physics and expressions in the exported folder structure.");
                         if ui.button("Choose Live2D export…").clicked() && let Some(path)=rfd::FileDialog::new().add_filter("Cubism export",&["json","moc3"]).pick_file(){self.model=Some(path);self.model_summary=None;self.error=None;}
@@ -192,7 +217,7 @@ impl Wizard {
                         if ui.button("Back").clicked(){self.step=0;}
                         let ready = if self.kind==Some(Kind::Images) {
                             !self.artwork.is_empty()&&self.artwork.len()<=128&&self.artwork.iter().all(|a|a.info.is_ok())&&self.artwork.iter().filter(|a|a.trigger==Trigger::Idle).count()==1
-                        }else{self.model.as_ref().is_some_and(|p|p.is_file())&&Path::new(core.trim()).is_file()};
+                        }else{self.model.as_ref().is_some_and(|p|p.is_file())&&(self.kind==Some(Kind::Vrm)||Path::new(core.trim()).is_file())};
                         if ui.add_enabled(ready,egui::Button::new("Review import →")).clicked(){self.step=2;self.error=None;}
                     });
                 } else {
@@ -212,6 +237,14 @@ impl Wizard {
                         let fits=retained<=aria_core::asset_limits::IMAGE_COLLECTION;
                         if !fits {ui.colored_label(egui::Color32::LIGHT_RED,"This selection exceeds the 2560 MiB collection budget. Go back and lower the per-GIF budget or remove artwork.");}
                         if ui.add_enabled(fits,egui::Button::new("Import PNG / GIF avatar")).clicked(){request=Some(Request::Images{artwork:self.artwork.clone(),budget:self.budget});}
+                    } else if self.kind==Some(Kind::Vrm) {
+                        if let Some(path)=&self.model {
+                            let summary=self.model_summary.get_or_insert_with(||crate::vrm::asset::inspect(path).map(|s|format!("{} · VRM {}\nAuthor: {}\n{} humanoid bones · {} expressions · {} spring groups · {} materials\nLicense declared in file: {}",s.name,s.version,s.author,s.bones,s.expressions,s.springs,s.materials,s.license)).map_err(|e|format!("{e:#}")));
+                            match summary {Ok(info)=>{ui.label(info.as_str());},Err(e)=>{ui.colored_label(egui::Color32::LIGHT_RED,e.as_str());}}
+                            help::label(ui,"What will be imported?","vrm-import");
+                            ui.label("ARIA reads the original file in place. The avatar's usage terms still apply. Mesh skinning, facial morphs, toon shading and spring bones use ARIA's VRM runtime; optional unsupported features are listed in Model details after import.");
+                            if ui.add_enabled(summary.is_ok(),egui::Button::new("Import VRM avatar")).clicked(){request=Some(Request::Vrm(path.clone()));}
+                        }
                     } else if let Some(path)=&self.model {
                         let summary=self.model_summary.get_or_insert_with(||aria_model::load_files(path).map(|files|format!("{} atlas textures · {} expressions · physics {}",files.textures.len(),files.expressions.len(),if files.physics.is_some(){"included"}else{"not included"})).map_err(|e|format!("{e:#}")));
                         match summary {Ok(info)=>{ui.label(info.as_str());},Err(e)=>{ui.colored_label(egui::Color32::LIGHT_RED,e.as_str());ui.small("For a bare moc3, the next dialog can pair atlas textures manually.");}}
@@ -225,7 +258,7 @@ impl Wizard {
         });
         if !open {
             self.open = false;
-            if progress.is_some() {
+            if progress.is_some() || vrm_progress.is_some() {
                 request = Some(Request::Cancel);
             }
         }

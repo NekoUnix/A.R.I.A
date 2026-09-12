@@ -2,11 +2,18 @@
 
 A Windows-first, native Rust foundation for a modular avatar runtime. This first
 development build connects directly to **VTube Studio on iPhone**, maps facial
-tracking into avatar parameters, and animates **Live2D `.moc3` avatars**, a built-in
-2D test puppet, or your PNG/GIF artwork. The UI and preview run on **egui + wgpu**,
+tracking into avatar parameters, and animates **VRM 0.x / 1.0 3D avatars**,
+**Live2D `.moc3` avatars**, a built-in 2D test puppet, or your PNG/GIF artwork. The UI and preview run on **egui + wgpu**,
 without Unity or Godot.
 
-> **v0.18:** adds guided **PNG/GIF or Live2D** avatar import and shows controls
+> **v0.19:** adds **VRM 0.x and VRM 1.0** to the guided avatar importer.
+> VRM avatars use GPU skinning, facial morphs, head/eye tracking, microphone talking,
+> toon materials and per-avatar spring bones. Camera framing, physics groups,
+> expression hotkeys and pose presets appear in the VRM Inspector.
+> All three OBS outputs share one transparent avatar render. No Cubism DLL is
+> needed for VRM. See the [VRM setup and compatibility guide](docs/vrm.md).
+>
+> Guided **PNG/GIF, Live2D or VRM** avatar import shows controls
 > for the chosen avatar type. Large GIFs import in the background, with progress,
 > cancellation and configurable playback detail. Files up to **512 MiB** are accepted;
 > the four local 3500 × 2500 Odette GIFs now load with all 63 frames.
@@ -51,7 +58,7 @@ without Unity or Godot.
 > blending remain future work. SDK binaries and model art are not bundled.
 > [Live2D setup and compatibility →](docs/live2d.md)
 
-![A.R.I.A. v0.18 guided avatar import](docs/images/workspace-v18.png)
+![A.R.I.A. v0.19 guided avatar import](docs/images/workspace-v19.png)
 
 Hover a **circled ?** beside a control for its explanation. Click it for the full
 guide in a separate resizable window, or open **Help & documentation** from the
@@ -153,7 +160,7 @@ OBJ/MTL, GLB/glTF/FBX, a Live2D export layout, WAV audio and JSON design example
 [Plugin setup](templates/effects/plugins/README.md) covers buttons, hotkeys,
 Streamer.bot/Twitch events, Touch Portal and a versioned authenticated local API.
 Stream tools handle their own service login; ARIA does not connect directly to Twitch.
-3D imports are static props, without skeletal/VRM animation or specialized shaders.
+3D throw assets remain static props. Primary `.vrm` avatars use the separate animated VRM runtime; import them through Avatar & appearance. See [VRM support](docs/vrm.md).
 Effects audio uses Windows' default output; capture ARIA audio separately in OBS.
 Detailed limits and every control are explained in the [offline help](docs/in-app-help.md).
 
@@ -346,7 +353,7 @@ To build a portable bundle with its documentation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 ```
 
-The script runs tests and writes `dist/aria-0.18.0-windows-x64.zip`. See
+The script runs tests and writes `dist/aria-0.19.0-windows-x64.zip`. See
 [architecture](docs/architecture.md) for crate boundaries and
 [validation](docs/validation.md) for what has actually been exercised.
 

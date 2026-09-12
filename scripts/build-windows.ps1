@@ -21,7 +21,7 @@ try {
     & cargo build --locked --release --workspace
     if ($LASTEXITCODE -ne 0) { throw 'Rust build failed; no package was produced.' }
 
-    $ariaVersion = '0.18.0'
+    $ariaVersion = '0.19.0'
     $ariaDist = Join-Path $ariaRoot 'dist'
     $ariaStage = Join-Path $ariaDist ('staging\' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force -Path $ariaStage | Out-Null

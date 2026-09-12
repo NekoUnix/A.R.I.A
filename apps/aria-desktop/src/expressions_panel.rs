@@ -19,6 +19,7 @@ pub struct Entry {
 #[derive(Default)]
 pub struct ExpressionsPanel {
     pub entries: Vec<Entry>,
+    embedded: bool,
     player: ExpressionPlayer,
     files: Vec<ExpressionFile>,
     base: PathBuf,
@@ -40,9 +41,32 @@ impl ExpressionsPanel {
         saved: &SavedRig,
         parameters: &[RigParameter],
     ) {
+        self.embedded = false;
         self.files = files.to_vec();
         self.base = base.to_path_buf();
         self.reload(saved, parameters);
+    }
+    pub fn load_embedded(
+        &mut self,
+        entries: Vec<(ExpressionFile, Expression)>,
+        saved: &SavedRig,
+        parameters: &[RigParameter],
+    ) {
+        *self = Self::default();
+        self.embedded = true;
+        self.base = entries
+            .first()
+            .map(|(f, _)| f.path.clone())
+            .unwrap_or_else(|| PathBuf::from("VRM"));
+        self.entries = entries
+            .into_iter()
+            .map(|(file, expression)| Entry {
+                missing: expression.missing_parameters(parameters),
+                file,
+                expression,
+            })
+            .collect();
+        self.select(self.entries.first().map(|e| e.file.id.clone()), saved);
     }
     fn reload(&mut self, saved: &SavedRig, parameters: &[RigParameter]) {
         self.entries.clear();
@@ -209,11 +233,15 @@ impl ExpressionsPanel {
                 ui,
                 "Toggle expressions independently. Settings and shortcuts are saved for this avatar.",
             );
+            if self.embedded {
+                ui.label("Expressions embedded in this VRM. Reimport the avatar to reread changes made by its author.");
+            }
             ui.horizontal_wrapped(|ui| {
-                if crate::help::control(ui, "expression-files", |ui| {
-                    ui.button("Import expression files…")
-                })
-                .clicked()
+                if !self.embedded
+                    && crate::help::control(ui, "expression-files", |ui| {
+                        ui.button("Import expression files…")
+                    })
+                    .clicked()
                     && let Some(paths) = rfd::FileDialog::new()
                         .add_filter("Live2D expression", &["json", "exp3"])
                         .pick_files()
@@ -245,9 +273,12 @@ impl ExpressionsPanel {
                     actions.save = true;
                     actions.message = Some(format!("Imported {imported} expression files."));
                 }
-                if crate::help::control(ui, "expression-files", |ui| ui.button("Reload files"))
-                    .on_hover_text("Reread the listed expression files after editing them on disk.")
-                    .clicked()
+                if !self.embedded
+                    && crate::help::control(ui, "expression-files", |ui| ui.button("Reload files"))
+                        .on_hover_text(
+                            "Reread the listed expression files after editing them on disk.",
+                        )
+                        .clicked()
                 {
                     self.reload(saved, parameters);
                 }
@@ -273,11 +304,16 @@ impl ExpressionsPanel {
             if self.entries.is_empty() {
                 crate::theme::caption(
                     ui,
-                    "No valid expressions found. Import an expression exported for this avatar.",
+                    if self.embedded {
+                        "This VRM contains no expressions. Re-export the avatar with facial morph expressions to use these controls."
+                    } else {
+                        "No valid expressions found. Import an expression exported for this avatar."
+                    },
                 );
             }
             let search = self.search.to_lowercase();
             let mut selection = None;
+            egui::ScrollArea::vertical().id_salt("expression-list").max_height(210.0).show(ui, |ui| {
             for entry in &self.entries {
                 if !format!("{} {}", entry.file.name, entry.file.id)
                     .to_lowercase()
@@ -288,7 +324,7 @@ impl ExpressionsPanel {
                 ui.push_id(&entry.file.id, |ui| {
                     ui.horizontal_wrapped(|ui| {
                         let mut active = saved.config.expressions.contains(&entry.file.id);
-                        crate::help::context_button(ui, "expressions", || format!(
+                        crate::help::context_button(ui, if self.embedded {"vrm-expressions"}else{"expressions"}, || format!(
                             "Expression: {}\nFile ID: {}\nFade in: {} seconds\nFade out: {} seconds\n\nExported values:\n{}\n\nMissing targets (skipped): {}",
                             entry.file.name, entry.file.id, entry.expression.fade_in_time, entry.expression.fade_out_time,
                             entry.expression.parameters.iter().map(|p| format!("{}: {:?} {}", p.id, p.blend, p.value)).collect::<Vec<_>>().join("\n"),
@@ -319,6 +355,7 @@ impl ExpressionsPanel {
                     });
                 });
             }
+            });
             if let Some(id) = selection {
                 self.select(Some(id), saved);
             }

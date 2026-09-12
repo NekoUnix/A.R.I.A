@@ -36,6 +36,7 @@ mod screenshot;
 #[cfg(windows)]
 mod spout;
 mod theme;
+mod vrm;
 
 fn smoke_mode() -> bool {
     cfg!(feature = "screenshots") && std::env::var_os("ARIA_SCREENSHOT_TO").is_some()
