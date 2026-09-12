@@ -1,10 +1,15 @@
 # Windows setup and operation
 
-ARIA v0.10 adds PNG accessories: drop files onto Your stage, then configure pins,
-layers, visibility, input rules and hotkeys in **PNG items & toggles**. Settings
+ARIA v0.11 adds independent Live2D objects: drop `.moc3`, `.model3.json` or PNG
+files onto Your stage, then configure pins, layers, visibility, input rules and
+hotkeys in **Stage objects & toggles**. Dropping a model adds an object; use
+**Avatar & appearance → Open Live2D avatar** to replace the main avatar.
+A Live2D object has its own parameter overrides, optional tracking and physics.
+Keep its matching manifest and atlases together, or set bare `.moc3` atlas order
+under **Live2D object → Object texture setup**. Settings
 and presets belong to the loaded avatar. All output canvases and transparent
 PNG exports include visible accessories. Keep their files in a stable folder;
-use Replace PNG / locate file when moving artwork. The circled **?** buttons are
+use Replace object / locate file when moving artwork. The circled **?** buttons are
 now half their previous size.
 
 ARIA includes an offline help window: hover a circled **?** beside a control
@@ -26,7 +31,7 @@ systems and Windows ARM64 are not verified release targets yet.
 1. Visit [the Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml).
 2. Select a green, successful run on `main` for the version you want.
 3. Under **Artifacts**, download **aria-windows-x64**. Sign in to GitHub if asked.
-4. Extract the downloaded artifact. Extract `aria-0.10.0-windows-x64.zip` inside it
+4. Extract the downloaded artifact. Extract `aria-0.11.0-windows-x64.zip` inside it
    into a normal writable folder, for example `C:\Apps\ARIA`.
 5. Double-click **aria-desktop.exe**. The default source is Demo and Mica should move.
 

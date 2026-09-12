@@ -112,8 +112,14 @@ pub fn category(
         {
             state.set_open(matches!(
                 title,
-                "PNG items" | "Pin to avatar" | "Input toggle"
+                "Stage objects" | "Pin to avatar" | "Input toggle"
             ));
+        }
+        #[cfg(feature = "screenshots")]
+        if crate::smoke_mode()
+            && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("object-controls")
+        {
+            state.set_open(matches!(title, "Live2D object" | "Object parameters"));
         }
         ui.horizontal(|ui| {
             let (_, toggle) = ui.allocate_exact_size(egui::vec2(16.0, 22.0), egui::Sense::click());

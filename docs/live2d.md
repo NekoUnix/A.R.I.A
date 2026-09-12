@@ -1,5 +1,20 @@
 # Live2D avatar import on Windows
 
+## Pinnable Live2D objects
+
+Drop `.moc3` or `.model3.json` files onto **Your stage** to add independent
+Live2D accessories. The main avatar stays loaded. Each object has its own
+parameters, optional tracking and physics, placement, mesh pins and visibility
+hotkey. Use **Stage objects & toggles → Live2D object** to configure it.
+Keep the matching manifest and texture folders together, or supply a bare
+`.moc3`'s atlas PNGs in index order under **Object texture setup**.
+
+Objects start in a static pose and can still follow a moving pin. Enable
+**Animate object from tracking** for independent animation. Pose presets,
+all three outputs and transparent PNG export include these objects. See
+the in-app **?** for the detailed workflow and resource limits. To replace
+the main avatar, use **Avatar & appearance → Open Live2D avatar**.
+
 ARIA v0.6 evaluates real `.moc3` models through Cubism Core and renders their
 ArtMeshes with wgpu/Direct3D 12. You need **the model, its texture images, and the
 official Cubism Core DLL**. A moc3 contains the rig, not the texture artwork.
@@ -51,7 +66,8 @@ Select **Open Live2D avatar…** and choose `MyAvatar.model3.json`. Alternativel
 drag it onto the ARIA studio window. The manifest supplies the exact texture index
 order. ARIA does not copy, modify, or upload your model files.
 
-Selecting/dropping `MyAvatar.moc3` also works: ARIA searches the same folder for a
+Selecting `MyAvatar.moc3` in the avatar picker also works (dropping it on the
+stage creates a separate pinnable object): ARIA searches the same folder for a
 single `.model3.json` that references that moc3. The filenames do not need to match.
 If multiple manifests reference it, open the desired manifest explicitly.
 

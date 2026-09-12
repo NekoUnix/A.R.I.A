@@ -106,6 +106,9 @@ impl Avatar {
     pub fn image(&self) -> ModelImage {
         self.renderer.image
     }
+    pub fn image_lease(&self) -> std::sync::Arc<crate::cubism_render::ModelTexture> {
+        self.renderer.lease.clone()
+    }
     pub fn atlas_mib(&self) -> f64 {
         self.renderer.atlas_mib
     }

@@ -6,7 +6,10 @@ tracking into avatar parameters, and animates **Live2D `.moc3` avatars**, a buil
 2D test puppet, or your PNG artwork. The UI and preview run on **egui + wgpu**,
 without Unity or Godot.
 
-> **v0.10:** drop PNG accessories onto the stage and pin them to animated model surfaces.
+> **v0.11:** drop `.moc3` or `.model3.json` files onto the stage as independent
+> Live2D objects. Pin them to the main avatar without replacing it. Each object
+> has its own parameters, static pose, optional tracking and physics, plus texture setup.
+> PNG accessories still use the same pin and toggle controls.
 > Per-avatar item layouts include named toggles, custom hotkeys, input-range rules,
 > layering and screenshot presets. Accessories appear in all three outputs and PNG exports.
 > Question-mark buttons are half their previous size, with hover explanations,
@@ -37,11 +40,12 @@ reopen its question mark to refresh those values.
 
 ![Offline help with an input-range diagram](docs/images/help.png)
 
-## PNG accessories and toggles
+## Live2D objects, PNG accessories and toggles
 
 ![PNG accessories and pin controls on the Mica puppet](docs/images/png-items.png)
 
-Drop PNG files onto **Your stage**, then open **PNG items & toggles** in the right
+Drop PNG, `.moc3` or `.model3.json` files onto **Your stage**, then open
+**Stage objects & toggles** in the right
 panel. Drag an item into place and choose **Pin here**, or **Choose pin point**
 and click the avatar. Live2D pins follow the selected mesh's animated vertices;
 Mica and PNG puppet pins follow head movement. Configure size, offsets, rotation,
@@ -52,8 +56,16 @@ it while a tracking input or final model parameter is in a chosen range, or to
 toggle once on entry. Hysteresis prevents boundary flicker. **Keyboard toggle**
 accepts a custom shortcut. Frozen pose presets preserve accessory visibility;
 manual toggles remain available for screenshots. Movement and pose presets
-store layouts per avatar. Keep PNG files in a stable folder: profiles reference
+store layouts per avatar. Keep object files in a stable folder: profiles reference
 their paths and do not embed the artwork. See the [complete item guide](docs/in-app-help.md).
+
+For Live2D objects, keep the matching `.model3.json` and texture folders beside
+the `.moc3`. A bare export can use **Live2D object → Object texture setup** to
+set the atlas PNGs in index order. Use **Object parameters** to pose that object;
+its controls do not change the main avatar. **Animate object from tracking**
+enables its own mappings and optional physics. Use **Open Live2D avatar** in the
+left panel when you want to replace the main avatar. See the
+[Live2D object guide](docs/live2d.md#pinnable-live2d-objects).
 
 ## Run on Windows
 
@@ -196,7 +208,7 @@ To build a portable bundle with its documentation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 ```
 
-The script runs tests and writes `dist/aria-0.10.0-windows-x64.zip`. See
+The script runs tests and writes `dist/aria-0.11.0-windows-x64.zip`. See
 [architecture](docs/architecture.md) for crate boundaries and
 [validation](docs/validation.md) for what has actually been exercised.
 

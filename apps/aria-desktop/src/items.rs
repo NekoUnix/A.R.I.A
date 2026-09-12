@@ -1,4 +1,4 @@
-//! PNG assets, mesh anchors, and stage interaction. All persisted data lives in RigConfig.
+//! Stage assets, mesh anchors, and interaction. All persisted data lives in RigConfig.
 use crate::{avatar::Sprite, live2d::Avatar, output::Scene};
 use anyhow::{Context, Result, ensure};
 use aria_core::{
@@ -26,16 +26,46 @@ pub enum Anchor {
     Missing,
 }
 #[derive(Clone)]
+pub enum ItemImage {
+    Png(Sprite),
+    Model {
+        image: crate::cubism_render::ModelImage,
+        _lease: Arc<crate::cubism_render::ModelTexture>,
+        revision: u64,
+    },
+}
+impl ItemImage {
+    pub fn id(&self) -> egui::TextureId {
+        match self {
+            Self::Png(s) => s.texture.id(),
+            Self::Model { image, .. } => image.id,
+        }
+    }
+    fn size(&self) -> Vec2 {
+        match self {
+            Self::Png(s) => s.size,
+            Self::Model { image, .. } => image.size,
+        }
+    }
+    fn revision(&self) -> u64 {
+        match self {
+            Self::Png(_) => 0,
+            Self::Model { revision, .. } => *revision,
+        }
+    }
+}
+#[derive(Clone)]
 pub struct DrawItem {
     pub item: Item,
-    pub sprite: Sprite,
+    pub image: ItemImage,
     pub anchor: Anchor,
     pub visible: bool,
 }
 impl DrawItem {
     fn same(&self, other: &Self) -> bool {
         self.item == other.item
-            && self.sprite.texture.id() == other.sprite.texture.id()
+            && self.image.id() == other.image.id()
+            && self.image.revision() == other.image.revision()
             && self.anchor == other.anchor
             && self.visible == other.visible
     }
@@ -65,7 +95,7 @@ impl DrawItem {
             rotate(vec2(self.item.position[0], self.item.position[1]), angle) * base.scale * scale;
         Some(Placement {
             center: origin + offset,
-            size: self.sprite.size / self.sprite.size.y * self.item.height * base.scale * scale,
+            size: self.image.size() / self.image.size().y * self.item.height * base.scale * scale,
             angle: angle + self.item.rotation.to_radians(),
             opacity: self.item.opacity
                 * if self.item.follow_visibility {
@@ -173,7 +203,7 @@ pub fn paint(painter: &egui::Painter, scene: &Scene, canvas: Rect, zoom: f32, be
         if pose.opacity <= 0.001 {
             continue;
         }
-        let mut mesh = egui::Mesh::with_texture(draw.sprite.texture.id());
+        let mut mesh = egui::Mesh::with_texture(draw.image.id());
         for (pos, uv) in pose.corners().into_iter().zip([
             pos2(0.0, 0.0),
             pos2(1.0, 0.0),
@@ -193,6 +223,7 @@ pub fn paint(painter: &egui::Painter, scene: &Scene, canvas: Rect, zoom: f32, be
 
 #[derive(Default)]
 pub struct Items {
+    pub models: crate::object_models::ObjectModels,
     assets: BTreeMap<PathBuf, Result<Sprite, String>>,
     rules: BTreeMap<u64, RuleState>,
     pending_save: Option<std::time::Instant>,
@@ -215,7 +246,7 @@ impl Items {
         assert_eq!(
             config.items.len(),
             1,
-            "The application must receive the dropped PNG exactly once"
+            "The application must receive the dropped object exactly once"
         );
         let item = &mut config.items[0];
         item.name = "Head sparkle".into();
@@ -235,6 +266,15 @@ impl Items {
             }
         });
         self.selected = Some(item.id);
+        if aria_core::items::is_model(&item.path) {
+            item.name = "Pinned Live2D object".into();
+            item.height = 0.42;
+            item.position = [0.22, -0.12];
+            item.model.parameters.insert("ParamAngleX".into(), 30.0);
+            self.message =
+                Some("Independent Live2D object · mesh pin · separate parameter pose".into());
+            return;
+        }
         let mut background = item.clone();
         background.id += 1;
         background.name = "Backdrop glow".into();
@@ -261,6 +301,7 @@ impl Items {
     }
     pub fn reload(&mut self) {
         self.assets.clear();
+        self.models.clear();
     }
     pub fn edited(&mut self) {
         self.pending_save = Some(std::time::Instant::now());
@@ -285,6 +326,7 @@ impl Items {
             .map(String::as_str)
     }
     pub fn merge_palette(&self, palette: &mut crate::chroma::Palette) {
+        self.models.merge_palette(palette);
         for sprite in self.assets.values().filter_map(|r| r.as_ref().ok()) {
             palette.merge(&sprite.palette);
         }
@@ -294,11 +336,25 @@ impl Items {
         let mut errors = Vec::new();
         for path in paths {
             if config.items.len() == MAX_ITEMS {
-                errors.push(format!("Limit: {MAX_ITEMS} PNG items per avatar."));
+                errors.push(format!("Limit: {MAX_ITEMS} stage objects per avatar."));
                 break;
             }
-            if !is_png(&path) {
-                errors.push(format!("{} is not a PNG file.", path.display()));
+            if !is_item(&path) {
+                errors.push(format!(
+                    "{} is not a PNG, moc3 or model3 export.",
+                    path.display()
+                ));
+                continue;
+            }
+            if aria_core::items::is_model(&path)
+                && config
+                    .items
+                    .iter()
+                    .filter(|i| aria_core::items::is_model(&i.path))
+                    .count()
+                    >= aria_core::items::MAX_MODEL_ITEMS
+            {
+                errors.push("Maximum four Live2D objects per avatar.".into());
                 continue;
             }
             let id = std::time::SystemTime::now()
@@ -319,7 +375,7 @@ impl Items {
             config.items.push(Item {
                 id,
                 name: if name.trim().is_empty() {
-                    "PNG item".into()
+                    "Stage object".into()
                 } else {
                     name
                 },
@@ -332,7 +388,7 @@ impl Items {
         }
         self.pick_pin = false;
         self.message = Some(format!(
-            "Added {added} PNG item(s). Drag to position, then choose a pin point. {}",
+            "Added {added} object(s). Drag to position, then choose a pin point. {}",
             errors.join(" ")
         ));
         added > 0
@@ -354,7 +410,7 @@ impl Items {
             self.selected = None;
             self.pick_pin = false;
         }
-        for item in &config.items {
+        for item in config.items.iter().filter(|i| is_png(&i.path)) {
             if !self.assets.contains_key(&item.path) {
                 let used: u64 = self
                     .assets
@@ -410,10 +466,14 @@ impl Items {
             .items
             .iter()
             .filter_map(|item| {
-                let sprite = self.assets.get(&item.path)?.as_ref().ok()?.clone();
+                let image = if aria_core::items::is_model(&item.path) {
+                    self.models.image(item.id)?
+                } else {
+                    ItemImage::Png(self.assets.get(&item.path)?.as_ref().ok()?.clone())
+                };
                 Some(DrawItem {
                     item: item.clone(),
-                    sprite,
+                    image,
                     anchor: anchor(item.pin.as_ref(), avatar),
                     visible: item.visible
                         && (item.rule.mode != RuleMode::WhileInRange || item.condition),
@@ -519,7 +579,7 @@ impl Items {
                 item.position = [0.0; 2];
                 self.pick_pin = false;
                 changed = true;
-                self.message = Some("Pinned. Movement follows the selected surface. Drag the PNG to adjust its offset.".into());
+                self.message = Some("Pinned. Movement follows the selected surface. Drag the object to adjust its offset.".into());
             } else {
                 self.message = Some(
                     "No visible model triangle at that point. Click a solid part of the avatar."
@@ -629,6 +689,9 @@ fn degrees(angle: f32) -> f32 {
 pub fn is_png(path: &Path) -> bool {
     path.extension()
         .is_some_and(|s| s.eq_ignore_ascii_case("png"))
+}
+pub fn is_item(path: &Path) -> bool {
+    is_png(path) || aria_core::items::is_model(path)
 }
 pub fn signal(item: &Item, inputs: &Inputs, parameters: &[RigParameter]) -> Option<f32> {
     match item.rule.kind {
@@ -920,6 +983,7 @@ mod tests {
         let mut manager = Items::default();
         manager.assets.insert("test.png".into(), Ok(sprite));
         let scene_base = Scene {
+            _model_lease: None,
             model: None,
             model_bounds: Rect::NOTHING,
             sprite: None,
@@ -1028,11 +1092,12 @@ mod tests {
                 position: [0.1, -0.2],
                 ..Default::default()
             },
-            sprite: sprite(&ctx),
+            image: ItemImage::Png(sprite(&ctx)),
             anchor: Anchor::Free,
             visible: true,
         };
         let scene = Scene {
+            _model_lease: None,
             model: None,
             model_bounds: Rect::NOTHING,
             sprite: None,
@@ -1069,7 +1134,7 @@ mod tests {
                     .iter()
                     .any(|s| matches!(s.shape, egui::Shape::Text(_)))
             );
-            assert!(output.shapes.iter().any(|s| matches!(&s.shape,egui::Shape::Mesh(m) if m.texture_id == scene.items[0].sprite.texture.id())));
+            assert!(output.shapes.iter().any(|s| matches!(&s.shape,egui::Shape::Mesh(m) if m.texture_id == scene.items[0].image.id())));
         }
     }
     #[test]

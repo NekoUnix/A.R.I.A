@@ -2,31 +2,65 @@
 
 This guide is bundled into the application and works offline. The topic headers also provide the short hover descriptions for the circled question-mark buttons.
 
-## png-items | PNG items & avatar accessories | Drop PNG images onto Your stage to add accessories. Each item has its own placement, pin, visibility toggle and optional input rule, saved with this avatar.
+## png-items | Stage objects & avatar accessories | Drop PNG images or Live2D exports onto Your stage to add accessories. Each item has its own placement, pin, visibility toggle and optional input rule, saved with this avatar.
 
 ### Add and select items
 
-Drag one or more .png files from File Explorer into the central stage, or open PNG items & toggles in the right panel and click Add PNGs. Dropping a PNG adds an accessory to the current avatar. To replace the underlying PNG puppet, use Avatar & appearance instead. Model exports still load through the existing model importer.
+Drag .png, .moc3 or .model3.json files from File Explorer into the central stage, or open Stage objects & toggles in the right panel and click Add objects. Stage drops add accessories to the current avatar. Use Avatar & appearance to replace the main avatar. See Pinnable Live2D objects for model texture setup and independent parameter controls.
 
 Click an accessory or its name in the item list to select it. Drag its rectangle on the stage to position it. Transparent padding is part of that rectangle, so tightly cropped PNGs are easier to handle. The highlighted border and name are editing aids; they do not appear in clean outputs or exported images. Hidden items remain selectable in the list. The checkbox beside a name controls master visibility.
 
 ### Files, performance and saving
 
-Use a stable local folder for your PNGs. Profiles and presets reference the image path; they do not embed or copy the file. If an image is moved, choose Replace PNG / locate file. Reload images retries missing files and rereads edited artwork. Removing an item removes its settings and shortcut, leaving the original file on disk.
+Use a stable local folder for your objects. Profiles and presets reference the asset path; they do not embed or copy the file. If an image is moved, choose Replace object / locate file. Reload assets retries missing files and rereads edited artwork. Removing an item removes its settings and shortcut, leaving the original file on disk.
 
-Each avatar can have up to 32 items. Each image must be a real PNG, at most 4096 pixels in either dimension and 32 MiB on disk. The combined decoded image budget is 256 MiB, counting shared paths once. Texture assets are cached; moving or toggling an item does not decode or upload the PNG again. Changes save locally after editing settles; Save item settings saves immediately. Missing or oversized files show an error beside the selected item without preventing other items from working.
+Each avatar can have up to 32 items, including at most four Live2D objects. Each PNG image must be a real PNG, at most 4096 pixels in either dimension and 32 MiB on disk. The combined decoded PNG image budget is 256 MiB, counting shared paths once. Texture assets are cached; moving or toggling an item does not decode or upload the PNG again. Changes save locally after editing settles; Save item settings saves immediately. Missing or oversized files show an error beside the selected item without preventing other items from working.
 
 ### Presets, screenshots and outputs
 
 Movement and pose presets include the item list, placement, pins, visibility and input rules. Shortcut assignments belong to the avatar's profile; importing a preset does not install someone else's shortcuts. A shortcut is active only when its item is present in the current layout. Deleting an item clears its shortcut even if an older preset still contains the item.
 
-All three output canvases include the same accessories, with each canvas's framing, zoom and background. Mouse-wheel avatar scaling in an output scales its accessories too. The automatic key-color suggestion includes loaded PNG item colors, including hidden items. Save transparent PNG in Pose saves the avatar and visible accessories on the model's rendering canvas (maximum model edge 2048 pixels); Mica and PNG puppets use a 1200 × 1400 image. Artwork outside that canvas is clipped. Selection outlines and the studio grid are excluded.
+All three output canvases include the same accessories, with each canvas's framing, zoom and background. Mouse-wheel avatar scaling in an output scales its accessories too. The automatic key-color suggestion includes loaded object colors, including hidden items; Live2D object colors are sampled from their current rendered pose. Save transparent PNG in Pose saves the avatar and visible accessories on the model's rendering canvas (maximum model edge 2048 pixels); Mica and PNG puppets use a 1200 × 1400 image. Artwork outside that canvas is clipped. Selection outlines and the studio grid are excluded.
 
-## png-placement | PNG size, position & layers | Position accessories by dragging or editing their offsets. Size is relative to the avatar canvas height, so the same layout follows every output resolution and zoom.
+## model-items | Pinnable Live2D objects | Drop a moc3 or model3.json onto Your stage to add an independent Live2D object. It has its own pose and can follow a pin without replacing the main avatar.
+
+### Drop an export
+
+Drag the .moc3 into Your stage, or use Stage objects & toggles → Add objects. Keep the matching .model3.json beside it and preserve all referenced texture folders. ARIA finds the manifest that references that exact moc3 and loads its atlases in the authored order. Dropping the .model3.json itself works too. Drop only one of those two files to create one object; dropping both creates two independent objects. A moc3 contains compiled geometry and parameters, not the texture images.
+
+Each object has a separate Cubism instance, parameter list and optional physics simulation. Adding, removing or posing it does not replace the main avatar, change the main profile identity, or edit its mappings, expressions or physics. The Cubism Core DLL selected under Avatar & appearance → Cubism runtime setup is shared as a runtime library. Set that DLL once before loading models. Main-avatar selection still uses Open Live2D avatar in the left panel.
+
+### Bare moc3 texture setup
+
+If no unique matching manifest is found, select the object in the list and expand Live2D object → Object texture setup. Add atlas PNGs in the model's texture-index order: index 0 first, then index 1, and so on. Up and Down reorder the pending list; Remove removes an entry from this pending list, leaving the file untouched. Apply texture order commits the list and reloads only this object. Use matching manifest instead clears the explicit list and retries automatic discovery.
+
+Atlas order comes from the export or its creator; ARIA does not guess from filenames. Missing atlases or incorrect order can cause errors or mismatched artwork. Manual atlas loading provides geometry and textures; optional tracking, physics and display metadata require a complete manifest export. Atlas PNGs added here are textures inside this Live2D object. Dropping those PNGs directly on the stage would create separate image accessories.
+
+### Object pose and movement
+
+Animate object from tracking starts off. In this mode the object uses its authored defaults plus the values in Object parameters. It can still follow its pin on a moving main avatar. Enable animation to feed the current processed tracking inputs through this object's own imported or standard mappings. Use object's physics enables this object's imported physics file and secondary motion while animation is on. This checkbox does not change the main avatar's physics settings. Missing optional files are reported in the object's status.
+
+Object parameters lists this object's actual IDs, labels and authored limits. Search filters IDs and labels. Check Override to hold the current value, or drag the slider to choose and hold a new value. A slider edit enables the override automatically. Uncheck Override to return that parameter to its authored default in static mode, or to its normal evaluation in animated mode. Overrides take precedence over tracking and physics. Reset object parameters clears all overrides; in a frozen pose it also clears the stored object snapshot back to defaults. Turning animation off returns unheld values to authored defaults.
+
+Freeze pose in the Pose tab freezes the main avatar and the final parameter values of its objects. Object overrides can still be edited for screenshots. Movement and pose presets store object files, texture order, overrides, animation/physics options, pins, placement and visibility. A frozen preset restores its object pose even while tracking changes. Resume pose restores each object's selected animation mode. Shortcut assignments remain per-avatar settings.
+
+### Pin, show and capture
+
+Select and drag the object on Your stage. Use Pin here at its center, or Choose pin point and click the main avatar. Pinning follows the chosen main-model surface; it moves the object's entire canvas while its own internal deformation remains independent. The same size, opacity, layer, rotation, stretch and visibility-follow controls work for PNG and Live2D objects. Model canvases can include substantial transparent padding, which counts toward object size and hit testing. Increase Size if the visible artwork is small.
+
+Input toggle reads the main avatar's processed tracking inputs or final parameters, and controls this object's visibility. Keyboard toggle gives the object a user-defined visibility hotkey. All three outputs, full-resolution Spout canvases and transparent PNG export include visible objects. Their selection outlines stay in the editor. Pinned objects and the main avatar share each output's framing and wheel zoom.
+
+### Resources and recovery
+
+There can be at most four Live2D objects within an avatar's 32-object limit. Object atlases have a combined decoded budget of 1 GiB, separate from the main avatar and PNG accessory budgets. Each model instance has its own atlases; using the same file twice still consumes two instances' memory. GPU targets, masks and other working memory add to atlas usage. Use lower-resolution exports for small accessories. Static unchanged objects reuse their rendered image; animated objects update from their own parameter changes. Hidden objects remain loaded so toggling them does not reload artwork.
+
+Files are referenced locally, not embedded in profiles or presets. Keep the full export in a stable folder. Replace object / locate file changes the selected asset and resets its object-specific pose and texture setup, while preserving placement and pin controls. Reload this object retries an error or rereads edited files for just this object. Reload assets reloads all accessories. A failed object remains in the list with its error and is omitted from rendering; it does not unload the main avatar. Remove item removes its settings and shortcut, leaving original files on disk.
+
+## png-placement | Object size, position & layers | Position accessories by dragging or editing their offsets. Size is relative to the avatar canvas height, so the same layout follows every output resolution and zoom.
 
 ### Size, rotation and opacity
 
-Size is the PNG's height divided by the avatar canvas height. For example, 0.20 means one fifth of that height; it does not mean 20 pixels. The PNG keeps its aspect ratio. Rotation is an added clockwise angle in screen space, between -180 and 180 degrees. Opacity ranges from 0 (invisible) to 1 (fully visible); the PNG's own alpha still applies.
+Size is the object's image/canvas height divided by the main avatar canvas height. For example, 0.20 means one fifth of that height; it does not mean 20 pixels. The object keeps its aspect ratio. Rotation is an added clockwise angle in screen space, between -180 and 180 degrees. Opacity ranges from 0 (invisible) to 1 (fully visible); the object's own alpha still applies.
 
 X offset increases toward the right; Y offset increases downward. Both use canvas-height units, independent of desktop DPI or OBS resolution. A free item's offset is measured from the avatar canvas center (Mica uses its drawing origin). A pinned item's offset is measured from its pin. Follow pin rotation rotates this offset with the surface; Follow surface stretch scales it with the surface. Dragging a pinned item edits the offset without removing its pin. Reset offset returns it to the pin, or to the canvas origin if it is free.
 
@@ -36,25 +70,25 @@ Behind the avatar draws the item before the avatar. Otherwise it draws after the
 
 Free items stay in the avatar's canvas framing but do not follow face motion. Pin an item when it should follow a head, hair strand or other animated part. Changing the output's position or wheel zoom moves the complete avatar-and-accessory composition.
 
-## png-pins | Pin a PNG to a moving surface | Pin here attaches at the item's center. Choose pin point lets you click a moving part of the avatar. Live2D pins follow that mesh's animated vertices.
+## png-pins | Pin an object to a moving surface | Pin here attaches at the item's center. Choose pin point lets you click a moving part of the avatar. Live2D pins follow that mesh's animated vertices.
 
 @diagram pin
 
 ### Pick a surface
 
-Select the PNG. Choose pin point, then click the model where its center should attach. The PNG moves to that point and its offset becomes zero. Pin here uses the current PNG center; place it over the avatar first. Escape or Cancel pin leaves the existing placement unchanged. After pinning, drag the accessory to adjust its offset.
+Select the object. Choose pin point, then click the model where its center should attach. The object moves to that point and its offset becomes zero. Pin here uses the current object center; place it over the avatar first. Escape or Cancel pin leaves the existing placement unchanged. After pinning, drag the accessory to adjust its offset.
 
 Live2D picking selects the frontmost visible triangle at the clicked location. A pin stores that triangle's vertices and a weighted position inside it. Each frame, the updated mesh supplies the anchor, including changes caused by tracking, expressions and physics. ArtMesh numbers identify the selected mesh in this avatar. Picking uses mesh triangles, not individual texture alpha or clipping-mask pixels; if the wrong layer moves the item, try a nearby point on the intended part. Invisible and zero-opacity meshes are skipped during selection.
 
 ### Following options
 
-Follow pin rotation uses the triangle's longest edge as an orientation reference at pin time. Turning it off keeps the PNG and its offset upright while its center still follows the anchor. Follow surface stretch changes accessory size and offset with that edge's length; its multiplier is limited to 0.25–4 to prevent extreme deformation. This is rigid attachment movement, not a Live2D warp of the PNG itself.
+Follow pin rotation uses the triangle's longest edge as an orientation reference at pin time. Turning it off keeps the object and its offset upright while its center still follows the anchor. Follow surface stretch changes accessory size and offset with that edge's length; its multiplier is limited to 0.25–4 to prevent extreme deformation. This is rigid attachment movement, not a warp of the accessory itself. A Live2D object still renders its own internal deformation independently.
 
 Follow surface visibility multiplies item opacity by the selected mesh's visibility and opacity. Disable it to keep an accessory visible when an expression hides that mesh. This does not apply that mesh's clipping mask to the accessory. If a pin's geometry is missing or collapsed, the accessory is hidden until a usable surface returns or you repin it.
 
 Mica and PNG puppets do not have Cubism meshes, so their pins follow the puppet's head translation and rotation. Surface stretch and mesh-visibility options have no extra effect on those puppets. Unpin keeps the accessory's current position, scale and orientation, then stops motion following. The pin is stored with this avatar's content-based profile, not with the test model or a global mapping.
 
-## png-toggles | Named toggles, input rules & hotkeys | Each PNG has a named visibility toggle. Show it manually, assign a custom keyboard shortcut, or use a tracking input or model parameter to drive its visibility.
+## png-toggles | Named toggles, input rules & hotkeys | Each object has a named visibility toggle. Show it manually, assign a custom keyboard shortcut, or use a tracking input or model parameter to drive its visibility.
 
 @diagram item-toggle
 
@@ -72,7 +106,7 @@ To toggle sunglasses with a blink, use EyeOpenLeft, Toggle on entering range, St
 
 ### Keyboard shortcuts and frozen poses
 
-Choose Ctrl, Alt, Shift or Win modifiers and a main key, then Assign shortcut. ARIA rejects duplicates assigned to expressions, presets, other PNGs or the reserved pose shortcut. Enable global hotkeys applies to all actions for this avatar. Clear shortcut removes only this item's assignment. A shortcut flips master visibility; in Visible while in range mode, the input condition must also match. A key without modifiers can intercept normal typing in other applications. Windows reserves F12, and another application can own a shortcut; registration failures appear in the panel.
+Choose Ctrl, Alt, Shift or Win modifiers and a main key, then Assign shortcut. ARIA rejects duplicates assigned to expressions, presets, other objects or the reserved pose shortcut. Enable global hotkeys applies to all actions for this avatar. Clear shortcut removes only this item's assignment. A shortcut flips master visibility; in Visible while in range mode, the input condition must also match. A key without modifiers can intercept normal typing in other applications. Windows reserves F12, and another application can own a shortcut; registration failures appear in the panel.
 
 Freeze pose pauses input rules and captures the current gated visibility with the pose preset. Manual master toggles and hotkeys still work so you can choose accessories for screenshots without moving the model. Resume live reevaluates the input conditions. Save a pose or movement preset to keep multiple accessory layouts for the same avatar.
 
@@ -211,7 +245,7 @@ Open Inputs, find the affected head parameter and inspect its Source. Verify the
 
 ### Live2D exports
 
-Prefer Open Live2D avatar with the exported .model3.json file. It describes the .moc3 geometry, texture atlases and optional physics, expressions and display metadata. Keep the exported folder structure intact. Dropping a .model3.json or .moc3 onto ARIA also starts loading. A bare .moc3 can be used with its correct textures, but cannot provide all manifest metadata by itself.
+Prefer Open Live2D avatar with the exported .model3.json file. It describes the .moc3 geometry, texture atlases and optional physics, expressions and display metadata. Keep the exported folder structure intact. Dropping a .model3.json or .moc3 onto Your stage adds a separate pinnable object and preserves the main avatar. Use Open Live2D avatar to change the main model. A bare .moc3 can be used with its correct textures, but cannot provide all manifest metadata by itself.
 
 Select the official Windows x64 Cubism Core DLL in Cubism runtime setup before loading Live2D. ARIA does not bundle the proprietary Core or your model. A .cmo3 editor project is not the same as a runtime .moc3 export. Re-export from Cubism when needed. The model's own metadata and supported VTS profile assignments populate the rig; unrecognized controls remain available for manual mapping.
 
@@ -385,11 +419,11 @@ With pose mode active, turn off Freeze all animation to use partial overrides. C
 
 ### Save or export
 
-Save pose as preset opens Presets, where Save pose stores a named frozen snapshot along with the rig settings and PNG items. Ctrl+Alt+P toggles freeze/resume when global hotkeys are enabled. Save transparent PNG exports the rendered avatar and visible PNG items without studio UI or the selected output background. Use output framing and OBS when you need a particular composition or canvas format.
+Save pose as preset opens Presets, where Save pose stores a named frozen snapshot along with the rig settings and stage objects. Ctrl+Alt+P toggles freeze/resume when global hotkeys are enabled. Save transparent PNG exports the rendered avatar and visible stage objects without studio UI or the selected output background. Use output framing and OBS when you need a particular composition or canvas format.
 
 If expressions seem unavailable or physics is still, check for POSE FROZEN before changing mappings. Frozen mode intentionally pauses live animation. Holds and frozen values belong to the active avatar's rig and can be included in its saved profile.
 
-## png | Saving a transparent avatar PNG | Save transparent PNG writes the current avatar and visible PNG accessories with alpha, excluding studio controls and output backgrounds.
+## png | Saving a transparent avatar PNG | Save transparent PNG writes the current avatar and visible stage objects with alpha, excluding studio controls and output backgrounds.
 
 ### Make a still image
 
@@ -405,7 +439,7 @@ For a posed landscape or portrait composition, frame an output and capture that 
 
 ### Create a preset
 
-Enter a unique name of up to 80 characters, choose No hotkey or Ctrl+Alt+F1–F11, then click Save movement or Save pose. Movement saves current input bindings, manual values, steps, mapping, physics, active expressions and PNG item layouts. It clears full frozen mode for live movement, but partial Hold overrides remain part of the rig. Pose captures the current final parameter values and accessory visibility and freezes them. Up to 128 presets can be stored per avatar.
+Enter a unique name of up to 80 characters, choose No hotkey or Ctrl+Alt+F1–F11, then click Save movement or Save pose. Movement saves current input bindings, manual values, steps, mapping, physics, active expressions and stage-object layouts. It clears full frozen mode for live movement, but partial Hold overrides remain part of the rig. Pose captures the current final parameter values and accessory visibility and freezes them. Up to 128 presets can be stored per avatar.
 
 ### Use and edit the library
 

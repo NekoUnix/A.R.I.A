@@ -263,7 +263,7 @@ pub fn save_png(
         "PNG export requires an 8-bit renderer"
     );
     let texture = state.device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("ARIA avatar and PNG items export"),
+        label: Some("ARIA avatar and stage objects export"),
         size: wgpu::Extent3d {
             width: size[0],
             height: size[1],

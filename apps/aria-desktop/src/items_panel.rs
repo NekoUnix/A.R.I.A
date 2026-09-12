@@ -20,17 +20,17 @@ impl Items {
         let global = saved.global_hotkeys;
         theme::caption(
             ui,
-            "Drop PNGs onto Your stage. Select and drag an item, then pin it to a moving part of the avatar. Settings belong to this avatar.",
+            "Drop PNGs or Live2D exports onto Your stage. Select and drag an object, then pin it to your avatar. Each object keeps its own settings.",
         );
         ui.horizontal_wrapped(|ui| {
-            if help::control(ui, "png-items", |ui| ui.button("Add PNGs…")).clicked()
+            if help::control(ui, "model-items", |ui| ui.button("Add objects…")).clicked()
                 && let Some(paths) = rfd::FileDialog::new()
-                    .add_filter("PNG images", &["png"])
+                    .add_filter("PNG / Live2D objects", &["png", "moc3", "json"])
                     .pick_files()
             {
                 self.add(paths, &mut saved.config, [0.0; 2]);
             }
-            if help::control(ui, "png-items", |ui| ui.button("Reload images")).clicked() {
+            if help::control(ui, "model-items", |ui| ui.button("Reload assets")).clicked() {
                 self.reload();
             }
         });
@@ -39,16 +39,16 @@ impl Items {
         if save {
             self.save_now = true;
             self.message = Some(
-                "PNG items and toggles saved for this avatar. Presets can also store this layout."
+                "Stage objects and toggles saved for this avatar. Presets can also store this layout."
                     .into(),
             );
         }
         if let Some(message) = &self.message {
             ui.label(egui::RichText::new(message).small().color(theme::MINT));
         }
-        theme::category(ui, "png-library", "PNG items", true, |ui| {
+        theme::category(ui, "png-library", "Stage objects", true, |ui| {
             if saved.config.items.is_empty() {
-                ui.label("No items yet. Add a PNG or drop one onto the stage.");
+                ui.label("No objects yet. Drop a PNG or moc3 onto the stage.");
             }
             for item in &mut saved.config.items {
                 ui.push_id(item.id, |ui| {
@@ -62,6 +62,9 @@ impl Items {
                             self.pick_pin = false;
                         }
                         ui.small(if item.pin.is_some() { "Pinned" } else { "Free" });
+                        if aria_core::items::is_model(&item.path) {
+                            ui.small("Live2D");
+                        }
                         if let Some(key) = saved.item_hotkeys.get(&item.id) {
                             ui.small(key.label());
                         }
@@ -89,17 +92,28 @@ impl Items {
         }
         let mut remove = false;
         let mut reorder = 0_i32;
+        let model_count = saved
+            .config
+            .items
+            .iter()
+            .filter(|i| aria_core::items::is_model(&i.path))
+            .count();
         let item = &mut saved.config.items[index];
         ui.push_id(id,|ui| {
             theme::category(ui,"png-placement","Placement & appearance",true,|ui| {
                 help::label(ui,"Toggle name","png-toggles");
                 let response = help::control(ui,"png-toggles",|ui| ui.add(egui::TextEdit::singleline(&mut item.name).char_limit(80).desired_width(f32::INFINITY)));
-                if response.lost_focus() && item.name.trim().is_empty() { item.name = "PNG item".into(); }
-                help::context_button(ui,"png-items",|| format!("PNG file: {}\nItem ID: {}\nPNG pixels are loaded locally. The file is referenced by this profile and its presets; keep it in a stable folder.",item.path.display(),item.id));
+                if response.lost_focus() && item.name.trim().is_empty() { item.name = "Stage object".into(); }
+                help::context_button(ui,"png-items",|| format!("Object file: {}\nItem ID: {}\nAssets are loaded locally. The file is referenced by this profile and its presets; keep it in a stable folder.",item.path.display(),item.id));
                 ui.small(item.path.file_name().unwrap_or_default().to_string_lossy());
                 if let Some(error) = self.error(&item.path) { ui.colored_label(egui::Color32::LIGHT_RED,error); }
-                if help::control(ui,"png-items",|ui| ui.button("Replace PNG / locate file…")).clicked()
-                    && let Some(path) = rfd::FileDialog::new().add_filter("PNG images", &["png"]).pick_file() { item.path = path.canonicalize().unwrap_or(path); }
+                if help::control(ui,"model-items",|ui| ui.button("Replace object / locate file…")).clicked()
+                    && let Some(path) = rfd::FileDialog::new().add_filter("PNG / Live2D objects", &["png","moc3","json"]).pick_file()
+                    && crate::items::is_item(&path) {
+                        if aria_core::items::is_model(&path) && !aria_core::items::is_model(&item.path) && model_count >= aria_core::items::MAX_MODEL_ITEMS {
+                            self.message = Some("Maximum four Live2D objects per avatar. Remove one before adding another.".into());
+                        } else { item.path = path.canonicalize().unwrap_or(path); item.model = Default::default(); self.models.reset_draft(); }
+                    }
                 help::control(ui,"png-placement",|ui| ui.add(egui::Slider::new(&mut item.height,0.005..=4.0).logarithmic(true).text("Size")));
                 help::control(ui,"png-placement",|ui| ui.add(egui::Slider::new(&mut item.rotation,-180.0..=180.0).suffix("°").text("Rotation")));
                 help::control(ui,"png-placement",|ui| ui.add(egui::Slider::new(&mut item.opacity,0.0..=1.0).text("Opacity")));
@@ -115,6 +129,7 @@ impl Items {
                 });
                 if help::control(ui,"png-items",|ui| ui.button("Remove item")).clicked() { remove = true; }
             });
+            self.models.panel(ui,item);
             theme::category(ui,"png-pin","Pin to avatar",true,|ui| {
                 help::label(ui,match &item.pin { None => "Free on canvas".into(), Some(Pin::Puppet {..}) => "Pinned to puppet movement".into(), Some(Pin::Surface { mesh,..}) => format!("Pinned to ArtMesh #{}",mesh+1) },"png-pins");
                 if self.draws.iter().any(|d| d.item.id == id && d.anchor == crate::items::Anchor::Missing) {
@@ -125,7 +140,7 @@ impl Items {
                     if help::control(ui,"png-pins",|ui| ui.button("Pin here")).clicked() { self.pin_here = true; }
                     if help::control(ui,"png-pins",|ui| ui.add_enabled(item.pin.is_some(),egui::Button::new("Unpin"))).clicked() { self.unpin = true; }
                 });
-                theme::caption(ui,"Choose pin point, then click the model where this PNG should attach. Pin here uses the PNG's center. Drag a pinned PNG to fine-tune its offset.");
+                theme::caption(ui,"Choose pin point, then click the model where this object should attach. Pin here uses the object's center. Drag a pinned object to fine-tune its offset.");
                 help::control(ui,"png-pins",|ui| ui.checkbox(&mut item.follow_rotation,"Follow pin rotation"));
                 help::control(ui,"png-pins",|ui| ui.checkbox(&mut item.follow_scale,"Follow surface stretch"));
                 help::control(ui,"png-pins",|ui| ui.checkbox(&mut item.follow_visibility,"Follow surface visibility"));
@@ -191,7 +206,7 @@ impl Items {
                 if help::control(ui, "png-toggles", |ui| ui.button("Assign shortcut")).clicked() {
                     self.message = Some(match Self::assign(saved, id, self.draft) {
                         Ok(()) => format!(
-                            "{} toggles this PNG's master visibility.",
+                            "{} toggles this object's master visibility.",
                             self.draft.label()
                         ),
                         Err(e) => e.to_string(),
@@ -221,7 +236,7 @@ impl Items {
         }
         for item in &mut saved.config.items {
             if item.name.trim().is_empty() {
-                item.name = "PNG item".into();
+                item.name = "Stage object".into();
             }
             if item.rule.source.trim().is_empty() {
                 item.rule.source = "MouthOpen".into();
@@ -236,7 +251,7 @@ impl Items {
         shortcut.validate()?;
         anyhow::ensure!(
             saved.config.items.iter().any(|i| i.id == id),
-            "PNG item no longer exists"
+            "Stage object no longer exists"
         );
         anyhow::ensure!(
             shortcut != Shortcut::pose(),
@@ -259,7 +274,7 @@ impl Items {
                 .item_hotkeys
                 .iter()
                 .any(|(other, k)| *other != id && *k == shortcut),
-            "That shortcut belongs to another PNG toggle"
+            "That shortcut belongs to another object toggle"
         );
         saved.item_hotkeys.insert(id, shortcut);
         saved.global_hotkeys = true;

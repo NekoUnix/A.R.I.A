@@ -1,9 +1,46 @@
-//! Model-owned PNG attachment settings and input-trigger state, independent of a renderer.
+//! Model-owned attachment settings and input-trigger state, independent of a renderer.
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 pub const MAX_ITEMS: usize = 32;
+pub const MAX_MODEL_ITEMS: usize = 4;
+
+pub fn is_model(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("moc3"))
+        || path.file_name().is_some_and(|n| {
+            n.to_string_lossy()
+                .to_ascii_lowercase()
+                .ends_with(".model3.json")
+        })
+}
+
+/// An object's controls are separate from the main avatar's rig and profile.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ModelSettings {
+    pub textures: Vec<PathBuf>,
+    pub animate: bool,
+    pub physics: bool,
+    pub parameters: BTreeMap<String, f32>,
+    /// Latest final values, so a parent pose preset can freeze animated objects too.
+    pub snapshot: BTreeMap<String, f32>,
+}
+impl Default for ModelSettings {
+    fn default() -> Self {
+        Self {
+            textures: Vec::new(),
+            animate: false,
+            physics: true,
+            parameters: BTreeMap::new(),
+            snapshot: BTreeMap::new(),
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RuleMode {
@@ -62,6 +99,7 @@ pub struct Item {
     pub id: u64,
     pub name: String,
     pub path: PathBuf,
+    pub model: ModelSettings,
     /// Free position, or offset from a pin, in units of the model canvas height.
     pub position: [f32; 2],
     pub height: f32,
@@ -82,8 +120,9 @@ impl Default for Item {
     fn default() -> Self {
         Self {
             id: 1,
-            name: "PNG item".into(),
+            name: "Stage object".into(),
             path: PathBuf::new(),
+            model: ModelSettings::default(),
             position: [0.0; 2],
             height: 0.18,
             rotation: 0.0,
@@ -103,21 +142,44 @@ impl Default for Item {
 pub fn validate(items: &[Item]) -> Result<()> {
     ensure!(
         items.len() <= MAX_ITEMS,
-        "Maximum {MAX_ITEMS} PNG items per avatar"
+        "Maximum {MAX_ITEMS} stage items per avatar"
+    );
+    ensure!(
+        items.iter().filter(|i| is_model(&i.path)).count() <= MAX_MODEL_ITEMS,
+        "Maximum {MAX_MODEL_ITEMS} Live2D objects per avatar"
     );
     let mut ids = std::collections::BTreeSet::new();
     for item in items {
         ensure!(
+            item.model.textures.len() <= 32
+                && item
+                    .model
+                    .textures
+                    .iter()
+                    .all(|p| !p.as_os_str().is_empty() && p.to_string_lossy().len() <= 4096),
+            "Invalid object texture list"
+        );
+        for values in [&item.model.parameters, &item.model.snapshot] {
+            ensure!(
+                values.len() <= 8192
+                    && values.iter().all(|(id, v)| !id.is_empty()
+                        && id.len() <= 256
+                        && v.is_finite()
+                        && v.abs() <= 1e6),
+                "Invalid Live2D object parameter values"
+            );
+        }
+        ensure!(
             item.id != 0 && ids.insert(item.id),
-            "PNG item IDs must be unique"
+            "Stage object IDs must be unique"
         );
         ensure!(
             !item.name.trim().is_empty() && item.name.chars().count() <= 80,
-            "PNG toggle needs a name of 1–80 characters"
+            "Object toggle needs a name of 1–80 characters"
         );
         ensure!(
             !item.path.as_os_str().is_empty() && item.path.to_string_lossy().len() <= 4096,
-            "PNG item path is missing or too long"
+            "Stage object path is missing or too long"
         );
         ensure!(
             item.position
@@ -129,7 +191,7 @@ pub fn validate(items: &[Item]) -> Result<()> {
                 && (-180.0..=180.0).contains(&item.rotation)
                 && item.opacity.is_finite()
                 && (0.0..=1.0).contains(&item.opacity),
-            "Invalid PNG item placement"
+            "Invalid Stage object placement"
         );
         let rule = &item.rule;
         ensure!(
@@ -140,7 +202,7 @@ pub fn validate(items: &[Item]) -> Result<()> {
                     .all(|v| v.is_finite() && v.abs() <= 1e6)
                 && rule.start <= rule.end
                 && rule.hysteresis >= 0.0,
-            "Invalid PNG input rule"
+            "Invalid Object input rule"
         );
         match &item.pin {
             Some(Pin::Surface {
@@ -213,6 +275,42 @@ impl RuleState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn live2d_items_migrate_and_validate_independent_settings() {
+        let old: Item = serde_json::from_str(r#"{"path":"old.png"}"#).unwrap();
+        assert_eq!(old.model, ModelSettings::default());
+        let mut items: Vec<Item> = (1..=MAX_MODEL_ITEMS as u64)
+            .map(|id| Item {
+                id,
+                path: "prop.moc3".into(),
+                ..Default::default()
+            })
+            .collect();
+        items[0]
+            .model
+            .parameters
+            .insert("custom-parameter".into(), 0.6);
+        items[0].model.textures.push("atlas.png".into());
+        items[0]
+            .model
+            .snapshot
+            .insert("other-parameter".into(), 0.4);
+        validate(&items).unwrap();
+        assert_eq!(
+            items,
+            serde_json::from_slice::<Vec<Item>>(&serde_json::to_vec(&items).unwrap()).unwrap()
+        );
+        let mut extra = items[0].clone();
+        extra.id = 5;
+        items.push(extra);
+        assert!(validate(&items).is_err());
+        items.pop();
+        items[0]
+            .model
+            .parameters
+            .insert("bad".into(), f32::INFINITY);
+        assert!(validate(&items).is_err());
+    }
     #[test]
     fn input_toggle_uses_real_edges_hysteresis_and_missing_signal_recovery() {
         let mut item = Item {

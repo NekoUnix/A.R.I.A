@@ -47,6 +47,7 @@ impl ModelImage {
 pub struct ModelRenderer {
     state: RenderState,
     pub image: ModelImage,
+    pub lease: std::sync::Arc<ModelTexture>,
     output: wgpu::TextureView,
     mask: wgpu::TextureView,
     // Bind groups own the atlas resources; output is also owned by egui's registered view.
@@ -394,6 +395,10 @@ impl ModelRenderer {
             wgpu::FilterMode::Linear,
         );
         Ok(Self {
+            lease: std::sync::Arc::new(ModelTexture {
+                state: state.clone(),
+                id,
+            }),
             state: state.clone(),
             image: ModelImage {
                 id,
@@ -554,9 +559,14 @@ pub(crate) fn straight_alpha(pixel: [u8; 4]) -> [u8; 4] {
         pixel[3],
     ]
 }
-impl Drop for ModelRenderer {
+/// Deferred output windows can retain a model image after its Core instance is removed.
+pub struct ModelTexture {
+    state: RenderState,
+    id: egui::TextureId,
+}
+impl Drop for ModelTexture {
     fn drop(&mut self) {
-        self.state.renderer.write().free_texture(&self.image.id);
+        self.state.renderer.write().free_texture(&self.id);
     }
 }
 

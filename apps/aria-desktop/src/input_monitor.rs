@@ -253,7 +253,7 @@ impl InputMonitor {
         if ui
             .add_sized(
                 [ui.available_width(), 26.0],
-                egui::Button::new("PNG items & toggles").selected(self.tab == Tab::Items),
+                egui::Button::new("Stage objects & toggles").selected(self.tab == Tab::Items),
             )
             .clicked()
         {
@@ -517,7 +517,7 @@ impl InputMonitor {
             if crate::help::control(ui, "png", |ui| {
                 ui.add_enabled(can_export, egui::Button::new("Save transparent PNG…"))
             })
-            .on_hover_text("Save the rendered avatar and visible PNG items without the studio UI or background.")
+            .on_hover_text("Save the rendered avatar and visible stage objects without the studio UI or background.")
             .clicked()
                 && let Some(path) = rfd::FileDialog::new()
                     .set_file_name("aria-pose.png")

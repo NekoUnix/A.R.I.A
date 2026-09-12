@@ -13,6 +13,7 @@ mod items;
 mod items_panel;
 mod live2d;
 mod metrics;
+mod object_models;
 mod output;
 mod performance;
 mod physics_panel;

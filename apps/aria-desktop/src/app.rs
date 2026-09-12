@@ -157,6 +157,7 @@ pub struct AriaApp {
 impl AriaApp {
     fn scene(&self) -> crate::output::Scene {
         crate::output::Scene {
+            _model_lease: self.live2d.as_ref().map(|a| a.image_lease()),
             items: self.items.draws.clone(),
             model: self.live2d.as_ref().map(|a| a.image()),
             model_bounds: self
@@ -711,9 +712,11 @@ impl AriaApp {
                 }
             });
             ui.label(
-                RichText::new("Drop a .model3.json or .moc3 here to load an avatar.")
-                    .small()
-                    .color(MUTED),
+                RichText::new(
+                    "Use Open Live2D avatar to replace the main model. Stage drops add objects.",
+                )
+                .small()
+                .color(MUTED),
             );
         });
         theme::category(ui, "output-card", "Capture & performance", false, |ui| {
@@ -1126,6 +1129,8 @@ impl eframe::App for AriaApp {
         {
             let key = egui::Id::new("smoke-drop-png");
             if !ctx.data(|d| d.get_temp::<bool>(key).unwrap_or(false)) {
+                let identity = self.live2d.as_ref().map(|a| a.model_key.clone());
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("smoke-main-identity"), identity));
                 ctx.input_mut(|i| {
                     i.raw.dropped_files.push(egui::DroppedFile {
                         path: Some(path.into()),
@@ -1142,16 +1147,8 @@ impl eframe::App for AriaApp {
                 .filter_map(|f| f.path.clone())
                 .collect::<Vec<_>>()
         });
-        if ctx.current_pass_index() == 0
-            && let Some(path) = dropped.iter().find(|p| !crate::items::is_png(p))
-        {
-            self.open_model(path);
-        }
-        let mut dropped_pngs: Vec<_> = if ctx.current_pass_index() == 0 {
+        let mut dropped_items: Vec<_> = if ctx.current_pass_index() == 0 {
             dropped
-                .into_iter()
-                .filter(|p| crate::items::is_png(p))
-                .collect()
         } else {
             Vec::new()
         };
@@ -1259,6 +1256,11 @@ impl eframe::App for AriaApp {
             self.render_state.as_ref(),
             &self.input_monitor.saved.config,
         );
+        self.items.models.sync(
+            self.render_state.as_ref(),
+            Path::new(self.settings.cubism_core.trim()),
+            &self.input_monitor.saved.config,
+        );
 
         self.metrics.update(self.render_state.as_ref());
         egui::TopBottomPanel::top("header")
@@ -1273,7 +1275,7 @@ impl eframe::App for AriaApp {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            RichText::new("v0.10 · WINDOWS PREVIEW")
+                            RichText::new("v0.11 · WINDOWS PREVIEW")
                                 .small()
                                 .color(MUTED),
                         );
@@ -1342,16 +1344,13 @@ impl eframe::App for AriaApp {
                 ui.label(RichText::new(self.connection_status()).color(MINT));
                 ui.horizontal_wrapped(|ui| {
                     crate::help::button(ui, "png-items");
-                    if ui
-                        .small_button("Drop PNGs here · items & toggles")
-                        .clicked()
-                    {
+                    if ui.small_button("Drop PNG / moc3 here · objects").clicked() {
                         self.input_monitor.tab = Tab::Items;
                     }
                 });
                 let (rect, _) = ui.allocate_exact_size(ui.available_size(), egui::Sense::hover());
                 let old_revision = self.items.revision;
-                if !dropped_pngs.is_empty() {
+                if !dropped_items.is_empty() {
                     let pointer = ctx.input(|i| i.pointer.latest_pos());
                     if pointer.is_none_or(|p| rect.contains(p)) {
                         let scene = self.scene();
@@ -1362,7 +1361,7 @@ impl eframe::App for AriaApp {
                             pointer.or(self.items.last_hover),
                         );
                         if self.items.add(
-                            std::mem::take(&mut dropped_pngs),
+                            std::mem::take(&mut dropped_items),
                             &mut self.input_monitor.saved.config,
                             position,
                         ) {
@@ -1371,7 +1370,7 @@ impl eframe::App for AriaApp {
                         self.input_monitor.tab = Tab::Items;
                     } else {
                         self.items.message = Some(
-                            "Drop PNG images inside Your stage, or use Add PNGs in the items tab."
+                            "Drop objects inside Your stage, or use Add objects in the sidebar."
                                 .into(),
                         );
                         self.input_monitor.tab = Tab::Items;
@@ -1382,6 +1381,18 @@ impl eframe::App for AriaApp {
                     self.render_state.as_ref(),
                     &self.input_monitor.saved.config,
                 );
+                self.items.models.sync(
+                    self.render_state.as_ref(),
+                    Path::new(self.settings.cubism_core.trim()),
+                    &self.input_monitor.saved.config,
+                );
+                if ctx.current_pass_index() == 0 {
+                    self.items.models.update(
+                        &mut self.input_monitor.saved.config,
+                        &self.live_inputs,
+                        dt,
+                    );
+                }
                 self.items
                     .refresh(&self.input_monitor.saved.config, self.live2d.as_ref());
                 let scene = self.scene();
@@ -1512,7 +1523,18 @@ impl eframe::App for AriaApp {
             {
                 let key = egui::Id::new("smoke-verify-png");
                 if !ctx.data(|d| d.get_temp::<bool>(key).unwrap_or(false)) {
-                    assert_eq!(self.items.draws.len(), 2, "Both PNG textures must load");
+                    let model_object = self
+                        .input_monitor
+                        .saved
+                        .config
+                        .items
+                        .iter()
+                        .any(|i| aria_core::items::is_model(&i.path));
+                    assert_eq!(
+                        self.items.draws.len(),
+                        if model_object { 1 } else { 2 },
+                        "All dropped object textures must load"
+                    );
                     assert!(
                         self.items
                             .draws
@@ -1522,11 +1544,19 @@ impl eframe::App for AriaApp {
                     if std::env::var_os("ARIA_TEST_MODEL").is_some() {
                         assert!(
                             self.live2d.is_some(),
-                            "PNG drop must preserve the loaded avatar"
+                            "Object drop must preserve the loaded avatar"
                         );
                     }
+                    assert_eq!(
+                        self.live2d.as_ref().map(|a| a.model_key.clone()),
+                        ctx.data(
+                            |d| d.get_temp::<Option<String>>(egui::Id::new("smoke-main-identity"))
+                        )
+                        .unwrap(),
+                        "Stage drops must preserve the main profile identity"
+                    );
                     eprintln!(
-                        "PNG drop and pin smoke verified: {:?}",
+                        "Object drop and pin smoke verified: {:?}",
                         self.items.draws[0].anchor
                     );
                     if let Some(path) = std::env::var_os("ARIA_SMOKE_AVATAR_PNG") {

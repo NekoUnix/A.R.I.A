@@ -554,6 +554,7 @@ impl OutputWindows {
 
 #[derive(Clone)]
 pub struct Scene {
+    pub _model_lease: Option<std::sync::Arc<crate::cubism_render::ModelTexture>>,
     pub items: std::sync::Arc<[crate::items::DrawItem]>,
     pub model: Option<ModelImage>,
     pub model_bounds: Rect,
@@ -686,6 +687,7 @@ mod tests {
         for size in [egui::vec2(960.0, 540.0), egui::vec2(540.0, 960.0)] {
             let ctx = egui::Context::default();
             let scene = Scene {
+                _model_lease: None,
                 items: Default::default(),
                 model: None,
                 model_bounds: Rect::NOTHING,
@@ -820,6 +822,7 @@ mod tests {
         for size in [[480., 270.], [270., 480.], [480., 320.]] {
             let ctx = egui::Context::default();
             let scene = Scene {
+                _model_lease: None,
                 items: Default::default(),
                 model: None,
                 model_bounds: Rect::NOTHING,
