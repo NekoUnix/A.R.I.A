@@ -80,11 +80,11 @@ pub fn inspect(path: &Path) -> Result<ModelReport> {
     let manifest_path = path.canonicalize().context("Cannot open model manifest")?;
     let mut bytes = Vec::new();
     fs::File::open(&manifest_path)?
-        .take(2 * 1024 * 1024 + 1)
+        .take(aria_core::asset_limits::MODEL_JSON as u64 + 1)
         .read_to_end(&mut bytes)?;
     ensure!(
-        bytes.len() <= 2 * 1024 * 1024,
-        "Model manifest exceeds 2 MiB"
+        bytes.len() <= aria_core::asset_limits::MODEL_JSON,
+        "Model manifest exceeds 20 MiB"
     );
     let model: Manifest = serde_json::from_slice(&bytes).context("Invalid Cubism model3 JSON")?;
     ensure!(
@@ -333,7 +333,7 @@ pub fn load_files(path: &Path) -> Result<ModelFiles> {
             .ends_with(".model3.json")),
         "Select a .model3.json or .moc3 export"
     );
-    let bytes = read_bounded(&source, 2 * 1024 * 1024)?;
+    let bytes = read_bounded(&source, aria_core::asset_limits::MODEL_JSON)?;
     let model: Manifest = serde_json::from_slice(&bytes).context("Invalid Cubism model3 JSON")?;
     ensure!(model.version == 3, "Expected model3 Version 3");
     let base = source.parent().context("Manifest has no parent folder")?;
@@ -440,6 +440,24 @@ pub fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn large_manifest_loads_and_still_enforces_new_ceiling() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["avatar.moc3", "atlas.png"] {
+            fs::write(dir.path().join(name), b"fixture").unwrap();
+        }
+        let path = dir.path().join("avatar.model3.json");
+        let json = serde_json::json!({"Version":3,"FileReferences":{"Moc":"avatar.moc3","Textures":["atlas.png"]},"Metadata":"x".repeat(3 * 1024 * 1024)});
+        fs::write(&path, json.to_string()).unwrap();
+        assert_eq!(load_files(&path).unwrap().textures.len(), 1);
+        assert_eq!(inspect(&path).unwrap().texture_count, 1);
+        let mut file = fs::OpenOptions::new().append(true).open(&path).unwrap();
+        file.write_all(&vec![b' '; aria_core::asset_limits::MODEL_JSON])
+            .unwrap();
+        assert!(load_files(&path).is_err());
+        assert!(inspect(&path).is_err());
+    }
     #[test]
     fn expressions_combine_manifest_and_unlisted_files_without_duplicates() {
         let dir = tempfile::tempdir().unwrap();

@@ -288,7 +288,10 @@ pub struct ImportedProfile {
 }
 
 pub fn import_profile(bytes: &[u8], parameters: &[RigParameter]) -> Result<ImportedProfile> {
-    ensure!(bytes.len() <= 2 * 1024 * 1024, "VTS profile exceeds 2 MiB");
+    ensure!(
+        bytes.len() <= crate::asset_limits::MODEL_JSON,
+        "VTS profile exceeds 20 MiB"
+    );
     let profile: Profile = serde_json::from_slice(bytes)?;
     ensure!(
         profile.parameter_settings.len() <= 4096,

@@ -12,7 +12,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const ATLAS_BUDGET: u64 = 1024 * 1024 * 1024;
+const ATLAS_BUDGET: u64 = aria_core::asset_limits::ATLAS_COLLECTION;
 #[derive(PartialEq, Eq)]
 struct Source {
     path: PathBuf,
@@ -80,8 +80,9 @@ impl ObjectModels {
                 let mut estimate = 0_u64;
                 for path in &files.textures {
                     let (w,h) = image::image_dimensions(path)?;
+                    let [w,h] = aria_core::asset_limits::texture_size(w,h,state.device.limits().max_texture_dimension_2d);
                     estimate += u64::from(w)*u64::from(h)*4;
-                    ensure!(estimate.saturating_add(used) <= ATLAS_BUDGET, "Live2D object atlases exceed the combined 1 GiB budget; use smaller atlases or remove another object");
+                    ensure!(estimate.saturating_add(used) <= ATLAS_BUDGET, "Live2D object atlases exceed the combined 10 GiB budget; use smaller atlases or remove another object");
                 }
                 let avatar = Avatar::load(state, core, files)?;
                 ensure!((avatar.atlas_mib()*1048576.0) as u64 + used <= ATLAS_BUDGET, "Live2D object atlas budget exceeded");
@@ -397,7 +398,7 @@ mod tests {
         let files = aria_model::load_files(&path).unwrap();
         let main = CubismModel::load(
             &core,
-            &aria_model::read_bounded(&files.moc, 128 * 1024 * 1024).unwrap(),
+            &aria_model::read_bounded(&files.moc, aria_core::asset_limits::MOC_FILE).unwrap(),
             files.textures.len(),
         )
         .unwrap();

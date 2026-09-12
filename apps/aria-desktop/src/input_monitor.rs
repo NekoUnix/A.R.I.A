@@ -6,7 +6,7 @@ use aria_core::{
 use eframe::egui;
 use std::{collections::BTreeMap, path::PathBuf};
 
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum Tab {
     #[default]
     Inputs,
@@ -257,6 +257,39 @@ impl InputMonitor {
                 .any(|shortcut| *shortcut == aria_core::shortcuts::Shortcut::preset(key))
         })
     }
+    pub fn navigation(&mut self, ui: &mut egui::Ui) {
+        let mut group = match self.tab {
+            Tab::Inputs | Tab::Microphone | Tab::Raw => 0,
+            Tab::Physics | Tab::Expressions | Tab::Images => 1,
+            Tab::Items | Tab::Effects => 2,
+            Tab::Pose | Tab::Presets => 3,
+        };
+        let previous = group;
+        crate::theme::segments(
+            ui,
+            &mut group,
+            &[(0, "Tracking"), (1, "Avatar"), (2, "Stage"), (3, "Poses")],
+        );
+        let pages: &[(Tab, &str)] = match group {
+            0 => &[
+                (Tab::Inputs, "Inputs"),
+                (Tab::Microphone, "Microphone"),
+                (Tab::Raw, "Diagnostics"),
+            ],
+            1 => &[
+                (Tab::Physics, "Physics"),
+                (Tab::Expressions, "Expressions"),
+                (Tab::Images, "PNG / GIF"),
+            ],
+            2 => &[(Tab::Items, "Objects"), (Tab::Effects, "Throws & sprays")],
+            _ => &[(Tab::Pose, "Pose controls"), (Tab::Presets, "Presets")],
+        };
+        if previous != group {
+            self.tab = pages[0].0;
+        }
+        crate::theme::segments(ui, &mut self.tab, pages);
+        ui.add_space(4.0);
+    }
     pub fn ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -266,67 +299,6 @@ impl InputMonitor {
         mapping: &mut MappingSettings,
         can_export: bool,
     ) {
-        for row in [
-            [
-                (Tab::Inputs, "Inputs"),
-                (Tab::Pose, "Pose"),
-                (Tab::Physics, "Physics"),
-            ],
-            [
-                (Tab::Expressions, "Expressions"),
-                (Tab::Presets, "Presets"),
-                (Tab::Raw, "Raw"),
-            ],
-        ] {
-            ui.columns(3, |columns| {
-                for (column, (tab, label)) in columns.iter_mut().zip(row) {
-                    if column
-                        .add_sized(
-                            [column.available_width(), 26.0],
-                            egui::Button::new(egui::RichText::new(label).size(12.0))
-                                .selected(self.tab == tab),
-                        )
-                        .clicked()
-                    {
-                        self.tab = tab;
-                    }
-                }
-            });
-        }
-        if ui
-            .add_sized(
-                [ui.available_width(), 26.0],
-                egui::Button::new("Stage objects & toggles").selected(self.tab == Tab::Items),
-            )
-            .clicked()
-        {
-            self.tab = Tab::Items;
-        }
-        if ui
-            .add_sized(
-                [ui.available_width(), 26.0],
-                egui::Button::new("Throws & liquid sprays").selected(self.tab == Tab::Effects),
-            )
-            .clicked()
-        {
-            self.tab = Tab::Effects;
-        }
-        ui.columns(2, |columns| {
-            for (column, tab, label) in [
-                (0, Tab::Images, "PNG / GIF actions"),
-                (1, Tab::Microphone, "Microphone"),
-            ] {
-                if columns[column]
-                    .add_sized(
-                        [columns[column].available_width(), 26.0],
-                        egui::Button::new(label).selected(self.tab == tab),
-                    )
-                    .clicked()
-                {
-                    self.tab = tab;
-                }
-            }
-        });
         crate::help::label(
             ui,
             "About this tab",
@@ -347,7 +319,7 @@ impl InputMonitor {
             ui.label(
                 egui::RichText::new(message)
                     .small()
-                    .color(egui::Color32::from_rgb(114, 235, 209)),
+                    .color(crate::theme::MINT),
             );
         }
         if self.saved.config.pose.mode != PoseMode::Live && self.tab != Tab::Pose {

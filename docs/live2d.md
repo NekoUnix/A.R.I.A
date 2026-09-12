@@ -101,7 +101,7 @@ Without a profile, the 12 [standard parameters](tracking.md#mapping) bind by ID,
 with additional body Y/Z and breathing bindings where present. Other parameters
 keep their exported defaults. Values always clamp to the native rig's limits.
 
-Click **Model parameters…** to open **Input Monitor → Inputs**. Search IDs or names
+Click **Model parameters…** to open **Inspector → Tracking → Inputs**. Search IDs or names
 from `.cdi3.json`, edit ranges/clamps/smoothing/stepping/curves, or choose **Manual**.
 Raw `ARKit:` inputs are also available. Edits save with this model and override its
 initial VTS assignments when reopened; the original profile is never modified.
@@ -127,7 +127,7 @@ simulation step with interpolated inputs and outputs, independent of UI FPS.
 Later groups can use earlier groups' outputs. Automatic breathing continues at
 rest, including when tracking is lost, and feeds physics where the rig connects it.
 
-Use **Input Monitor → Physics** for global and individual group enable, strength,
+Use **Inspector → Avatar → Physics** for global and individual group enable, strength,
 inertia, response speed, gravity and wind. Groups and their names come from each
 avatar's export. **Settle motion** clears momentum. To hold a physics output, use
 **Pose** controls; physics otherwise runs after tracking. Physics controls persist
@@ -172,7 +172,7 @@ works without the SDK installed.
 | Colors/blending | Multiply/screen colors; normal, legacy additive and multiplicative blending |
 | Tracking | VTS profile import, named/custom/raw inputs, editable ranges, manual controls |
 | Physics | Version 3 particle chains; authored FPS, weights, normalization, reflection and per-group multipliers |
-| Input limits | 2 MiB manifest; 128 MiB moc; 1–32 atlases; each atlas at most 8192px (also limited by the GPU) and 128 MiB compressed; 1 GiB total decoded atlas storage |
+| Input limits | 20 MiB manifest/physics/profile/display JSON; 10 MiB expressions; 1280 MiB moc; 1–32 atlases; each atlas at most 81920px per source edge, 1280 MiB compressed and 5120 MiB decoded; 10 GiB retained atlas storage. All ceilings apply together. Textures beyond the device limit are fitted once to the GPU, preserving UVs and original files. Larger imports can use more RAM/VRAM |
 | Render target | Transparent offscreen texture, longest side 2048px, shared with studio/output; UI zoom scales it |
 
 **Not yet implemented:** `.motion3.json` playback,

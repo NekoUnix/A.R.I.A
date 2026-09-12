@@ -8,7 +8,7 @@ files and parameter IDs; they are not tied to the development test avatar.
 ## Load and toggle expressions
 
 1. Open the avatar's `.model3.json` or `.moc3` as usual.
-2. Open **Input Monitor → Expressions**. ARIA reads the manifest's named expression
+2. Open **Inspector → Avatar → Expressions**. ARIA reads the manifest's named expression
    references and discovers unlisted `.exp3.json` / `.exp3` files in the avatar
    folder and its subfolders. The same file appears only once.
 3. Check an expression to turn it on; uncheck it to fade it out. Select its name to

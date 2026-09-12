@@ -37,7 +37,10 @@ fn default_fade() -> f32 {
 }
 impl Expression {
     pub fn load(bytes: &[u8]) -> Result<Self> {
-        ensure!(bytes.len() <= 1024 * 1024, "Expression exceeds 1 MiB");
+        ensure!(
+            bytes.len() <= crate::asset_limits::EXPRESSION_JSON,
+            "Expression exceeds 10 MiB"
+        );
         let value: Self = serde_json::from_slice(bytes)?;
         ensure!(
             value.kind == "Live2D Expression",

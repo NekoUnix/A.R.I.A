@@ -7,7 +7,7 @@ parameter mapping is hardcoded to the development test model.
 
 ## Tune the whole avatar
 
-Open **Input Monitor → Physics**, or **Avatar & appearance → Configure avatar
+Open **Inspector → Avatar → Physics**, or **Avatar & appearance → Configure avatar
 physics…**. Expand **Overall physics** and enable **Enable avatar physics**.
 
 | Control | Effect |

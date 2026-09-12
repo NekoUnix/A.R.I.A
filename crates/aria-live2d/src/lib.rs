@@ -57,8 +57,10 @@ pub struct CubismModel {
 impl CubismModel {
     pub fn load(core_path: &Path, bytes: &[u8], texture_count: usize) -> Result<Self> {
         ensure!(
-            bytes.len() >= 64 && bytes.len() <= 128 * 1024 * 1024 && bytes.starts_with(b"MOC3"),
-            "Invalid .moc3 header/size (maximum 128 MiB)"
+            bytes.len() >= 64
+                && bytes.len() <= aria_core::asset_limits::MOC_FILE
+                && bytes.starts_with(b"MOC3"),
+            "Invalid .moc3 header/size (maximum 1280 MiB)"
         );
         ensure!((1..=32).contains(&texture_count), "Expected 1–32 textures");
         let api = Api::load(core_path)?;

@@ -952,7 +952,7 @@ mod tests {
         let missing = dir.path().join("missing.png");
         image::save_buffer(&good, &[255; 4 * 4 * 4], 4, 4, image::ColorType::Rgba8).unwrap();
         let ctx = egui::Context::default();
-        assert!(load_png(&ctx, None, &good, 256 * 1024 * 1024).is_err());
+        assert!(load_png(&ctx, None, &good, aria_core::asset_limits::IMAGE_COLLECTION).is_err());
         let invalid = dir.path().join("invalid.png");
         std::fs::write(&invalid, "not an image").unwrap();
         assert!(load_png(&ctx, None, &invalid, 0).is_err());

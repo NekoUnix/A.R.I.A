@@ -1,4 +1,5 @@
 //! Platform-independent tracking values and a small, deterministic parameter pipeline.
+pub mod asset_limits;
 pub mod deformation;
 pub mod effects;
 pub mod expressions;

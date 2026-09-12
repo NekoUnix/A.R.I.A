@@ -1,5 +1,24 @@
 # Architecture and next steps
 
+## Import budgets and compact workspace (v0.17)
+
+`aria-core::asset_limits` defines shared import ceilings. The PNG/GIF loader,
+Cubism FFI boundary, manifest/sidecar readers, stage objects and throw caches use
+them consistently. Source file, decoded-byte and dimension budgets apply together;
+none reserves memory at startup. PNG/GIF source identity is computed before fitting,
+so per-avatar profiles survive changes in the GPU's maximum texture size.
+`media::fit_texture` performs one bounded import-time resize only when necessary;
+model atlas notes expose the fitted dimensions. Actual uploaded dimensions drive
+retained texture accounting. The normal playback path continues to reuse textures.
+
+The left Workspace and right Inspector have stationary segmented navigation and
+separate scroll state per page. Only the selected settings page is laid out;
+connection diagnostics render under Tracking → Diagnostics. Existing profile
+storage, input processing and simulation are independent from navigation.
+The graphite palette uses existing egui primitives and the installed Windows font.
+UI tweening and window/popup shadows are disabled; no additional font, image asset,
+blur pass, dependency or render loop is introduced for styling.
+
 ## Streaming chat companion (v0.16)
 
 `aria-desktop/src/chat` contains the native companion UI, bounded plain-text

@@ -290,10 +290,7 @@ impl OutputWindows {
                 ui.checkbox(&mut state.open[i], format!("Open {name}"))
             });
         }
-        theme::caption(
-            ui,
-            "All three can stay open together. Framing, resolution and backgrounds are saved per avatar.",
-        );
+        theme::caption(ui, "Open any combination. Settings save per avatar.");
         let selected = state.config.selected;
         crate::help::label(ui, "Canvas to edit", "outputs");
         egui::ComboBox::from_id_salt("edit-output")
@@ -319,7 +316,7 @@ impl OutputWindows {
         .changed();
         theme::caption(
             ui,
-            "Previews stay small to save screen space. OBS receives the full canvas resolution through Spout2 Capture, regardless of preview size. Window Capture only captures the small preview.",
+            "Small desktop preview · full-resolution OBS via Spout2.",
         );
         ui.horizontal_wrapped(|ui| {
             ui.label(egui::RichText::new(SENDERS[selected]).monospace().small());
@@ -327,10 +324,13 @@ impl OutputWindows {
                 ui.ctx().copy_text(SENDERS[selected].into());
             }
         });
+        ui.collapsing("How OBS captures this canvas", |ui| {
+            theme::caption(ui, "Previews stay small to save screen space. OBS receives the full canvas resolution through Spout2 Capture, regardless of preview size. Window Capture only captures the small preview.");
         ui.hyperlink_to(
             "Get the OBS Spout2 plugin ↗",
             "https://github.com/Off-World-Live/obs-spout2-plugin/releases",
         );
+        });
         let size = config.pixels(selected);
         if selected < 2 {
             crate::help::label(ui, "OBS canvas resolution", "resolution");

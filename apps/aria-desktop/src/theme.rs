@@ -1,12 +1,12 @@
 use eframe::egui::{self, Color32, RichText, Stroke};
 
-pub const BG: Color32 = Color32::from_rgb(13, 16, 26);
-pub const PANEL: Color32 = Color32::from_rgb(19, 23, 36);
-pub const CARD: Color32 = Color32::from_rgb(26, 32, 48);
-pub const MINT: Color32 = Color32::from_rgb(119, 231, 207);
-pub const MUTED: Color32 = Color32::from_rgb(157, 172, 195);
-pub const TEXT: Color32 = Color32::from_rgb(227, 234, 247);
-pub const BORDER: Color32 = Color32::from_rgb(46, 57, 78);
+pub const BG: Color32 = Color32::from_rgb(28, 28, 30);
+pub const PANEL: Color32 = Color32::from_rgb(36, 36, 38);
+pub const CARD: Color32 = Color32::from_rgb(44, 44, 46);
+pub const MINT: Color32 = Color32::from_rgb(10, 132, 255);
+pub const MUTED: Color32 = Color32::from_rgb(162, 162, 169);
+pub const TEXT: Color32 = Color32::from_rgb(242, 242, 247);
+pub const BORDER: Color32 = Color32::from_rgb(58, 58, 62);
 
 pub fn install(ctx: &egui::Context) {
     ctx.set_theme(egui::Theme::Dark);
@@ -34,7 +34,7 @@ pub fn install(ctx: &egui::Context) {
     style.visuals.extreme_bg_color = BG;
     style.visuals.faint_bg_color = CARD;
     style.visuals.override_text_color = Some(TEXT);
-    style.visuals.selection.bg_fill = Color32::from_rgb(36, 76, 76);
+    style.visuals.selection.bg_fill = Color32::from_rgb(39, 72, 110);
     style.visuals.selection.stroke = Stroke::new(1.0_f32, MINT);
     style.visuals.hyperlink_color = MINT;
     style.visuals.window_corner_radius = 12.into();
@@ -46,17 +46,20 @@ pub fn install(ctx: &egui::Context) {
         &mut style.visuals.widgets.open,
         &mut style.visuals.widgets.noninteractive,
     ] {
-        widget.corner_radius = 6.into();
+        widget.corner_radius = 5.into();
         widget.bg_stroke = Stroke::new(1.0_f32, BORDER);
         widget.fg_stroke = Stroke::new(1.0_f32, TEXT);
     }
-    style.visuals.widgets.inactive.weak_bg_fill = Color32::from_rgb(36, 44, 62);
-    style.visuals.widgets.inactive.bg_fill = Color32::from_rgb(36, 44, 62);
-    style.visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(51, 66, 85);
-    style.visuals.widgets.hovered.bg_fill = Color32::from_rgb(51, 66, 85);
-    style.visuals.widgets.active.bg_fill = Color32::from_rgb(45, 98, 94);
-    style.visuals.widgets.active.weak_bg_fill = Color32::from_rgb(45, 98, 94);
+    style.visuals.widgets.inactive.weak_bg_fill = Color32::from_rgb(58, 58, 62);
+    style.visuals.widgets.inactive.bg_fill = Color32::from_rgb(58, 58, 62);
+    style.visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(72, 72, 77);
+    style.visuals.widgets.hovered.bg_fill = Color32::from_rgb(72, 72, 77);
+    style.visuals.widgets.active.bg_fill = Color32::from_rgb(42, 84, 132);
+    style.visuals.widgets.active.weak_bg_fill = Color32::from_rgb(42, 84, 132);
     style.visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, BORDER);
+    style.animation_time = 0.0;
+    style.visuals.window_shadow = egui::epaint::Shadow::NONE;
+    style.visuals.popup_shadow = egui::epaint::Shadow::NONE;
     style.spacing.item_spacing = egui::vec2(7.0, 6.0);
     style.spacing.button_padding = egui::vec2(9.0, 5.0);
     style.spacing.interact_size.y = 26.0;
@@ -79,8 +82,8 @@ pub fn card(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
     egui::Frame::new()
         .fill(CARD)
         .stroke(Stroke::new(1.0_f32, BORDER))
-        .corner_radius(10)
-        .inner_margin(10.0)
+        .corner_radius(8)
+        .inner_margin(8.0)
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             add(ui);
@@ -151,4 +154,38 @@ pub fn category(
 
 pub fn caption(ui: &mut egui::Ui, text: impl Into<String>) {
     ui.label(RichText::new(text).small().color(MUTED));
+}
+
+/// Compact, keyboard-accessible category navigation; only the selected page is laid out.
+pub fn segments<T: Copy + PartialEq>(ui: &mut egui::Ui, selected: &mut T, options: &[(T, &str)]) {
+    egui::Frame::new()
+        .fill(BG)
+        .corner_radius(7)
+        .inner_margin(3.0)
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            let width =
+                (ui.available_width() - (options.len() - 1) as f32 * 2.0) / options.len() as f32;
+            ui.horizontal(|ui| {
+                for &(value, label) in options {
+                    let active = *selected == value;
+                    let text =
+                        RichText::new(label)
+                            .size(12.0)
+                            .color(if active { TEXT } else { MUTED });
+                    let button = egui::Button::new(text)
+                        .fill(if active {
+                            CARD
+                        } else {
+                            egui::Color32::TRANSPARENT
+                        })
+                        .stroke(Stroke::NONE)
+                        .corner_radius(5)
+                        .selected(active);
+                    if ui.add_sized([width, 25.0], button).clicked() {
+                        *selected = value;
+                    }
+                }
+            });
+        });
 }

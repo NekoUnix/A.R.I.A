@@ -1,7 +1,12 @@
 # Windows setup and operation
 
-ARIA v0.16 adds Twitch/YouTube sign-in and a chat window below the portrait preview.
-Open **Streaming chat** in the left panel; each service has independent opacity,
+ARIA v0.17 increases PNG/GIF and Live2D import ceilings 10× and reorganizes the
+interface into compact setup pages and Inspector categories. The graphite palette
+and blue accent use the same renderer and Windows font, with no blur or UI animation.
+[See the import limits and workspace guide](in-app-help.md).
+
+For Twitch/YouTube sign-in and a chat window below the portrait preview,
+open **Chat → Streaming chat** in the left panel; each service has independent opacity,
 background color and font settings. [Account setup and operation](streaming-chat.md)
 explains the required OAuth registration and Windows-protected saved logins.
 PNG/GIF image actions and microphone talking input are also available.
@@ -35,7 +40,7 @@ systems and Windows ARM64 are not verified release targets yet.
 1. Visit [the Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml).
 2. Select a green, successful run on `main` for the version you want.
 3. Under **Artifacts**, download **aria-windows-x64**. Sign in to GitHub if asked.
-4. Extract the downloaded artifact. Extract `aria-0.16.0-windows-x64.zip` inside it
+4. Extract the downloaded artifact. Extract `aria-0.17.0-windows-x64.zip` inside it
    into a normal writable folder, for example `C:\Apps\ARIA`.
 5. Double-click **aria-desktop.exe**. The default source is Demo and Mica should move.
 
@@ -117,7 +122,7 @@ and mapping without requiring a phone or licensed model.
 - **Smooth ms:** higher values reduce jitter but add response delay. Start at 75 ms.
 - **Head / mouth gain:** scale tracking response. Parameters are clamped to their ranges.
 - **Axis correction:** invert axes if the device orientation produces reversed motion.
-- **Input Monitor → Inputs / Raw:** compare the model's final values with incoming
+- **Inspector → Tracking → Inputs / Diagnostics:** compare the model's final values with incoming
   tracking; expand controls to edit ranges, stepping, curves and dead zones.
 - **Pose / Presets:** hold individual inputs or freeze the whole avatar for images,
   save model configurations and assign Windows global hotkeys. See the

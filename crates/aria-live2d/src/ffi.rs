@@ -99,7 +99,7 @@ pub struct Aligned {
 impl Aligned {
     pub fn new(size: usize, alignment: usize) -> Result<Self> {
         ensure!(
-            size > 0 && size <= 512 * 1024 * 1024,
+            size > 0 && size as u64 <= aria_core::asset_limits::CORE_ALLOCATION,
             "Invalid or excessive Core allocation ({size} bytes)"
         );
         let layout = Layout::from_size_align(size, alignment)?;

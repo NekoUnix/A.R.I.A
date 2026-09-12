@@ -6,7 +6,15 @@ tracking into avatar parameters, and animates **Live2D `.moc3` avatars**, a buil
 2D test puppet, or your PNG/GIF artwork. The UI and preview run on **egui + wgpu**,
 without Unity or Godot.
 
-> **v0.16:** adds Twitch and YouTube sign-in and a chat companion below the
+> **v0.17:** raises PNG/GIF and Live2D import size ceilings **10×** and introduces
+> a compact graphite interface with a macOS-inspired blue accent. Setup pages are
+> **Avatar / Tracking / Output / Chat**; the Inspector groups tools into
+> **Tracking / Avatar / Stage / Poses**, with navigation fixed above scrolling settings.
+> Large source textures fit once to the GPU's supported dimensions; original files
+> and saved avatar settings are preserved. The new theme adds no blur, textures or fonts.
+> [Import limits and workspace guide](docs/in-app-help.md).
+>
+> Also includes Twitch and YouTube sign-in and a chat companion below the
 > portrait OBS preview. Display either service or both, with independent opacity,
 > background colors and text settings. [First-time account setup](docs/streaming-chat.md)
 > requires registered OAuth client credentials; no publisher client is bundled.
@@ -40,7 +48,7 @@ without Unity or Godot.
 > blending remain future work. SDK binaries and model art are not bundled.
 > [Live2D setup and compatibility →](docs/live2d.md)
 
-![A.R.I.A. Windows studio with its original Mica test puppet](docs/images/studio.png)
+![A.R.I.A. v0.17 graphite workspace with compact category navigation](docs/images/workspace-v17.png)
 
 Hover a **circled ?** beside a control for its explanation. Click it for the full
 guide in a separate resizable window, or open **Help & documentation** from the
@@ -72,7 +80,7 @@ chat for typing, moderation and native emotes. See the detailed
 ![Microphone controls with a PNG/GIF avatar](docs/images/microphone.png)
 
 1. Choose **Avatar & appearance → Open PNG / GIF** for the base artwork.
-2. Open **PNG / GIF actions** in the Input Monitor. Add Talking, Quiet, Blink,
+2. Open **Inspector → Avatar → PNG / GIF**. Add Talking, Quiet, Blink,
    custom input-range or manual/hotkey states. Higher priority wins; Idle is a fallback.
 3. Configure **Fade & transition**, **Animation on change**, and **GIF playback**
    for each action. Use **Activate / hold image** to try it and **Resume automatic
@@ -90,8 +98,8 @@ blink PNGs, an animated GIF, an SVG drawing template and an importable action li
 Export actions creates your own reusable JSON. Reopening a base image restores its
 profile; the last image avatar also reopens on startup.
 
-Up to 128 actions per avatar; 4096×4096 images and 32 MiB files. GIFs have limits of
-256 frames/128 MiB decoded and collections have a 256 MiB decoded budget. See the
+Up to 128 actions per avatar; images up to 40960 pixels per source edge and 320 MiB on disk. GIFs allow
+256 frames/1280 MiB decoded and collections have a 2560 MiB decoded budget. See the
 [offline help](docs/in-app-help.md) for all controls, units and microphone setup.
 
 ## Throws, liquid sprays and stream events
@@ -231,7 +239,7 @@ it does not implement VTS's proprietary USB transport.
 3. Select **Open Live2D avatar…** and choose your exported `.model3.json` or `.moc3`.
    Keep the complete model folder, including its texture atlases, together.
 4. Demo input animates the rig immediately. Connect your iPhone to use live tracking;
-   **Input Monitor → Inputs** edits sources, ranges, stepping and response.
+   **Inspector → Tracking → Inputs** edits sources, ranges, stepping and response.
 5. Use **Pose** to hold the avatar and export a transparent PNG. **Presets** saves
    movement setups or complete screenshot poses, with optional Windows hotkeys.
 6. Open **Expressions**, toggle the avatar's `.exp3.json` files, and select a name
@@ -321,7 +329,7 @@ To build a portable bundle with its documentation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
 ```
 
-The script runs tests and writes `dist/aria-0.16.0-windows-x64.zip`. See
+The script runs tests and writes `dist/aria-0.17.0-windows-x64.zip`. See
 [architecture](docs/architecture.md) for crate boundaries and
 [validation](docs/validation.md) for what has actually been exercised.
 

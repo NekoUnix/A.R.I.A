@@ -99,7 +99,10 @@ impl ExpressionsPanel {
         })
     }
     fn read(path: &Path) -> anyhow::Result<Expression> {
-        Expression::load(&aria_model::read_bounded(path, 1024 * 1024)?)
+        Expression::load(&aria_model::read_bounded(
+            path,
+            aria_core::asset_limits::EXPRESSION_JSON,
+        )?)
     }
     fn select(&mut self, id: Option<String>, saved: &SavedRig) {
         self.draft = id

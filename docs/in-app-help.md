@@ -2,13 +2,45 @@
 
 This guide is bundled into the application and works offline. The topic headers also provide the short hover descriptions for the circled question-mark buttons.
 
+## workspace | Finding controls in the workspace | Left: Avatar, Tracking, Output and Chat setup. Right: Tracking, Avatar, Stage and Poses tools. Category buttons remain visible while their settings scroll.
+
+### Studio setup on the left
+
+Avatar opens PNG/GIF artwork or Live2D exports and contains Cubism runtime setup, model details and stage zoom. Tracking contains phone/network connection, source selection, calibration and movement mapping. Output contains landscape, portrait and freeform canvases, OBS/Spout settings, chroma color, frame rate and Windows priority. Chat contains Twitch and YouTube account setup and chat appearance.
+
+### Inspector on the right
+
+Tracking → Inputs edits ranges, steps, smoothing and parameter mappings. Tracking → Microphone sets the audio device and talking gate. Tracking → Diagnostics shows raw packets and exports mapped values. Avatar → Physics contains overall and per-group simulation settings. Avatar → Expressions contains exp3 files and hotkeys. Avatar → PNG / GIF contains image actions, artwork, triggers, fades and animation.
+
+Stage → Objects contains pinned PNG/GIF and independent Live2D accessories, input toggles and object settings. Stage → Throws & sprays contains reusable throw/liquid designs, assets and the visual aim/physics editor. Poses → Pose controls freezes or manually positions the avatar. Poses → Presets saves named movement and screenshot configurations with shortcuts.
+
+Each page scrolls separately and remembers its scroll position. The navigation stays at the top so you can change pages without scrolling back. The Inspector's inner edge can be dragged to change its width. Collapsible sections keep detailed configuration close to the feature it controls. Save profile is always at the top left. All model-specific settings still belong to the loaded avatar; changing categories does not reset them.
+
+The graphite palette, blue accent and compact controls use the existing native renderer and installed Windows font. There are no blur passes, animated interface transitions, new font downloads or decorative image textures. Only the selected page's controls are laid out.
+
+## asset-limits | Large PNG, GIF and Live2D imports | Import size ceilings are 10× larger. PNG/GIF: 320 MiB files and 40960px source edges. Live2D: 1280 MiB moc3 files and 81920px atlas edges. Oversized textures are fitted once to your GPU.
+
+### Images and animation
+
+PNG/GIF artwork may be up to 320 MiB on disk and 40960 pixels on either source edge, with a 1280 MiB decoded RGBA budget per image or entire GIF. The dimension and byte limits both apply: a full 40960 × 40960 RGBA canvas is larger than that memory budget. GIFs still allow up to 256 frames. Each image-action, stage-image or throw-image collection has a 2560 MiB budget. Animated budgets count every frame. These are import ceilings, not preallocated memory.
+
+### Live2D exports
+
+A moc3 may be up to 1280 MiB. Model manifests, physics, tracking profiles and display-information JSON may be up to 20 MiB; expression files may be up to 10 MiB. Native model allocation is allowed up to 5120 MiB, subject to Cubism's own supported model format and allocation size. A model may reference 1–32 atlases. Each atlas file may be up to 1280 MiB compressed, 81920 pixels per source edge and 5120 MiB decoded. Retained atlas textures may total up to 10 GiB for the main model, or per independent object/throw model collection. Existing object counts and mesh-index limits still apply.
+
+### Fitting artwork to your GPU
+
+Your graphics device has a maximum texture edge independent of ARIA's file limits. When a source exceeds it, ARIA resizes the texture once while importing, preserving its aspect ratio, transparency and Live2D UV mapping. For example, a 16384 × 8192 atlas becomes 8192 × 4096 on a device with an 8192-pixel limit. The source file remains unchanged; details above the uploaded resolution are reduced. Live2D Model details lists fitted atlas sizes. The source image's identity is retained so saved avatar settings work across GPUs.
+
+Normal-size images bypass resizing. Uploaded textures and animation frames are reused during playback; moving, pinning or zooming an asset does not decode it again. Raising the ceilings does not reserve additional RAM or VRAM. Actually loading bigger artwork can use more memory and take longer, and the PC must have room for decoding, GPU copies and rendering buffers. The bottom bar shows current usage. An invalid export, missing atlas or unsupported Cubism version still needs to be corrected even when it fits the new size limits.
+
 ## image-actions | PNG and GIF image actions | Give each action its own PNG or GIF, trigger, priority and hotkey. Talking, quiet, blinking and custom input ranges select artwork automatically; manual controls hold an image for capture.
 
 ### Start a PNG or GIF avatar
 
 Use Avatar & appearance → Open PNG / GIF to select your base artwork. ARIA creates an Idle action for a new image and restores that image's saved profile when reopened. The last image avatar reopens on startup unless you launch a different model explicitly. PNG/GIF image actions belong to the base avatar's content identity, so switching avatars restores separate settings. Live2D keeps its own rendered avatar; microphone and stage-object inputs also work there.
 
-Choose PNG / GIF actions in the Input Monitor. Add images accepts several PNG/GIF files; each becomes a named action. Talking image and Blink image create useful trigger defaults. Select an action in the library to configure its artwork, trigger, transition, movement and GIF playback. Replace a missing file with Choose PNG / GIF. Reload artwork rereads changed or previously missing files. A broken file is reported and skipped, allowing another valid action to show.
+Choose PNG / GIF actions in the Inspector. Add images accepts several PNG/GIF files; each becomes a named action. Talking image and Blink image create useful trigger defaults. Select an action in the library to configure its artwork, trigger, transition, movement and GIF playback. Replace a missing file with Choose PNG / GIF. Reload artwork rereads changed or previously missing files. A broken file is reported and skipped, allowing another valid action to show.
 
 ### Choose an action
 
@@ -50,7 +82,7 @@ GIF speed ranges from 0.05× to 4×. Loop GIF repeats continuously; disable it t
 
 Stage objects play from the avatar's stage clock. Each thrown GIF uses that particle's own age, so objects emitted at different times have independent playback. Pause effects stops thrown GIFs; Pose → Freeze also holds stage GIFs and image-action GIFs. Immutable frame textures are shared between copies, and only the selected frame is drawn. Deformation, tint, pinning and alpha output continue to work on animated artwork.
 
-Images may be up to 4096×4096 with a 32 MiB file limit. GIFs are limited to 256 frames and 128 MiB of decoded RGBA frames; each avatar-action, stage-item or throw-image collection has a 256 MiB decoded budget. These limits count all GIF frames, not just the compressed file size. Resize or shorten a large GIF if needed. Standard GIF palettes usually provide binary transparency; use PNG for smooth semi-transparent static edges. No GIF audio is played. Missing or invalid files show an error without replacing the main avatar.
+Images may be up to 40960×40960 source edges with a 320 MiB file limit. GIFs are limited to 256 frames and 1280 MiB of decoded RGBA frames; each avatar-action, stage-item or throw-image collection has a 2560 MiB decoded budget. All size and memory limits apply together; source textures above the GPU edge limit are fitted once on import. These limits count all GIF frames, not just the compressed file size. Resize or shorten a large GIF if needed. Standard GIF palettes usually provide binary transparency; use PNG for smooth semi-transparent static edges. No GIF audio is played. Missing or invalid files show an error without replacing the main avatar.
 
 ## microphone | Microphone input and talking | Choose a Windows input device, meter its volume, tune sensitivity and a stable talking gate, then drive PNG/GIF actions, Live2D mouths or arbitrary input mappings without recording audio.
 
@@ -174,7 +206,7 @@ Older designs with no asset_counts use the pool rules below until edited. The ed
 
 Add asset files accepts PNG, moc3 or model3.json, GLB, glTF, VRM, FBX and OBJ. Select multiple files to build a pool. Star, Ball, 3D cube and Droplet add built-in artwork. Up and Down change the pool order; Remove removes a reference, leaving its file untouched. Keep at least one asset. Random chooses from the pool for each particle. Cycle walks the pool in order until Number to emit is reached. All emits Copies of every asset; for example, 3 assets and 4 copies produces 12 particles. Each design holds up to 256 asset references and each trigger is limited to 1,000 total particles.
 
-PNG artwork should be tightly cropped with transparent padding where needed. Maximum dimensions are 4096 × 4096, with a combined active PNG budget of 256 MiB decoded. A moc3 needs its matching model3.json and all referenced atlas PNGs beside it; select Cubism Core under Avatar setup first. Live2D throw props use independent instances at their authored default pose. They never replace or reconfigure the main avatar. Up to four different Live2D throw assets can be loaded together, with a combined 1 GiB atlas budget. Repeated particles of the same asset share its rendered image.
+PNG artwork should be tightly cropped with transparent padding where needed. Maximum dimensions are 40960 × 40960 source edges (subject to the per-image decoded limit), with a combined active PNG budget of 2560 MiB decoded. A moc3 needs its matching model3.json and all referenced atlas PNGs beside it; select Cubism Core under Avatar setup first. Live2D throw props use independent instances at their authored default pose. They never replace or reconfigure the main avatar. Up to four different Live2D throw assets can be loaded together, with a combined 10 GiB atlas budget. Repeated particles of the same asset share its rendered image.
 
 ### 3D import and resource limits
 
@@ -262,7 +294,7 @@ Click an accessory or its name in the item list to select it. Drag its rectangle
 
 Use a stable local folder for your objects. Profiles and presets reference the asset path; they do not embed or copy the file. If an image is moved, choose Replace object / locate file. Reload assets retries missing files and rereads edited artwork. Removing an item removes its settings and shortcut, leaving the original file on disk.
 
-Each avatar can have up to 32 items, including at most four Live2D objects. Each PNG image must be a real PNG, at most 4096 pixels in either dimension and 32 MiB on disk. The combined decoded PNG image budget is 256 MiB, counting shared paths once. Texture assets are cached; moving or toggling an item does not decode or upload the PNG again. Changes save locally after editing settles; Save item settings saves immediately. Missing or oversized files show an error beside the selected item without preventing other items from working.
+Each avatar can have up to 32 items, including at most four Live2D objects. Each PNG image must be a real PNG, at most 40960 pixels in either source dimension and 320 MiB on disk. The combined decoded PNG image budget is 2560 MiB, counting shared paths once. Texture assets are cached; moving or toggling an item does not decode or upload the PNG again. Changes save locally after editing settles; Save item settings saves immediately. Missing or oversized files show an error beside the selected item without preventing other items from working.
 
 ### Presets, screenshots and outputs
 
@@ -300,7 +332,7 @@ Input toggle reads the main avatar's processed tracking inputs or final paramete
 
 ### Resources and recovery
 
-There can be at most four Live2D objects within an avatar's 32-object limit. Object atlases have a combined decoded budget of 1 GiB, separate from the main avatar and PNG accessory budgets. Each model instance has its own atlases; using the same file twice still consumes two instances' memory. GPU targets, masks and other working memory add to atlas usage. Use lower-resolution exports for small accessories. Static unchanged objects reuse their rendered image; animated objects update from their own parameter changes. Hidden objects remain loaded so toggling them does not reload artwork.
+There can be at most four Live2D objects within an avatar's 32-object limit. Object atlases have a combined retained atlas budget of 10 GiB, separate from the main avatar and PNG accessory budgets. Each model instance has its own atlases; using the same file twice still consumes two instances' memory. GPU targets, masks and other working memory add to atlas usage. Use lower-resolution exports for small accessories. Static unchanged objects reuse their rendered image; animated objects update from their own parameter changes. Hidden objects remain loaded so toggling them does not reload artwork.
 
 Files are referenced locally, not embedded in profiles or presets. Keep the full export in a stable folder. Replace object / locate file changes the selected asset and resets its object-specific pose and texture setup, while preserving placement and pin controls. Reload this object retries an error or rereads edited files for just this object. Reload assets reloads all accessories. A failed object remains in the list with its error and is omitted from rendering; it does not unload the main avatar. Remove item removes its settings and shortcut, leaving original files on disk.
 
@@ -365,13 +397,13 @@ Freeze pose pauses input rules and captures the current gated visibility with th
 1. Leave Tracking & connection on Demo to check that the built-in Mica puppet moves.
 2. Open Avatar & appearance to load your own PNG or Live2D export. Live2D requires the official x64 Cubism Core DLL.
 3. Choose your tracking source and connect. Face the camera naturally and calibrate a neutral pose.
-4. In the Input Monitor, adjust mappings, pose controls, physics or expressions for this avatar.
+4. In the Inspector, adjust mappings, pose controls, physics or expressions for this avatar.
 5. Open an output under Capture & performance. For a full-resolution OBS source with a small desktop preview, use Spout2 Capture.
 6. Use Save profile to preserve the current avatar's settings. Use presets to keep named movement or pose variants.
 
 ### How this interface is organized
 
-The left panel contains studio setup. The center is your stage. The right Input Monitor contains avatar controls and diagnostics. Collapse categories to make room; scroll either side panel independently and drag its inside edge to resize it. Categories are organizational labels, not restrictions on which models can be loaded.
+The left Workspace contains Avatar, Tracking, Output and Chat setup. The center is your stage. The right Inspector groups tools into Tracking, Avatar, Stage and Poses. Navigation stays visible while pages scroll. Collapse sections to make room and resize the Inspector by its inside edge. See Finding controls in the workspace for every tool location. Categories work with all models.
 
 Every question mark opens a topic here. Search matches words in the full guide, not just titles. Back returns to the previous topic and any context captured with it. Close this window to return to the studio; tracking and output windows keep running. Use Tab to focus a question mark, then Enter or Space to open it. Diagrams are illustrations, not controls.
 
@@ -543,7 +575,7 @@ The inspector does not load or draw the Cubism model, validate its internal moc3
 
 For missing assets, restore the expected exported folder structure or export the model again. Do not rename individual atlases without updating the manifest. The report is read-only and does not repair, copy or modify source assets.
 
-## inputs | Input Monitor & parameter categories | Inputs maps live signals to avatar parameters. Pose holds values, Physics tunes secondary motion, Expressions toggles files, Presets stores variants, and Raw inspects tracking.
+## inputs | Inspector inputs & parameter categories | Inputs maps live signals to avatar parameters. Pose holds values, Physics tunes secondary motion, Expressions toggles files, Presets stores variants, and Raw inspects tracking.
 
 ### Find a control
 

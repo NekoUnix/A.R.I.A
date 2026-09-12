@@ -1,5 +1,6 @@
 //! Cubism ArtMeshes rendered once to a transparent GPU texture shared by both windows.
 use anyhow::{Context, Result, ensure};
+use aria_core::asset_limits as limits;
 use aria_live2d::{Blend, Canvas, Drawable};
 use bytemuck::{Pod, Zeroable};
 use eframe::{egui, egui_wgpu::RenderState};
@@ -63,6 +64,7 @@ pub struct ModelRenderer {
     meshes: Vec<Mesh>,
     vertex_count: usize,
     pub atlas_mib: f64,
+    pub import_notes: Vec<String>,
     palette: crate::chroma::Palette,
     vertex_staging: Vec<Vertex>,
     style_staging: Vec<u8>,
@@ -196,36 +198,51 @@ impl ModelRenderer {
         });
         let mut atlases = Vec::new();
         let mut total_bytes = 0_u64;
+        let mut import_notes = Vec::new();
         for path in paths {
             let file = File::open(path)
                 .with_context(|| format!("Cannot open texture {}", path.display()))?;
             ensure!(
-                file.metadata()?.len() <= 128 * 1024 * 1024,
-                "Texture file exceeds 128 MiB"
+                file.metadata()?.len() <= limits::ATLAS_FILE,
+                "Texture file exceeds 1280 MiB"
             );
             let mut reader = image::ImageReader::new(BufReader::new(file)).with_guessed_format()?;
             let mut limits = image::Limits::default();
-            let maximum = device.limits().max_texture_dimension_2d.min(8192);
-            limits.max_image_width = Some(maximum);
-            limits.max_image_height = Some(maximum);
-            limits.max_alloc = Some(512 * 1024 * 1024);
+            let maximum = device.limits().max_texture_dimension_2d;
+            limits.max_image_width = Some(limits::ATLAS_SIDE);
+            limits.max_image_height = Some(limits::ATLAS_SIDE);
+            limits.max_alloc = Some(limits::ATLAS_DECODED);
             reader.limits(limits);
+            let source = image::image_dimensions(path)?;
+            ensure!(
+                u64::from(source.0) * u64::from(source.1) * 4 <= limits::ATLAS_DECODED,
+                "Texture exceeds 5120 MiB decoded"
+            );
+            let [width, height] = limits::texture_size(source.0, source.1, maximum);
+            total_bytes += u64::from(width) * u64::from(height) * 4;
+            ensure!(
+                total_bytes <= limits::ATLAS_COLLECTION,
+                "Texture atlases exceed 10 GiB after GPU fitting; export smaller atlases"
+            );
             let rgba = reader
                 .decode()
                 .with_context(|| {
                     format!(
-                        "Cannot decode texture {} (maximum {maximum}px)",
+                        "Cannot decode texture {} (source maximum 81920px)",
                         path.display()
                     )
                 })?
                 .into_rgba8();
-            palette.add_rgba(&rgba);
-            let (width, height) = rgba.dimensions();
-            total_bytes += width as u64 * height as u64 * 4;
             ensure!(
-                total_bytes <= 1024 * 1024 * 1024,
-                "Texture atlases exceed 1 GiB decoded; export smaller atlases"
+                rgba.dimensions() == source,
+                "Texture dimensions changed during import; retry"
             );
+            if source != (width, height) {
+                import_notes.push(format!("{}: {} × {} atlas fitted once to {width} × {height} for this GPU. The original file is unchanged.",
+                    path.file_name().unwrap_or_default().to_string_lossy(), source.0, source.1));
+            }
+            let rgba = crate::media::fit_texture(rgba, maximum);
+            palette.add_rgba(&rgba);
             let texture = target(
                 device,
                 width,
@@ -421,6 +438,7 @@ impl ModelRenderer {
             meshes,
             vertex_count,
             atlas_mib: total_bytes as f64 / 1048576.0,
+            import_notes,
             palette,
             bounds: egui::Rect::NOTHING,
         })
@@ -818,6 +836,26 @@ mod tests {
             origin: [0.0, 0.0],
             pixels_per_unit: 1.0,
         };
+        // Exercise a source ten times the former atlas dimension ceiling on a real GPU.
+        {
+            let large = temp.path().join("wide-atlas.png");
+            image::RgbaImage::from_pixel(81_920, 80, image::Rgba([120, 80, 220, 128]))
+                .save(&large)
+                .unwrap();
+            let scene = [quad(0, 0, 4.0)];
+            let mut fitted = ModelRenderer::new(&state, canvas, &scene, &[large]).unwrap();
+            assert_eq!(fitted.import_notes.len(), 1);
+            let [w, h] =
+                limits::texture_size(81_920, 80, state.device.limits().max_texture_dimension_2d);
+            assert_eq!(
+                fitted.atlas_mib,
+                f64::from(w) * f64::from(h) * 4.0 / 1048576.0
+            );
+            fitted.render(canvas, &scene).unwrap();
+            let data = pixels(&fitted);
+            let center = (1024 * 2048 + 1024) * 4;
+            near(&data[center..center + 4], [60, 40, 110, 128]);
+        }
         // Deliberately reverse storage order: blue background must render first.
         let mut scene = vec![
             quad(0, 1, 4.0),

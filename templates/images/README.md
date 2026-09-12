@@ -30,9 +30,11 @@ Use MicLevel or MicTalking in a custom input rule to build reactions to volume.
 
 PNG/GIF files also work as pinned stage objects and throw/spray assets. Animated
 objects retain transparency and pause with the relevant scene/effect clock.
-Limits: 4096×4096, 32 MiB per file, 256 GIF frames, 128 MiB decoded per GIF,
-and 256 MiB per image collection. There may be up to 128 actions per avatar.
+Limits: 40960px source edges, 320 MiB per file, 256 GIF frames, 1280 MiB decoded per GIF,
+and 2560 MiB per image collection. There may be up to 128 actions per avatar.
 
 To regenerate the example artwork, run `python generate_templates.py` with Pillow
 installed. Editing the supplied files in your normal drawing app does not require
 Python or Rust.
+
+Source dimensions and decoded budgets both apply. Textures above the GPU edge limit are fitted once when imported; original artwork is unchanged. Larger assets require more memory.

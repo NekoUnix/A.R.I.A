@@ -434,12 +434,12 @@ impl Effects {
                 prop.render(self.time);
                 self.cache.insert(path.clone(), Asset::Prop(Box::new(prop)));
             } else {
-                let used: f32 = self
+                let used: u64 = self
                     .cache
                     .values()
                     .map(|a| match a {
-                        Asset::Image(ItemImage::Png(s)) => s.bytes() as f32,
-                        _ => 0.0,
+                        Asset::Image(ItemImage::Png(s)) => s.bytes(),
+                        _ => 0,
                     })
                     .sum();
                 let sprite =
@@ -450,11 +450,12 @@ impl Effects {
                             crate::items::is_png(path),
                             "Use PNG/GIF, moc3/model3.json, GLB/glTF, VRM, FBX or OBJ assets"
                         );
-                        crate::items::load_png(ctx, state, path, used as u64)?
+                        crate::items::load_png(ctx, state, path, used)?
                     };
                 ensure!(
-                    used + sprite.bytes() as f32 <= 256.0 * 1024.0 * 1024.0,
-                    "Active PNG throw assets exceed 256 MiB"
+                    used.saturating_add(sprite.bytes())
+                        <= aria_core::asset_limits::IMAGE_COLLECTION,
+                    "Active PNG/GIF throw assets exceed 2560 MiB"
                 );
                 self.cache
                     .insert(path.clone(), Asset::Image(ItemImage::Png(sprite)));

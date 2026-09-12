@@ -26,17 +26,18 @@ pub struct Avatar {
 }
 impl Avatar {
     pub fn load(state: &RenderState, core: &Path, mut files: ModelFiles) -> Result<Self> {
-        let bytes = aria_model::read_bounded(&files.moc, 128 * 1024 * 1024)?;
+        let bytes = aria_model::read_bounded(&files.moc, aria_core::asset_limits::MOC_FILE)?;
         let model_key = movement::model_key(&bytes);
         let model = CubismModel::load(core, &bytes, files.textures.len())
             .context("Cannot load Live2D avatar")?;
         let mut renderer =
             ModelRenderer::new(state, model.canvas, &model.drawables, &files.textures)?;
+        files.warnings.extend(renderer.import_notes.clone());
         renderer.render(model.canvas, &model.drawables)?;
         let mut initial_config = RigConfig::from_parameters(model.parameters());
         let mut imported_count = 0;
         let mut physics = files.physics.as_ref().and_then(|path| {
-            match aria_model::read_bounded(path, 2 * 1024 * 1024)
+            match aria_model::read_bounded(path, aria_core::asset_limits::MODEL_JSON)
                 .and_then(|b| Physics::load(&b, model.parameters()))
             {
                 Ok(physics) => {
@@ -52,7 +53,7 @@ impl Avatar {
             }
         });
         if let Some(path) = &files.tracking_profile {
-            match aria_model::read_bounded(path, 2 * 1024 * 1024)
+            match aria_model::read_bounded(path, aria_core::asset_limits::MODEL_JSON)
                 .and_then(|b| rig::import_profile(&b, model.parameters()))
             {
                 Ok(profile) => {
@@ -179,7 +180,10 @@ fn read_labels(path: &Path) -> Result<BTreeMap<String, String>> {
         #[serde(rename = "Name")]
         name: String,
     }
-    let info: Info = serde_json::from_slice(&aria_model::read_bounded(path, 2 * 1024 * 1024)?)?;
+    let info: Info = serde_json::from_slice(&aria_model::read_bounded(
+        path,
+        aria_core::asset_limits::MODEL_JSON,
+    )?)?;
     Ok(info
         .parameters
         .into_iter()
@@ -262,7 +266,7 @@ mod tests {
         assert!(!files.expressions.is_empty());
         let mut model = CubismModel::load(
             Path::new(&core),
-            &aria_model::read_bounded(&files.moc, 128 * 1024 * 1024).unwrap(),
+            &aria_model::read_bounded(&files.moc, aria_core::asset_limits::MOC_FILE).unwrap(),
             files.textures.len(),
         )
         .unwrap();
@@ -389,13 +393,16 @@ mod tests {
         let files = aria_model::load_files(Path::new(&path)).unwrap();
         let mut model = CubismModel::load(
             Path::new(&core),
-            &aria_model::read_bounded(&files.moc, 128 * 1024 * 1024).unwrap(),
+            &aria_model::read_bounded(&files.moc, aria_core::asset_limits::MOC_FILE).unwrap(),
             files.textures.len(),
         )
         .unwrap();
         let mut profile = rig::import_profile(
-            &aria_model::read_bounded(files.tracking_profile.as_ref().unwrap(), 2 * 1024 * 1024)
-                .unwrap(),
+            &aria_model::read_bounded(
+                files.tracking_profile.as_ref().unwrap(),
+                aria_core::asset_limits::MODEL_JSON,
+            )
+            .unwrap(),
             model.parameters(),
         )
         .unwrap();
@@ -417,7 +424,11 @@ mod tests {
             );
         }
         let mut physics = Physics::load(
-            &aria_model::read_bounded(files.physics.as_ref().unwrap(), 2 * 1024 * 1024).unwrap(),
+            &aria_model::read_bounded(
+                files.physics.as_ref().unwrap(),
+                aria_core::asset_limits::MODEL_JSON,
+            )
+            .unwrap(),
             model.parameters(),
         )
         .unwrap();

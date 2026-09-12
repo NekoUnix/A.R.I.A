@@ -5,6 +5,33 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Local verification on 2026-09-12
 
+### v0.17 large imports and compact workspace
+
+- Formatting and strict Clippy passed for every workspace target and feature.
+  **117 default tests passed**, with twelve environment-dependent tests ignored
+  by default. New import regressions load a 40960×80 PNG padded past the former
+  32 MiB file limit, retain source identity and geometry across GPU limits, account
+  for uploaded bytes, and verify transparency without color bleeding. A 3 MiB
+  model manifest loads in both inspection and runtime paths; the new 20 MiB bound
+  still rejects an over-limit file.
+- The native DX12 clipping/blending test also passed explicitly. It now uploads
+  an 81920×80 atlas through the actual renderer, verifies fitting notes and retained
+  memory, and reads back the expected translucent color. Existing masks, inverted
+  clipping, blending, culling and draw-order checks remain part of that test.
+- Native Windows captures verified the reorganized Avatar, Tracking, Output,
+  Chat, PNG/GIF and Physics pages, including the user's local Live2D model and its
+  29 physics groups. GIF avatar/accessory/throw playback still advances, and a
+  frozen composited PNG remains byte-identical with transparent areas.
+- A short release-build comparison used fresh settings and the built-in Mica
+  avatar, with 8 seconds of warmup and about 12 seconds sampled per version.
+  v0.16 / v0.17 machine-normalized CPU was 0.235% / 0.241%; average working RAM
+  was 116.9 / 115.6 MiB and private commit was 487.1 / 484.7 MiB. This single-host
+  smoke comparison found similar overhead; it is not a general performance benchmark.
+- Size ceilings are not allocations. Larger loaded content can require more RAM
+  and VRAM. Device texture limits still apply; oversized source artwork is fitted
+  once at import. No full 1280 MiB moc3 export was available for a native Core test.
+  The test model and Cubism Core remain local and are excluded from the package.
+
 ### v0.16 Twitch / YouTube chat companion
 
 - Formatting and strict Clippy passed for all workspace targets/features.

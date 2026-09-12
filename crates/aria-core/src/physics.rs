@@ -318,7 +318,10 @@ pub struct Physics {
 
 impl Physics {
     pub fn load(bytes: &[u8], parameters: &[RigParameter]) -> Result<Self> {
-        ensure!(bytes.len() <= 2 * 1024 * 1024, "Physics file exceeds 2 MiB");
+        ensure!(
+            bytes.len() <= crate::asset_limits::MODEL_JSON,
+            "Physics file exceeds 20 MiB"
+        );
         let doc: Document = serde_json::from_slice(bytes)?;
         ensure!(doc.version == 3, "Expected physics3 Version 3");
         ensure!(doc.physics_settings.len() <= 256, "Too many physics groups");
