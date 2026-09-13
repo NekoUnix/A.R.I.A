@@ -1,6 +1,8 @@
 # A.R.I.A. — Avatar Studio (Alpha)
 
 [![Windows build](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml/badge.svg)](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml)
+[![Linux build](https://img.shields.io/github/check-runs/NekoUnix/A.R.I.A/main?nameFilter=native-build%20%28ubuntu-24.04%29&label=Linux&logo=github)](https://github.com/NekoUnix/A.R.I.A/actions/workflows/platforms.yml?query=branch%3Amain)
+[![macOS build](https://img.shields.io/github/check-runs/NekoUnix/A.R.I.A/main?nameFilter=native-build%20%28macos-latest%29&label=macOS&logo=github)](https://github.com/NekoUnix/A.R.I.A/actions/workflows/platforms.yml?query=branch%3Amain)
 [![Repository checks](https://github.com/NekoUnix/A.R.I.A/actions/workflows/repository.yml/badge.svg)](https://github.com/NekoUnix/A.R.I.A/actions/workflows/repository.yml)
 [![Alpha packages](https://github.com/NekoUnix/A.R.I.A/actions/workflows/alpha-build.yml/badge.svg)](https://github.com/NekoUnix/A.R.I.A/actions/workflows/alpha-build.yml)
 
