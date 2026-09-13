@@ -310,26 +310,32 @@ impl OutputWindows {
         changed |= crate::help::control(ui, "spout", |ui| {
             ui.checkbox(
                 &mut config.send_to_obs,
-                "Send full resolution to OBS (Spout)",
+                format!(
+                    "Send full resolution to OBS ({})",
+                    crate::native_output::LABEL
+                ),
             )
         })
         .changed();
         theme::caption(
             ui,
-            "Small desktop preview · full-resolution OBS via Spout2.",
+            "Small desktop preview · OBS receives the full selected canvas resolution through the native output source.",
         );
+        let sender_hint = crate::native_output::sender_hint(SENDERS[selected]);
         ui.horizontal_wrapped(|ui| {
-            ui.label(egui::RichText::new(SENDERS[selected]).monospace().small());
+            ui.label(egui::RichText::new(&sender_hint).monospace().small());
             if crate::help::control(ui, "spout", |ui| ui.small_button("Copy sender")).clicked() {
-                ui.ctx().copy_text(SENDERS[selected].into());
+                ui.ctx().copy_text(sender_hint.clone());
             }
         });
         ui.collapsing("How OBS captures this canvas", |ui| {
-            theme::caption(ui, "Previews stay small to save screen space. OBS receives the full canvas resolution through Spout2 Capture, regardless of preview size. Window Capture only captures the small preview.");
-        ui.hyperlink_to(
-            "Get the OBS Spout2 plugin ↗",
-            "https://github.com/Off-World-Live/obs-spout2-plugin/releases",
-        );
+            theme::caption(ui, "Previews stay small to save screen space. OBS receives the full canvas resolution through the native output source, regardless of preview size. Window Capture only captures the small preview.");
+        #[cfg(windows)]
+        ui.hyperlink_to("Get the OBS Spout2 plugin ↗", "https://github.com/Off-World-Live/obs-spout2-plugin/releases");
+        #[cfg(target_os = "macos")]
+        ui.hyperlink_to("Syphon setup ↗", concat!("https://github.com/NekoUnix/A.R.I.A/blob/v", env!("CARGO_PKG_VERSION"), "/docs/obs-output.md#macos-syphon"));
+        #[cfg(target_os = "linux")]
+        ui.hyperlink_to("Install the ARIA Canvas OBS plugin ↗", concat!("https://github.com/NekoUnix/A.R.I.A/blob/v", env!("CARGO_PKG_VERSION"), "/docs/obs-output.md#linux-aria-canvas"));
         });
         let size = config.pixels(selected);
         if selected < 2 {
@@ -424,7 +430,7 @@ impl OutputWindows {
         } else if config.background == Background::Transparent {
             theme::caption(
                 ui,
-                "Spout sends the alpha channel directly. In Spout2 Capture, enable transparency and select premultiplied alpha if offered. Desktop Window Capture transparency depends on the capture method.",
+                "Native OBS output preserves premultiplied alpha. Choose Transparent and follow the connection instructions for your platform. Desktop Window Capture transparency depends on the capture method.",
             );
         }
         if let Some(message) = &self.message {

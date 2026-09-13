@@ -1,18 +1,26 @@
-# A.R.I.A. — Avatar Studio
+# A.R.I.A. — Avatar Studio (Alpha)
 
 [![Windows build](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml/badge.svg)](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml)
 [![Repository checks](https://github.com/NekoUnix/A.R.I.A/actions/workflows/repository.yml/badge.svg)](https://github.com/NekoUnix/A.R.I.A/actions/workflows/repository.yml)
+[![Alpha packages](https://github.com/NekoUnix/A.R.I.A/actions/workflows/alpha-build.yml/badge.svg)](https://github.com/NekoUnix/A.R.I.A/actions/workflows/alpha-build.yml)
 
 [User guides](docs/README.md) · [Contribute](CONTRIBUTING.md) ·
 [Code review and releases](docs/development.md) · [Report a bug](https://github.com/NekoUnix/A.R.I.A/issues/new/choose)
 
-A Windows-first avatar app built in Rust with egui and wgpu. Run **Live2D**, **VRM
+A cross-platform Alpha avatar app built in Rust with egui and wgpu. Run **Live2D**, **VRM
 0.x / 1.0**, or **PNG/GIF** avatars, connect tracking, build expressions and effects,
 and send compact-preview, full-resolution canvases to OBS.
 
-![Odette Live2D in ARIA v0.24](docs/images/workspace-v24.png)
+![Odette Live2D in ARIA v0.25 Alpha output controls](docs/images/outputs-alpha-v25.png)
 
-## New in v0.24
+## New in v0.25 Alpha
+
+- Native OBS outputs: Windows Spout2, macOS Syphon and Linux ARIA Canvas.
+- Windows, Linux, Apple Silicon and Intel Mac builds, plus Fedora RPM and Arch packages.
+- Slower, individual tracking exercises with an illustrated live face and selectable takes.
+- All builds display Alpha. See [native installation](docs/platforms.md) and [OBS setup](docs/obs-output.md).
+
+### Also included from v0.24
 
 - Updated Windows renderer to egui/eframe 0.36 and wgpu 30, including native
   outputs, model rendering, mouse interaction and help windows.
@@ -44,18 +52,19 @@ and send compact-preview, full-resolution canvases to OBS.
 | Mapping, calibration, expressions, physics and presets | Implemented | Broader rig/device acceptance |
 | Webcam / iPhone / controller input | Partial hardware validation | Physical camera, phone and controller testing |
 | NVIDIA RTX tracking | Experimental adapter | Native SDK build and actual GPU inference validation |
-| OBS outputs and Spout | Working on Windows | Linux/macOS sharing integrations planned |
+| Native OBS outputs | Alpha: Windows Spout2, macOS Syphon, Linux ARIA Canvas | Linux uses asynchronous readback; broader GPU/OBS acceptance remains |
 | Themes, offline help and local API | Implemented and tested | Continued documentation/device coverage |
 | Twitch / YouTube chat | Implemented; live-account testing pending | Provider/account acceptance |
 | Cubism runtime process and Linux/macOS builds | Experimental native platform support | Native-machine graphics/SDK validation; use each OS's Core library |
-| Signed installers and native OS packages | Planned | First release is an unsigned Windows portable ZIP |
+| Native OS packages | Alpha | Windows ZIP, macOS Intel/ARM app ZIPs, Linux tarball, Fedora RPM and Arch packages |
+| Developer signing and macOS notarization | Planned | Alpha packages are unsigned or locally ad-hoc signed |
 
 The [full current/planned feature grid](docs/README.md#current-and-planned-features)
 identifies what works, what is partial, and what is not implemented.
 
 ## Start on Windows
 
-1. Download `aria-0.24.0-windows-x64.zip` from [Releases](https://github.com/NekoUnix/A.R.I.A/releases).
+1. Download `aria-0.25.0-alpha.1-windows-x64.zip` from [Releases](https://github.com/NekoUnix/A.R.I.A/releases).
 2. Extract the ZIP into a writable folder. CI development builds are also available
    as **aria-windows-x64** artifacts from the [Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml); extract their outer artifact ZIP first.
 3. Run `aria-desktop.exe`. The built-in Mica puppet needs no extra files.
@@ -67,10 +76,22 @@ identifies what works, what is partial, and what is not implemented.
    requires its optional runtime installation; RTX additionally requires NVIDIA's SDK.
 6. Run **Guided tracking setup**, review the learned motion and save for this avatar.
 7. Open **Output** to enable landscape 16:9, portrait 9:16 and/or Freeform. Use
-   the named Spout sender in OBS for the configured full-resolution canvas.
+   the matching native source in OBS for the configured full-resolution canvas.
 
 Detailed [Windows installation and build instructions](docs/windows.md),
 [illustrated documentation index](docs/README.md), and [compatibility / validation](docs/validation.md).
+
+## Start on Linux or macOS
+
+Use the [Linux installation guide](docs/linux.md) for verified downloads, runtime
+dependencies, native OBS setup, updates and removal:
+
+- [Ubuntu 24.04 portable installation](docs/linux.md#ubuntu-installation)
+- [Fedora 44 RPM installation](docs/linux.md#fedora-installation)
+- [Arch Linux package installation](docs/linux.md#arch-installation)
+
+The guide uses the actual published Fedora filenames containing `.alpha.1`.
+For Intel or Apple Silicon Macs, follow the [native package guide](docs/platforms.md#install-an-alpha-release).
 
 ## Your workspace
 

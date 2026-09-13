@@ -52,6 +52,14 @@ pub fn assets() -> PathBuf {
         .join("tracking");
     if beside.join("worker.py").is_file() {
         beside
+    } else if cfg!(target_os = "macos")
+        && beside
+            .parent()
+            .unwrap()
+            .join("../Resources/tracking/worker.py")
+            .is_file()
+    {
+        beside.parent().unwrap().join("../Resources/tracking")
     } else {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tracking")
     }

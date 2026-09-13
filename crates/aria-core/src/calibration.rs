@@ -1,4 +1,5 @@
 //! Personal tracking ranges. Calibration never changes a rig's authored outputs.
+pub mod guided;
 use crate::rig::{self, Inputs};
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};

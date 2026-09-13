@@ -99,3 +99,15 @@ Reference-sample attribution is in [tracking/nvidia/NOTICE.md](tracking/nvidia/N
 Current documentation screenshots include the owner's supplied Odette Live2D,
 GIF and VRM artwork at their explicit request. The code license does not license
 the depicted art. See [screenshot provenance](docs/images/README.md).
+
+## Native OBS additions (v0.25 Alpha)
+
+macOS bundles the official [Syphon framework](https://github.com/Syphon/Syphon-Framework)
+at revision `71351d4b484cd2d1917867f7846a5cdca724552d`. Its BSD-style notices,
+including Metal contributors, are in [docs/licenses/syphon.txt](docs/licenses/syphon.txt).
+The ARIA Objective-C adapter is original MIT code.
+
+The separate Linux **ARIA Canvas** OBS plugin links libobs and is GPL-2.0-or-later.
+Its license, complete source and build instructions accompany every plugin binary
+under [native/linux-canvas](native/linux-canvas/README.md). The transport and ARIA
+application remain MIT licensed. OBS itself is not bundled.

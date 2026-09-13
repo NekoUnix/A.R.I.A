@@ -218,3 +218,10 @@ Large models can briefly pause the UI while importing; use a release build for n
   defaults. Models relying on motion/pose/layout setup may need those features added.
 
 See [validation](validation.md) for the actual model and GPU checks performed.
+
+
+The SDK download button names your current OS and its library extension. All desktop
+variants intentionally open the same official Native SDK page, which contains the
+license form and SDK download. After extraction, choose the SDK folder so ARIA
+resolves the native library; the official library-list link shows architecture paths.
+This is not a direct DLL download, and the Unity/Web SDK downloads are different products.

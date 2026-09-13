@@ -1,7 +1,11 @@
 //! A draft-only calibration tour: preview is an overlay; closing never saves it.
+mod face;
 use crate::{help, theme};
 use aria_core::{
-    calibration::{Capture, Phase, Profile, Proposal},
+    calibration::{
+        Profile, Proposal,
+        guided::{MAX_TAKES, Session},
+    },
     rig::{self, Inputs, RigParameter},
 };
 use eframe::egui;
@@ -19,8 +23,15 @@ pub struct Guide {
     context: String,
     pub preview: bool,
     stage: usize,
-    capture: Capture,
-    recording: bool,
+    capture: Session,
+    seconds: f64,
+    prepare_seconds: f64,
+    only_assigned: bool,
+    return_to_review: bool,
+    live_inputs: Inputs,
+    notice: Option<String>,
+    #[cfg(any(test, feature = "screenshots"))]
+    rehearsal_face: Option<Inputs>,
     countdown: Option<f64>,
     original: Profile,
     origin: aria_core::Vec3,
@@ -32,7 +43,6 @@ pub struct Guide {
     now: f64,
     pub message: Option<String>,
 }
-const PHASES: [Phase; 4] = [Phase::Neutral, Phase::Head, Phase::Face, Phase::Gaze];
 impl Guide {
     pub fn start(
         &mut self,
@@ -57,10 +67,15 @@ impl Guide {
                 .or_default()
                 .push(id.clone());
         }
+        let used: Vec<_> = bindings.keys().cloned().collect();
+        let only_assigned = !used.is_empty();
         *self = Self {
             open: true,
             context,
-            capture: Capture::new(names),
+            capture: Session::new(names, only_assigned.then_some(used.as_slice())),
+            seconds: 12.0,
+            prepare_seconds: 5.0,
+            only_assigned,
             original: config.tracking.clone(),
             origin: if config.tracking.ranges.is_empty() {
                 origin
@@ -78,8 +93,7 @@ impl Guide {
     }
     pub fn check_context(&mut self, context: &str) {
         if self.open && self.context != context {
-            self.open = false;
-            self.preview = false;
+            self.close();
             self.message = Some("Tracking setup closed because the avatar, connection or mapping changed. Your saved calibration was kept; reopen the guide to capture again.".into());
         }
     }
@@ -105,10 +119,40 @@ impl Guide {
         }
         profile
     }
+    fn close(&mut self) {
+        self.open = false;
+        self.preview = false;
+        self.countdown = None;
+        self.capture = Session::default();
+        #[cfg(any(test, feature = "screenshots"))]
+        {
+            self.rehearsal_face = None;
+        }
+        self.live_inputs.clear();
+        self.rows.clear();
+    }
+    fn reviewing(&self) -> bool {
+        self.stage == self.capture.exercises.len() + 1
+    }
+    fn duration(&self) -> f64 {
+        if self.stage == 1 { 8.0 } else { self.seconds }
+    }
     pub fn observe(&mut self, sequence: u64, now: f64, live: bool, inputs: &Inputs) {
-        self.live = live;
+        if !self.open {
+            return;
+        }
         self.now = now;
-        if !self.open || !(1..=4).contains(&self.stage) {
+        #[cfg(any(test, feature = "screenshots"))]
+        if let Some(face) = &self.rehearsal_face {
+            self.live = true;
+            self.live_inputs.clone_from(face);
+            return;
+        }
+        self.live = live;
+        if live {
+            self.live_inputs.clone_from(inputs);
+        }
+        if self.stage == 0 || self.reviewing() {
             return;
         }
         if let Some(start) = self.countdown {
@@ -116,36 +160,65 @@ impl Guide {
                 self.countdown = Some(now);
                 return;
             }
-            if now - start < 3.0 {
+            if now - start < self.prepare_seconds {
                 return;
             }
             self.countdown = None;
-            self.recording = true;
-            self.capture.begin(PHASES[self.stage - 1]);
+            self.capture.begin(self.stage - 1);
         }
-        if !self.recording {
-            return;
-        }
-        let phase = PHASES[self.stage - 1];
-        self.capture.sample(phase, sequence, now, live, inputs);
-        if self.capture.complete(phase) {
-            self.recording = false;
-            self.next();
+        if self
+            .capture
+            .sample(sequence, now, live, inputs, self.duration())
+        {
+            self.notice = Some("Take captured — compare it below or try again.".into());
         }
     }
+    fn refresh_rows(&mut self, all: bool) {
+        let changed = (!all).then(|| self.capture.exercises[self.stage - 1].inputs.clone());
+        let mut proposals = self.capture.proposals();
+        if let Some(changed) = changed {
+            for old in std::mem::take(&mut self.rows) {
+                if !changed.contains(&old.input)
+                    && let Some(new) = proposals.iter_mut().find(|p| p.input == old.input)
+                {
+                    *new = old;
+                }
+            }
+        }
+        self.rows = proposals;
+    }
     fn next(&mut self) {
-        self.recording = false;
+        self.capture.cancel_take();
         self.countdown = None;
         self.preview = false;
-        self.stage += 1;
-        if self.stage == 5 {
-            self.rows = self.capture.proposals();
+        self.notice = None;
+        if self.return_to_review && self.stage == 1 && self.capture.captured() <= 1 {
+            self.rows.clear();
+            self.return_to_review = false;
+            self.stage = 2;
+        } else if self.return_to_review {
+            self.refresh_rows(self.stage == 1);
+            self.stage = self.capture.exercises.len() + 1;
+            self.return_to_review = false;
+        } else {
+            self.stage += 1;
+            if self.reviewing() {
+                self.rows = self.capture.proposals();
+            }
         }
     }
     fn skip(&mut self) {
-        // Discard even a partly recorded exercise; skip must preserve saved behavior.
-        self.capture.begin(PHASES[self.stage - 1]);
+        if self.stage <= 1 {
+            return;
+        }
+        self.capture.select(self.stage - 1, None);
         self.next();
+    }
+    fn prepare(&mut self) {
+        self.capture.cancel_take();
+        self.preview = false;
+        self.notice = None;
+        self.countdown = Some(self.now);
     }
     pub fn measure(
         &self,
@@ -158,6 +231,16 @@ impl Guide {
             ..Default::default()
         }
         .measure(frame, settings, time)
+    }
+    fn is_rehearsal(&self) -> bool {
+        #[cfg(any(test, feature = "screenshots"))]
+        {
+            self.rehearsal_face.is_some()
+        }
+        #[cfg(not(any(test, feature = "screenshots")))]
+        {
+            false
+        }
     }
     pub fn show(
         &mut self,
@@ -174,68 +257,291 @@ impl Guide {
         let mut cancel = false;
         egui::Window::new("Set up tracking for your avatar")
             .id(egui::Id::new("tracking-setup-guide"))
-            .open(&mut open).default_width(570.0).default_pos(egui::pos2(690.0, 110.0))
+            .open(&mut open)
+            .default_width(760.0).min_width(600.0)
+            .default_height((ctx.content_rect().height() - 160.0).clamp(360.0, 780.0))
+            .default_pos(egui::pos2((ctx.content_rect().width() - 800.0).max(20.0), 80.0))
             .resizable(true).collapsible(true).show(ctx, |ui| {
                 help::label(ui, "Personal tracking setup", "tracking-guide");
-                theme::caption(ui, "Connect → Neutral → Head → Expressions → Gaze → Try & save");
-                ui.separator();
+                theme::caption(ui, "One movement at a time · Repeat any take · Continue when you are ready");
                 if !live_pose {
                     ui.colored_label(egui::Color32::LIGHT_YELLOW, "A held pose can hide tracking changes.");
                     if ui.button("Resume live movement").clicked() { action = Some(Action::Resume); }
                 }
-                if microphone { theme::caption(ui, "Microphone control is active and may override face-tracker mouth inputs. Disable it in Microphone to check facial lip sync."); }
+                if microphone { theme::caption(ui, "Microphone control may override facial mouth tracking. Turn it off in Microphone to check facial lip sync."); }
                 ui.label(format!("Tracker: {status}"));
-                egui::ScrollArea::vertical().max_height((ctx.content_rect().height() - 330.0).clamp(120.0, 420.0)).show(ui, |ui| {
-                    match self.stage {
-                        0 => {
-                            ui.heading("1. Connect and get comfortable");
-                            ui.label("Put your camera or phone at eye level, use even lighting, and sit at your usual streaming distance. Keep the same position throughout setup.");
-                            ui.label("For webcam: select MediaPipe or NVIDIA RTX in Tracking, install its runtime, choose a camera and press Start camera. Return when the status says Tracking live.");
-                            ui.label("For iPhone VTube Studio: enable 3rd Party PC Clients, use the phone's IPv4 address, and put both devices on the same network. Select iPhone tracking and connect in ARIA.");
-                            if ui.button("Open connection settings").clicked() { action = Some(Action::Connection); }
-                            ui.label(format!("Found {} model input assignments. Their output ranges, directions, physics and expressions will be preserved.", self.bindings.values().map(Vec::len).sum::<usize>()));
-                            self.unmapped_ui(ui);
-                            theme::caption(ui, "Demo movement and microphone-only input cannot calibrate your face. A live face signal is required. The guide measures comfortable motion; move naturally, without straining.");
-                            if ui.add_enabled(self.live, egui::Button::new("Begin personal setup")).clicked() { self.stage = 1; }
-                        }
-                        1..=4 => {
-                            let phase = PHASES[self.stage - 1];
-                            let (title, instruction, diagram) = match phase {
-                                Phase::Neutral => ("2. Your relaxed, neutral pose", "Look straight at the camera. Keep your eyes naturally open, lips relaxed and closed, and eyebrows at rest. Hold still for three seconds.", "Eyes open  ·  Face forward  ·  Mouth relaxed"),
-                                Phase::Head => ("3. Your comfortable head movement", "Slowly turn left and right, nod up and down, then tilt toward each shoulder. Repeat and briefly hold each comfortable limit. Return to center between movements.", "Turn ← →     Nod ↑ ↓     Tilt ↶ ↷"),
-                                Phase::Face => ("4. Your facial expressions", "Blink and hold your eyes closed briefly. Open your mouth, smile and frown, raise and lower your brows, pucker and puff your cheeks. Use tongue or extra mouth shapes if your tracker and model support them. Repeat comfortably.", "Relax → Express → Hold briefly → Relax"),
-                                Phase::Gaze => ("5. Your eye movement", "Keep your head still. Look left, right, up and down with your eyes. Hold each direction briefly, then look back at the camera. Skip if your tracker does not provide eye gaze.", "        ↑\nLook  ←  •  →\n        ↓"),
-                            };
-                            ui.heading(title); ui.label(instruction);
-                            egui::Frame::group(ui.style()).show(ui, |ui| { ui.monospace(diagram); });
-                            if let Some(start) = self.countdown {
-                                ui.heading(if self.live { format!("Get ready… {}", (3.0 - (self.now - start)).ceil().max(1.0) as u32) } else { "Waiting for a live face…".into() });
-                            } else if self.recording {
-                                ui.add(egui::ProgressBar::new((self.capture.elapsed / phase.seconds()).min(1.0) as f32).text(format!("{:.1} / {:.0} seconds · {} fresh samples", self.capture.elapsed, phase.seconds(), self.capture.samples)));
-                                if !self.live { ui.colored_label(egui::Color32::LIGHT_YELLOW, "Paused — face or connection lost. Return to the camera to continue."); }
-                            } else {
-                                theme::caption(ui, format!("A 3-second countdown is followed by {:.0} seconds of capture. The next page opens automatically.", phase.seconds()));
-                            }
-                            ui.horizontal(|ui| {
-                                if ui.add_enabled(self.live, egui::Button::new(if self.recording || self.countdown.is_some() { "Restart capture" } else { "Start capture" })).clicked() {
-                                    self.recording = false; self.countdown = Some(self.now);
-                                }
-                                if self.stage > 1 && ui.button("Skip this movement").clicked() { self.skip(); }
-                            });
-                            theme::caption(ui, "Only fresh face packets count. Unsupported or still signals are left unchanged. Stay within a comfortable range; you can retry any movement in the review.");
-                        }
-                        _ => self.review_ui(ui),
-                    }
-                });
                 ui.separator();
-                if self.stage == 5 { self.review_actions(ui, &mut action, live_pose); }
+                let footer = if self.stage > 0 && !self.reviewing() { 86.0 } else { 42.0 };
+                egui::ScrollArea::vertical().id_salt("personal-guide-body")
+                    .max_height((ui.available_height() - footer).max(140.0))
+                    .auto_shrink([false, false])
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
+                    .show(ui, |ui| {
+                        let exercise = self.stage.checked_sub(1).and_then(|i| self.capture.exercises.get(i));
+                        let cue = exercise.map_or("neutral", |e| e.id.as_str());
+                        face::show(ui, &self.live_inputs, self.live, cue, self.is_rehearsal());
+                        ui.add_space(8.0);
+                        match self.stage {
+                            0 => self.connection_ui(ui, &mut action),
+                            _ if self.reviewing() => {
+                                self.review_ui(ui);
+                                if self.reviewing() { self.review_actions(ui, &mut action, live_pose); }
+                            }
+                            _ => self.exercise_ui(ui),
+                        }
+                    });
+                ui.separator();
+                if self.stage > 0 && !self.reviewing() { self.exercise_actions(ui); }
                 if ui.button("Cancel / keep saved settings").clicked() { cancel = true; }
             });
-        if !open || cancel {
-            self.open = false;
-            self.preview = false;
+        if !open || cancel || !self.open {
+            self.close();
+        }
+        if self.countdown.is_some() || self.capture.active.is_some() || self.live {
+            ctx.request_repaint_after(std::time::Duration::from_millis(33));
         }
         action
+    }
+    fn connection_ui(&mut self, ui: &mut egui::Ui, action: &mut Option<Action>) {
+        ui.heading("Connect your face tracker");
+        ui.label("Place your camera or phone at eye level, with even lighting and your usual streaming distance. The illustrated face above should follow you before you begin.");
+        ui.collapsing("Connection instructions", |ui| {
+            ui.label("Webcam: choose MediaPipe or NVIDIA RTX in Tracking, install its runtime, choose a camera and press Start camera.");
+            ui.label("iPhone VTube Studio: enable 3rd Party PC Clients, enter the phone's IPv4 address in ARIA, and connect. Both devices need a reachable network.");
+        });
+        if ui.button("Open connection settings").clicked() {
+            *action = Some(Action::Connection);
+        }
+        theme::caption(
+            ui,
+            format!(
+                "{} model assignments found. Their output limits, directions, expressions and physics are preserved.",
+                self.bindings.values().map(Vec::len).sum::<usize>()
+            ),
+        );
+        if ui
+            .checkbox(
+                &mut self.only_assigned,
+                "Only exercises used by this avatar's assignments",
+            )
+            .changed()
+        {
+            let used: Vec<_> = self.bindings.keys().cloned().collect();
+            self.capture = Session::new(
+                self.capture.known_names().to_vec(),
+                self.only_assigned.then_some(used.as_slice()),
+            );
+        }
+        self.timing_ui(ui);
+        theme::caption(
+            ui,
+            format!(
+                "{} individual exercises including neutral. Every take stops for review. You can skip unavailable movements and retain your existing settings.",
+                self.capture.exercises.len()
+            ),
+        );
+        if ui
+            .add_enabled(
+                self.live && self.capture.exercises.len() > 1,
+                egui::Button::new("Begin with neutral pose"),
+            )
+            .clicked()
+        {
+            self.stage = 1;
+        }
+        theme::caption(
+            ui,
+            "Demo animation and microphone-only input cannot calibrate a face. No camera video or face images are recorded by this guide.",
+        );
+        self.unmapped_ui(ui);
+    }
+    fn timing_ui(&mut self, ui: &mut egui::Ui) {
+        ui.collapsing("Capture timing", |ui| {
+            ui.add(egui::Slider::new(&mut self.prepare_seconds, 3.0..=10.0).integer().text("Preparation seconds"));
+            ui.add(egui::Slider::new(&mut self.seconds, 8.0..=30.0).integer().text("Movement seconds per take"));
+            theme::caption(ui, "Default: 5 seconds to prepare, then 12 seconds for one movement. Neutral uses 8 seconds. Face loss pauses recording. Finishing never opens another exercise automatically.");
+        });
+    }
+    fn exercise_ui(&mut self, ui: &mut egui::Ui) {
+        let index = self.stage - 1;
+        let exercise = &self.capture.exercises[index];
+        theme::caption(
+            ui,
+            format!(
+                "EXERCISE {} OF {} · {} exercises with a selected take",
+                index + 1,
+                self.capture.exercises.len(),
+                self.capture.captured()
+            ),
+        );
+        ui.heading(&exercise.title);
+        ui.label(&exercise.instruction);
+        if index == 0 && self.capture.captured() > 1 {
+            ui.colored_label(egui::Color32::LIGHT_YELLOW, "Selecting a different neutral take resets the draft's movement takes. Saved settings remain intact.");
+        }
+        if let Some(start) = self.countdown {
+            ui.heading(if self.live {
+                format!(
+                    "Get ready… {}",
+                    (self.prepare_seconds - (self.now - start)).ceil().max(1.0) as u32
+                )
+            } else {
+                "Waiting for a live face…".into()
+            });
+        } else if let Some((_, take)) = &self.capture.active {
+            ui.add(
+                egui::ProgressBar::new((take.elapsed / self.duration()).min(1.0) as f32).text(
+                    format!(
+                        "{:.1} / {:.0} seconds · {} fresh samples",
+                        take.elapsed,
+                        self.duration(),
+                        take.samples
+                    ),
+                ),
+            );
+            if !self.live {
+                ui.colored_label(
+                    egui::Color32::LIGHT_YELLOW,
+                    "Paused — face or connection lost. Return to the camera to continue.",
+                );
+            }
+        } else {
+            theme::caption(
+                ui,
+                format!(
+                    "{:.0} seconds to prepare → {:.0} seconds to capture → review your take",
+                    self.prepare_seconds,
+                    self.duration()
+                ),
+            );
+        }
+        let busy = self.countdown.is_some() || self.capture.active.is_some();
+        if busy {
+            if ui.button("Stop this take").clicked() {
+                self.capture.cancel_take();
+                self.countdown = None;
+            }
+        } else {
+            if let Some(message) = &self.notice {
+                ui.colored_label(theme::accent("Tracking"), message);
+            }
+            let has_room = self.capture.takes(index).len() < MAX_TAKES;
+            if ui
+                .add_enabled(
+                    self.live && has_room,
+                    egui::Button::new(if self.capture.takes(index).is_empty() {
+                        "Record a take"
+                    } else {
+                        "Record another take"
+                    }),
+                )
+                .clicked()
+            {
+                self.prepare();
+            }
+            if !has_room {
+                theme::caption(
+                    ui,
+                    "Five takes are kept for this exercise. Remove one below to record another.",
+                );
+            }
+            self.takes_ui(ui, index);
+            self.timing_ui(ui);
+        }
+        ui.collapsing("Live input values for this exercise", |ui| {
+            for name in &self.capture.exercises[index].inputs {
+                ui.horizontal(|ui| {
+                    ui.monospace(name);
+                    if self.live
+                        && let Some(value) = self.live_inputs.get(name)
+                    {
+                        ui.label(format!("{value:.3}"));
+                    } else {
+                        ui.weak("No live value");
+                    }
+                });
+            }
+        });
+        theme::caption(
+            ui,
+            "Move comfortably and briefly hold the requested pose. Other movements are measured on their own pages. Unsupported or weak signals remain unchanged.",
+        );
+    }
+    fn exercise_actions(&mut self, ui: &mut egui::Ui) {
+        let index = self.stage - 1;
+        if self.countdown.is_some() || self.capture.active.is_some() {
+            return;
+        }
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .add_enabled(
+                    self.capture.can_continue(index),
+                    egui::Button::new(
+                        if self.return_to_review && index == 0 && self.capture.captured() <= 1 {
+                            "Use neutral & recapture movements"
+                        } else if self.return_to_review {
+                            "Use selected take / return to review"
+                        } else {
+                            "Use selected take & continue"
+                        },
+                    ),
+                )
+                .clicked()
+            {
+                self.next();
+            }
+            if index > 0 && ui.button("Skip / keep existing range").clicked() {
+                self.skip();
+            }
+        });
+    }
+    fn takes_ui(&mut self, ui: &mut egui::Ui, index: usize) {
+        if self.capture.takes(index).is_empty() {
+            return;
+        }
+        help::label(ui, "Compare your takes", "tracking-guide-takes");
+        let recommended = self.capture.recommended(index);
+        let mut selected = self.capture.selected(index);
+        let mut remove = None;
+        for (ordinal, take) in self.capture.takes(index).iter().enumerate() {
+            let quality = self.capture.quality(index, take);
+            ui.horizontal_wrapped(|ui| {
+                ui.radio_value(
+                    &mut selected,
+                    Some(take.id),
+                    format!(
+                        "Take {} · {}{}",
+                        ordinal + 1,
+                        quality.label(),
+                        if recommended == Some(take.id) {
+                            " · suggested"
+                        } else {
+                            ""
+                        }
+                    ),
+                );
+                ui.weak(format!(
+                    "{} usable / {} measured inputs",
+                    quality.usable, quality.measured
+                ));
+                if ui.small_button("Remove").clicked() {
+                    remove = Some(take.id);
+                }
+            });
+        }
+        if let Some(id) = recommended
+            && ui.button("Select suggested take").clicked()
+        {
+            selected = Some(id);
+        }
+        self.capture.select(index, selected);
+        if let Some(id) = remove {
+            self.capture.remove(index, id);
+        }
+        theme::caption(
+            ui,
+            "Only the selected take contributes to your range. The suggestion favors clear movement above resting noise and usable signals; check it on your avatar before saving.",
+        );
     }
     fn unmapped_ui(&self, ui: &mut egui::Ui) {
         ui.collapsing(format!("{} parameters without tracking assignments", self.unmapped.len()), |ui| {
@@ -244,7 +550,7 @@ impl Guide {
         });
     }
     fn review_ui(&mut self, ui: &mut egui::Ui) {
-        ui.heading("6. Try it on your avatar");
+        ui.heading("Review and try it on your avatar");
         let count = self
             .rows
             .iter()
@@ -285,17 +591,23 @@ impl Guide {
                 });
             });
         }
-        ui.horizontal_wrapped(|ui| {
-            for (index, label) in [
-                (1, "Redo neutral (all captures)"),
-                (2, "Redo head"),
-                (3, "Redo expressions"),
-                (4, "Redo gaze"),
-            ] {
+        ui.collapsing("Retake an individual exercise", |ui| {
+            let mut retry = None;
+            for (index, exercise) in self.capture.exercises.iter().enumerate() {
+                let label = if index == 0 {
+                    "Neutral pose (changing its selected take resets movement takes)"
+                } else {
+                    &exercise.title
+                };
                 if ui.button(label).clicked() {
-                    self.stage = index;
-                    self.preview = false;
+                    retry = Some(index);
                 }
+            }
+            if let Some(index) = retry {
+                self.stage = index + 1;
+                self.return_to_review = true;
+                self.preview = false;
+                self.notice = None;
             }
         });
         self.unmapped_ui(ui);
@@ -338,119 +650,201 @@ impl Guide {
 
 #[cfg(any(test, feature = "screenshots"))]
 impl Guide {
-    /// Deterministic test trace through the real capture state machine, never a
-    /// synthetic stand-in for an end user's camera in production builds.
+    /// Deterministic synthetic rehearsal through the real per-exercise take path.
     pub fn rehearsal(&mut self) {
         self.stage = 1;
         let mut sequence = 1;
-        let pipeline = aria_core::ParameterPipeline::default();
-        let settings = aria_core::MappingSettings::default();
-        for (index, phase) in PHASES.into_iter().enumerate() {
+        for index in 0..self.capture.exercises.len() {
             assert_eq!(self.stage, index + 1);
-            self.capture.begin(phase);
-            self.recording = true;
-            for n in 0..((phase.seconds() * 60.0) as usize + 5) {
-                let mut frame = aria_core::TrackingFrame {
-                    face_found: true,
-                    ..Default::default()
-                };
-                let motion = if n % 120 < 40 {
-                    -1.0
-                } else if n % 120 < 80 {
-                    1.0
-                } else {
-                    0.0
-                };
-                frame.rotation.y = 4.0;
-                if phase == Phase::Head {
-                    frame.rotation.y += if motion < 0.0 {
-                        motion * 22.0
-                    } else {
-                        motion * 42.0
-                    };
-                    frame.rotation.x = motion * 18.0;
-                    frame.rotation.z = motion * 16.0;
-                }
-                frame.blend_shapes.insert(
-                    "jawopen".into(),
-                    if phase == Phase::Face && motion > 0.0 {
-                        0.75
-                    } else {
-                        0.1
-                    },
-                );
-                for key in [
-                    "eyeblinkleft",
-                    "eyeblinkright",
-                    "mouthsmileleft",
-                    "mouthsmileright",
-                    "browinnerup",
-                    "tongueout",
-                ] {
-                    frame.blend_shapes.insert(
-                        key.into(),
-                        if phase == Phase::Face && motion > 0.0 {
-                            0.8
-                        } else {
-                            0.0
-                        },
-                    );
-                }
-                for key in [
-                    "browdownleft",
-                    "browdownright",
-                    "mouthfrownleft",
-                    "mouthfrownright",
-                ] {
-                    frame.blend_shapes.insert(
-                        key.into(),
-                        if phase == Phase::Face && motion < 0.0 {
-                            0.8
-                        } else {
-                            0.0
-                        },
-                    );
-                }
-                if phase == Phase::Gaze {
-                    for key in if motion > 0.0 {
-                        [
-                            "eyelookinleft",
-                            "eyelookoutright",
-                            "eyelookupleft",
-                            "eyelookupright",
-                        ]
-                    } else {
-                        [
-                            "eyelookoutleft",
-                            "eyelookinright",
-                            "eyelookdownleft",
-                            "eyelookdownright",
-                        ]
-                    } {
-                        frame.blend_shapes.insert(key.into(), motion.abs() * 0.8);
+            let id = self.capture.exercises[index].id.clone();
+            let count = if id == "yaw-left" { 2 } else { 1 };
+            for _ in 0..count {
+                self.capture.begin(index);
+                let frames = (self.duration() * 60.0) as usize + 10;
+                for n in 0..frames {
+                    let inputs = self.trace_inputs(&id, n > 45 && n < frames - 45);
+                    self.observe(sequence, sequence as f64 / 60.0, true, &inputs);
+                    sequence += 1;
+                    if self.capture.active.is_none() {
+                        break;
                     }
                 }
-                let inputs = rig::tracking_inputs(
-                    Some(&frame),
-                    pipeline.measure(Some(&frame), &settings),
-                    false,
-                    0.0,
+                assert_eq!(
+                    self.stage,
+                    index + 1,
+                    "Finishing a take must wait for the user"
                 );
-                self.observe(sequence, sequence as f64 / 60.0, true, &inputs);
-                sequence += 1;
-                if !self.recording {
-                    break;
-                }
+            }
+            if let Some(best) = self.capture.recommended(index) {
+                self.capture.select(index, Some(best));
+            }
+            self.next();
+        }
+        assert!(self.reviewing());
+        assert!(self.draft().validate().is_ok());
+        self.rehearsal_face = Some(self.trace_inputs("yaw-left", true));
+        self.live_inputs = self.rehearsal_face.clone().unwrap();
+        self.live = true;
+    }
+    #[cfg(feature = "screenshots")]
+    pub fn rehearsal_take(&mut self) {
+        self.rehearsal();
+        for index in 2..self.capture.exercises.len() {
+            self.capture.select(index, None);
+        }
+        self.stage = 2;
+        self.return_to_review = false;
+        self.notice = None;
+    }
+    fn trace_inputs(&self, id: &str, active: bool) -> Inputs {
+        let mut frame = aria_core::TrackingFrame {
+            face_found: true,
+            ..Default::default()
+        };
+        for name in self.capture.known_names() {
+            if let Some(key) = name.strip_prefix("ARKit:") {
+                frame.blend_shapes.insert(key.into(), 0.0);
             }
         }
-        assert_eq!(self.stage, 5);
-        assert!(self.draft().validate().is_ok());
+        frame.rotation.y = 4.0;
+        frame.blend_shapes.insert("jawopen".into(), 0.1);
+        if active {
+            let keys: &[&str] = match id {
+                "yaw-left" => {
+                    frame.rotation.y = -18.0;
+                    &[]
+                }
+                "yaw-right" => {
+                    frame.rotation.y = 46.0;
+                    &[]
+                }
+                "pitch-up" => {
+                    frame.rotation.x = 18.0;
+                    &[]
+                }
+                "pitch-down" => {
+                    frame.rotation.x = -18.0;
+                    &[]
+                }
+                "roll-left" => {
+                    frame.rotation.z = -16.0;
+                    &[]
+                }
+                "roll-right" => {
+                    frame.rotation.z = 16.0;
+                    &[]
+                }
+                "eye-left" => &["eyeblinkleft"],
+                "eye-right" => &["eyeblinkright"],
+                "mouth-open" => &["jawopen"],
+                "smile" => &["mouthsmileleft", "mouthsmileright"],
+                "frown" => &["mouthfrownleft", "mouthfrownright"],
+                "brows-up" => &["browinnerup", "browouterupleft", "browouterupright"],
+                "brows-down" => &["browdownleft", "browdownright"],
+                "mouth-left" => &["mouthleft"],
+                "mouth-right" => &["mouthright"],
+                "pucker" => &["mouthpucker"],
+                "funnel" => &["mouthfunnel"],
+                "shrug" => &["mouthshrugupper", "mouthshruglower"],
+                "press" => &["mouthpressleft", "mouthpressright"],
+                "cheek-puff" => &["cheekpuff"],
+                "tongue" => &["tongueout"],
+                "gaze-left" => &["eyelookoutleft", "eyelookinright"],
+                "gaze-right" => &["eyelookinleft", "eyelookoutright"],
+                "gaze-up" => &["eyelookupleft", "eyelookupright"],
+                "gaze-down" => &["eyelookdownleft", "eyelookdownright"],
+                _ => &[],
+            };
+            for key in keys {
+                frame
+                    .blend_shapes
+                    .insert((*key).into(), if *key == "jawopen" { 0.75 } else { 0.8 });
+            }
+            if let Some(key) = id.strip_prefix("ARKit:") {
+                frame.blend_shapes.insert(key.into(), 0.8);
+            }
+        }
+        rig::tracking_inputs(
+            Some(&frame),
+            aria_core::ParameterPipeline::default().measure(Some(&frame), &Default::default()),
+            false,
+            0.0,
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn capture_countdown_waits_for_live_face_and_completion_waits_for_user() {
+        let parameters = aria_core::movement::preview_parameters(Default::default());
+        let config = aria_core::movement::RigConfig::from_parameters(&parameters);
+        let mut guide = Guide::default();
+        guide.start(
+            "a".into(),
+            &config,
+            &parameters,
+            &Inputs::new(),
+            Default::default(),
+        );
+        guide.stage = 1;
+        guide.prepare();
+        let inputs = guide.trace_inputs("neutral", false);
+        guide.observe(1, 10.0, false, &inputs);
+        guide.observe(2, 14.0, true, &inputs);
+        assert!(guide.capture.active.is_none());
+        guide.observe(3, 15.0, true, &inputs);
+        assert!(guide.capture.active.is_some());
+        for n in 0..=500 {
+            guide.observe(n + 4, 15.0 + n as f64 / 60.0, true, &inputs);
+        }
+        assert!(guide.capture.active.is_none());
+        assert_eq!(guide.capture.takes(0).len(), 1);
+        assert_eq!(guide.stage, 1);
+        guide.next();
+        assert_eq!(guide.stage, 2);
+    }
+    #[test]
+    fn movement_retry_preserves_unrelated_manual_review_edits_and_close_frees_takes() {
+        let parameters = aria_core::movement::preview_parameters(Default::default());
+        let config = aria_core::movement::RigConfig::from_parameters(&parameters);
+        let mut guide = Guide::default();
+        guide.start(
+            "a".into(),
+            &config,
+            &parameters,
+            &Inputs::new(),
+            Default::default(),
+        );
+        guide.rehearsal();
+        let mouth = guide
+            .rows
+            .iter_mut()
+            .find(|r| r.input == "JawOpen")
+            .unwrap();
+        mouth.range.as_mut().unwrap().high = 0.95;
+        guide.stage = 2;
+        guide.return_to_review = true;
+        guide.next();
+        assert!(guide.reviewing());
+        assert_eq!(
+            guide
+                .rows
+                .iter()
+                .find(|r| r.input == "JawOpen")
+                .unwrap()
+                .range
+                .as_ref()
+                .unwrap()
+                .high,
+            0.95
+        );
+        guide.close();
+        assert!(guide.capture.exercises.is_empty());
+        assert!(guide.live_inputs.is_empty());
+        assert!(guide.profile().is_none());
+    }
     #[test]
     #[ignore = "requires local ARIA_TEST_MODEL and ARIA_CUBISM_CORE; no phone required"]
     fn learned_tracking_drives_native_model_with_imported_assignments() {
@@ -555,7 +949,7 @@ mod tests {
         assert!(!guide.open);
     }
     #[test]
-    fn complete_tour_preserves_model_mapping_and_retries_only_selected_group() {
+    fn complete_tour_preserves_model_mapping_and_skips_only_selected_exercise() {
         let parameters = aria_core::movement::preview_parameters(Default::default());
         let mut config = aria_core::movement::RigConfig::from_parameters(&parameters);
         config.bindings.get_mut("ParamAngleX").unwrap().output_min = 22.0;
@@ -585,7 +979,13 @@ mod tests {
         );
         assert!(draft.ranges.contains_key("JawOpen"));
         assert!(!draft.ranges.contains_key("CheekPuff"));
-        guide.stage = 4;
+        let gaze = guide
+            .capture
+            .exercises
+            .iter()
+            .position(|e| e.id == "gaze-left")
+            .unwrap();
+        guide.stage = gaze + 1;
         guide.skip();
         let retry = guide.capture.proposals();
         assert!(

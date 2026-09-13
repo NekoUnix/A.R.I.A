@@ -21,12 +21,15 @@ mod image_actions;
 mod input_monitor;
 mod items;
 mod items_panel;
+#[cfg(target_os = "linux")]
+mod linux_output;
 mod liquid_art;
 mod live2d;
 mod media;
 mod mesh_asset;
 mod metrics;
 mod microphone;
+mod native_output;
 mod object_models;
 mod output;
 mod performance;
@@ -36,6 +39,8 @@ mod prop_render;
 mod screenshot;
 #[cfg(windows)]
 mod spout;
+#[cfg(target_os = "macos")]
+mod syphon;
 mod theme;
 mod tracking_guide;
 mod vrm;
@@ -76,7 +81,10 @@ fn main() -> eframe::Result {
     }
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_title("A.R.I.A. — Avatar Studio")
+            .with_title(concat!(
+                "A.R.I.A. — Avatar Studio · Alpha ",
+                env!("CARGO_PKG_VERSION")
+            ))
             .with_app_id("com.nekounix.aria")
             .with_inner_size([1280.0, 820.0])
             .with_min_inner_size([960.0, 640.0]),

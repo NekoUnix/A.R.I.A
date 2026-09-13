@@ -245,7 +245,9 @@ impl Wizard {
                         ui.text_edit_singleline(core);
                         if ui.button("Choose Cubism Core library…").clicked()&&let Some(path)=rfd::FileDialog::new().add_filter("Cubism Core",aria_live2d::platform::extensions()).pick_file(){*core=path.display().to_string();}
                         if ui.button("Choose extracted SDK folder…").clicked() && let Some(folder)=rfd::FileDialog::new().pick_folder() { match aria_live2d::platform::resolve(&folder) { Ok(path)=>*core=path.display().to_string(), Err(error)=>self.error=Some(error.to_string()) } }
-                        ui.hyperlink_to("Get the official Cubism Native SDK","https://www.live2d.com/en/sdk/download/native/");
+                        ui.hyperlink_to(aria_live2d::platform::download_label(),aria_live2d::platform::DOWNLOAD_URL);
+                        theme::caption(ui,aria_live2d::platform::download_hint());
+                        ui.hyperlink_to("Official library list by OS / architecture",aria_live2d::platform::LIBRARY_LIST_URL);
                     }
                     ui.horizontal(|ui| {
                         if ui.button("Back").clicked(){self.step=0;}

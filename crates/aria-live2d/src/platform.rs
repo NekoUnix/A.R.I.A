@@ -2,6 +2,23 @@
 use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
 
+/// The official Native SDK page supplies all desktop Core libraries behind its license form.
+pub const DOWNLOAD_URL: &str = "https://www.live2d.com/en/sdk/download/native/";
+pub const LIBRARY_LIST_URL: &str =
+    "https://github.com/Live2D/CubismNativeSamples/blob/develop/Core/README.md#library-list";
+
+pub fn download_label() -> &'static str {
+    match std::env::consts::OS {
+        "windows" => "Get the Native SDK for Windows (.dll)",
+        "macos" => "Get the Native SDK for macOS (.dylib)",
+        _ => "Get the Native SDK for Linux (.so)",
+    }
+}
+
+pub fn download_hint() -> &'static str {
+    "The official download page supplies the Native SDK for all platforms. Complete its license form, extract the SDK, then choose its folder here; ARIA selects the library for this OS and architecture."
+}
+
 pub fn extensions() -> &'static [&'static str] {
     match std::env::consts::OS {
         "windows" => &["dll"],
@@ -10,15 +27,24 @@ pub fn extensions() -> &'static [&'static str] {
     }
 }
 pub fn guidance() -> &'static str {
-    match std::env::consts::OS {
-        "windows" => {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("windows", "x86_64") => {
             "Choose the official Core/dll/windows/x86_64/Live2DCubismCore.dll or the extracted Native SDK folder."
         }
-        "macos" => {
-            "Choose the official macOS libLive2DCubismCore.dylib for your Mac, or the extracted Native SDK folder. A Windows DLL cannot run natively on macOS."
+        ("macos", "aarch64") => {
+            "For Apple Silicon, choose Core/dll/macos/arm64/libLive2DCubismCore.dylib or the extracted SDK folder. Older SDKs may contain a universal macOS library."
+        }
+        ("macos", "x86_64") => {
+            "For Intel Mac, choose Core/dll/macos/x86_64/libLive2DCubismCore.dylib or the extracted SDK folder. Older SDKs may contain a universal macOS library."
+        }
+        ("linux", "x86_64") => {
+            "Choose the official Core/dll/linux/x86_64/libLive2DCubismCore.so or the extracted Native SDK folder. A Windows DLL cannot run natively on Linux."
+        }
+        ("linux", "aarch64") => {
+            "For ARM64 Linux, the official SDK lists an experimental Core/dll/experimental/linux/ARM64/libLive2DCubismCore.so. Choose the extracted SDK folder; ARIA hardware validation for this target is pending."
         }
         _ => {
-            "Choose the official Core/dll/linux/x86_64/libLive2DCubismCore.so or the extracted Native SDK folder. A Windows DLL cannot run natively on Linux."
+            "Choose the official Core dynamic library for this operating system and architecture, or an extracted Native SDK folder. See the official library list to confirm your target is available."
         }
     }
 }
@@ -30,6 +56,10 @@ fn candidates(os: &str, arch: &str) -> Vec<String> {
             format!("macos/{arch}/libLive2DCubismCore.dylib"),
             "macos/libLive2DCubismCore.dylib".into(),
             "macos/Live2DCubismCore.bundle".into(),
+        ],
+        "linux" if arch == "arm64" => vec![
+            "experimental/linux/ARM64/libLive2DCubismCore.so".into(),
+            "linux/arm64/libLive2DCubismCore.so".into(),
         ],
         "linux" => vec![format!("linux/{arch}/libLive2DCubismCore.so")],
         _ => vec![],
@@ -97,7 +127,9 @@ mod tests {
         assert!(resolve_for(&win, "linux", "x86_64").is_err());
         for (os, arch) in [
             ("linux", "x86_64"),
+            ("linux", "aarch64"),
             ("macos", "aarch64"),
+            ("macos", "x86_64"),
             ("windows", "x86_64"),
         ] {
             let native = dir.path().join("Core/dll").join(&candidates(os, arch)[0]);

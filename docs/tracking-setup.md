@@ -1,6 +1,6 @@
 # Personal tracking setup
 
-![ Guided tracking review on Odette](images/tracking-guide-v23.png)
+![Individual tracking exercise with two takes and a live illustrated face](images/tracking-takes-v24.png)
 
 ARIA can learn how you move and fit those movements to the active avatar's
 tracking inputs. The guide works with Live2D, VRM and PNG/GIF profiles. It uses
@@ -19,16 +19,30 @@ The illustration uses a synthetic test capture; personal setup requires a real t
    Keep both devices on a reachable network. See [Windows setup](windows.md) for
    connection and firewall troubleshooting. Demo and microphone-only mode cannot
    calibrate your facial movement; microphone sensitivity has its own controls.
-3. Sit at your usual distance with the camera at eye level and even lighting.
-   Capture **neutral** with eyes naturally open, lips relaxed and closed, and
-   eyebrows at rest. Each capture has a three-second preparation countdown.
-4. Follow the head, expression and gaze exercises. Neutral takes three seconds,
-   head movement eight, expressions ten, and gaze six. Hold comfortable limits
-   briefly and repeat. Progress pauses when face tracking is lost. Skip an exercise
-   your tracker does not support; weak signals are left unchanged.
+3. Check **Only exercises used by this avatar's assignments** to keep the guide
+   focused on your rig. Clear it to include other available signals for image
+   actions or future assignments. Put your camera at eye level with even lighting.
+4. Capture one exercise at a time. First hold your relaxed **neutral** pose with
+   eyes naturally open and lips closed. Head turns, chin up/down, tilts, each
+   eyelid, individual expressions and each gaze direction then get separate pages.
+   There is no combined head/expression capture and no automatic page advance.
+
+   The default preparation countdown is **5 seconds**. Neutral records **8 seconds**;
+   each movement records **12 seconds**. Expand **Capture timing** to choose a
+   3–10 second countdown and 8–30 second movement capture. The guide pauses when
+   face tracking is lost, and only fresh packets advance the recording timer.
+
+   After each take, stay on that page to compare it, **Record another take**, or
+   **Use selected take & continue**. Keep up to **five takes per exercise**; remove
+   one to make room for another. **Select suggested take** favors usable signals
+   with clear movement above resting noise. You can select a different take. Only
+   the selected take contributes to calibration; unrelated exercises are untouched.
+   Skip unavailable or uncomfortable movements to retain existing behavior.
 5. Review the results. Expand a signal to see which actual model parameters it
    drives. Edit **Low / Rest / High** if necessary. Deselect a new range to retain
-   its saved behavior. Retry a movement for signals marked **Needs review**.
+   its saved behavior. Use **Retake an individual exercise** for signals marked **Needs review**.
+   Changing the selected neutral take clears this draft's movement takes, because
+   they were recorded against a different resting pose; you then recapture them.
 6. Enable **Preview new calibration on stage**. Move or collapse the guide window
    to see the avatar; toggle preview off to compare. Check relaxed pose, both head
    directions, nodding, eyelids, lip sync and eye gaze. Resume live movement if a
@@ -41,12 +55,23 @@ The illustration uses a synthetic test capture; personal setup requires a real t
 The circled **?** buttons provide offline instructions and an input-flow diagram.
 Closing or cancelling the guide discards its temporary preview. Changing the model,
 tracker connection settings, assignments or global mapping also cancels the draft.
-No raw face recording is saved: the stored configuration contains only ranges.
+The **live illustrated face** shows head turn/nod/tilt, left/right eyelids,
+head-independent eye gaze, brows and mouth values from the active tracker. It is a
+vector signal illustration, not a webcam image or detected landmark overlay. It
+works with iPhone VTube Studio, JSON, MediaPipe and NVIDIA tracker inputs. It dims
+and shows a waiting message when face tracking is lost. Unsupported signals cannot
+be inferred from the illustration; use the exercise's live input list and take
+quality to check what your tracker supplies.
+
+No camera video, face images or take histories are saved. Temporary scalar samples
+are bounded in memory and discarded when the guide closes. The saved configuration
+contains only the selected calibration ranges, so presets stay small.
 
 ## How the ranges work
 
 Measurements are captured before global smoothing and head/mouth display clipping.
-The median resting pose and 2nd/98th movement percentiles reject isolated tracking
+The median of the selected neutral take and 2nd/98th percentiles of the
+selected movement takes reject isolated tracking
 spikes. A noisy neutral capture or movement too small relative to resting noise is
 flagged instead of amplified. Each side of a signed signal must move sufficiently.
 
@@ -72,3 +97,11 @@ settings. The one-click neutral-pose control disables the previous personal rang
 because their origin has changed. New movement presets include the calibration;
 older presets restore the calibration they were saved with. Skipped inputs retain
 their existing settings; redoing neutral restarts the baseline for all exercises.
+
+
+Take suggestions are a starting point, not a guarantee that a movement was performed
+correctly. The score rewards usable signal coverage and motion above neutral noise,
+with a capped range reward so exaggerated extremes are not preferred indefinitely.
+Each signed input still needs both directions to produce a valid range. For example,
+if both head-turn takes move in the same direction, the final input remains marked
+for review. Confirm the resulting behavior on your actual avatar before saving.

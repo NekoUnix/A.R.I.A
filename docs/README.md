@@ -1,8 +1,9 @@
-# ARIA documentation — v0.24
+# ARIA documentation — v0.25 Alpha
 
-![Odette in the current Windows workspace](images/workspace-v24.png)
+![Odette in the v0.25 Alpha output workspace](images/outputs-alpha-v25.png)
 
-Start with [Windows setup](windows.md), import your avatar, then follow
+Start with [Windows setup](windows.md), [Linux installation](linux.md) or
+[macOS package setup](platforms.md#install-an-alpha-release), import your avatar, then follow
 [personal tracking setup](tracking-setup.md). The left navigation is **Avatar /
 Tracking / Output / Chat / Settings**. Inspector tools stay grouped by tracking,
 avatar, stage and poses. Hover or click any circled **?** for offline explanations.
@@ -26,21 +27,22 @@ This is a release status grid, not a promise of universal model/device compatibi
 | NVIDIA RTX webcam tracking | Experimental | Adapter/setup code exists; NVIDIA SDK bridge build and real GPU inference remain unverified. |
 | Microphone talking controls | Implemented | Audio levels drive image/model controls; device-specific acceptance remains. |
 | Xbox / PlayStation / Switch controller inputs | Partial validation | SDL mappings and virtual-controller tests; physical controllers/adapters still need coverage. |
-| Per-avatar mapping, ranges, poses and presets | Working | Calibration, inversion, holds/freeze, saved profiles and user hotkeys on Windows. |
+| Per-avatar mapping, ranges, poses and presets | Working | Individual guided exercises, illustrated tracking face, selectable takes, calibration, inversion, holds/freeze, profiles and Windows hotkeys. |
 | Live2D expressions and physics groups | Working with limits | exp3 blending and per-model/group settings; only the documented Cubism subset is supported. |
 | Pinned PNG/GIF and Live2D objects | Working | Independent object settings and model-following pins; limited simultaneous Live2D object instances. |
 | Custom throw assets | Updated | Replace/add controls, exact quantities, background PNG/GIF loading, file-specific errors and save validation; large 3D/Live2D props still have cold-load costs. |
 | 3D throw assets | Working with limits | Static GLB/glTF, VRM, FBX and OBJ; native .blend/.max/.ma project files must be exported first. |
 | Throws, sounds, bounce/stick and visual dents | Working with limits | Saved visual designs, routes, lifetime and 2D impact deformation; not full soft-body simulation. |
 | Anime liquid sprays | Working with limits | Stylized configurable droplets, gloss, foam, trails and drips; not a physically accurate fluid simulation. |
-| OBS 16:9 / 9:16 / Freeform outputs | Working on Windows | Compact previews, independent canvas resolution, Spout sharing, dragging/zoom and backgrounds. |
+| OBS 16:9 / 9:16 / Freeform outputs | Alpha native outputs | Windows Spout2, macOS Syphon and Linux ARIA Canvas; full resolution, alpha and small previews. Linux uses asynchronous readback; native OBS acceptance varies by GPU. |
 | Twitch / YouTube chat | Partial validation | OAuth/chat/style implementation and local tests; real account/provider acceptance remains. |
 | Themes and contextual documentation | Working | Six palettes, custom colors, import/export and offline help with diagrams. |
 | Authenticated local control API | Working | Native model values, presets, expressions, outputs and effects verified; arbitrary file/program execution is not exposed. |
 | Linux/macOS desktop builds | Experimental | Native build/test workflow, Vulkan/Metal and native Core selection; graphical and SDK execution on those machines needs acceptance testing. |
-| Native Linux/macOS OBS sharing, global hotkeys, account key storage | Planned | Platform integrations still needed; Windows-specific controls are not cross-platform guarantees. |
+| Linux/macOS global hotkeys and account key storage | Planned | Platform integrations still needed; Windows-specific controls are not cross-platform guarantees. |
 | Windows DLL execution under Wine on Linux/macOS | Not implemented | Use the official native Core library. The runtime process is not a Windows emulator. |
-| Signed installers, macOS notarization and native distribution packages | Planned | The first Windows release is an unsigned portable ZIP. |
+| Native distribution packages | Alpha | Windows ZIP, macOS app ZIPs, Linux tarball, Fedora RPM and Arch packages; matching OBS plugin included. |
+| Developer signing / macOS notarization | Planned | Alpha builds are unsigned or locally ad-hoc signed; no Developer ID notarization. |
 | Full Cubism advanced rendering / full VRM shader parity | Planned | Unsupported features remain documented; model coverage will expand through reproducible compatibility reports. |
 
 See [validation evidence](validation.md), [native platform setup](platforms.md),
@@ -50,6 +52,8 @@ and [compatibility reports](https://github.com/NekoUnix/A.R.I.A/issues/new/choos
 
 | I want to… | Open this guide |
 | --- | --- |
+| Install on Ubuntu, Fedora or Arch, including the OBS plugin | [Linux installation](linux.md) |
+| Install on an Intel or Apple Silicon Mac | [Native packages](platforms.md#install-an-alpha-release) |
 | Use a webcam or NVIDIA RTX facial inference | [Webcam tracking](webcam.md) |
 | Connect iPhone VTube Studio or a tracking tool | [Tracking protocol](tracking.md) |
 | Match tracking to my face and rig | [Personal calibration](tracking-setup.md) |
@@ -70,7 +74,7 @@ and [compatibility reports](https://github.com/NekoUnix/A.R.I.A/issues/new/choos
 | Understand code or verified limitations | [Architecture](architecture.md), [validation](validation.md) |
 | Contribute code or review a pull request | [Contribution guide](../CONTRIBUTING.md), [development workflow](development.md) |
 
-The workspace screenshot shows v0.24. Other images show the v0.23 interface
-with the owner's supplied avatars; v0.24 retains those controls.
+The output screenshot shows v0.25 Alpha. Other guides retain v0.23/v0.24 images
+of controls that remain available, using the owner's supplied avatars.
 They demonstrate UI layout; camera configuration screens do not imply an active
 camera connection. [Artwork provenance and reproduction notes](images/README.md).

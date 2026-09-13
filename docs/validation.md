@@ -5,7 +5,53 @@
 This file records checks for the development builds. The Windows CI workflow
 is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
+## v0.25 Alpha native outputs — 2026-09-13
+
+- Windows: 160 standard Rust tests, strict Clippy and formatting passed locally.
+  The native Spout test also passed: an independent DX11 receiver opened the DX12
+  sender at landscape, portrait and Freeform dimensions and verified alpha and
+  resource cleanup. Odette rendered in the Alpha output-controls screenshot using
+  a separate profile and the native Cubism worker.
+- The first Linux CI pass compiled the app and native OBS plugin, passed the Rust
+  suite and cross-process transport test, and produced portable, RPM and Arch
+  archives. Artifact inspection verified their checksum, source/licenses and
+  absence of private avatars or SDK binaries. The app/plugin dependency split and
+  Arch metadata path were tightened before final release checks.
+- Both Mac architectures compiled the bridge and official pinned Syphon framework.
+  The first bundle-signing attempt exposed a resource-layout error; packaging now
+  keeps only executables in MacOS and places documentation under Resources.
+- The final [Alpha packages workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/alpha-build.yml)
+  runs Linux Vulkan readback checks, a real libobs receiver/render/reconnection
+  check, a native Syphon Metal pixel test, and Fedora/Arch package installation.
+  Its result and the release notes record the final source revision's outcomes;
+  earlier build results are not substitutes for that revision's checks.
+- Linux tests use software graphics/Xvfb. macOS tests use the runner's Metal
+  device and the official Syphon server surface. These do not establish acceptance
+  on every physical GPU or a user's OBS scene. Real-device webcam/phone, RTX,
+  controller and proprietary Core limitations remain as documented below.
+
 ## Local verification on 2026-09-12
+
+### Individual tracking exercises and repeat takes — 2026-09-13 development update
+
+- **160 Rust tests passed**, with twenty environment-dependent checks opt-in.
+  Strict all-target/all-feature Clippy and formatting passed.
+- Guided captures isolate each movement's input family. Tests cover asymmetric
+  left/right ranges, selecting and removing takes, capped history, flat/noisy
+  signals, duplicate packets, tracking loss and clock gaps, and changing neutral.
+- Finishing a take waits on the same page. Only explicit Continue/Skip advances;
+  retaking a movement preserves unrelated manual review edits. Closing discards
+  temporary takes and face samples without modifying the saved profile.
+- The illustrated face has independent head turn/nod/tilt and finite-value guards.
+  It uses incoming tracking values and vector drawing, with no second camera feed
+  or video texture. Quality is computed when a take finishes, not every UI frame.
+- A native check verified **23 calibrated input assignments** against the supplied
+  Odette Cubism model. The updated guide screenshot shows a labeled synthetic
+  two-take rehearsal with the same avatar, not physical phone/camera validation.
+- SDK links were checked against the official Native SDK download and library list.
+  Buttons use an OS label and shared official download page; guidance distinguishes
+  Windows x64, Linux x64, Apple Silicon and Intel Mac. The resolver also recognizes
+  the SDK's experimental Linux ARM64 directory; that hardware target is untested.
 
 ### v0.24 first-release fixes verified on 2026-09-13
 

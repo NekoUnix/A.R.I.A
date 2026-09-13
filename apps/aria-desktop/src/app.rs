@@ -1345,6 +1345,11 @@ impl AriaApp {
                             crate::help::label(ui, "Core library path", "runtime");
                             ui.small(aria_live2d::platform::guidance());
                             ui.small("Runs in a separate Cubism runtime process.");
+                            ui.hyperlink_to(
+                                aria_live2d::platform::download_label(),
+                                aria_live2d::platform::DOWNLOAD_URL,
+                            );
+                            ui.small(aria_live2d::platform::download_hint());
                             ui.text_edit_singleline(&mut self.settings.cubism_core);
                             if ui.button("Choose Core library…").clicked()
                                 && let Some(path) = rfd::FileDialog::new()
@@ -1418,15 +1423,12 @@ impl AriaApp {
                     ui.label(RichText::new(status).small().color(mint()));
                 }
                 ui.collapsing("OBS connection & troubleshooting", |ui| {
-                if crate::help::control(ui, "spout", |ui| ui.small_button("Retry OBS output"))
-                    .clicked()
-                {
-                    self.broadcasts.retry();
-                }
-                theme::caption(
-                    ui,
-                    "OBS → Spout2 Capture → select the matching ARIA sender. Keep ARIA and OBS on the same GPU. Leave the output open; minimizing its preview keeps the full-resolution sender running.",
-                );
+                    if crate::help::control(ui, "spout", |ui| ui.small_button("Retry OBS output"))
+                        .clicked()
+                    {
+                        self.broadcasts.retry();
+                    }
+                    theme::caption(ui, crate::native_output::GUIDE);
                 });
                 crate::help::label(ui, "Frame rate target", "performance");
                 egui::ComboBox::from_id_salt("fps")
@@ -2567,11 +2569,11 @@ impl eframe::App for AriaApp {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
                             RichText::new(if cfg!(windows) {
-                                "v0.24 · WINDOWS PREVIEW"
+                                "v0.25 · WINDOWS ALPHA"
                             } else if cfg!(target_os = "macos") {
-                                "v0.24 · MACOS EXPERIMENTAL"
+                                "v0.25 · MACOS ALPHA"
                             } else {
-                                "v0.24 · LINUX EXPERIMENTAL"
+                                "v0.25 · LINUX ALPHA"
                             })
                             .small()
                             .color(muted()),
@@ -2861,6 +2863,9 @@ impl eframe::App for AriaApp {
             if !ctx.data(|d| d.get_temp::<bool>(key).unwrap_or(false)) {
                 self.input_monitor.saved.config.pose.mode = PoseMode::Live;
                 self.start_tracking_guide();
+                if std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("tracking-guide-take") {
+                    self.tracking_guide.rehearsal_take();
+                }
                 if std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("tracking-guide-review") {
                     self.tracking_guide.rehearsal();
                     self.tracking_guide.preview = true;

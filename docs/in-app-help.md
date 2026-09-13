@@ -948,7 +948,7 @@ Enable Send full resolution to OBS (Spout), install the separate OBS Spout2 plug
 
 @diagram capture
 
-## spout | Full-resolution OBS capture | Spout shares the full canvas texture with OBS on Windows. Use the separate Spout2 Capture plugin and keep ARIA and OBS on the same GPU.
+## spout | Native full-resolution OBS capture | Windows uses Spout2, macOS uses Syphon and Linux uses the included ARIA Canvas OBS plugin. The OBS canvas stays full resolution while the preview stays small.
 
 ### Set up OBS
 
@@ -961,6 +961,14 @@ The sender uses OBS canvas resolution even if the desktop preview is small or mi
 ### Missing or stalled source
 
 Check the output's live status text, open switch and Send switch. Retry OBS output recreates sender resources after a failure; it may briefly interrupt all active senders. The Windows DirectX 12 renderer supports ARIA's current Spout bridge; a different backend may report that sharing is unavailable. Keep the output open while using it. Closing it releases its capture texture and sender, while minimizing preserves full-resolution frames.
+
+### macOS and Linux
+
+On macOS add Syphon Client in OBS, choose ARIA and the canvas name shown in the status. The complete Alpha app includes Syphon.framework. Enable alpha, and turn off transparency correction if offered because the canvas is already premultiplied. Metal copies stay on the GPU.
+
+On Linux install the included aria-obs-canvas package or run install-obs-linux.sh from the portable folder, restart native OBS, and add ARIA Canvas (Alpha). The portable plugin targets Ubuntu 24.04 OBS 30 (libobs.so.0); Fedora 44 and current Arch packages contain plugins compiled against their native OBS 32+ libraries. For other OBS builds, compile the included source against your libobs. Choose the live sender. Reopen properties to refresh senders; select the new PID after restarting ARIA. Resizing reconnects automatically. Run both apps as the same user. The plugin preserves alpha without chroma filtering and uses local shared memory; no network server is started.
+
+Linux uses one asynchronous readback buffer per canvas, capped at 60 FPS. It uses more CPU/memory bandwidth than Spout or Syphon; try 1080p at 30 FPS on slower systems. A full /dev/shm reports an allocation error: lower the resolution and use Retry OBS output. Flatpak/Snap OBS requires a matching extension and is not supported by the bundled installer. The native source is independent of Wayland/X11 screen capture.
 
 ## resolution | Canvas resolution & resource cost | Canvas resolution sets the actual pixels sent to OBS. Preview size controls desktop space separately; increasing resolution raises GPU work and memory use.
 
@@ -1310,7 +1318,11 @@ Open **Tracking → Tracking & connection → Guided tracking setup**, use the b
 
 Connect a real face tracker first. For iPhone VTube Studio, enable 3rd Party PC Clients on the phone, enter its IPv4 address and request port in ARIA, choose a free PC receive port, and connect. Both devices must be reachable on the same network. The guide shows the current connection status. Demo animation and microphone-only mode do not provide personal face measurements and cannot start capture. Microphone talking calibration remains in Microphone.
 
-Sit at your normal distance with even lighting. Capture neutral with your eyes naturally open and lips relaxed and closed. After a three-second countdown, hold still for three seconds. Next capture comfortable head turns, nods and tilts for eight seconds; facial expressions for ten; and eye gaze for six. Each page advances when enough fresh face data has arrived. It pauses on face loss or a missing connection. Unsupported eye gaze can be skipped. Hold each comfortable movement briefly and repeat; do not strain to reach extremes.
+Sit at your normal distance with even lighting. The live illustrated face shows your tracked head rotation, eyelids, gaze, brows and mouth. It is a vector illustration of incoming signals, not a webcam image or detected landmarks. When tracking is lost it dims and displays a waiting message. Demo and microphone-only inputs cannot start real calibration.
+
+Every exercise requests one movement: turn left, turn right, lift your chin, lower it, tilt toward one shoulder, close one eyelid, make one expression, or look in one direction with your eyes. Keep other movement relaxed. The Only exercises used by this avatar option limits the plan to model assignments; clear it for additional signals. The default is a five-second preparation countdown, eight seconds for neutral, and twelve seconds per individual movement. Capture timing lets you choose a 3–10 second countdown and 8–30 second movement take. Fresh packets advance the timer; face loss pauses it. Every finished take stays on the same page until you choose to continue.
+
+Record another take to compare attempts. Each exercise retains up to five takes in temporary memory. Select suggested take or choose a radio button, then Use selected take & continue. Only that selected take contributes to the final range. Remove a take to free a slot; Stop this take cancels only the in-progress recording. Skip keeps the current saved behavior for unavailable signals. A suggestion is not a guarantee: preview the model before saving.
 
 The guide measures before global smoothing and head/mouth display limits. It uses the middle neutral value and robust movement percentiles, so a brief bad tracking spike does not become your normal maximum. Flat or weak signals and noisy neutral poses get a review message instead of automatic amplification. The tracker cannot generate expressions it does not measure. Unknown rig controls may need a manual input assignment in Inputs; many unassigned controls are correctly driven by physics or expression files.
 
@@ -1326,4 +1338,15 @@ Your measured Low → standard minimum; Rest → standard neutral; High → stan
 
 Personal measurement → neutral-centered standard input → model's authored input/output mapping → expression and physics → avatar.
 
-This does not replace your model's bindings. A model with deliberately narrow artistic input ranges may still reach its output limits early; adjust that binding in Inputs after previewing. Uncheck Apply this new range to keep the saved behavior for that signal. A signal with no sufficient capture stays unchanged. Retrying neutral restarts the baseline for all movement captures; retrying a movement replaces that group's samples. Tracking loss returns calibrated signals toward standard neutral through normal smoothing, rather than reusing the measured resting offset.
+This does not replace your model's bindings. A model with deliberately narrow artistic input ranges may still reach its output limits early; adjust that binding in Inputs after previewing. Uncheck Apply this new range to keep the saved behavior for that signal. A signal with no sufficient capture stays unchanged. Selecting a different neutral take resets this draft's movement captures; retrying a movement keeps its other takes for comparison. Only the selected take contributes; unrelated exercises keep their selected takes and manual review edits. Tracking loss returns calibrated signals toward standard neutral through normal smoothing, rather than reusing the measured resting offset.
+
+
+## tracking-guide-takes | Compare tracking takes | Keep several attempts and choose one measured take per exercise.
+
+Each exercise has its own take list. After Record a take, prepare during the countdown, then make only the requested movement and briefly hold a comfortable pose. Recording stops after enough fresh tracking time. The guide waits for you; it never advances automatically. Record another take to try again, use the radio buttons to choose, or Select suggested take to use ARIA's candidate. Use selected take & continue confirms that choice for the draft.
+
+Clear signal means measured movement is sufficiently larger than resting noise. Some inputs need review means the take has usable signals and some unsupported, flat or noisy ones. Needs another take means no usable movement or baseline was found. Suggestions compare signal coverage and robust motion above resting noise, with a capped range reward. They are not face-identification scores, confidence guarantees or proof you moved in the requested direction. Check the illustrated face, live input values and avatar preview. Signed ranges need both directions.
+
+Up to five takes per exercise remain in memory. Remove one to make room for another. Only the selected take affects the result. Skip deselects this exercise so its existing behavior is retained; other exercises are preserved. Stop this take cancels only its current partial recording. Changing the selected neutral take clears movement takes in this draft because their baseline has changed; movement recapture follows when you continue. Making another neutral take alone does not discard the old selection.
+
+All takes are temporary scalar tracking values, not camera images or video. Cancel, closing the guide or changing its avatar/tracker/mapping context discards them. Saving stores only the final ranges for this avatar and its future movement presets. The live illustrated face uses vector drawing and no extra camera or image textures.

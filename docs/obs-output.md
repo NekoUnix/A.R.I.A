@@ -1,6 +1,6 @@
 # OBS output: landscape, portrait and Freeform
 
-![ Compact output and capture controls with Odette](images/outputs-v23.png)
+![ Compact output and capture controls with Odette](images/outputs-alpha-v25.png)
 
 For Twitch and YouTube chat under the portrait preview, open **Streaming chat**.
 The [chat companion](streaming-chat.md) supports either service or both with
@@ -8,8 +8,8 @@ independent transparency and background colors. It is a separate native window;
 chat does not change the avatar Spout canvas. Add the companion as a separate
 Window Capture source if it should appear on stream.
 
-ARIA v0.8 provides three independent outputs. The visible windows are compact
-previews; OBS receives a separate full-resolution GPU texture through Spout.
+ARIA v0.25 Alpha provides three independent outputs. The visible windows are compact
+previews; OBS receives a separate full-resolution GPU texture through the platform-specific native output.
 
 | Output | OBS sender | New-profile canvas | Preview pixels |
 | --- | --- | --- | --- |
@@ -42,7 +42,7 @@ PNG puppets and Mica also support all three outputs.
    any unused preview space is excluded from the OBS texture.
 
 **Keep the windows small to save desktop space. OBS still receives the selected
-full canvas resolution via Spout2 Capture.** Window Capture only sees the small
+full canvas resolution via the platform-specific native source.** Window Capture only sees the small
 preview; stretching it in OBS does not increase the source's actual resolution.
 The UI explains this alongside the resolution controls. **Keep this output on top**
 is optional. Preview dimensions are client pixels and exclude the title bar.
@@ -50,7 +50,7 @@ is optional. Preview dimensions are client pixels and exclude the title bar.
 Dragging the native title bar moves the window on your desktop. Dragging the model
 moves the artwork within the capture. No controls or selection outlines are painted
 into the output. Closing one window leaves the others running and unregisters its
-Spout sender. Minimize previews when desired; leave ARIA running for tracking.
+native sender. Minimize previews when desired; leave ARIA running for tracking.
 
 All layouts save with the current avatar. Drag release and applied settings save
 automatically after a short quiet period; **Save output layouts** and **Save profile** also
@@ -88,7 +88,7 @@ padding and pixels with alpha below 16/255 are ignored.
 ARIA compares saturated candidates against a compact 5-bit-per-channel avatar color
 table, selecting the greatest minimum Cb/Cr chroma distance. This uses the kind of
 separation measured by [OBS's chroma-key shader](https://github.com/obsproject/obs-studio/blob/master/plugins/obs-filters/data/chroma_key_filter_v2.effect).
-GPU readback only happens when you request detection, not on ordinary frames.
+Color-detection readback happens only when requested; the Linux native output has its own asynchronous readback.
 
 For example, a green key can remove green eyes or clothing along with the background.
 A color farther from the artwork reduces that overlap. The chosen hex appears in
@@ -103,6 +103,14 @@ colors. This explanation is also available in the panel under **How automatic
 color detection works**.
 
 ## Full-resolution capture in OBS
+
+| Platform | OBS source | Transfer |
+| --- | --- | --- |
+| Windows | Spout2 Capture (separate plugin) | GPU texture sharing, same adapter |
+| macOS | Syphon Client (built into OBS) | Metal/Syphon GPU texture sharing |
+| Linux | ARIA Canvas (Alpha), included plugin | Local shared memory with bounded asynchronous GPU readback |
+
+### Windows Spout2
 
 1. Install the [OBS Spout2 plugin](https://github.com/Off-World-Live/obs-spout2-plugin/releases)
    with its Windows installer, then restart OBS. ARIA's sender is built in and
@@ -159,3 +167,55 @@ the [Windows guide](windows.md#windows-priority-and-performance).
 Implementation references: [Spout sender metadata and names](https://github.com/leadedge/Spout2/blob/master/SPOUTSDK/SpoutGL/SpoutSenderNames.h),
 [frame synchronization](https://github.com/leadedge/Spout2/blob/master/SPOUTSDK/SpoutGL/SpoutFrameCount.cpp),
 [official DirectX 12 bridge](https://github.com/leadedge/Spout2/blob/master/SPOUTSDK/SpoutDirectX/SpoutDX/SpoutDX12/SpoutDX12.cpp).
+
+## macOS Syphon
+
+Use the complete **ARIA Alpha.app** bundle: it contains the official Syphon
+framework built from a pinned revision. Open an output, leave **Send full
+resolution to OBS (Syphon)** enabled, then add **Syphon Client** in OBS and choose
+ARIA's matching sender (including its process ID). Enable transparency and disable
+**Allow alpha channel transparency correction** if offered: ARIA already supplies
+premultiplied alpha. Studio/key backgrounds remain opaque. See the
+[official Syphon framework](https://github.com/Syphon/Syphon-Framework).
+
+Each canvas is published from wgpu's Metal command queue. Syphon copies to a shared
+IOSurface on the GPU, without per-frame CPU readback. Up to three command buffers
+can be pending; a busy GPU skips publication instead of blocking the UI. Keep the
+app bundle intact. **Retry OBS output** reloads a failed sender. Source builds use
+`sh scripts/build-syphon.sh` and the framework path described in [platform setup](platforms.md).
+Alpha builds are ad-hoc signed, not Developer ID signed or notarized.
+
+## Linux ARIA Canvas
+
+Install **aria-obs-canvas** alongside **aria-alpha** using the Fedora or Arch
+packages in [Releases](https://github.com/NekoUnix/A.R.I.A/releases). Follow the
+[Linux installation guide](linux.md) for exact download filenames, checksum checks
+and separate app/plugin commands for Ubuntu, Fedora and Arch. The portable
+Linux archive includes `install-obs-linux.sh`; run it from the extracted folder to
+install the plugin for your user, then restart native OBS. The portable plugin
+targets Ubuntu 24.04's OBS 30 (`libobs.so.0`). Fedora 44 and current Arch packages
+contain separate plugins built against their native OBS 32+ libraries. For other
+distributions/OBS builds, compile the included plugin source against your libobs.
+The portable installer checks for missing libraries before installing.
+
+1. Open ARIA's output and enable **Send full resolution to OBS (ARIA Canvas)**.
+2. Add **ARIA Canvas (Alpha)** in OBS; choose the matching sender. Close/reopen
+   properties to refresh its list. All three outputs can run at the same time.
+3. Select **Transparent** in ARIA for alpha. The plugin composites premultiplied
+   alpha directly; no Chroma Key or alpha-correction filter is needed.
+4. Resolution changes reconnect automatically. After restarting ARIA, select the
+   new process's sender. Closing an output makes its source transparent.
+
+Run both apps as the same desktop user. The plugin works independently of X11 or
+Wayland screen capture. This alpha transport uses local `/dev/shm` files, no network
+port or video encoding. One asynchronous staging buffer per canvas bounds queued
+GPU readback; publication is capped at 60 FPS and unchanged canvases reuse their
+last frame. It is **not zero-copy**: GPU-to-CPU readback, shared memory and an OBS
+texture upload add bandwidth and latency. Start with 1080p/30 FPS when needed.
+A 4096×4096 canvas needs 64 MiB of shared memory plus GPU/readback/receiver storage.
+Insufficient shared-memory space reports an error; lower resolution and retry.
+
+The packaged plugin targets distribution-native OBS. **Flatpak/Snap OBS is not
+supported by this installer** because its plugin ABI and filesystem sandbox need
+a matching extension. Window/Screen Capture remains the fallback. The full
+[plugin source and protocol](../native/linux-canvas/README.md) are included.
