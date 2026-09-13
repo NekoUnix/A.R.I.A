@@ -26,7 +26,7 @@ This is a release status grid, not a promise of universal model/device compatibi
 | NVIDIA RTX webcam tracking | Experimental | Adapter/setup code exists; NVIDIA SDK bridge build and real GPU inference remain unverified. |
 | Microphone talking controls | Implemented | Audio levels drive image/model controls; device-specific acceptance remains. |
 | Xbox / PlayStation / Switch controller inputs | Partial validation | SDL mappings and virtual-controller tests; physical controllers/adapters still need coverage. |
-| Per-avatar mapping, ranges, poses and presets | Working | Calibration, inversion, holds/freeze, saved profiles and user hotkeys on Windows. |
+| Per-avatar mapping, ranges, poses and presets | Working | Individual guided exercises, illustrated tracking face, selectable takes, calibration, inversion, holds/freeze, profiles and Windows hotkeys. |
 | Live2D expressions and physics groups | Working with limits | exp3 blending and per-model/group settings; only the documented Cubism subset is supported. |
 | Pinned PNG/GIF and Live2D objects | Working | Independent object settings and model-following pins; limited simultaneous Live2D object instances. |
 | Custom throw assets | Updated | Replace/add controls, exact quantities, background PNG/GIF loading, file-specific errors and save validation; large 3D/Live2D props still have cold-load costs. |

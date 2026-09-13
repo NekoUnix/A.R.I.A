@@ -27,3 +27,8 @@ No login credentials, API keys or raw camera images are included.
 build on 2026-09-13, with the isolated Cubism process, using the same owner-provided Odette Live2D export with permission. It uses
 an isolated test profile and Demo input. Resource numbers from this debug capture
 are not a release benchmark. Raw model files and SDK binaries are not included.
+
+`tracking-takes-v24.png` shows the individual-exercise tracking guide from the
+2026-09-13 development build, with the owner's Odette avatar behind it. The face
+and two takes use a deterministic synthetic rehearsal, labeled in the UI. This
+illustrates controls and layout, not a physical camera or phone recording.

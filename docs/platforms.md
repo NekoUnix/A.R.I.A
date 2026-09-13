@@ -50,12 +50,19 @@ folder**. ARIA finds the library for its OS and architecture. If a saved Windows
 path still points into an intact cross-platform SDK, ARIA can find its native
 sibling. A copied Windows DLL alone is insufficient.
 
-Typical SDK paths are:
+The download button opens the same official Native SDK license/download page on
+each OS, with an OS-specific label. The linked library list documents architecture
+folders. Typical SDK paths are:
 
 - Windows: `Core/dll/windows/x86_64/Live2DCubismCore.dll`
 - Linux: `Core/dll/linux/x86_64/libLive2DCubismCore.so`
 - macOS: `Core/dll/macos/libLive2DCubismCore.dylib`, or an architecture subfolder
-  in newer SDK layouts.
+  in newer SDK layouts. ARIA suggests `macos/arm64` on Apple Silicon and
+  `macos/x86_64` on Intel.
+
+The newer SDK also lists experimental Linux ARM64 under
+`Core/dll/experimental/linux/ARM64`; ARIA can find that library when built for
+ARM64 Linux, but that hardware target has not been validated.
 
 Check the SDK's [official platform file list](https://github.com/Live2D/CubismNativeSamples/blob/develop/Core/README.md)
 for your download. ARIA does not bundle the proprietary library. A `.lib`/`.a`

@@ -7,6 +7,27 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Local verification on 2026-09-12
 
+### Individual tracking exercises and repeat takes — 2026-09-13 development update
+
+- **160 Rust tests passed**, with twenty environment-dependent checks opt-in.
+  Strict all-target/all-feature Clippy and formatting passed.
+- Guided captures isolate each movement's input family. Tests cover asymmetric
+  left/right ranges, selecting and removing takes, capped history, flat/noisy
+  signals, duplicate packets, tracking loss and clock gaps, and changing neutral.
+- Finishing a take waits on the same page. Only explicit Continue/Skip advances;
+  retaking a movement preserves unrelated manual review edits. Closing discards
+  temporary takes and face samples without modifying the saved profile.
+- The illustrated face has independent head turn/nod/tilt and finite-value guards.
+  It uses incoming tracking values and vector drawing, with no second camera feed
+  or video texture. Quality is computed when a take finishes, not every UI frame.
+- A native check verified **23 calibrated input assignments** against the supplied
+  Odette Cubism model. The updated guide screenshot shows a labeled synthetic
+  two-take rehearsal with the same avatar, not physical phone/camera validation.
+- SDK links were checked against the official Native SDK download and library list.
+  Buttons use an OS label and shared official download page; guidance distinguishes
+  Windows x64, Linux x64, Apple Silicon and Intel Mac. The resolver also recognizes
+  the SDK's experimental Linux ARM64 directory; that hardware target is untested.
+
 ### v0.24 first-release fixes verified on 2026-09-13
 
 - **151 Rust tests passed**, including custom PNG/GIF selection, replacement,
