@@ -182,6 +182,7 @@ pub struct AriaApp {
     api_snapshot_at: Instant,
     tracking_guide: crate::tracking_guide::Guide,
     tracking_filter: aria_core::calibration::Filter,
+    speech_filter: aria_core::speech::Filter,
     importer: crate::avatar_import::Wizard,
     pending_image: Option<PendingImage>,
     pending_vrm: Option<crate::vrm::LoadJob>,
@@ -301,6 +302,7 @@ impl AriaApp {
             api_snapshot_at: Instant::now(),
             tracking_guide: Default::default(),
             tracking_filter: Default::default(),
+            speech_filter: Default::default(),
             importer: Default::default(),
             pending_image: None,
             pending_vrm: None,
@@ -320,7 +322,7 @@ impl AriaApp {
             started: Instant::now(),
             frame_clock: crate::performance::FrameClock::new(Instant::now()),
             scene_revision: 0,
-            render_fps: 60.0,
+            render_fps: 0.0,
             gpu,
             metrics: crate::metrics::Metrics::default(),
             status_message: None,
@@ -407,7 +409,10 @@ impl AriaApp {
                     ControlsPage::Chat
                 } else if scenario.starts_with("output") || scenario == "capture-controls" {
                     ControlsPage::Output
-                } else if matches!(scenario.as_str(), "inputs" | "microphone" | "vts") {
+                } else if matches!(
+                    scenario.as_str(),
+                    "inputs" | "microphone" | "vts" | "responsiveness" | "performance-details"
+                ) {
                     ControlsPage::Tracking
                 } else {
                     ControlsPage::Avatar
@@ -732,6 +737,16 @@ impl AriaApp {
             }
             app
         };
+        let mut app = app;
+        // Initial import/setup is not a model-update interval.
+        app.frame_clock = crate::performance::FrameClock::new(Instant::now());
+        #[cfg(feature = "screenshots")]
+        if crate::smoke_mode()
+            && std::env::var("ARIA_SMOKE_SCENARIO")
+                .is_ok_and(|s| matches!(s.as_str(), "responsiveness" | "performance-details"))
+        {
+            app.started = Instant::now();
+        }
         app
     }
 
@@ -1130,6 +1145,42 @@ impl AriaApp {
             );
         }
         if self.controls_page == ControlsPage::Tracking {
+            theme::category(ui, "speech-response", "Mouth response", true, |ui| {
+                let response = &mut self.input_monitor.saved.config.mouth_response;
+                let before = *response;
+                crate::help::control(ui, "mouth-response", |ui| {
+                    ui.checkbox(&mut response.enabled, "Responsive speech")
+                });
+                ui.add_enabled_ui(response.enabled, |ui| {
+                    ui.horizontal(|ui| {
+                        for (label, ms) in [("Instant", 0.0), ("Quick", 12.0), ("Soft", 35.0)] {
+                            if ui
+                                .selectable_label(response.smoothing_ms == ms, label)
+                                .on_hover_text(format!(
+                                    "{ms:.0} ms mouth smoothing; saved for this avatar."
+                                ))
+                                .clicked()
+                            {
+                                response.smoothing_ms = ms;
+                            }
+                        }
+                    });
+                    crate::help::control(ui, "mouth-response", |ui| {
+                        ui.add(
+                            egui::Slider::new(&mut response.smoothing_ms, 0.0..=200.0)
+                                .text("Smooth ms"),
+                        )
+                    });
+                });
+                theme::caption(
+                    ui,
+                    "Quick speech, smooth head movement. Saved per avatar and in movement presets.",
+                );
+                if *response != before {
+                    self.speech_filter.reset();
+                    self.input_monitor.save_requested = true;
+                }
+            });
             theme::category(
                 ui,
                 "movement-card-v17",
@@ -1169,7 +1220,7 @@ impl AriaApp {
                     crate::help::control(ui, "smoothing", |ui| {
                         ui.add(
                             egui::Slider::new(&mut self.settings.mapping.smoothing_ms, 0.0..=300.0)
-                                .text("Smooth ms"),
+                                .text("Movement ms"),
                         )
                     });
                     crate::help::control(ui, "gain", |ui| {
@@ -1949,6 +2000,7 @@ impl AriaApp {
         self.effect_api.invalidate_model();
         self.camera.stop();
         self.tracking_filter.reset();
+        self.speech_filter.reset();
         self.items.reset();
         self.effects.reset();
         self.images.reset();
@@ -2319,18 +2371,27 @@ impl eframe::App for AriaApp {
             .frame_clock
             .tick(now, self.settings.fps, ctx.current_pass_index() == 0);
         if dt > 0.0 {
-            self.render_fps = self.render_fps * 0.92 + (1.0 / dt).min(1000.0) * 0.08;
+            let seconds = self.frame_clock.last_interval().as_secs_f64();
+            self.metrics.record_frame(seconds, self.settings.fps);
+            let measured = (1.0 / seconds as f32).min(1000.0);
+            self.render_fps = if self.render_fps == 0.0 {
+                measured
+            } else {
+                self.render_fps * 0.92 + measured * 0.08
+            };
         }
-        if self.settings.source == Source::Demo {
-            self.raw = Some(demo_frame(self.started.elapsed().as_secs_f32()));
-        } else if matches!(self.settings.source, Source::Webcam | Source::Rtx) {
-            self.snapshot = self.camera.snapshot();
-            self.raw = self.snapshot.fresh_frame().cloned();
-        } else if let Some(receiver) = &self.receiver {
-            self.snapshot = receiver.snapshot();
-            self.raw = self.snapshot.fresh_frame().cloned();
-        } else {
-            self.raw = None;
+        if dt > 0.0 {
+            if self.settings.source == Source::Demo {
+                self.raw = Some(demo_frame(self.started.elapsed().as_secs_f32()));
+            } else if matches!(self.settings.source, Source::Webcam | Source::Rtx) {
+                self.snapshot = self.camera.snapshot();
+                self.raw = self.snapshot.fresh_frame().cloned();
+            } else if let Some(receiver) = &self.receiver {
+                self.snapshot = receiver.snapshot();
+                self.raw = self.snapshot.fresh_frame().cloned();
+            } else {
+                self.raw = None;
+            }
         }
         if self.settings.effect_api.enabled
             && self.api_snapshot_at.elapsed() >= Duration::from_millis(100)
@@ -2344,7 +2405,8 @@ impl eframe::App for AriaApp {
                 "expressions":self.input_monitor.expressions.entries.iter().map(|e|serde_json::json!({"id":e.file.id,"name":e.file.name,"active":self.input_monitor.saved.config.expressions.contains(&e.file.id)})).collect::<Vec<_>>(),
                 "outputs":(0..3).map(|i|serde_json::json!({"index":i,"name":crate::output::NAMES[i],"open":self.outputs.is_open(i),"settings":self.outputs.snapshot().canvas(i)})).collect::<Vec<_>>(),
                 "themes":theme::presets().into_iter().chain(self.settings.theme.custom.iter().cloned()).map(|t|t.name).collect::<Vec<_>>(),
-                "theme":self.settings.theme.active.name
+                "theme":self.settings.theme.active.name,
+                "usage":self.metrics.usage
             }));
         }
         for event in self.hotkeys.events() {
@@ -2411,9 +2473,13 @@ impl eframe::App for AriaApp {
             }
         }
         if dt > 0.0 {
-            self.params = self
-                .pipeline
-                .update(self.raw.as_ref(), &self.settings.mapping, dt);
+            let mouth_response = self.input_monitor.saved.config.mouth_response;
+            self.params = self.pipeline.update_with_response(
+                self.raw.as_ref(),
+                &self.settings.mapping,
+                dt,
+                mouth_response.enabled,
+            );
             if self.input_monitor.saved.config.pose.mode != PoseMode::Frozen {
                 self.animation_time += dt.min(0.25);
             }
@@ -2467,12 +2533,17 @@ impl eframe::App for AriaApp {
                     &measured,
                     &mut self.live_inputs,
                     face_found,
-                    self.settings.mapping.smoothing_ms,
+                    aria_core::calibration::Smoothing {
+                        milliseconds: self.settings.mapping.smoothing_ms,
+                        responsive_mouth: mouth_response.enabled,
+                    },
                     dt,
                 );
             } else {
                 self.tracking_filter.reset();
             }
+            self.speech_filter
+                .apply(mouth_response, &mut self.live_inputs, dt);
             self.microphone
                 .update(&self.input_monitor.saved.microphone, dt);
             self.microphone
@@ -2574,7 +2645,15 @@ impl eframe::App for AriaApp {
             &self.input_monitor.saved.config,
         );
 
-        self.metrics.update(self.render_state.as_ref());
+        self.metrics.update(
+            self.render_state.as_ref(),
+            self.live2d
+                .iter()
+                .map(|a| a.model.process_id())
+                .chain(self.items.models.process_ids())
+                .chain(self.effects.process_ids())
+                .chain(self.camera.process_ids()),
+        );
         egui::Panel::top("header")
             .frame(Frame::new().fill(bg()).inner_margin(10.0))
             .show(root_ui, |ui| {
@@ -2592,13 +2671,17 @@ impl eframe::App for AriaApp {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            RichText::new(if cfg!(windows) {
-                                "v0.25 · WINDOWS ALPHA"
-                            } else if cfg!(target_os = "macos") {
-                                "v0.25 · MACOS ALPHA"
-                            } else {
-                                "v0.25 · LINUX ALPHA"
-                            })
+                            RichText::new(format!(
+                                "v{} · {}",
+                                env!("CARGO_PKG_VERSION"),
+                                if cfg!(windows) {
+                                    "WINDOWS"
+                                } else if cfg!(target_os = "macos") {
+                                    "MACOS"
+                                } else {
+                                    "LINUX"
+                                }
+                            ))
                             .small()
                             .color(muted()),
                         );
@@ -2609,19 +2692,12 @@ impl eframe::App for AriaApp {
             .frame(Frame::new().fill(bg()).inner_margin(10.0))
             .show(root_ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new(&self.gpu).small().color(muted()));
-                    ui.separator();
-                    ui.label(RichText::new(format!("{:.0} model FPS", self.render_fps)).small());
-                    crate::help::button(ui, "performance");
-                    self.metrics.footer(ui);
-                    if let Some(cpu) = frame.info().cpu_usage {
-                        ui.label(RichText::new(format!("{:.2} ms UI work", cpu * 1000.0)).small());
-                    }
-                    ui.separator();
-                    ui.label(
-                        RichText::new("Local processing · no telemetry")
-                            .small()
-                            .color(muted()),
+                    self.metrics.footer(
+                        ui,
+                        &self.snapshot,
+                        self.render_fps,
+                        frame.info().cpu_usage,
+                        &self.gpu,
                     );
                 });
             });

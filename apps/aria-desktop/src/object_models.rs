@@ -38,6 +38,12 @@ pub struct ObjectModels {
     search: String,
 }
 impl ObjectModels {
+    pub fn process_ids(&self) -> impl Iterator<Item = u32> + '_ {
+        self.entries
+            .values()
+            .filter_map(|e| e.loaded.as_ref().ok())
+            .map(|l| l.avatar.model.process_id())
+    }
     pub fn clear(&mut self) {
         self.entries.clear();
         self.draft_source = None;

@@ -185,6 +185,7 @@ pub fn category_topic(title: &str) -> &'static str {
     match title {
         "Tracking & connection" => "tracking",
         "Movement & calibration" => "calibration",
+        "Mouth response" => "mouth-response",
         "Avatar & appearance" => "avatar",
         "Capture & performance" => "outputs",
         "Overall physics" => "physics",

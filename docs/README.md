@@ -1,12 +1,14 @@
-# ARIA documentation — v0.25 Alpha
+# ARIA documentation — v0.26 Alpha
 
-![Odette in the v0.25 Alpha output workspace](images/outputs-alpha-v25.png)
+![Odette in the v0.26 Alpha tracking workspace](images/responsive-speech-v26.png)
 
 Start with [Windows setup](windows.md), [Linux installation](linux.md) or
 [macOS package setup](platforms.md#install-an-alpha-release), import your avatar, then follow
 [personal tracking setup](tracking-setup.md). The left navigation is **Avatar /
 Tracking / Output / Chat / Settings**. Inspector tools stay grouped by tracking,
 avatar, stage and poses. Hover or click any circled **?** for offline explanations.
+
+[New responsive speech controls and resource counters](responsiveness.md) explain the v0.26 source upgrade.
 
 ## Current and planned features
 
@@ -23,6 +25,7 @@ This is a release status grid, not a promise of universal model/device compatibi
 | PNG/GIF avatars | Working | Guided import, talking/blinking states, transitions and bounded GIF playback; large sources may be downscaled to the playback budget. |
 | VRM 0.x / 1.0 | Working with limits | Native GPU rendering, supported expressions/skinning/springs and pins; this is not a complete reference VRM/MToon renderer. |
 | iPhone VTube Studio / external JSON | Partial validation | Protocol, axes, loopback packets and calibration tested; physical phone/network acceptance remains. |
+| Responsive mouth input / resource details | Implemented in v0.26 source | Single speech filter, preset persistence, owned-process counters and frame/packet timing; physical phone latency remains unmeasured. |
 | Webcam MediaPipe tracking | Partial validation | Clean/repair installation and real image inference tested; physical camera tracking remains to be checked. |
 | NVIDIA RTX webcam tracking | Experimental | Adapter/setup code exists; NVIDIA SDK bridge build and real GPU inference remain unverified. |
 | Microphone talking controls | Implemented | Audio levels drive image/model controls; device-specific acceptance remains. |
@@ -77,12 +80,12 @@ and [compatibility reports](https://github.com/NekoUnix/A.R.I.A/issues/new/choos
 | Understand code or verified limitations | [Architecture](architecture.md), [validation](validation.md) |
 | Contribute code or review a pull request | [Contribution guide](../CONTRIBUTING.md), [development workflow](development.md) |
 
-The output screenshot shows v0.25 Alpha. Other guides retain v0.23/v0.24 images
+The tracking screenshot shows v0.26 Alpha. Other guides retain v0.23–v0.25 images
 of controls that remain available, using the owner's supplied avatars.
 They demonstrate UI layout; camera configuration screens do not imply an active
 camera connection. [Artwork provenance and reproduction notes](images/README.md).
 
-## Avatar customization upgrade (development branch)
+## Avatar customization included in v0.26 source
 
 - [Live2D layers](live2d-layers.md): reversible hiding/transparency, model-owned groups and user-defined hotkeys.
 - [Stage anchors](model-folders-and-pins.md): move a pin independently of its object; new Live2D attachments receive tracking automatically.

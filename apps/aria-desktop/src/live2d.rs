@@ -177,7 +177,9 @@ impl Avatar {
         }
         self.renderer
             .render_layers(self.model.canvas, &self.model.drawables, &config.layers)?;
-        self.last_layers.clone_from(&config.layers);
+        if self.last_layers != config.layers {
+            self.last_layers.clone_from(&config.layers);
+        }
         Ok(true)
     }
     pub fn save_png(&self, path: &Path) -> Result<()> {

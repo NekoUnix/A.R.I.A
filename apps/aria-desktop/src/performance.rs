@@ -3,21 +3,47 @@ use std::time::{Duration, Instant};
 
 pub struct FrameClock {
     last: Instant,
+    next: Instant,
+    fps: u32,
+    elapsed: Duration,
 }
 impl FrameClock {
     pub fn new(now: Instant) -> Self {
-        Self { last: now }
+        Self {
+            last: now,
+            next: now + interval(60),
+            fps: 60,
+            elapsed: Duration::ZERO,
+        }
+    }
+    pub fn last_interval(&self) -> Duration {
+        self.elapsed
     }
     pub fn tick(&mut self, now: Instant, fps: u32, first_pass: bool) -> f32 {
         let elapsed = now.saturating_duration_since(self.last);
-        if !first_pass || elapsed < interval(fps) {
+        if fps != self.fps {
+            self.fps = fps;
+            self.next = self.last + interval(fps);
+        }
+        if !first_pass || now < self.next || elapsed.is_zero() {
             return 0.0;
         }
         self.last = now;
+        self.elapsed = elapsed;
+        // Keep the deadline cadence despite small wake-up delays. Skip missed
+        // slots after a stall; never run a backlog of simulation updates.
+        let step = interval(fps);
+        let missed = now.saturating_duration_since(self.next).as_secs_f64() / step.as_secs_f64();
+        self.next += step.mul_f64(missed.floor() + 1.0);
         elapsed.as_secs_f32().min(0.25)
     }
     pub fn remaining(&self, now: Instant, fps: u32) -> Duration {
-        (self.last + interval(fps)).saturating_duration_since(now)
+        (if fps == self.fps {
+            self.next
+        } else {
+            self.last + interval(fps)
+        })
+        .saturating_duration_since(now)
     }
 }
 fn interval(fps: u32) -> Duration {
@@ -60,8 +86,10 @@ mod tests {
             ticks += usize::from(clock.tick(now, 60, true) > 0.0);
             assert_eq!(clock.tick(now, 60, false), 0.0);
         }
-        assert_eq!(ticks, 58); // 1 ms sampled clock, 17 ms per tick.
+        assert!((59..=60).contains(&ticks)); // Deadlines do not drift with 1 ms wake-up granularity.
         assert_eq!(clock.tick(start + Duration::from_secs(10), 60, true), 0.25);
+        assert_eq!(clock.tick(start + Duration::from_secs(10), 60, true), 0.0);
+        assert!(clock.remaining(start + Duration::from_secs(10), 60) <= interval(60));
     }
     #[test]
     #[cfg(windows)]

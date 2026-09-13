@@ -259,6 +259,9 @@ pub struct HostedModel {
     pub drawables: Vec<Drawable>,
 }
 impl HostedModel {
+    pub fn process_id(&self) -> u32 {
+        self.connection.child.id()
+    }
     pub fn load(core: &Path, moc: &Path, textures: usize) -> Result<Self> {
         let executable = std::env::var_os("ARIA_CUBISM_HOST")
             .map(PathBuf::from)

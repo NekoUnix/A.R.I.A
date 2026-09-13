@@ -1,8 +1,8 @@
 # Windows setup and operation
 
-![ The current Windows build with Odette](images/workspace-v23.png)
+![Odette in the v0.26 Alpha Windows source build](images/responsive-speech-v26.png)
 
-ARIA v0.24 updates the renderer and camera runtime. It includes webcam tracking,
+ARIA v0.26 Alpha adds [responsive speech and expanded performance counters](responsiveness.md). Build current source or use a v0.26 CI package to try it; published 0.25 packages predate this upgrade. It includes webcam tracking,
 the optional NVIDIA RTX adapter, themes and the control API introduced in v0.23.
 Guided tracking setup remains available for every avatar. See [Tracking setup](tracking-setup.md).
 Direct gamepad input and Live2D `NP_*` assignments remain available.

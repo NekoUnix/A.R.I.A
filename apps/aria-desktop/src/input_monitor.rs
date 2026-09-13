@@ -561,8 +561,14 @@ impl InputMonitor {
                                     std::mem::swap(&mut b.output_min, &mut b.output_max);
                                 }
                             });
-                            crate::help::control(ui, "smoothing", |ui| ui.add(egui::Slider::new(&mut b.smoothing_ms, 0.0..=500.0)
-                                .text("Smoothing ms")));
+                            let responsive = self.saved.config.mouth_response.enabled && aria_core::speech::is_mouth_input(&b.input);
+                            ui.add_enabled_ui(!responsive, |ui| {
+                                crate::help::control(ui, "smoothing", |ui| ui.add(egui::Slider::new(&mut b.smoothing_ms, 0.0..=500.0)
+                                    .text("Smoothing ms")));
+                            });
+                            if responsive {
+                                crate::help::control(ui, "mouth-response", |ui| ui.small("Uses Tracking → Mouth response. This saved smoothing value is restored when responsive speech is off."));
+                            }
                             crate::help::control(ui, "dead-zone", |ui| ui.add(egui::Slider::new(&mut b.dead_zone, 0.0..=0.45)
                                 .text("Dead zone")))
                                 .on_hover_text("Fraction of the input span ignored around its midpoint. 0 means no dead zone.");

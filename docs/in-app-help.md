@@ -549,13 +549,29 @@ Reset mapping and calibration restores the common mapping defaults and clears th
 
 ### Global and individual smoothing
 
-Movement & calibration offers global Smooth ms from 0 to 300 ms. Each mapped input also has Smoothing ms from 0 to 500 ms. The individual filter is applied after its range and curve mapping. If both are high, their delays accumulate. A useful starting point is moderate global smoothing and little extra smoothing on responsive controls such as eyes or mouth.
+Movement & calibration offers Movement ms from 0 to 300 ms. Responsive speech uses its own single filter for mouth opening/closing; see Mouth response. When responsive speech is disabled, each mapped input also has Smoothing ms from 0 to 500 ms. The individual filter is applied after its range and curve mapping. If both are high, their delays accumulate. A useful starting point is moderate global smoothing and little extra smoothing on responsive controls such as eyes or mouth.
 
 ### What milliseconds mean
 
 The value is an exponential filter time constant, not a fixed delay or an animation duration. With a stable new target, a filter reaches about 63% of the change after one time constant. At 100 ms, most of the change takes several tenths of a second to settle. A 0 ms setting removes that filter's easing.
 
 If motion feels late, reduce smoothing before raising gain. If it jitters, verify tracking quality and add smoothing in small increments. Physics momentum is separate: smoothing steadies a driving signal, while physics lets authored parts react with secondary motion. Frozen pose bypasses live animation, so changing smoothing will not make a frozen model move.
+
+## mouth-response | Responsive speech | Open and close the avatar's mouth quickly without reducing head smoothing. This setting belongs to the current avatar and its movement presets.
+
+### Quick setup
+
+Open Tracking → Mouth response. Responsive speech is enabled by default, including when an older profile is loaded. Quick uses a 12 ms exponential time constant; Instant uses 0 ms and Soft uses 35 ms. The slider allows 0–200 ms. A smaller value follows speech faster but exposes more tracking noise. Use Quick first, then adjust in small increments while saying short syllables and closing your lips.
+
+### One filter instead of several
+
+The path is phone/webcam packet → raw mouth measurement → personal range calibration → mouth response → authored rig range/curve → pose and physics. MouthOpen, ParamMouthOpenY, JawOpen, MouthPressLipOpen, ARKit:jawopen and ARKit:mouthclose use this path. Movement smoothing still steadies your head, eyes and other controls. Imported mouth-binding smoothing is temporarily bypassed; its original value is preserved and shown disabled in the input inspector. Turning Responsive speech off restores the original movement and binding filters. Custom input names keep their existing filters. Microphone controls retain their own smoothing.
+
+Personal ranges, authored inversion, gain, response curves, limits, expressions, holds and frozen screenshots still apply. Mouth response cannot override a held or frozen mouth. Attached Live2D objects receive the same already-filtered tracking inputs. The guide's illustrated face uses raw measurements for calibration; the model preview shows the actual response.
+
+### Packet rate is separate
+
+VTube Studio's phone stream sends a packet each phone frame, typically around 60 Hz. Its subscription controls how long packets are sent, not a requested frame rate. ARIA consumes the latest available packet on each model update. A 60 or 120 FPS model target can help display fresh data; it cannot invent faster camera samples. The footer shows received Hz and packet age measured on this computer. Age is not end-to-end latency. If Hz is low or age jumps, check phone load, tracking quality and Wi-Fi. If packets are timely but mouth motion lags, inspect this setting and the rig's mouth mapping, expressions and physics.
 
 ## gain | Head & mouth gain | Gain multiplies tracking intensity before avatar mapping. 1 is unchanged, below 1 reduces movement, and above 1 amplifies it within supported limits.
 
@@ -1060,21 +1076,23 @@ When multiple programs compete for CPU time, scheduling priority can give ARIA m
 
 High is the strongest priority offered here. Realtime is not offered because it can starve Windows, input processing and OBS. Turn High off if other programs become less responsive. You can often improve overall streaming performance more effectively by choosing an appropriate FPS target, closing unused outputs and avoiding oversized canvases.
 
-## metrics | CPU, RAM, VRAM & frame counters | The bottom bar reports ARIA's process usage and rendering-adapter memory once per second. N/A means unavailable, not zero usage.
+## metrics | Resource and tracking counters | The bottom bar shows model FPS, owned-process CPU/RAM, GPU allocation, tracking Hz and local packet age. Details expands the remaining counters without a permanent extra panel.
 
-### CPU and frame timing
+### CPU and memory
 
-CPU is ARIA's process CPU time normalized across available logical processors. 100% means all available processors are busy with ARIA; one saturated thread on a many-core CPU can show a much smaller percentage. Model FPS measures model update cadence. UI work is CPU time spent in the application update, not full GPU frame latency or a measurement of OBS encoding.
+CPU and RAM include the desktop plus directly owned Cubism model/attachment/effect workers and camera/setup workers. Other programs and descendants launched by those workers are not discovered. CPU is normalized across available logical processors; one busy thread may show a small percentage. RAM sums resident working sets, so shared pages can be counted twice. Private commit includes memory committed but not necessarily resident. Details shows desktop-only values, the number of readable processes, total private commit, available/total system RAM and open handles. N/A means unavailable, an unreadable worker or a rate awaiting its second sample; it never means zero. OS process/system counters currently use Windows APIs; unsupported platforms show N/A.
 
-### RAM
+### GPU and process I/O
 
-RAM is ARIA's resident working set in MiB. The hover detail also shows private committed memory, which can include pages not currently resident. MiB means 1,048,576 bytes. Texture decoding, model data and native libraries contribute to memory use. Compressed files on disk can be much smaller than their decoded memory footprint.
+VRAM is ARIA's local GPU memory allocation on its exact rendering adapter, using DXGI on Windows. Details adds budget and shared/non-local memory. These include driver allocations and are not GPU utilization or other applications' usage. Integrated GPUs can use system memory. Process I/O counts bytes read/written by the desktop and directly owned workers, including files, network and IPC pipes; it is not disk throughput. Cubism worker traffic can make it large even with no disk activity.
 
-### VRAM
+### Frame and tracking timing
 
-VRAM reports this process's local GPU memory use on ARIA's rendering adapter via DXGI. Hover details include the budget and shared/non-local memory. The counter includes driver allocations; integrated GPUs may use system memory for local GPU allocations. It is not the entire GPU's utilization percentage or other applications' memory. N/A means the backend or driver cannot report the counter.
+Model FPS is actual update cadence, separate from the target, display refresh and camera rate. Frame interval average and p95 use at most the last 120 updates, including stalls; p95 is the interval at or below which 95% of those samples fall. Slow updates count intervals exceeding 1.5 times the selected frame budget. UI work is the previous application update's CPU duration, not full GPU latency or OBS encoding.
 
-Large atlases and output textures can consume significant memory even with small preview windows. Compare counters while opening or closing outputs or changing resolution. The once-per-second sampling avoids expensive continuous polling, so brief spikes may not appear and numbers can lag a recent action.
+Tracking Hz counts accepted packets. Packet age is time since the latest accepted arrival on this computer, not capture-to-screen latency. Rejected packets failed validation; ignored packets include wrong senders and stale timestamps. Disconnected/demo sources display a dash when no recent packet exists.
+
+OS counters and interval summaries refresh once per second. The bounded frame history and collapsed Details menu keep overhead small. Counters remain local; enabling the authenticated local API makes the usage snapshot available to your authorized client.
 
 ## stage | The studio stage | The center stage previews the active avatar and connection state. Independent output windows provide movable, scalable compositions for OBS.
 

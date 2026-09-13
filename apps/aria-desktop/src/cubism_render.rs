@@ -115,6 +115,8 @@ pub struct ModelRenderer {
     vertex_staging: Vec<Vertex>,
     style_staging: Vec<u8>,
     order: Vec<usize>,
+    layer_config: aria_core::layers::Config,
+    layer_opacities: Vec<f32>,
     pub bounds: egui::Rect,
     pub view_canvas: Canvas,
 }
@@ -487,6 +489,8 @@ impl ModelRenderer {
             style_staging: vec![0; meshes.len() * uniform_stride],
             vertex_staging: Vec::with_capacity(vertex_count),
             order: Vec::with_capacity(meshes.len()),
+            layer_config: Default::default(),
+            layer_opacities: Vec::new(),
             meshes,
             vertex_count,
             atlas_mib: total_bytes as f64 / 1048576.0,
@@ -511,6 +515,12 @@ impl ModelRenderer {
                 && self.vertex_count == drawables.iter().map(|d| d.positions.len()).sum::<usize>(),
             "Model topology changed unexpectedly"
         );
+        if self.layer_config != *layers || self.layer_opacities.len() != drawables.len() {
+            self.layer_opacities.clear();
+            self.layer_opacities
+                .extend(drawables.iter().map(|d| layers.opacity(&d.id)));
+            self.layer_config.clone_from(layers);
+        }
         self.view_canvas = fit_canvas(canvas, drawables, Some(self.view_canvas));
         let vertices = &mut self.vertex_staging;
         vertices.clear();
@@ -525,7 +535,7 @@ impl ModelRenderer {
                 ],
                 uv,
             }));
-            let opacity = d.opacity * layers.opacity(&d.id);
+            let opacity = d.opacity * self.layer_opacities[i];
             if d.visible && opacity > 0.01 {
                 for vertex in &vertices[vertices.len() - d.positions.len()..] {
                     bounds.extend_with(egui::pos2(
@@ -570,7 +580,7 @@ impl ModelRenderer {
         drop(begin_pass(&mut encoder, &self.output, true));
         self.order.clear();
         self.order.extend((0..drawables.len()).filter(|&i| {
-            drawables[i].visible && drawables[i].opacity * layers.opacity(&drawables[i].id) > 0.0
+            drawables[i].visible && drawables[i].opacity * self.layer_opacities[i] > 0.0
         }));
         self.order
             .sort_unstable_by_key(|&i| (drawables[i].order, i));

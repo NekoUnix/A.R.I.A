@@ -179,6 +179,9 @@ impl Binding {
         }
     }
     pub fn evaluate(&mut self, input: f32, dt: f32) -> f32 {
+        self.evaluate_with_smoothing(input, dt, self.smoothing_ms)
+    }
+    fn evaluate_with_smoothing(&mut self, input: f32, dt: f32, smoothing_ms: f32) -> f32 {
         let span = self.input_max - self.input_min;
         let mut t = if span.abs() < 1e-6 {
             0.0
@@ -205,10 +208,10 @@ impl Binding {
             target = self.output_min;
         }
         let current = self.current.get_or_insert(target);
-        let alpha = if self.smoothing_ms <= 0.0 {
+        let alpha = if smoothing_ms <= 0.0 {
             1.0
         } else {
-            1.0 - (-dt.clamp(0.0, 0.25) * 1000.0 / self.smoothing_ms).exp()
+            1.0 - (-dt.clamp(0.0, 0.25) * 1000.0 / smoothing_ms).exp()
         };
         *current += (target - *current) * alpha;
         *current
@@ -402,10 +405,31 @@ pub fn apply_bindings(
     parameters: &mut [RigParameter],
     dt: f32,
 ) {
+    apply_bindings_with_response(bindings, inputs, parameters, dt, false);
+}
+
+pub fn apply_bindings_with_response(
+    bindings: &mut BTreeMap<String, Binding>,
+    inputs: &Inputs,
+    parameters: &mut [RigParameter],
+    dt: f32,
+    responsive_mouth: bool,
+) {
     for p in parameters {
         if let Some(binding) = bindings.get_mut(&p.id) {
             // Missing custom sources relax to zero; stale frames do not freeze a mouth.
-            let value = binding.evaluate(inputs.get(&binding.input).copied().unwrap_or(0.0), dt);
+            // Preserve the authored setting so disabling responsive speech
+            // restores it. The input already passed through the speech filter.
+            let smoothing = if responsive_mouth && crate::speech::is_mouth_input(&binding.input) {
+                0.0
+            } else {
+                binding.smoothing_ms
+            };
+            let value = binding.evaluate_with_smoothing(
+                inputs.get(&binding.input).copied().unwrap_or(0.0),
+                dt,
+                smoothing,
+            );
             p.value = value.clamp(p.min, p.max);
         }
     }

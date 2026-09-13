@@ -28,6 +28,7 @@ pub struct Pose {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RigConfig {
+    pub mouth_response: crate::speech::Response,
     pub layers: crate::layers::Config,
     pub tracking: crate::calibration::Profile,
     pub vrm: crate::vrm::Settings,
@@ -98,7 +99,13 @@ impl RigConfig {
                 .unwrap_or(p.default)
                 .clamp(p.min, p.max);
         }
-        rig::apply_bindings(&mut self.bindings, inputs, parameters, dt);
+        rig::apply_bindings_with_response(
+            &mut self.bindings,
+            inputs,
+            parameters,
+            dt,
+            self.mouth_response.enabled,
+        );
         expressions(parameters, &self.expressions);
         self.apply_holds_and_steps(parameters);
         if let Some(physics) = physics {
@@ -125,6 +132,7 @@ impl RigConfig {
         }
     }
     pub fn validate(&self, parameters: &[RigParameter]) -> Result<()> {
+        self.mouth_response.validate()?;
         self.tracking.validate()?;
         self.layers.validate()?;
         self.vrm.validate()?;
