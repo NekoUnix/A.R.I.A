@@ -1076,23 +1076,35 @@ When multiple programs compete for CPU time, scheduling priority can give ARIA m
 
 High is the strongest priority offered here. Realtime is not offered because it can starve Windows, input processing and OBS. Turn High off if other programs become less responsive. You can often improve overall streaming performance more effectively by choosing an appropriate FPS target, closing unused outputs and avoiding oversized canvases.
 
-## metrics | Resource and tracking counters | The bottom bar shows model FPS, owned-process CPU/RAM, GPU allocation, tracking Hz and local packet age. Details expands the remaining counters without a permanent extra panel.
+## metrics | Performance graphs and session records | Colorful bottom-bar graphs show FPS, CPU, RAM, VRAM, tracking rate and packet age. Hover to inspect a sample and the session low/high; Graphs opens the detailed view.
+
+### Read a graph
+
+Each colored line shows up to the last two minutes of readings, sampled once per second. The newest sample is on the right. During the first two minutes, the horizontal scale grows with the session; afterward it stays at two minutes. Each graph automatically scales its own vertical axis to the visible values. Compare the units and plot scale in the tooltip rather than comparing line heights across different graphs. The colors identify counters, not safe or dangerous thresholds.
+
+Hover or move along a graph to see the nearest actual sample, its time since ARIA opened, its age, and the latest reading. A vertical guide marks the selected available sample. Session low and Session high include every valid one-second reading since this application instance opened, even after old samples disappear from the plot. These are extrema of the sampled values, not guaranteed peaks between samples. They continue across model changes, frozen poses, output changes and tracking reconnections, and reset only after closing and reopening ARIA. This history is held in bounded memory, not saved to your avatar or disk.
+
+Missing readings appear as gaps and N/A, never as zero. Long pauses do not draw a false line across the missing time. Hovering a gap shows an unavailable sample or “No sample at this time.” Previous session low/high values remain available during a disconnection. At startup, counters that require two readable samples will initially show N/A; FPS waits for a measured model interval.
+
+### Open the detailed graphs
+
+Click Graphs in the bottom bar to open a scrollable view with a large Overview and collapsible detail groups: Frame timing; CPU, memory & processes; GPU & system memory; and Tracking & I/O. The overview starts open; the detailed groups start collapsed. Hover any larger graph for the same sample and session information. Collapse groups to focus on the counters you need. The six compact footer graphs stay visible without keeping this view open. Click outside the view to close it. Use the circled question mark for this article.
 
 ### CPU and memory
 
-CPU and RAM include the desktop plus directly owned Cubism model/attachment/effect workers and camera/setup workers. Other programs and descendants launched by those workers are not discovered. CPU is normalized across available logical processors; one busy thread may show a small percentage. RAM sums resident working sets, so shared pages can be counted twice. Private commit includes memory committed but not necessarily resident. Details shows desktop-only values, the number of readable processes, total private commit, available/total system RAM and open handles. N/A means unavailable, an unreadable worker or a rate awaiting its second sample; it never means zero. OS process/system counters currently use Windows APIs; unsupported platforms show N/A.
+CPU and RAM include the desktop plus directly owned Cubism model/attachment/effect workers and camera/setup workers. Other programs and descendants launched by those workers are not discovered. CPU is normalized across available logical processors; one busy thread may show a small percentage. RAM sums resident working sets, so shared pages can be counted twice. Private commit includes memory committed but not necessarily resident. The expanded view includes desktop-only values, the number of readable processes, private commit, available/total system RAM and open handles. N/A means unavailable, an unreadable worker or a rate awaiting its second sample; it never means zero. OS process/system counters currently use Windows APIs; unsupported platforms show N/A while the cross-platform frame and tracking graphs remain usable.
 
 ### GPU and process I/O
 
-VRAM is ARIA's local GPU memory allocation on its exact rendering adapter, using DXGI on Windows. Details adds budget and shared/non-local memory. These include driver allocations and are not GPU utilization or other applications' usage. Integrated GPUs can use system memory. Process I/O counts bytes read/written by the desktop and directly owned workers, including files, network and IPC pipes; it is not disk throughput. Cubism worker traffic can make it large even with no disk activity.
+VRAM is ARIA's local GPU memory allocation on its exact rendering adapter, using DXGI on Windows. The expanded view adds budget and shared/non-local memory. These include driver allocations and are not GPU utilization or other applications' usage. Integrated GPUs can use system memory. Process I/O counts bytes read/written by the desktop and directly owned workers, including files, network and IPC pipes; it is not disk throughput. Cubism worker traffic can make it large even with no disk activity.
 
 ### Frame and tracking timing
 
-Model FPS is actual update cadence, separate from the target, display refresh and camera rate. Frame interval average and p95 use at most the last 120 updates, including stalls; p95 is the interval at or below which 95% of those samples fall. Slow updates count intervals exceeding 1.5 times the selected frame budget. UI work is the previous application update's CPU duration, not full GPU latency or OBS encoding.
+Model FPS is actual update cadence, separate from the target, display refresh and camera rate. Frame interval average and p95 use at most the last 120 updates, including stalls; p95 is the interval at or below which 95% of those intervals fall. Those summaries are sampled into the graph once per second; the graph's two-minute history and the 120-update timing window are different. Slow updates count intervals exceeding 1.5 times the selected frame budget. UI work is the previous application update's CPU duration, not full GPU latency or OBS encoding.
 
-Tracking Hz counts accepted packets. Packet age is time since the latest accepted arrival on this computer, not capture-to-screen latency. Rejected packets failed validation; ignored packets include wrong senders and stale timestamps. Disconnected/demo sources display a dash when no recent packet exists.
+Tracking Hz counts accepted packets. Packet age is time since the latest accepted arrival on this computer, not capture-to-screen latency. Rejected packets failed validation; ignored packets include wrong senders and stale timestamps. Disconnected/demo sources produce a gap when no recent packet exists. Packet totals belong to the current receiver and can reset when it restarts; their session low/high values still include the earlier receiver. A lower total after reconnecting is not negative packet traffic.
 
-OS counters and interval summaries refresh once per second. The bounded frame history and collapsed Details menu keep overhead small. Counters remain local; enabling the authenticated local API makes the usage snapshot available to your authorized client.
+OS counters, graph samples and interval summaries refresh once per second. Each series retains at most 121 points, with one low/high pair for the whole session. Charts use the existing UI renderer, with no additional plotting library or sampling worker. Only visible graphs are drawn. Counters remain local; the optional authenticated API continues to expose its current numeric usage snapshot, not the graph history or extrema.
 
 ## stage | The studio stage | The center stage previews the active avatar and connection state. Independent output windows provide movable, scalable compositions for OBS.
 

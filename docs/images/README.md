@@ -57,3 +57,14 @@ machine counters from an optimized build; this short UI check is not a controlle
 Use screenshot scenarios `responsiveness` and `performance-details` to reproduce
 the panels. No phone recording, account data, Core binaries or avatar source
 files are included.
+
+## Performance graph development update
+
+`performance-graphs.png` and `performance-footer.png` are unedited native Windows
+captures of the optimized performance-graph source build on 2026-09-13. The
+owner-provided full Odette model uses an isolated profile and visibly labeled
+Demo input. CPU/memory/frame histories are actual local one-second samples;
+tracking graphs correctly show N/A without a connected tracking source. These
+short UI checks are not controlled performance benchmarks. The expanded view
+shows the Overview plus collapsed detail categories. Raw avatars and SDK
+binaries are not included.

@@ -89,3 +89,7 @@ OS counters refresh at 1 Hz even though API state refreshes at 10 Hz. I/O includ
 pipes/network; RAM sums can count shared pages more than once. These are local
 process counters, not whole-machine CPU or GPU utilization. See
 [counter definitions](responsiveness.md#read-the-bottom-bar).
+
+The performance graph update keeps this numeric API contract unchanged. The
+rolling graph history and session low/high records are local UI state and are
+not included in `state.usage`.

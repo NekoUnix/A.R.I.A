@@ -15,6 +15,16 @@ and send compact-preview, full-resolution canvases to OBS.
 
 ![Odette in ARIA v0.26 Alpha tracking controls](docs/images/responsive-speech-v26.png)
 
+## Development update: performance graphs
+
+The current source adds colorful performance graphs with hover readings and
+session low/high records. The footer stays compact; **Graphs** opens collapsible
+counter groups. History covers two minutes, while extrema last until ARIA closes.
+See [graph controls and counter meanings](docs/responsiveness.md#read-the-bottom-bar).
+This update is newer than the published v0.26.0-alpha.1 packages.
+
+![Odette with colorful performance graphs in the bottom bar](docs/images/performance-footer.png)
+
 ## New in v0.26 Alpha
 
 - **Responsive speech:** per-avatar mouth smoothing with Instant, Quick and Soft choices; avoids stacked VTube Studio profile delay.
