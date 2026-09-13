@@ -14,6 +14,7 @@ pub mod physics;
 pub mod rig;
 pub mod shortcuts;
 pub mod speech;
+pub mod vbridger;
 pub mod vrm;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -46,6 +47,9 @@ pub struct TrackingFrame {
     #[serde(default)]
     pub eye_right: Vec3,
     pub blend_shapes: BTreeMap<String, f32>,
+    /// Optional numeric channels from external trackers (visemes, body axes, custom data).
+    #[serde(default)]
+    pub parameters: BTreeMap<String, f32>,
     #[serde(default = "no_hotkey")]
     pub hotkey: i32,
 }
@@ -68,6 +72,11 @@ impl TrackingFrame {
             .into_iter()
             .all(Vec3::is_finite)
             && self.blend_shapes.values().all(|v| v.is_finite())
+            && self.parameters.len() <= 128
+            && self
+                .parameters
+                .iter()
+                .all(|(n, v)| !n.is_empty() && n.len() <= 128 && v.is_finite() && v.abs() <= 1e6)
     }
 
     pub fn blend(&self, name: &str) -> f32 {

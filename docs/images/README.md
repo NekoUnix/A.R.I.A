@@ -68,3 +68,13 @@ tracking graphs correctly show N/A without a connected tracking source. These
 short UI checks are not controlled performance benchmarks. The expanded view
 shows the Overview plus collapsed detail categories. Raw avatars and SDK
 binaries are not included.
+
+## v0.27 experimental VBridger update
+
+`vbridger-import.png` is an unedited native Windows capture of the optimized
+v0.27.0-alpha.1 screenshot build. It shows the owner's supplied
+AdvancedARKitSettings import draft with 34 outputs and the explicit Experimental
+label. The owner-provided Odette model is behind the floating editor. Tracking
+uses visibly labeled Demo input; this is an import/layout check, not a phone
+recording. An isolated profile protects personal settings. The screenshot
+contains no raw config, model files or SDK binaries.

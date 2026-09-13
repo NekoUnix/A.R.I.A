@@ -93,3 +93,10 @@ process counters, not whole-machine CPU or GPU utilization. See
 The performance graph update keeps this numeric API contract unchanged. The
 rolling graph history and session low/high records are local UI state and are
 not included in `state.usage`.
+
+## Numeric tracking extensions
+
+The UDP ARIA JSON tracking format now accepts an optional `parameters` map for
+external numeric signals consumed by [VBridger equations](vbridger.md#external-input-example).
+This is separate from the HTTP control API. Config import/editing is available
+in the desktop UI; existing movement preset actions also restore imported settings.

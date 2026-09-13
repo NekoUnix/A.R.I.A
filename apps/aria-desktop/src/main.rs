@@ -44,6 +44,7 @@ mod spout;
 mod syphon;
 mod theme;
 mod tracking_guide;
+mod vbridger_panel;
 mod vrm;
 mod webcam;
 

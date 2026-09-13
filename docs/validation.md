@@ -737,3 +737,35 @@ screenshots use isolated profiles with the owner's full Odette model. Native che
 and synthetic speech timings do not establish physical iPhone/network latency or
 cross-platform hardware performance. Resource/process counters are Windows-specific;
 unsupported counters display N/A.
+
+## v0.27 Alpha experimental VBridger update
+
+Local Windows validation with Rust 1.98.1 includes 195 workspace tests, strict
+all-target/all-feature Clippy, formatting and repository contracts. The supplied
+AdvancedARKitSettings file and ten installed VBridger defaults parse and evaluate
+without skipped equations; identical duplicate VMC rows are merged with notices.
+No third-party configs are copied into the repository.
+
+The optional native check imports 34 outputs into the owner's full Odette model,
+connects 26 assignments, verifies mouth input changes Cubism geometry and confirms
+that freezing preserves the exact pose. Set `ARIA_TEST_VBRIDGER`, `ARIA_TEST_MODEL`
+and `ARIA_CUBISM_CORE`, then run:
+
+```sh
+cargo test --locked -p aria-desktop experimental_import_drives_native_model -- --ignored --nocapture
+```
+
+For local config coverage, set `ARIA_TEST_VBRIDGER` to a file and optionally
+`ARIA_TEST_VBRIDGER_DIR` to a folder containing `.vbridger` files, then run:
+
+```sh
+cargo test --locked -p aria-core vbridger -- --nocapture
+```
+
+Tests cover bounded/non-executable equations, dependencies, legacy/V2 curves,
+delay/smoothing/steps, head axes, face loss, external numeric inputs, persistence,
+export round trips and actual UI Apply/Cancel/Undo interactions. The native
+screenshot scenario `vbridger` previews the import with an isolated profile.
+VBridger timing parity, standalone input-curve files, native application reimport
+of ARIA exports and physical tracking-device acceptance remain unverified. See
+[the Experimental compatibility guide](vbridger.md).

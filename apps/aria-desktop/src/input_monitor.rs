@@ -24,6 +24,8 @@ pub enum Tab {
     Controller,
 }
 pub struct InputMonitor {
+    pub vbridger: crate::vbridger_panel::Panel,
+    pub vbridger_runtime: aria_core::vbridger::Runtime,
     pub layers_panel: crate::layers_panel::Panel,
     pub setup_tracking_requested: bool,
     pub effect_requests: Vec<u64>,
@@ -108,6 +110,8 @@ impl InputMonitor {
             ));
         }
         Self {
+            vbridger: Default::default(),
+            vbridger_runtime: Default::default(),
             setup_tracking_requested: false,
             effect_requests: Vec::new(),
             saved,
@@ -151,6 +155,7 @@ impl InputMonitor {
             return false;
         }
         self.saved.config = preset.rig.clone();
+        self.vbridger_runtime.reset();
         self.reset_item_rules = true;
         self.saved.config.reset_filters();
         *mapping = preset.mapping.clone();
@@ -361,6 +366,14 @@ impl InputMonitor {
         {
             self.setup_tracking_requested = true;
         }
+        if self.tab == Tab::Inputs
+            && crate::help::control(ui, "vbridger", |ui| {
+                ui.button("VBridger config & equations…")
+            })
+            .clicked()
+        {
+            self.vbridger.open = true;
+        }
         crate::help::label(
             ui,
             "About this tab",
@@ -496,6 +509,14 @@ impl InputMonitor {
             .chain(rig::FACE_ALIASES.iter().map(|(n, _)| n.to_string()))
             .chain(aria_core::PARAMETER_SPECS.iter().map(|s| s.0.into()))
             .chain(inputs.keys().cloned())
+            .chain(
+                self.saved
+                    .config
+                    .vbridger
+                    .outputs
+                    .iter()
+                    .map(|o| o.name.clone()),
+            )
             .collect();
         names.sort();
         names.dedup();
@@ -535,7 +556,7 @@ impl InputMonitor {
                             });
                         if source != old {
                             if let Some(source) = source {
-                                let (min, max) = rig::input_range(&source);
+                                let (min, max) = self.saved.config.vbridger.output(&source).map(|o|(o.min,o.max)).unwrap_or_else(||rig::input_range(&source));
                                 let mut binding = Binding::direct(&source, min, max);
                                 binding.output_min = p.min;
                                 binding.output_max = p.max;

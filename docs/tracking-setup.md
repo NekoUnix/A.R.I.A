@@ -113,3 +113,11 @@ mouth filter after learned ranges. It avoids accumulating global and imported
 binding delay. Instant, Soft and custom choices save with the avatar/presets.
 The illustrated calibration face displays raw measurements; use the model preview
 to judge final response. [Speech setup and packet-rate diagnostics](responsiveness.md).
+
+## Use a VBridger configuration
+
+Choose **Import / edit VBridger config** from the Tracking page to use the
+[VBridger editor](vbridger.md). Imported channels replace ordinary derived
+tracking and personal calibration. While the import is enabled, the range-guide
+button opens the editor so you can tune its raw input offsets and curves.
+Disable imported tracking to resume the ordinary step-by-step range guide.
