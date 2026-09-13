@@ -135,7 +135,9 @@ impl Sender {
 }
 impl Drop for Sender {
     fn drop(&mut self) {
-        self.buffer.unmap();
+        // destroy cancels a pending map and also accepts an already-unmapped
+        // buffer. Unconditional unmap is a validation error on wgpu 30.
+        self.buffer.destroy();
         unsafe {
             aria_canvas_destroy(self.handle.as_ptr());
         }
@@ -259,6 +261,23 @@ mod tests {
             );
             drop(sender);
             assert!(!std::path::Path::new(&path).exists());
+            // Close immediately after submitting another frame, before poll.
+            let mut in_flight = bridge.sender("ARIA CI pending close", &texture).unwrap();
+            let path =
+                unsafe { std::ffi::CStr::from_ptr(aria_canvas_path(in_flight.handle.as_ptr())) }
+                    .to_str()
+                    .unwrap()
+                    .to_owned();
+            bridge.send(&mut in_flight, true).unwrap();
+            drop(in_flight);
+            assert!(!std::path::Path::new(&path).exists());
+            state
+                .device
+                .poll(wgpu::PollType::Wait {
+                    submission_index: None,
+                    timeout: Some(Duration::from_secs(5)),
+                })
+                .unwrap();
         }
     }
 }
