@@ -33,7 +33,7 @@ static int describe(const char *path, char name[128]) {
     struct stat st;
     uint8_t header[ARIA_HEADER_SIZE];
     int ok = !fstat(fd, &st) && S_ISREG(st.st_mode) && st.st_uid == getuid() && !(st.st_mode & 077)
-        && !flock(fd, LOCK_EX | LOCK_NB) && pread(fd, header, sizeof(header), 0) == sizeof(header) && !memcmp(header, "ARIACV01", 8);
+        && !flock(fd, LOCK_EX | LOCK_NB) && pread(fd, header, sizeof(header), 0) == (ssize_t)sizeof(header) && !memcmp(header, "ARIACV01", 8);
     close(fd);
     if (ok) { memcpy(name, header + 32, 127); name[127] = 0; }
     return ok;

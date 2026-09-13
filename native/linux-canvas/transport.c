@@ -64,7 +64,7 @@ int aria_canvas_read(const char *path, uint8_t **pixels, uint32_t *w, uint32_t *
     uint8_t header[ARIA_HEADER_SIZE];
     if (fstat(fd, &st) || !S_ISREG(st.st_mode) || st.st_uid != getuid() || (st.st_mode & 077) || st.st_size < ARIA_HEADER_SIZE) goto done;
     if (flock(fd, LOCK_EX | LOCK_NB)) { result = errno == EWOULDBLOCK ? 0 : -1; goto done; }
-    if (pread(fd, header, sizeof(header), 0) != sizeof(header) || memcmp(header, magic, 8)) goto done;
+    if (pread(fd, header, sizeof(header), 0) != (ssize_t)sizeof(header) || memcmp(header, magic, 8)) goto done;
     uint32_t nw = get32(header + 8), nh = get32(header + 12), nf = get32(header + 16);
     if (!valid(nw, nh, nf) || st.st_size != (off_t)(ARIA_HEADER_SIZE + (size_t)nw*nh*4)) goto done;
     uint64_t ns = get64(header + 24);

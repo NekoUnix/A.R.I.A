@@ -171,4 +171,94 @@ mod tests {
             assert!(!std::path::Path::new(&path).exists());
         }
     }
+
+    #[test]
+    #[ignore = "requires a Vulkan device (software Vulkan works); run in Linux native CI"]
+    fn gpu_readback_preserves_canvas_pixels_without_blocking_send() {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::VULKAN,
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        });
+        let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();
+        let (device, queue) =
+            pollster::block_on(adapter.request_device(&Default::default())).unwrap();
+        let renderer = eframe::egui_wgpu::Renderer::new(
+            &device,
+            wgpu::TextureFormat::Bgra8Unorm,
+            Default::default(),
+        );
+        let state = RenderState {
+            instance,
+            surface_config: eframe::egui_wgpu::SurfaceConfig::LOW_LATENCY,
+            adapter,
+            available_adapters: vec![],
+            device,
+            queue,
+            target_format: wgpu::TextureFormat::Bgra8Unorm,
+            renderer: std::sync::Arc::new(eframe::egui::mutex::RwLock::new(renderer)),
+        };
+        let bridge = Bridge::new(&state).unwrap();
+        for (width, height, format) in [
+            (65, 128, wgpu::TextureFormat::Bgra8Unorm),
+            (128, 65, wgpu::TextureFormat::Rgba8Unorm),
+        ] {
+            let texture = state.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("Linux native output test"),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            let pixels: Vec<u8> = (0..width * height)
+                .flat_map(|i| [(i % 128) as u8, 32, 64, 128])
+                .collect();
+            state.queue.write_texture(
+                texture.as_image_copy(),
+                &pixels,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(width * 4),
+                    rows_per_image: Some(height),
+                },
+                texture.size(),
+            );
+            let mut sender = bridge.sender("ARIA CI", &texture).unwrap();
+            let path =
+                unsafe { std::ffi::CStr::from_ptr(aria_canvas_path(sender.handle.as_ptr())) }
+                    .to_str()
+                    .unwrap()
+                    .to_owned();
+            bridge.send(&mut sender, true).unwrap();
+            // Only the test waits; production send() always uses Poll.
+            state
+                .device
+                .poll(wgpu::PollType::Wait {
+                    submission_index: None,
+                    timeout: Some(Duration::from_secs(5)),
+                })
+                .unwrap();
+            bridge.send(&mut sender, false).unwrap();
+            let bytes = std::fs::read(&path).unwrap();
+            assert_eq!(
+                &bytes[256..],
+                pixels,
+                "row padding/channel order/alpha changed"
+            );
+            assert_eq!(u64::from_le_bytes(bytes[24..32].try_into().unwrap()), 1);
+            bridge.send(&mut sender, false).unwrap();
+            assert!(
+                sender.pending.is_none(),
+                "unchanged canvas queued another readback"
+            );
+            drop(sender);
+            assert!(!std::path::Path::new(&path).exists());
+        }
+    }
 }

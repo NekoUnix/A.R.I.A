@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: alpha-packages-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   package:
@@ -74,9 +74,14 @@ jobs:
           cmake -S native/linux-canvas -B target/obs-plugin -DCMAKE_BUILD_TYPE=Release
           cmake --build target/obs-plugin --parallel 2
           ctest --test-dir target/obs-plugin --output-on-failure
+          xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 target/obs-plugin/obs-canvas-test "$PWD/target/obs-plugin/aria-canvas.so"
+          cargo test --locked -p aria-desktop gpu_readback_preserves_canvas_pixels_without_blocking_send -- --ignored --nocapture
       - name: macOS Syphon framework
         if: runner.os == 'macOS'
-        run: sh scripts/build-syphon.sh
+        run: |
+          sh scripts/build-syphon.sh
+          clang -fobjc-arc -framework Foundation -framework Metal apps/aria-desktop/native/syphon.m apps/aria-desktop/native/syphon-test.m -o target/syphon-test
+          target/syphon-test "$PWD/target/syphon-build/Build/Products/Release/Syphon.framework"
       - name: Optimized native executables
         if: runner.os != 'Windows'
         run: cargo build --locked --release --workspace
@@ -87,6 +92,14 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/build-windows.ps1 -SkipTests
+      - name: Fedora package installation check
+        if: runner.os == 'Linux'
+        run: |
+          docker run --rm -v "$PWD/dist:/packages:ro" fedora:44 sh -c 'dnf install -y /packages/*.rpm && aria-cli --version && ! ldd /usr/lib64/obs-plugins/aria-canvas.so | grep "not found"'
+      - name: Arch package installation check
+        if: runner.os == 'Linux'
+        run: |
+          docker run --rm -v "$PWD/dist:/packages:ro" archlinux:base sh -c 'pacman -Syu --noconfirm && pacman -U --noconfirm /packages/*.pkg.tar.zst && aria-cli --version && ! ldd /usr/lib/obs-plugins/aria-canvas.so | grep "not found"'
       - name: Upload Alpha packages
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

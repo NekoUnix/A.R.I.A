@@ -115,7 +115,7 @@ enabled. Ordinary issues and discussions remain public regardless of their label
    version mismatches; it does not replace reviewing all displayed version text.
 3. Update documentation, offline help, examples, screenshots and validation notes
    for the changed behavior. Record untested hardware/SDK boundaries explicitly.
-4. Run both CI workflows on the final revision. Extract the resulting Windows ZIP
+4. Run all required CI workflows and the four-target **Alpha packages** matrix on the final revision. Extract the resulting Windows ZIP
    into a clean folder, launch it and exercise representative avatar/output paths.
 5. Check licenses and package contents: no private avatars, SDK binaries, API keys,
    OAuth tokens or personal profiles. Confirm screenshots have permission.
@@ -125,3 +125,20 @@ enabled. Ordinary issues and discussions remain public regardless of their label
 
 Repository administration changes should be reviewed like code. Keep this page,
 the ruleset configuration and actual GitHub settings consistent when policy changes.
+
+### Native Alpha packaging
+
+The Alpha matrix builds Windows x64, Linux x64, macOS arm64 and macOS x64. Linux
+also produces Fedora RPM and Arch packages for the app and its optional OBS plugin.
+Native integration checks cover the Linux shared-memory protocol/OBS receiver and
+macOS Syphon/Metal transfer. All artifact names and application branding identify
+Alpha. Packages include their source revision, documentation and dependency notices;
+macOS receives a local ad-hoc signature, not a Developer ID/notarized signature.
+
+The workflow has read-only permissions and uploads expiring CI artifacts. Publishing
+uses a deliberate tagged prerelease after successful matrix checks and package
+inspection. Release assets must all come from the same source revision. A failed
+platform job must be repaired and rerun before publishing; do not substitute an
+older binary under the new version. Include SHA256SUMS.txt and state native hardware
+validation limits. Main-branch review protections remain separate from prerelease
+publication; a prerelease branch must not be described as independently approved.

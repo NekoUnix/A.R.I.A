@@ -31,7 +31,7 @@ def contents(stage):
     stage.mkdir(parents=True, exist_ok=True)
     for name in ["aria-desktop", "aria-cli", "aria-cubism-host"]:
         copy(ROOT / "target/release" / name, stage / name)
-    for name in ["README.md", "LICENSE", "THIRD_PARTY.md", "CONTRIBUTING.md", "SECURITY.md", "CODE_OF_CONDUCT.md", "docs", "templates", "tracking"]:
+    for name in ["README.md", "LICENSE", "THIRD_PARTY.md", "CONTRIBUTING.md", "SECURITY.md", "CODE_OF_CONDUCT.md", "docs", "templates", "tracking", "native"]:
         copy(ROOT / name, stage / name)
     revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     (stage / "BUILD-INFO.txt").write_text(f"A.R.I.A. Alpha {VERSION}\nCommit: {revision}\nPlatform: {platform.system()} {platform.machine()}\nUnsigned alpha: see docs/platforms.md for setup and validation limits.\n")
@@ -88,7 +88,7 @@ def arch_package(name, tree, deps, license_name):
     (tree / ".PKGINFO").write_text(info)
     dest = DIST / f"{name}-{version}-x86_64.pkg.tar.zst"
     with dest.open("wb") as output:
-        tar = subprocess.Popen(["tar", "--owner=0", "--group=0", "-C", str(tree), "-cf", "-", "."], stdout=subprocess.PIPE)
+        tar = subprocess.Popen(["tar", "--owner=0", "--group=0", "-C", str(tree), "-cf", "-", "--", *sorted(p.name for p in tree.iterdir())], stdout=subprocess.PIPE)
         zstd = subprocess.run(["zstd", "-T0", "-10"], stdin=tar.stdout, stdout=output)
         tar.stdout.close()
         if tar.wait() or zstd.returncode:
@@ -132,7 +132,7 @@ def macos(work):
     contents(binary)
     framework = ROOT / "target/syphon-build/Build/Products/Release/Syphon.framework"
     copy(framework, app / "Contents/Frameworks/Syphon.framework")
-    plist = dict(CFBundleName="ARIA Alpha", CFBundleDisplayName="ARIA Alpha", CFBundleIdentifier="com.nekounix.aria", CFBundleExecutable="aria-desktop", CFBundlePackageType="APPL", CFBundleShortVersionString="0.25.0", CFBundleVersion="25.1", NSHighResolutionCapable=True, LSMinimumSystemVersion="13.0", NSMicrophoneUsageDescription="Use microphone amplitude to animate your avatar.", NSCameraUsageDescription="Use optional camera tracking to animate your avatar.")
+    plist = dict(CFBundleName="ARIA Alpha", CFBundleDisplayName="ARIA Alpha", CFBundleIdentifier="com.nekounix.aria", CFBundleExecutable="aria-desktop", CFBundlePackageType="APPL", CFBundleShortVersionString=VERSION.partition("-")[0], CFBundleVersion=VERSION.partition("-")[0], CFBundleGetInfoString=f"ARIA Alpha {VERSION}", NSHighResolutionCapable=True, LSMinimumSystemVersion="13.0", NSMicrophoneUsageDescription="Use microphone amplitude to animate your avatar.", NSCameraUsageDescription="Use optional camera tracking to animate your avatar.")
     (app / "Contents/Info.plist").write_bytes(plistlib.dumps(plist))
     # Ad-hoc signatures support native Apple Silicon execution; not notarization.
     run("codesign", "--force", "--sign", "-", "--deep", str(app))

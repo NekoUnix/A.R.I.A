@@ -32,3 +32,5 @@ are not a release benchmark. Raw model files and SDK binaries are not included.
 2026-09-13 development build, with the owner's Odette avatar behind it. The face
 and two takes use a deterministic synthetic rehearsal, labeled in the UI. This
 illustrates controls and layout, not a physical camera or phone recording.
+
+- `outputs-alpha-v25.png`: v0.25 Alpha Windows output controls with the owner-provided Odette model and synthetic demo tracking; records Alpha branding and native-output wording. Captured from an isolated profile. This does not represent Linux/macOS hardware acceptance.

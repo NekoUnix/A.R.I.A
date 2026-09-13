@@ -30,7 +30,9 @@ try {
     New-Item -ItemType Directory -Force -Path $ariaStage | Out-Null
     Copy-Item -LiteralPath (Join-Path $ariaRoot 'target\release\aria-desktop.exe'), (Join-Path $ariaRoot 'target\release\aria-cli.exe'), (Join-Path $ariaRoot 'target\release\aria-cubism-host.exe') -Destination $ariaStage
     Copy-Item -LiteralPath (Join-Path $ariaRoot 'README.md'), (Join-Path $ariaRoot 'LICENSE'), (Join-Path $ariaRoot 'THIRD_PARTY.md'), (Join-Path $ariaRoot 'CONTRIBUTING.md'), (Join-Path $ariaRoot 'SECURITY.md'), (Join-Path $ariaRoot 'CODE_OF_CONDUCT.md') -Destination $ariaStage
-    Copy-Item -LiteralPath (Join-Path $ariaRoot 'docs') -Destination $ariaStage -Recurse
+    Copy-Item -LiteralPath (Join-Path $ariaRoot 'docs'), (Join-Path $ariaRoot 'native') -Destination $ariaStage -Recurse
+    $ariaRevision = & git rev-parse HEAD
+    ('A.R.I.A. Alpha ' + $ariaVersion + "`nCommit: " + $ariaRevision + "`nPlatform: Windows x64`nUnsigned Alpha build. See docs/platforms.md.") | Set-Content -LiteralPath (Join-Path $ariaStage 'BUILD-INFO.txt') -Encoding UTF8
     $ariaTemplates = Join-Path $ariaRoot 'templates'
     Get-ChildItem -LiteralPath $ariaTemplates -Recurse -File | Where-Object {
         $_.Extension -notin '.pyc', '.pyo' -and $_.FullName -notmatch '[\\/]__pycache__[\\/]'

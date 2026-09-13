@@ -1,6 +1,6 @@
 # OBS output: landscape, portrait and Freeform
 
-![ Compact output and capture controls with Odette](images/outputs-v23.png)
+![ Compact output and capture controls with Odette](images/outputs-alpha-v25.png)
 
 For Twitch and YouTube chat under the portrait preview, open **Streaming chat**.
 The [chat companion](streaming-chat.md) supports either service or both with

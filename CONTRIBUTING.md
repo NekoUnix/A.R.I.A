@@ -1,8 +1,7 @@
 # Contributing to A.R.I.A.
 
 Start with the [Windows build guide](docs/windows.md) and
-[architecture map](docs/architecture.md). The supported development target is
-Windows x64. The built-in Mica puppet runs without proprietary SDKs or avatar files.
+[architecture map](docs/architecture.md). Native development targets include Windows x64, Linux x64 and macOS arm64/x64; see [native setup](docs/platforms.md). The built-in Mica puppet runs without proprietary SDKs or avatar files.
 
 ## From issue to pull request
 
@@ -80,7 +79,7 @@ after checking compatibility; GitHub still requires passing checks and approval.
 Major upgrades stay separate.
 
 For releases, follow the [release checklist](docs/development.md#release-checklist).
-Use the artifact from a successful Windows run for the exact release commit.
+Use the artifacts from a successful complete Alpha matrix for the exact release commit.
 Do not distribute Cubism or NVIDIA binaries inside ARIA packages.
 
 See [security reporting](SECURITY.md) and [community expectations](CODE_OF_CONDUCT.md).
