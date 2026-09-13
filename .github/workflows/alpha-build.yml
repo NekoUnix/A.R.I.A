@@ -87,6 +87,9 @@ jobs:
       - name: Optimized native executables
         if: runner.os != 'Windows'
         run: cargo build --locked --release --workspace
+      - name: Build OBS plugins against Fedora and Arch
+        if: runner.os == 'Linux'
+        run: sh scripts/build-linux-obs-packages.sh
       - name: Linux and macOS Alpha packages
         if: runner.os != 'Windows'
         run: python scripts/package-native.py ${{ matrix.platform }}

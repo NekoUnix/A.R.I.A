@@ -73,12 +73,13 @@ def linux(work):
     copy(ROOT / "packaging/linux/com.nekounix.aria.desktop", app / "usr/share/applications/com.nekounix.aria.desktop")
     copy(ROOT / "packaging/linux/com.nekounix.aria.svg", app / "usr/share/icons/hicolor/scalable/apps/com.nekounix.aria.svg")
     plugin = work / "plugin-root"
-    copy(ROOT / "target/obs-plugin/aria-canvas.so", plugin / "usr/lib/obs-plugins/aria-canvas.so")
+    copy(ROOT / "target/obs-arch/aria-canvas.so", plugin / "usr/lib/obs-plugins/aria-canvas.so")
+    copy(ROOT / "target/obs-arch/OBS-VERSION.txt", plugin / "usr/share/doc/aria-obs-canvas/OBS-VERSION.txt")
     copy(ROOT / "native/linux-canvas", plugin / "usr/share/doc/aria-obs-canvas/source")
     copy(ROOT / "docs/obs-output.md", plugin / "usr/share/doc/aria-obs-canvas/obs-output.md")
     for name, tree, deps, license_name in [
         ("aria-alpha", app, ["glibc>=2.39", "gcc-libs", "alsa-lib", "libxkbcommon", "wayland", "libx11", "libxcursor", "libxi", "libxrandr", "openssl", "vulkan-icd-loader", "systemd-libs"], "MIT"),
-        ("aria-obs-canvas", plugin, ["glibc>=2.39", "obs-studio>=30"], "GPL-2.0-or-later")]:
+        ("aria-obs-canvas", plugin, ["glibc>=2.39", "obs-studio>=32"], "GPL-2.0-or-later")]:
         arch_package(name, tree, deps, license_name)
         rpm_package(name, tree, license_name, work)
 
@@ -105,7 +106,8 @@ def rpm_package(name, tree, license_name, work):
     copy(tree, rpm_tree)
     old = rpm_tree / "usr/lib/obs-plugins/aria-canvas.so"
     if old.exists():
-        copy(old, rpm_tree / "usr/lib64/obs-plugins/aria-canvas.so")
+        copy(ROOT / "target/obs-fedora/aria-canvas.so", rpm_tree / "usr/lib64/obs-plugins/aria-canvas.so")
+        copy(ROOT / "target/obs-fedora/OBS-VERSION.txt", rpm_tree / "usr/share/doc/aria-obs-canvas/OBS-VERSION.txt")
         old.unlink()
     files = sorted('/' + str(p.relative_to(rpm_tree)) for p in rpm_tree.rglob('*') if p.is_file() or p.is_symlink())
     spec = top / f"{name}.spec"
@@ -116,7 +118,7 @@ Summary: Avatar Studio native Alpha build
 License: {license_name}
 URL: https://github.com/NekoUnix/A.R.I.A
 BuildArch: x86_64
-{'Requires: obs-studio >= 30' if name == 'aria-obs-canvas' else 'Requires: vulkan-loader, libxkbcommon, libX11, libXcursor, libXi, libXrandr, wayland-libs'}
+{'Requires: obs-studio >= 32' if name == 'aria-obs-canvas' else 'Requires: vulkan-loader, libxkbcommon, libX11, libXcursor, libXi, libXrandr, libwayland-client, libwayland-cursor'}
 %description
 Native Alpha build. See the bundled documentation for setup and limitations.
 %install

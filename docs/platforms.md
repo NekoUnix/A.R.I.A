@@ -114,7 +114,10 @@ repository packages. Cubism Core and private avatar files are not included.
 Linux binaries target glibc 2.39 or newer (Ubuntu 24.04+, recent Fedora and current
 Arch), with ALSA, OpenSSL 3, Wayland/X11 libraries, libxkbcommon and a Vulkan driver.
 Fedora and Arch packages declare runtime dependencies. OBS is optional for the app;
-its **aria-obs-canvas** package is installed separately.
+its **aria-obs-canvas** package is installed separately. Plugin packages are built
+against Fedora 44 and current Arch OBS 32+ respectively. The portable plugin is
+built against Ubuntu 24.04's native OBS 30 (`libobs.so.0`); other distributions
+should use their matching package or compile the included source against their OBS.
 
 ```sh
 # Fedora: run in the downloaded release folder
@@ -139,9 +142,13 @@ credential encryption are not implemented on macOS/Linux.
 
 ## Reproduce native packages
 
-After `cargo build --locked --release --workspace`, build the Linux OBS plugin as
-shown in [its README](../native/linux-canvas/README.md), install `rpm` and `zstd`,
-then run `python3 scripts/package-native.py linux` (Python 3.11+).
+After `cargo build --locked --release --workspace` on Ubuntu 24.04, build the
+portable Linux OBS plugin as shown in [its README](../native/linux-canvas/README.md).
+Install `rpm`, `zstd` and Docker, then run `sh scripts/build-linux-obs-packages.sh`
+to compile separate plugins against Fedora 44 and current Arch OBS headers and
+libraries. Finally run `python3 scripts/package-native.py linux` (Python 3.11+).
+OBS library filenames differ between distributions; copying Ubuntu's plugin into
+all packages is insufficient. Each plugin package records its build's OBS version.
 
 For macOS run `sh scripts/build-syphon.sh`, then `python3 scripts/package-native.py
 macos`. This builds Syphon at an immutable revision and bundles it; it does not

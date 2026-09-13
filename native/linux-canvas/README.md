@@ -22,7 +22,13 @@ The sender name includes ARIA's process ID; after restarting ARIA, select its ne
 sender. Resolution changes reconnect automatically without changing the selection.
 An absent sender becomes transparent. All three outputs can run together.
 
-Install the plugin built for your native OBS ABI. Flatpak/Snap sandbox packages
+Install the plugin built for your native OBS ABI. The portable tarball targets
+Ubuntu 24.04's OBS 30 (`libobs.so.0`). Fedora 44 and current Arch packages build
+against their own OBS 32+ development libraries; `OBS-VERSION.txt` records the
+version in each plugin package. `scripts/build-linux-obs-packages.sh` builds both
+distribution variants in Docker. Do not fix library-name mismatches with symlinks;
+use a matching package or compile this source against your installed libobs.
+Flatpak/Snap sandbox packages
 require their own compatible extension and are not supported by this installer.
 No root service, virtual camera module, PipeWire portal or compositor capture is
 used. Files are exclusively created with mode 0600 under `/dev/shm`; both programs
