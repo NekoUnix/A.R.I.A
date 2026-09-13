@@ -333,9 +333,9 @@ impl OutputWindows {
         #[cfg(windows)]
         ui.hyperlink_to("Get the OBS Spout2 plugin ↗", "https://github.com/Off-World-Live/obs-spout2-plugin/releases");
         #[cfg(target_os = "macos")]
-        ui.hyperlink_to("Syphon setup ↗", "https://github.com/NekoUnix/A.R.I.A/blob/main/docs/obs-output.md#macos-syphon");
+        ui.hyperlink_to("Syphon setup ↗", concat!("https://github.com/NekoUnix/A.R.I.A/blob/v", env!("CARGO_PKG_VERSION"), "/docs/obs-output.md#macos-syphon"));
         #[cfg(target_os = "linux")]
-        ui.hyperlink_to("Install the ARIA Canvas OBS plugin ↗", "https://github.com/NekoUnix/A.R.I.A/blob/main/docs/obs-output.md#linux-aria-canvas");
+        ui.hyperlink_to("Install the ARIA Canvas OBS plugin ↗", concat!("https://github.com/NekoUnix/A.R.I.A/blob/v", env!("CARGO_PKG_VERSION"), "/docs/obs-output.md#linux-aria-canvas"));
         });
         let size = config.pixels(selected);
         if selected < 2 {
