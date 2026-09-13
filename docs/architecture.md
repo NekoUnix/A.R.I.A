@@ -353,3 +353,26 @@ those angles before spring simulation. The profile holds motion tuning, not
 running clip state. Frozen poses store sampled motion offsets separately from
 tracking parameters and spring rotations, so editing frozen head parameters
 remains possible without restarting the animation.
+
+## Speech and performance state (v0.26)
+
+`RigConfig::mouth_response` is model-owned and serialized with movement presets.
+For responsive speech, the common pipeline and personal-calibration filter leave
+supported mouth channels unsmoothed. `speech::Filter` then applies one time-based
+filter before rig mapping; responsive bindings bypass their additional filter
+without overwriting authored settings. Turning the option off restores the old
+pipeline. Holds, frozen poses and physics retain their existing ordering. Attached
+model rigs share the filtered input stream.
+
+Tracking snapshots are consumed only on simulation ticks. `FrameClock` advances
+scheduled deadlines rather than resetting a full interval after a late wake-up;
+missed slots are skipped and actual elapsed time is retained for diagnostics.
+Initial app import is excluded, while later stalls remain visible. Live2D renderers
+cache the effective per-drawable opacity until visibility configuration changes.
+
+`Metrics` samples Windows process/system and DXGI counters at 1 Hz, using explicit
+IDs from owned Cubism, accessory, effect and camera workers. No process-tree scan
+or background telemetry service is introduced. Read-only process handles close
+after sampling; creation times and monotonic counters prevent reuse/reset spikes.
+Frame history holds at most 120 intervals. The footer builds extended details only
+while its popup is open; the optional authenticated API receives the same snapshot.

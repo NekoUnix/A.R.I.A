@@ -167,6 +167,12 @@ struct Device {
     name: String,
 }
 impl Camera {
+    pub fn process_ids(&self) -> impl Iterator<Item = u32> + '_ {
+        self.worker
+            .iter()
+            .map(|w| w.child.id())
+            .chain(self.job.iter().map(|j| j.child.id()))
+    }
     pub fn running(&self) -> bool {
         self.worker.is_some()
     }

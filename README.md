@@ -11,9 +11,17 @@ A cross-platform Alpha avatar app built in Rust with egui and wgpu. Run **Live2D
 0.x / 1.0**, or **PNG/GIF** avatars, connect tracking, build expressions and effects,
 and send compact-preview, full-resolution canvases to OBS.
 
-![Odette Live2D in ARIA v0.25 Alpha output controls](docs/images/outputs-alpha-v25.png)
+![Odette in ARIA v0.26 Alpha tracking controls](docs/images/responsive-speech-v26.png)
 
-## New in v0.25 Alpha
+## New in v0.26 Alpha (source build)
+
+- **Responsive speech:** per-avatar mouth smoothing with Instant, Quick and Soft choices; avoids stacked VTube Studio profile delay.
+- **Expanded bottom bar:** owned-worker CPU/RAM, GPU allocation, packet rate/age and expandable frame, memory and I/O details.
+- **Performance:** steadier frame deadlines, fewer tracking copies and cached Live2D visibility calculations.
+- Includes the Live2D layer groups, movable pins and configurable VRM motion upgrade.
+- [Setup, counter meanings and limitations](docs/responsiveness.md). Published 0.25 packages predate these source changes.
+
+### Included from v0.25
 
 - Native OBS outputs: Windows Spout2, macOS Syphon and Linux ARIA Canvas.
 - Windows, Linux, Apple Silicon and Intel Mac builds, plus Fedora RPM and Arch packages.
@@ -53,6 +61,7 @@ and send compact-preview, full-resolution canvases to OBS.
 | Webcam / iPhone / controller input | Partial hardware validation | Physical camera, phone and controller testing |
 | NVIDIA RTX tracking | Experimental adapter | Native SDK build and actual GPU inference validation |
 | Native OBS outputs | Alpha: Windows Spout2, macOS Syphon, Linux ARIA Canvas | Linux uses asynchronous readback; broader GPU/OBS acceptance remains |
+| Responsive speech and resource details | Implemented in v0.26 source | Automated response tests; physical phone latency remains unmeasured |
 | Themes, offline help and local API | Implemented and tested | Continued documentation/device coverage |
 | Twitch / YouTube chat | Implemented; live-account testing pending | Provider/account acceptance |
 | Cubism runtime process and Linux/macOS builds | Experimental native platform support | Native-machine graphics/SDK validation; use each OS's Core library |
@@ -64,7 +73,7 @@ identifies what works, what is partial, and what is not implemented.
 
 ## Start on Windows
 
-1. Download `aria-0.25.0-alpha.1-windows-x64.zip` from [Releases](https://github.com/NekoUnix/A.R.I.A/releases).
+1. Download the Windows x64 ZIP from [Releases](https://github.com/NekoUnix/A.R.I.A/releases). Check its version: the v0.26 changes require a v0.26 build or the source/CI instructions below.
 2. Extract the ZIP into a writable folder. CI development builds are also available
    as **aria-windows-x64** artifacts from the [Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml); extract their outer artifact ZIP first.
 3. Run `aria-desktop.exe`. The built-in Mica puppet needs no extra files.
@@ -167,7 +176,7 @@ This is a development build. Live2D motion3/pose3 playback and Cubism advanced
 offscreen blending remain unsupported. Read the model-specific guides for other
 limits; no engine can automatically correct missing or incorrectly authored rigs.
 
-## Avatar customization upgrade (development branch)
+## Avatar customization included in v0.26 source
 
 - [Live2D layers](docs/live2d-layers.md): reversible hiding/transparency, model-owned groups and user-defined hotkeys.
 - [Stage anchors](docs/model-folders-and-pins.md): move a pin independently of its object; new Live2D attachments receive tracking automatically.

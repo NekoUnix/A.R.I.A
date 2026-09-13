@@ -105,3 +105,11 @@ with a capped range reward so exaggerated extremes are not preferred indefinitel
 Each signed input still needs both directions to produce a valid range. For example,
 if both head-turn takes move in the same direction, the final input remains marked
 for review. Confirm the resulting behavior on your actual avatar before saving.
+
+## Mouth response after calibration
+
+In v0.26 source builds, **Tracking → Mouth response → Quick** applies one 12 ms
+mouth filter after learned ranges. It avoids accumulating global and imported
+binding delay. Instant, Soft and custom choices save with the avatar/presets.
+The illustrated calibration face displays raw measurements; use the model preview
+to judge final response. [Speech setup and packet-rate diagnostics](responsiveness.md).

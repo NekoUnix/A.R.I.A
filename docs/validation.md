@@ -715,3 +715,25 @@ normal portable builds do not run them or change user layouts automatically.
 Simulator success is evidence for the documented protocol and receiver lifecycle;
 it is not evidence of a completed physical iPhone test. The model and GPU smoke
 checks are not a performance benchmark or a full Cubism conformance suite.
+
+## v0.26 Alpha response and resource update
+
+Validated on Windows with Rust 1.98.1:
+
+- 171 workspace tests, strict all-feature Clippy and formatting checks.
+- Three tracking-worker Python tests.
+- Six explicit native checks: clipping/blending/opacity rendering; frozen Live2D
+  refresh and layer edits; independent attached models; the supplied NekoUnity2
+  VRM's tracking/springs/freeze; VRM 0/1 GPU fixtures; and Cubism worker parity/exit.
+- Speech step tests cover opening/closing through standard and raw VTS aliases,
+  personal calibration, unchanged head smoothing, 400 ms imported binding settings,
+  old-profile migration, saved response, inversion, frozen poses and frame rates.
+- Resource tests exercise Windows process/system queries, an actual owned child,
+  first-sample/unreadable counters, worker exit and bounded frame history.
+
+One parallel run hit the API test's 200 ms request deadline. The isolated test and
+complete serial suite passed; the production timeout was not relaxed. Documentation
+screenshots use isolated profiles with the owner's full Odette model. Native checks
+and synthetic speech timings do not establish physical iPhone/network latency or
+cross-platform hardware performance. Resource/process counters are Windows-specific;
+unsupported counters display N/A.

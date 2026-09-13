@@ -46,3 +46,14 @@ and two takes use a deterministic synthetic rehearsal, labeled in the UI. This
 illustrates controls and layout, not a physical camera or phone recording.
 
 - `outputs-alpha-v25.png`: v0.25 Alpha Windows output controls with the owner-provided Odette model and synthetic demo tracking; records Alpha branding and native-output wording. Captured from an isolated profile. This does not represent Linux/macOS hardware acceptance.
+
+## v0.26 speech and resource controls
+
+`responsive-speech-v26.png` and `performance-details-v26.png` show the v0.26 Alpha
+native Windows screenshot build, using the same owner-provided full Odette Live2D
+model and visibly labeled Demo input. The isolated profile allows the model and
+OS counters to settle before capture. The Details image includes real local
+machine counters from an optimized build; this short UI check is not a controlled performance benchmark.
+Use screenshot scenarios `responsiveness` and `performance-details` to reproduce
+the panels. No phone recording, account data, Core binaries or avatar source
+files are included.

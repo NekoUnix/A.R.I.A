@@ -18,7 +18,7 @@ arbitrary file loading, command execution, model import or remote network listen
 1. `GET /v1/capabilities` returns protocol/app version, actions and limits.
 2. `GET /v1/state` returns `version`, `generation` and `state`. State includes native
    parameter IDs, ranges and current values; live inputs; pose/source/status;
-   preset indices; expression IDs; output settings; and available themes.
+   preset indices; expression IDs; output settings; available themes; and `usage` resource counters.
 3. `POST /v1/commands` with the returned generation and an action queues a command.
 4. A **202** response includes a `ticket`. Poll `GET /v1/commands/{ticket}` until
    status is `applied` or `rejected`. Queuing is not proof of execution.
@@ -72,3 +72,20 @@ Start with the runnable [Python client](../templates/api/aria_client.py) or
 [PowerShell example](../templates/api/control.ps1). The [request schema](../templates/api/command.schema.json)
 documents the action contract. [Effects plugin examples](../templates/effects/plugins/README.md)
 remain compatible.
+
+## Resource snapshot (v0.26 source)
+
+`state.usage` adds the bottom-bar counters. Original `cpu_percent`, `ram_bytes`
+and `private_bytes` describe the desktop process. `managed_cpu_percent`,
+`managed_ram_bytes` and `managed_private_bytes` include directly owned Cubism
+and camera/setup workers. `managed_processes` / `readable_processes` describe
+coverage. `io_read_bytes_per_second`, `io_write_bytes_per_second`, `handles`,
+`system_ram_available_bytes`, `system_ram_total_bytes`, `frame_average_ms`,
+`frame_p95_ms` and `slow_frames` provide the expanded details. GPU fields remain
+`vram_bytes`, `vram_budget_bytes`, `shared_gpu_bytes`.
+
+Values are numeric or `null` when unavailable (including first-sample rates).
+OS counters refresh at 1 Hz even though API state refreshes at 10 Hz. I/O includes
+pipes/network; RAM sums can count shared pages more than once. These are local
+process counters, not whole-machine CPU or GPU utilization. See
+[counter definitions](responsiveness.md#read-the-bottom-bar).

@@ -127,6 +127,20 @@ impl Profile {
 }
 
 /// Runtime-only smoothing. No frame history is serialized with a profile/preset.
+pub struct Smoothing {
+    pub milliseconds: f32,
+    /// Speech is smoothed once, after calibrated ranges are applied.
+    pub responsive_mouth: bool,
+}
+impl From<f32> for Smoothing {
+    fn from(milliseconds: f32) -> Self {
+        Self {
+            milliseconds,
+            responsive_mouth: false,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Filter {
     values: Inputs,
@@ -141,13 +155,15 @@ impl Filter {
         raw: &Inputs,
         output: &mut Inputs,
         face_found: bool,
-        smoothing_ms: f32,
+        smoothing: impl Into<Smoothing>,
         dt: f32,
     ) {
         if !profile.enabled {
             self.reset();
             return;
         }
+        let smoothing = smoothing.into();
+        let smoothing_ms = smoothing.milliseconds;
         let alpha = if smoothing_ms.is_finite() && smoothing_ms > 0.0 {
             1.0 - (-dt.clamp(0.0, 0.25) * 1000.0 / smoothing_ms.clamp(1.0, 500.0)).exp()
         } else {
@@ -162,6 +178,11 @@ impl Filter {
                 rest(name)
             };
             let value = self.values.entry(name.clone()).or_insert(rest(name));
+            let alpha = if smoothing.responsive_mouth && crate::speech::is_mouth_input(name) {
+                1.0
+            } else {
+                alpha
+            };
             *value += (target - *value) * alpha;
             output.insert(name.clone(), *value);
         }

@@ -13,6 +13,7 @@ pub mod movement;
 pub mod physics;
 pub mod rig;
 pub mod shortcuts;
+pub mod speech;
 pub mod vrm;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -177,8 +178,20 @@ impl ParameterPipeline {
         settings: &MappingSettings,
         dt: f32,
     ) -> Parameters {
+        self.update_with_response(frame, settings, dt, false)
+    }
+
+    /// With responsive speech, leave mouth opening unfiltered for the single
+    /// speech filter after personal calibration and before rig bindings.
+    pub fn update_with_response(
+        &mut self,
+        frame: Option<&TrackingFrame>,
+        settings: &MappingSettings,
+        dt: f32,
+        responsive_mouth: bool,
+    ) -> Parameters {
         let target = self.measure(frame, settings);
-        self.smooth(target, settings, dt)
+        self.smooth(target, settings, dt, responsive_mouth)
     }
 
     /// Unsmoothed measurements before display limits, for personal range capture.
@@ -231,7 +244,13 @@ impl ParameterPipeline {
         target
     }
 
-    fn smooth(&mut self, target: Parameters, settings: &MappingSettings, dt: f32) -> Parameters {
+    fn smooth(
+        &mut self,
+        target: Parameters,
+        settings: &MappingSettings,
+        dt: f32,
+        responsive_mouth: bool,
+    ) -> Parameters {
         let tau = if settings.smoothing_ms.is_finite() {
             settings.smoothing_ms.clamp(0.0, 500.0) / 1000.0
         } else {
@@ -253,7 +272,12 @@ impl ParameterPipeline {
             } else {
                 Parameters::default().0[i]
             };
-            self.current.0[i] += (value - self.current.0[i]) * alpha;
+            let channel_alpha = if i == 5 && responsive_mouth {
+                1.0
+            } else {
+                alpha
+            };
+            self.current.0[i] += (value - self.current.0[i]) * channel_alpha;
         }
         self.current
     }

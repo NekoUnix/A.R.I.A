@@ -52,6 +52,9 @@ pub struct Effects {
     pub search: String,
 }
 impl Effects {
+    pub fn process_ids(&self) -> impl Iterator<Item = u32> + '_ {
+        self.mocs.process_ids()
+    }
     #[cfg(feature = "screenshots")]
     pub fn pause_smoke(&mut self, native_avatar: bool) -> bool {
         if self.paused || self.time < 1.3 {
