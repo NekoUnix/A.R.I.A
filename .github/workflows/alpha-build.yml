@@ -64,10 +64,6 @@ jobs:
           cargo fmt --all --check
           python scripts/check-repository.py
           python -m unittest discover -s tracking -v
-      - name: Native lint and regression tests
-        run: |
-          cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-          cargo test --locked --workspace
       - name: Linux OBS plugin and protocol tests
         if: runner.os == 'Linux'
         run: |
@@ -75,13 +71,19 @@ jobs:
           cmake --build target/obs-plugin --parallel 2
           ctest --test-dir target/obs-plugin --output-on-failure
           xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 target/obs-plugin/obs-canvas-test "$PWD/target/obs-plugin/aria-canvas.so"
-          cargo test --locked -p aria-desktop gpu_readback_preserves_canvas_pixels_without_blocking_send -- --ignored --nocapture
       - name: macOS Syphon framework
         if: runner.os == 'macOS'
         run: |
           sh scripts/build-syphon.sh
           clang -fobjc-arc -framework Foundation -framework Metal apps/aria-desktop/native/syphon.m apps/aria-desktop/native/syphon-test.m -o target/syphon-test
           target/syphon-test "$PWD/target/syphon-build/Build/Products/Release/Syphon.framework"
+      - name: Native lint and regression tests
+        run: |
+          cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+          cargo test --locked --workspace
+      - name: Linux asynchronous GPU readback
+        if: runner.os == 'Linux'
+        run: cargo test --locked -p aria-desktop gpu_readback_preserves_canvas_pixels_without_blocking_send -- --ignored --nocapture
       - name: Optimized native executables
         if: runner.os != 'Windows'
         run: cargo build --locked --release --workspace
