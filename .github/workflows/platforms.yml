@@ -29,7 +29,18 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake pkg-config libasound2-dev libudev-dev libssl-dev libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libgl1-mesa-dev
+          sudo apt-get install -y cmake pkg-config libasound2-dev libudev-dev libssl-dev libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libgl1-mesa-dev libobs-dev xvfb mesa-vulkan-drivers
+      - name: Reuse Linux Alpha build dependencies
+        if: runner.os == 'Linux'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: alpha-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            alpha-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}-
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.98.1 --profile minimal --component clippy
       - name: Build desktop, CLI and Cubism host
@@ -38,3 +49,11 @@ jobs:
         run: cargo test --locked --workspace
       - name: Platform lint
         run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - name: Linux native OBS regression checks
+        if: runner.os == 'Linux'
+        run: |
+          cmake -S native/linux-canvas -B target/obs-plugin -DCMAKE_BUILD_TYPE=Release
+          cmake --build target/obs-plugin --parallel 2
+          ctest --test-dir target/obs-plugin --output-on-failure
+          xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 target/obs-plugin/obs-canvas-test "$PWD/target/obs-plugin/aria-canvas.so"
+          cargo test --locked -p aria-desktop gpu_readback_preserves_canvas_pixels_without_blocking_send -- --ignored --nocapture
