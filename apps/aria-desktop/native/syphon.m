@@ -7,12 +7,14 @@
 - (id)initWithName:(NSString *)name device:(id<MTLDevice>)device options:(NSDictionary *)options;
 - (void)publishFrameTexture:(id<MTLTexture>)texture onCommandBuffer:(id<MTLCommandBuffer>)buffer imageRegion:(NSRect)region flipped:(BOOL)flipped;
 - (void)stop;
+@property(readonly) BOOL hasClients;
 @end
 @interface ARIASender : NSObject {
 @public atomic_int pending;
 }
 @property(strong) ARIASyphonAPI *server;
 @property(strong) id<MTLCommandQueue> queue;
+@property BOOL published;
 @end
 @implementation ARIASender
 - (void)dealloc { [_server stop]; }
@@ -36,6 +38,7 @@ void *aria_syphon_create(const char *framework, const char *name, void *device, 
 int aria_syphon_send(void *handle, void *texture) {
     @autoreleasepool {
         ARIASender *sender = (__bridge ARIASender *)handle;
+        if (sender.published && !sender.server.hasClients) return 1;
         // Bound GPU work; never wait for OBS or the GPU on the event thread.
         if (atomic_load(&sender->pending) >= 3) return 0;
         id<MTLCommandBuffer> commands = [sender.queue commandBuffer];
@@ -51,6 +54,7 @@ int aria_syphon_send(void *handle, void *texture) {
         // This is wgpu's queue: canvas rendering, sharing, and subsequent renders
         // stay ordered without CPU waits or a second Metal device.
         [commands commit];
+        sender.published = YES;
         return 1;
     }
 }

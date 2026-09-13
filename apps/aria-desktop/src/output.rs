@@ -321,10 +321,11 @@ impl OutputWindows {
             ui,
             "Small desktop preview · OBS receives the full selected canvas resolution through the native output source.",
         );
+        let sender_hint = crate::native_output::sender_hint(SENDERS[selected]);
         ui.horizontal_wrapped(|ui| {
-            ui.label(egui::RichText::new(SENDERS[selected]).monospace().small());
+            ui.label(egui::RichText::new(&sender_hint).monospace().small());
             if crate::help::control(ui, "spout", |ui| ui.small_button("Copy sender")).clicked() {
-                ui.ctx().copy_text(SENDERS[selected].into());
+                ui.ctx().copy_text(sender_hint.clone());
             }
         });
         ui.collapsing("How OBS captures this canvas", |ui| {

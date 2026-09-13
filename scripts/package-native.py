@@ -129,14 +129,22 @@ cp -a '{rpm_tree}/.' %{{buildroot}}/
 def macos(work):
     app = work / "ARIA Alpha.app"
     binary = app / "Contents/MacOS"
-    contents(binary)
+    payload = work / "payload"
+    contents(payload)
+    for entry in payload.iterdir():
+        target = binary if entry.name in ["aria-desktop", "aria-cli", "aria-cubism-host"] else app / "Contents/Resources"
+        copy(entry, target / entry.name)
     framework = ROOT / "target/syphon-build/Build/Products/Release/Syphon.framework"
     copy(framework, app / "Contents/Frameworks/Syphon.framework")
     plist = dict(CFBundleName="ARIA Alpha", CFBundleDisplayName="ARIA Alpha", CFBundleIdentifier="com.nekounix.aria", CFBundleExecutable="aria-desktop", CFBundlePackageType="APPL", CFBundleShortVersionString=VERSION.partition("-")[0], CFBundleVersion=VERSION.partition("-")[0], CFBundleGetInfoString=f"ARIA Alpha {VERSION}", NSHighResolutionCapable=True, LSMinimumSystemVersion="13.0", NSMicrophoneUsageDescription="Use microphone amplitude to animate your avatar.", NSCameraUsageDescription="Use optional camera tracking to animate your avatar.")
     (app / "Contents/Info.plist").write_bytes(plistlib.dumps(plist))
     # Ad-hoc signatures support native Apple Silicon execution; not notarization.
-    run("codesign", "--force", "--sign", "-", "--deep", str(app))
+    run("codesign", "--force", "--sign", "-", str(app / "Contents/Frameworks/Syphon.framework"))
+    for name in ["aria-cli", "aria-cubism-host"]:
+        run("codesign", "--force", "--sign", "-", str(binary / name))
+    run("codesign", "--force", "--sign", "-", str(app))
     run("codesign", "--verify", "--deep", "--strict", str(app))
+    run(str(binary / "aria-cli"), "--version")
     arch = "arm64" if platform.machine() == "arm64" else "x64"
     run("ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(app), str(DIST / f"aria-{VERSION}-macos-{arch}.zip"))
 

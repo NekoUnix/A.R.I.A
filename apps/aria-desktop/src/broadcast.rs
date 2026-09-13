@@ -117,7 +117,9 @@ impl Broadcasts {
                         crate::native_output::description(),
                         if sent { "" } else { " · frame pending" }
                     ));
-                    target.last = Some((config.clone(), revision));
+                    if sent || cfg!(target_os = "linux") {
+                        target.last = Some((config.clone(), revision));
+                    }
                 }
                 Err(e) => {
                     self.status[i] = Some(format!("OBS send failed: {e:#}. Use Retry OBS output."));

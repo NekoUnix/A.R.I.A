@@ -80,5 +80,10 @@ int aria_canvas_read(const char *path, uint8_t **pixels, uint32_t *w, uint32_t *
     result = 1;
 done:
     close(fd); /* also releases flock, including error paths */
+    if (result < 0) {
+        /* A failed read after realloc must not leave dimensions describing an
+         * older, larger allocation. Clear both sides of the capacity contract. */
+        free(*pixels); *pixels = NULL; *w = *h = *format = 0; *serial = 0;
+    }
     return result;
 }

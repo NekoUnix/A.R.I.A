@@ -23,8 +23,11 @@ pub const GUIDE: &str = "Install the included ARIA Canvas OBS plugin, restart na
 pub fn send(bridge: &Bridge, sender: &mut Sender, changed: bool) -> anyhow::Result<bool> {
     #[cfg(windows)]
     {
-        let _ = changed;
-        bridge.send(sender)
+        if changed {
+            bridge.send(sender)
+        } else {
+            Ok(true)
+        }
     }
     #[cfg(target_os = "macos")]
     {
@@ -34,6 +37,14 @@ pub fn send(bridge: &Bridge, sender: &mut Sender, changed: bool) -> anyhow::Resu
     #[cfg(target_os = "linux")]
     {
         bridge.send(sender, changed)
+    }
+}
+
+pub fn sender_hint(base: &str) -> String {
+    if cfg!(windows) {
+        base.into()
+    } else {
+        format!("{base} ({})", std::process::id())
     }
 }
 
