@@ -24,6 +24,7 @@ pub struct Avatar {
     pub imported_count: usize,
     renderer: ModelRenderer,
     last_pose_mode: PoseMode,
+    last_layers: aria_core::layers::Config,
     values: Vec<rig::RigParameter>,
 }
 impl Avatar {
@@ -104,11 +105,18 @@ impl Avatar {
             imported_count,
             renderer,
             last_pose_mode: PoseMode::Live,
+            last_layers: Default::default(),
             values,
         })
     }
     pub fn image(&self) -> ModelImage {
         self.renderer.image
+    }
+    pub fn layer_opacity(&self, mesh: usize) -> f32 {
+        self.model
+            .drawables
+            .get(mesh)
+            .map_or(0., |d| self.last_layers.opacity(&d.id))
     }
     pub fn image_lease(&self) -> std::sync::Arc<crate::cubism_render::ModelTexture> {
         self.renderer.lease.clone()
@@ -153,20 +161,23 @@ impl Avatar {
             self.physics.as_mut(),
             |p, active| expressions.update(p, active, dt),
         );
-        if self
+        let pose_changed = !self
             .values
             .iter()
             .zip(self.model.parameters())
-            .all(|(a, b)| a.value == b.value)
-        {
+            .all(|(a, b)| a.value == b.value);
+        if !pose_changed && self.last_layers == config.layers {
             return Ok(false);
         }
-        for p in &self.values {
-            self.model.set_parameter(&p.id, p.value);
+        if pose_changed {
+            for p in &self.values {
+                self.model.set_parameter(&p.id, p.value);
+            }
+            self.model.update()?;
         }
-        self.model.update()?;
         self.renderer
-            .render(self.model.canvas, &self.model.drawables)?;
+            .render_layers(self.model.canvas, &self.model.drawables, &config.layers)?;
+        self.last_layers.clone_from(&config.layers);
         Ok(true)
     }
     pub fn save_png(&self, path: &Path) -> Result<()> {
@@ -177,7 +188,10 @@ fn read_labels(path: &Path) -> Result<BTreeMap<String, String>> {
     #[derive(Deserialize)]
     struct Info {
         #[serde(rename = "Parameters")]
+        #[serde(default)]
         parameters: Vec<Label>,
+        #[serde(default, rename = "Parts")]
+        parts: Vec<Label>,
     }
     #[derive(Deserialize)]
     struct Label {
@@ -193,6 +207,7 @@ fn read_labels(path: &Path) -> Result<BTreeMap<String, String>> {
     Ok(info
         .parameters
         .into_iter()
+        .chain(info.parts)
         .map(|v| (v.id, v.name))
         .collect())
 }
@@ -280,6 +295,51 @@ mod tests {
             .collect();
         let mut expressions = crate::expressions_panel::ExpressionsPanel::default();
         let before = avatar.renderer.vertex_staging_capacity();
+        let original = avatar.renderer.read_rgba_for_test().unwrap().0;
+        assert!(avatar.model.drawables.iter().all(|d| !d.id.is_empty()));
+        assert_eq!(
+            avatar
+                .model
+                .drawables
+                .iter()
+                .map(|d| &d.id)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            avatar.model.drawables.len()
+        );
+        config.layers.groups.push(aria_core::layers::Group {
+            id: 1,
+            name: "All hidden".into(),
+            opacity: 0.,
+            active: true,
+            layers: avatar
+                .model
+                .drawables
+                .iter()
+                .map(|d| d.id.clone())
+                .collect(),
+        });
+        assert!(
+            avatar
+                .update(&Inputs::new(), &mut config, &mut expressions, 0.)
+                .unwrap()
+        );
+        let hidden = avatar.renderer.read_rgba_for_test().unwrap().0;
+        assert!(
+            hidden.as_chunks::<4>().0.iter().all(|p| p[3] == 0),
+            "All selected ArtMeshes should be transparent"
+        );
+        config.layers.toggle(1);
+        assert!(
+            avatar
+                .update(&Inputs::new(), &mut config, &mut expressions, 0.)
+                .unwrap()
+        );
+        assert_eq!(
+            original,
+            avatar.renderer.read_rgba_for_test().unwrap().0,
+            "Restoring layers restores the exact original image"
+        );
         for _ in 0..60 {
             assert!(
                 !avatar

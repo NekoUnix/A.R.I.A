@@ -374,6 +374,8 @@ pub struct Items {
     was_frozen: bool,
     pub selected: Option<u64>,
     pub pick_pin: bool,
+    pub edit_pin: bool,
+    anchor_drag: Option<Placement>,
     pub message: Option<String>,
     pub draft: aria_core::shortcuts::Shortcut,
     pub draws: Arc<[DrawItem]>,
@@ -661,6 +663,58 @@ impl Items {
         let selected = self
             .selected
             .and_then(|id| scene.items.iter().find(|d| d.item.id == id));
+        if selected.is_none_or(|d| d.item.pin.is_none()) {
+            self.edit_pin = false;
+            self.anchor_drag = None;
+        }
+        if self.edit_pin {
+            self.pick_pin = false;
+            self.drag = None;
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                self.edit_pin = false;
+                self.anchor_drag = None;
+                return false;
+            }
+            if let Some(draw) = selected
+                && !draw.item.locked
+            {
+                if response.drag_started()
+                    && let Some(start) = ui.input(|i| i.pointer.press_origin())
+                    && let Some(marker) = anchor_marker(draw, scene, canvas, zoom)
+                    && marker.distance(start) < 18.
+                {
+                    self.anchor_drag = draw.pose(scene, canvas, zoom);
+                }
+                let pose = self.anchor_drag.or_else(|| draw.pose(scene, canvas, zoom));
+                if (response.clicked() || response.dragged() && self.anchor_drag.is_some())
+                    && let Some(point) = response.interact_pointer_pos()
+                    && let Some(pose) = pose
+                    && let Some(pin) =
+                        avatar.pick(frame(scene, canvas, zoom, avatar.is_puppet()).local(point))
+                    && let Some(item) = config.items.iter_mut().find(|i| i.id == draw.item.id)
+                {
+                    if let Some(next) = reanchor(
+                        draw,
+                        pose,
+                        avatar.anchor(Some(&pin)),
+                        pin,
+                        scene,
+                        canvas,
+                        zoom,
+                    ) {
+                        *item = next;
+                        changed = true;
+                    } else {
+                        self.message = Some("That anchor needs an offset outside the supported range. Choose a closer point.".into());
+                    }
+                }
+            }
+            if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
+                self.anchor_drag = None;
+            }
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+            return changed;
+        }
         if self.unpin {
             self.unpin = false;
             if let Some(draw) = selected
@@ -785,6 +839,30 @@ impl Items {
         changed
     }
     pub fn selection(&self, painter: &egui::Painter, scene: &Scene, canvas: Rect, zoom: f32) {
+        if self.edit_pin {
+            painter.text(
+                canvas.left_top() + vec2(12., 12.),
+                egui::Align2::LEFT_TOP,
+                "Move anchor: drag the circle or click a new surface • Esc finishes",
+                egui::FontId::proportional(13.),
+                crate::theme::mint(),
+            );
+            if let Some(draw) = scene
+                .items
+                .iter()
+                .find(|d| Some(d.item.id) == self.selected)
+                && let Some(marker) = anchor_marker(draw, scene, canvas, zoom)
+            {
+                painter.circle_filled(marker, 7., Color32::from_black_alpha(190));
+                painter.circle_stroke(marker, 9., egui::Stroke::new(2., crate::theme::mint()));
+                if let Some(pose) = draw.pose(scene, canvas, zoom) {
+                    painter.line_segment(
+                        [marker, pose.center],
+                        egui::Stroke::new(1., crate::theme::mint()),
+                    );
+                }
+            }
+        }
         if self.pick_pin {
             painter.text(
                 canvas.left_top() + vec2(12.0, 12.0),
@@ -825,6 +903,36 @@ impl Items {
             ),
         )
     }
+}
+fn anchor_marker(draw: &DrawItem, scene: &Scene, canvas: Rect, zoom: f32) -> Option<Pos2> {
+    let mut marker = draw.clone();
+    marker.item.position = [0.; 2];
+    marker.pose(scene, canvas, zoom).map(|p| p.center)
+}
+/// Change the attachment surface while preserving the rendered center, angle and size.
+fn reanchor(
+    draw: &DrawItem,
+    old: Placement,
+    anchor: Anchor,
+    pin: Pin,
+    scene: &Scene,
+    canvas: Rect,
+    zoom: f32,
+) -> Option<Item> {
+    let mut next = draw.clone();
+    next.anchor = anchor;
+    next.item.pin = Some(pin);
+    next.item.position = [0.; 2];
+    let at = next.pose(scene, canvas, zoom)?;
+    let offset = rotate(old.center - at.center, -at.offset_angle) / at.offset_scale;
+    let height = old.size.y / at.offset_scale;
+    if !offset.is_finite() || offset.abs().max_elem() > 4. || !(0.005..=4.).contains(&height) {
+        return None;
+    }
+    next.item.position = [offset.x, offset.y];
+    next.item.rotation = degrees(old.angle - at.offset_angle);
+    next.item.height = height;
+    Some(next.item)
 }
 fn bounded(v: Vec2) -> [f32; 2] {
     [v.x.clamp(-4.0, 4.0), v.y.clamp(-4.0, 4.0)]
@@ -878,7 +986,7 @@ pub fn anchor(pin: Option<&Pin>, avatar: Option<&Avatar>) -> Anchor {
             let Some(avatar) = avatar else {
                 return Anchor::Missing;
             };
-            resolve_surface(
+            let mut resolved = resolve_surface(
                 avatar.view_canvas(),
                 &avatar.model.drawables,
                 *mesh,
@@ -886,7 +994,11 @@ pub fn anchor(pin: Option<&Pin>, avatar: Option<&Avatar>) -> Anchor {
                 *weights,
                 *angle,
                 *length,
-            )
+            );
+            if let Anchor::Surface { opacity, .. } = &mut resolved {
+                *opacity *= avatar.layer_opacity(*mesh);
+            }
+            resolved
         }
         _ => Anchor::Missing,
     }
@@ -1001,6 +1113,81 @@ pub fn pick_surface(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn reanchoring_preserves_world_placement_across_transforms_and_canvases() {
+        let ctx = egui::Context::default();
+        let draw = DrawItem {
+            deformation: None,
+            tint: Color32::WHITE,
+            item: Item {
+                position: [0.13, -0.08],
+                rotation: 37.,
+                height: 0.23,
+                follow_scale: true,
+                ..Default::default()
+            },
+            image: ItemImage::Png(sprite(&ctx)),
+            anchor: Anchor::Surface {
+                point: vec2(-0.2, 0.1),
+                angle: 0.5,
+                scale: 1.3,
+                opacity: 1.,
+            },
+            visible: true,
+        };
+        let scene = Scene {
+            images: Default::default(),
+            dents: Default::default(),
+            effects: Default::default(),
+            recoil: [0.; 2],
+            _model_lease: None,
+            model: None,
+            model_bounds: Rect::NOTHING,
+            sprite: None,
+            params: aria_core::Parameters::default(),
+            items: Default::default(),
+        };
+        for size in [vec2(1920., 1080.), vec2(1080., 1920.), vec2(512., 384.)] {
+            for zoom in [0.6, 1.5] {
+                let canvas = Rect::from_min_size(egui::pos2(27., 40.), size);
+                let old = draw.pose(&scene, canvas, zoom).unwrap();
+                for anchor in [
+                    Anchor::Surface {
+                        point: vec2(0.15, -0.22),
+                        angle: -0.8,
+                        scale: 0.7,
+                        opacity: 1.,
+                    },
+                    Anchor::Puppet(vec2(-0.1, 0.2)),
+                ] {
+                    let pin = Pin::Puppet { point: [0.; 2] };
+                    let item = reanchor(&draw, old, anchor, pin, &scene, canvas, zoom).unwrap();
+                    let next = DrawItem {
+                        item,
+                        anchor,
+                        ..draw.clone()
+                    }
+                    .pose(&scene, canvas, zoom)
+                    .unwrap();
+                    assert!((next.center - old.center).length() < 0.001);
+                    assert!((next.size - old.size).length() < 0.001);
+                    assert!((next.angle - old.angle).abs() < 0.00001);
+                }
+                assert!(
+                    reanchor(
+                        &draw,
+                        old,
+                        Anchor::Missing,
+                        Pin::Puppet { point: [0.; 2] },
+                        &scene,
+                        canvas,
+                        zoom
+                    )
+                    .is_none()
+                );
+            }
+        }
+    }
     use super::*;
     #[test]
     fn gif_pins_match_rendered_artwork_during_motion_and_drag_in_all_canvases() {
@@ -1268,6 +1455,30 @@ mod tests {
         assert!((config.items[0].position[0] - 120.0 / 560.0).abs() < 1e-5);
         assert!((config.items[0].position[1] + 0.1).abs() < 1e-5);
         assert!(config.items[0].pin.is_some());
+        // Dragging the anchor moves the surface reference, not the accessory.
+        manager.edit_pin = true;
+        let before_pin = config.items[0].pin.clone();
+        let before_draw = manager.draws[0].clone();
+        let before_pose = before_draw.pose(&scene_base, canvas, 1.).unwrap();
+        run(
+            vec![egui::Event::PointerMoved(center)],
+            &mut manager,
+            &mut config,
+        );
+        run(vec![button(center, true)], &mut manager, &mut config);
+        let next_anchor = center + vec2(-110., 90.);
+        run(
+            vec![egui::Event::PointerMoved(next_anchor)],
+            &mut manager,
+            &mut config,
+        );
+        run(vec![button(next_anchor, false)], &mut manager, &mut config);
+        assert_ne!(config.items[0].pin, before_pin);
+        let after_pose = manager.draws[0].pose(&scene_base, canvas, 1.).unwrap();
+        assert!((before_pose.center - after_pose.center).length() < 0.001);
+        assert!((before_pose.size - after_pose.size).length() < 0.001);
+        assert!((before_pose.angle - after_pose.angle).abs() < 0.00001);
+        manager.edit_pin = false;
         config.items[0].locked = true;
         let position = config.items[0].position;
         run(vec![button(target, true)], &mut manager, &mut config);
@@ -1281,7 +1492,16 @@ mod tests {
         manager.unpin = true;
         run(vec![], &mut manager, &mut config);
         assert!(config.items[0].pin.is_none());
-        assert_eq!(config.items[0].position, position);
+        let unpinned = manager.draws[0].clone();
+        let unpinned = DrawItem {
+            item: config.items[0].clone(),
+            anchor: Anchor::Free,
+            ..unpinned
+        };
+        assert!(
+            (unpinned.pose(&scene_base, canvas, 1.).unwrap().center - before_pose.center).length()
+                < 0.001
+        );
     }
     #[test]
     fn frozen_gate_survives_pose_preset_storage_and_manual_toggles_still_work() {

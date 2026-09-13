@@ -1,6 +1,11 @@
 # Live2D avatar import and native runtime
 
-![ Odette Live2D imported into the current build](images/workspace-v23.png)
+![Odette Live2D with the new layer controls](images/live2d-layers-upgrade.png)
+
+## Layers and reusable looks
+
+Use **Inspector → Avatar → Layers** to hide or fade exported ArtMeshes, create
+model-specific groups and assign visibility hotkeys. See the [layer guide](live2d-layers.md).
 
 ## Pinnable Live2D objects
 
@@ -11,8 +16,9 @@ hotkey. Use **Stage objects & toggles → Live2D object** to configure it.
 Keep the matching manifest and texture folders together, or supply a bare
 `.moc3`'s atlas PNGs in index order under **Object texture setup**.
 
-Objects start in a static pose and can still follow a moving pin. Enable
-**Animate object from tracking** for independent animation. Pose presets,
+New objects receive the live tracking inputs automatically, using their own mappings and
+optional physics. Turn off **Animate object from tracking** for a static pose that
+still follows its pin. Previously saved static objects retain that choice. Pose presets,
 all three outputs and transparent PNG export include these objects. See
 the in-app **?** for the detailed workflow and resource limits. To replace
 the main avatar, use **Avatar & appearance → Import Live2D avatar** (or

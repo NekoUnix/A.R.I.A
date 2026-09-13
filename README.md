@@ -166,3 +166,12 @@ See [screenshot provenance](docs/images/README.md).
 This is a development build. Live2D motion3/pose3 playback and Cubism advanced
 offscreen blending remain unsupported. Read the model-specific guides for other
 limits; no engine can automatically correct missing or incorrectly authored rigs.
+
+## Avatar customization upgrade (development branch)
+
+- [Live2D layers](docs/live2d-layers.md): reversible hiding/transparency, model-owned groups and user-defined hotkeys.
+- [Stage anchors](docs/model-folders-and-pins.md): move a pin independently of its object; new Live2D attachments receive tracking automatically.
+- [VRM motion](docs/vrm.md#natural-movement-and-gesture-animations): configurable sway, breathing and arms, plus six clickable gestures and screenshot freezing.
+
+These features are in the source build. The published v0.25.0-alpha.1 binaries
+predate this upgrade; build the branch or use a subsequent release to try it.

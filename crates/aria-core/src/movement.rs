@@ -28,6 +28,7 @@ pub struct Pose {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RigConfig {
+    pub layers: crate::layers::Config,
     pub tracking: crate::calibration::Profile,
     pub vrm: crate::vrm::Settings,
     pub vrm_pose: crate::vrm::Pose,
@@ -125,6 +126,7 @@ impl RigConfig {
     }
     pub fn validate(&self, parameters: &[RigParameter]) -> Result<()> {
         self.tracking.validate()?;
+        self.layers.validate()?;
         self.vrm.validate()?;
         self.images.validate()?;
         ensure!(
@@ -259,6 +261,7 @@ impl Preset {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct SavedRig {
+    pub layer_hotkeys: BTreeMap<u64, crate::shortcuts::Shortcut>,
     pub controller: crate::controller::Settings,
     pub input_compat_revision: u32,
     pub microphone: crate::microphone::Settings,
@@ -294,7 +297,40 @@ impl SavedRig {
         self.input_compat_revision = 1;
         count
     }
+    pub fn validate_layer_hotkeys(&self) -> Result<()> {
+        use crate::shortcuts::Shortcut;
+        ensure!(self.layer_hotkeys.len() <= 128, "Too many layer shortcuts");
+        let mut keys = BTreeSet::new();
+        for (&id, &key) in &self.layer_hotkeys {
+            key.validate()?;
+            ensure!(
+                id > 0
+                    && keys.insert(key)
+                    && key != Shortcut::pose()
+                    && !self
+                        .item_hotkeys
+                        .values()
+                        .chain(self.expression_hotkeys.values())
+                        .any(|&k| k == key)
+                    && !self.effects.designs.iter().any(|d| d.hotkey == Some(key))
+                    && !self
+                        .config
+                        .images
+                        .states
+                        .iter()
+                        .any(|s| s.hotkey == Some(key))
+                    && !self
+                        .presets
+                        .iter()
+                        .filter_map(|p| p.hotkey)
+                        .any(|n| Shortcut::preset(n) == key),
+                "Layer shortcut conflicts with another action"
+            );
+        }
+        Ok(())
+    }
     pub fn validate_image_hotkeys(&self) -> Result<()> {
+        self.validate_layer_hotkeys()?;
         for state in &self.config.images.states {
             if let Some(key) = state.hotkey {
                 ensure!(

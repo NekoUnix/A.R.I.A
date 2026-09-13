@@ -89,3 +89,23 @@ From a source checkout with the Windows toolchain installed:
 The library test imports each discovered export in place, renders it and checks
 that visible geometry remains inside the view at head/body parameter extremes.
 Private avatars and local test screenshots are excluded from the repository/package.
+
+## Move an anchor without moving its object
+
+Select a pinned item, unlock stage dragging and choose **Move anchor only** under
+**Pin to avatar**. Drag the circle on the stage or click another solid surface.
+ARIA recalculates the offset to keep the object's position, rotation and size.
+Empty-space hits retain the last valid pin; an out-of-range offset is rejected.
+**Finish moving anchor** or Esc ends editing and retains accepted changes.
+
+The original **Choose pin point** tool snaps the object to the chosen point.
+Normal dragging moves its offset. **Move anchor only** changes the attachment
+point instead. Freeze the parent pose first if you want the entire composition
+to remain still; live motion follows the new surface once editing ends.
+
+New moc3 attachments receive the same live tracking inputs as the main avatar,
+with their own imported/default mappings, parameter limits and optional physics.
+Per-object held parameters take precedence. Turn off **Animate object from
+tracking** for a static accessory; previously saved static choices are preserved.
+The parent Freeze pose also holds each animated object's last values. PNG/GIF,
+Live2D and VRM parent avatars all support independent Live2D objects.

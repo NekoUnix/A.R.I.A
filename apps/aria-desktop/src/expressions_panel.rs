@@ -213,6 +213,10 @@ impl ExpressionsPanel {
     pub fn assign(saved: &mut SavedRig, id: &str, shortcut: Shortcut) -> anyhow::Result<()> {
         shortcut.validate()?;
         anyhow::ensure!(
+            !saved.layer_hotkeys.values().any(|&k| k == shortcut),
+            "That shortcut belongs to a Live2D layer group"
+        );
+        anyhow::ensure!(
             !saved
                 .config
                 .images

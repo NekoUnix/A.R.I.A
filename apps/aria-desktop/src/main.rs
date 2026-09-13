@@ -21,6 +21,7 @@ mod image_actions;
 mod input_monitor;
 mod items;
 mod items_panel;
+mod layers_panel;
 #[cfg(target_os = "linux")]
 mod linux_output;
 mod liquid_art;

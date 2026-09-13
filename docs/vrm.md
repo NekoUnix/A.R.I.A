@@ -1,14 +1,14 @@
 # VRM avatars on Windows
 
-![ The supplied NekoUnity2 VRM in ARIA](images/vrm-v23.png)
+![NekoUnity2 waving with configurable VRM motion](images/vrm-motion-upgrade.png)
 
-ARIA v0.19 supports primary VRM 0.x and VRM 1.0 avatars. The Rust runtime reads
+ARIA supports primary VRM 0.x and VRM 1.0 avatars. The Rust runtime reads
 the embedded humanoid, skins, facial morphs, textures and spring bones. Windows
 renders them using wgpu/DX12. Unity and Cubism Core are not required for VRM.
 
 ## Import and run
 
-1. Extract `aria-0.24.0-windows-x64.zip` and run `aria-desktop.exe`.
+1. Extract the current Windows alpha ZIP from [Releases](https://github.com/NekoUnix/A.R.I.A/releases) and run `aria-desktop.exe`.
 2. Open **Avatar & appearance → Import VRM avatar…**. If another avatar is active,
    use **Change avatar / type… → VRM 3D avatar**.
 3. Choose a `.vrm` file, review its author, declared license and rig summary,
@@ -55,7 +55,28 @@ The exporter must provide the relevant blink/mouth expressions for them to anima
 The initial arm position is relaxed by 65° from the exported T-pose. **Relax arms**
 in Inputs/Pose controls ranges from 0° to 85°. Camera controls change the viewing
 angle independently of tracking. Face tracking does not provide full-body or hand
-tracking; untracked humanoid bones retain the authored pose and relaxed arms.
+tracking. Configurable idle movement and gesture animations add motion to the humanoid bones.
+
+## Natural movement and gesture animations
+
+In **Avatar → View → Life & idle movement**, tune **Body sway**, **Breathing**,
+**Arms & elbows** (0–2) and **Idle speed** (0.25–2×). Natural idle movement starts
+enabled with subtle defaults. Disable it or set individual strengths to zero.
+The motion adds to face tracking and drives secondary spring motion. Optional
+missing bones are skipped; chest breathing falls back to the spine.
+
+Under **Gesture animations**, click **Wave**, **Nod**, **Shake head**, **Bow**,
+**Cheer** or **Stretch**. Click again to restart. Use **Gesture strength**,
+**Gesture speed** and **Repeat gestures** to customize playback. Switching clips
+or **Stop / return to tracking** blends over 0.3 seconds. Gestures take 2.4–4 seconds
+at normal speed and include eased entry/exit. Face tracking remains active.
+
+Settings belong to this model and its movement/pose presets; loading an avatar
+does not automatically play a gesture. **Freeze pose** captures the current
+gesture, idle and spring state for a screenshot, while still allowing parameter
+and camera edits. Resume continues playback. These procedural animations do not
+include motion capture, collision avoidance or automatic adjustment for unusual
+costumes. Reduce strength or tune **Relax arms** if a gesture intersects clothing.
 
 ## Expressions, physics and poses
 
@@ -74,7 +95,7 @@ momentum; individual or overall reset buttons restore the original modifiers.
 The solver uses fixed 60 Hz steps with sphere/capsule collision constraints.
 
 **Poses → Pose controls** holds individual parameters or freezes the final pose,
-including the spring rotations and automatic blink state, which are stored in
+including idle/gesture offsets, spring rotations and automatic blink state, which are stored in
 saved pose presets. Frozen frames skip further animation/rendering
 until something changes. Camera adjustments and edits to held pose parameters
 still refresh the avatar. **Presets** can save movement/pose configurations with

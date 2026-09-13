@@ -63,6 +63,7 @@ impl Items {
                         {
                             self.selected = Some(item.id);
                             self.pick_pin = false;
+                            self.edit_pin = false;
                         }
                         ui.small(if item.pin.is_some() { "Pinned" } else { "Free" });
                         if aria_core::items::is_model(&item.path) {
@@ -139,11 +140,13 @@ impl Items {
                     ui.colored_label(egui::Color32::LIGHT_RED,"Pin surface unavailable. Choose a new pin point.");
                 }
                 ui.horizontal_wrapped(|ui| {
-                    if help::control(ui,"png-pins",|ui| ui.button(if self.pick_pin { "Cancel pin" } else { "Choose pin point" })).clicked() { self.pick_pin = !self.pick_pin; }
-                    if help::control(ui,"png-pins",|ui| ui.button("Pin here")).clicked() { self.pin_here = true; }
-                    if help::control(ui,"png-pins",|ui| ui.add_enabled(item.pin.is_some(),egui::Button::new("Unpin"))).clicked() { self.unpin = true; }
+                    if help::control(ui,"png-pins",|ui| ui.button(if self.pick_pin { "Cancel pin" } else { "Choose pin point" })).clicked() { self.pick_pin = !self.pick_pin; self.edit_pin = false; }
+                    if help::control(ui,"pin-edit",|ui| ui.add_enabled(item.pin.is_some() && !item.locked, egui::Button::new(if self.edit_pin { "Finish moving anchor" } else { "Move anchor only" }))).clicked() { self.edit_pin = !self.edit_pin; self.pick_pin = false; }
+                    if help::control(ui,"png-pins",|ui| ui.button("Pin here")).clicked() { self.pin_here = true; self.edit_pin = false; }
+                    if help::control(ui,"png-pins",|ui| ui.add_enabled(item.pin.is_some(),egui::Button::new("Unpin"))).clicked() { self.unpin = true; self.edit_pin = false; }
                 });
                 theme::caption(ui,"Choose pin point, then click the avatar. Live2D and VRM pins follow mesh motion; PNG/GIF pins follow the artwork, tracking and action animations. Pin here uses the object's center. Drag a pinned object to fine-tune its offset. Unlock stage dragging if it will not move.");
+                theme::caption(ui,"Move anchor only shows a circle on the stage. Drag it or click a new point to relocate the attachment without moving, rotating or resizing the object. Click Finish moving anchor or press Esc when done.");
                 help::control(ui,"png-pins",|ui| ui.checkbox(&mut item.follow_rotation,"Follow pin rotation"));
                 help::control(ui,"png-pins",|ui| ui.checkbox(&mut item.follow_scale,"Follow surface stretch"));
                 help::control(ui,"png-pins",|ui| ui.checkbox(&mut item.follow_visibility,"Follow surface visibility"));
@@ -252,6 +255,10 @@ impl Items {
     }
     pub fn assign(saved: &mut SavedRig, id: u64, shortcut: Shortcut) -> anyhow::Result<()> {
         shortcut.validate()?;
+        anyhow::ensure!(
+            !saved.layer_hotkeys.values().any(|&k| k == shortcut),
+            "That shortcut belongs to a Live2D layer group"
+        );
         anyhow::ensure!(
             !saved
                 .config

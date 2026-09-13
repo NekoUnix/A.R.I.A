@@ -2,8 +2,9 @@
 
 ![ Per-avatar input controls in the current build](images/inputs-v23.png)
 
-ARIA v0.6 organizes the right-hand **INPUT MONITOR** into **Inputs**, **Pose**,
-**Physics**, **Expressions**, **Presets** and **Raw** tabs. Drag its left edge to widen it. These controls use
+The right-hand **Inspector** groups controls under **Tracking**, **Avatar**,
+**Stage** and **Poses**, with tabs appropriate to the imported avatar type.
+Drag its left edge to widen it. These controls use
 the loaded model's actual parameter names, ranges and VTS assignments. The built-in
 and PNG puppets have the same workflow for their 12 standard parameters. Studio
 sections and parameter categories collapse independently. Search reveals matching
@@ -88,6 +89,12 @@ Under **Presets**, enter a name and optionally select a shortcut, then choose:
   screenshot freeze is released when recalling a movement preset.
 - **Save pose:** saves the above settings plus every final parameter value as a
   complete frozen pose. Applying it holds the exact saved pose.
+
+Both preset types include Live2D layer opacity/groups, stage anchors and object
+settings, and VRM motion tuning. A VRM pose also stores sampled idle/gesture angles
+and spring motion. Layer-group shortcuts stay with the avatar independently of
+presets. See [layers](live2d-layers.md), [anchor editing](model-folders-and-pins.md)
+and [VRM gestures](vrm.md#natural-movement-and-gesture-animations).
 
 Select a saved item and use **Apply selected**. **Replace selected** updates its
 contents using the current settings while keeping its movement/pose type.

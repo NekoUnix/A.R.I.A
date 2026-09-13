@@ -19,6 +19,8 @@ pub enum Blend {
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Drawable {
+    pub id: String,
+    pub part: String,
     pub positions: Vec<[f32; 2]>,
     pub uvs: Vec<[f32; 2]>,
     pub indices: Vec<u16>,
@@ -210,6 +212,10 @@ impl CubismModel {
                     array((a.$field)(m), n)?
                 };
             }
+            let ids = read!(drawable_ids);
+            let parents = read!(drawable_parts);
+            let part_count = count((a.part_count)(m), 8192)?;
+            let parts = array((a.part_ids)(m), part_count)?;
             let flags = read!(flags);
             let dynamic = read!(dynamic);
             let textures = read!(textures);
@@ -252,6 +258,20 @@ impl CubismModel {
                 );
                 ensure!(ic.is_multiple_of(3), "Invalid triangle index count");
                 let d = &mut self.drawables[i];
+                if d.id.is_empty() {
+                    ensure!(!ids[i].is_null(), "Null drawable ID");
+                    d.id = std::ffi::CStr::from_ptr(ids[i]).to_str()?.to_owned();
+                    ensure!(!d.id.is_empty() && d.id.len() <= 256, "Invalid drawable ID");
+                    if parents[i] >= 0 {
+                        let parent = count(parents[i], part_count.saturating_sub(1))?;
+                        ensure!(
+                            parent < parts.len() && !parts[parent].is_null(),
+                            "Invalid drawable part"
+                        );
+                        d.part = std::ffi::CStr::from_ptr(parts[parent]).to_str()?.to_owned();
+                        ensure!(d.part.len() <= 256, "Invalid part ID");
+                    }
+                }
                 d.positions.clear();
                 d.positions
                     .extend(array(positions[i], vc)?.iter().map(|v| [v.x, v.y]));

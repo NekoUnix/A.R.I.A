@@ -729,6 +729,7 @@ pub fn validate_save(d: &Design, saved: &SavedRig) -> anyhow::Result<()> {
                     .expression_hotkeys
                     .values()
                     .chain(saved.item_hotkeys.values())
+                    .chain(saved.layer_hotkeys.values())
                     .any(|k| *k == key)
                 && !saved
                     .presets

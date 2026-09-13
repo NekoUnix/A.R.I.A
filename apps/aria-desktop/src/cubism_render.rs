@@ -498,6 +498,14 @@ impl ModelRenderer {
     }
 
     pub fn render(&mut self, canvas: Canvas, drawables: &[Drawable]) -> Result<()> {
+        self.render_layers(canvas, drawables, &Default::default())
+    }
+    pub fn render_layers(
+        &mut self,
+        canvas: Canvas,
+        drawables: &[Drawable],
+        layers: &aria_core::layers::Config,
+    ) -> Result<()> {
         ensure!(
             self.meshes.len() == drawables.len()
                 && self.vertex_count == drawables.iter().map(|d| d.positions.len()).sum::<usize>(),
@@ -517,7 +525,8 @@ impl ModelRenderer {
                 ],
                 uv,
             }));
-            if d.visible && d.opacity > 0.01 {
+            let opacity = d.opacity * layers.opacity(&d.id);
+            if d.visible && opacity > 0.01 {
                 for vertex in &vertices[vertices.len() - d.positions.len()..] {
                     bounds.extend_with(egui::pos2(
                         (vertex.position[0] + 1.0) * 0.5,
@@ -529,7 +538,7 @@ impl ModelRenderer {
                 multiply: d.multiply,
                 screen: d.screen,
                 control: [
-                    d.opacity,
+                    opacity,
                     if !d.masked {
                         0.0
                     } else if d.inverted {
@@ -560,9 +569,9 @@ impl ModelRenderer {
             .create_command_encoder(&Default::default());
         drop(begin_pass(&mut encoder, &self.output, true));
         self.order.clear();
-        self.order.extend(
-            (0..drawables.len()).filter(|&i| drawables[i].visible && drawables[i].opacity > 0.0),
-        );
+        self.order.extend((0..drawables.len()).filter(|&i| {
+            drawables[i].visible && drawables[i].opacity * layers.opacity(&drawables[i].id) > 0.0
+        }));
         self.order
             .sort_unstable_by_key(|&i| (drawables[i].order, i));
         let sorted = &self.order;
@@ -794,6 +803,8 @@ mod tests {
     }
     fn quad(texture: usize, order: i32, right: f32) -> Drawable {
         Drawable {
+            id: format!("Mesh{order}"),
+            part: String::new(),
             positions: vec![[0.0, 0.0], [right, 0.0], [right, 4.0], [0.0, 4.0]],
             uvs: vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
             indices: vec![0, 1, 2, 0, 2, 3],
@@ -1000,5 +1011,18 @@ mod tests {
         check(&scene, [0, 0, 255, 255], [0, 0, 255, 255]);
         scene[0].double_sided = true;
         check(&scene, [128, 255, 0, 255], [128, 255, 0, 255]);
+        // User opacity applies to color only; hidden mask ArtMeshes still clip.
+        scene[0].masked = true;
+        scene[0].inverted = false;
+        scene[0].multiply = [1.; 4];
+        scene[0].screen = [0.; 4];
+        let mut layers = aria_core::layers::Config::default();
+        layers.opacity.insert(scene[0].id.clone(), 0.5);
+        layers.opacity.insert(scene[2].id.clone(), 0.);
+        renderer.render_layers(canvas, &scene, &layers).unwrap();
+        let data = pixels(&renderer);
+        let pixel = |x: usize| &data[(1024 * 2048 + x) * 4..(1024 * 2048 + x) * 4 + 4];
+        near(pixel(512), [128, 0, 128, 255]);
+        near(pixel(1536), [0, 0, 255, 255]);
     }
 }

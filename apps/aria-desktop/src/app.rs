@@ -674,6 +674,14 @@ impl AriaApp {
                             app.detect_key_color(0);
                         }
                     }
+                    Ok("layers") => {
+                        app.input_monitor.tab = Tab::Layers;
+                        if let Some(avatar) = &app.live2d {
+                            app.input_monitor
+                                .layers_panel
+                                .prepare_smoke(avatar, &mut app.input_monitor.saved);
+                        }
+                    }
                     Ok("physics") | Ok("physics-group") => {
                         app.input_monitor.tab = Tab::Physics;
                     }
@@ -1792,6 +1800,14 @@ impl AriaApp {
                     eprintln!("VRM primary avatar imported successfully");
                     let scenario = std::env::var("ARIA_SMOKE_SCENARIO").unwrap_or_default();
                     self.settings.source = Source::Local;
+                    if scenario == "vrm-motion" {
+                        self.input_monitor.saved.config.vrm.motion.gesture_loop = true;
+                        self.vrm
+                            .as_mut()
+                            .unwrap()
+                            .motion
+                            .play(crate::vrm::motion::Gesture::Wave);
+                    }
                     if scenario == "vrm-springs" {
                         self.input_monitor.tab = Tab::Physics;
                     }
@@ -2036,13 +2052,21 @@ impl AriaApp {
                 &mut self.settings.mapping,
                 true,
             );
-            if let Some(avatar) = &self.vrm {
+            if let Some(avatar) = &mut self.vrm {
                 if self.input_monitor.tab == Tab::Vrm {
                     crate::vrm::panel::view(ui, avatar, &mut self.input_monitor);
                 }
                 if self.input_monitor.tab == Tab::Physics {
                     crate::vrm::panel::physics(ui, &avatar.asset.springs, &mut self.input_monitor);
                 }
+            }
+            if self.input_monitor.tab == Tab::Layers
+                && let Some(avatar) = &self.live2d
+            {
+                self.input_monitor.save_requested |=
+                    self.input_monitor
+                        .layers_panel
+                        .show(ui, avatar, &mut self.input_monitor.saved);
             }
             if self.input_monitor.tab == Tab::Items {
                 if self.items.panel(

@@ -34,7 +34,7 @@ impl Default for ModelSettings {
     fn default() -> Self {
         Self {
             textures: Vec::new(),
-            animate: false,
+            animate: true,
             physics: true,
             parameters: BTreeMap::new(),
             snapshot: BTreeMap::new(),

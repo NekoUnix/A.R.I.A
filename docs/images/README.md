@@ -1,5 +1,17 @@
 # Documentation screenshots
 
+## Avatar customization source upgrade — 2026-09-13
+
+`live2d-layers-upgrade.png` shows the owner-provided Odette 90s outfit with the
+exported ArtMesh/part list. `vrm-motion-upgrade.png` shows the owner-provided
+NekoUnity2 VRM performing the procedural Wave gesture beside its motion controls.
+Both are unedited native Windows screenshots from the development build using
+isolated profiles, within the owner's documentation-image authorization.
+Neither demonstrates physical tracking. Debug resource readings are not benchmarks.
+Only screenshots are included; the original models, SDK and profiles remain private.
+
+## Earlier captures
+
 The `*-v23.png` images were captured from ARIA v0.23 on Windows on 2026-09-12.
 The owner explicitly requested current-build screenshots using previously supplied
 models. These rendered illustrations are included for that purpose; raw avatar
