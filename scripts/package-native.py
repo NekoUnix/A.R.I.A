@@ -64,6 +64,8 @@ def linux(work):
     app = work / "app-root"
     copy(stage, app / "opt/aria-alpha")
     # Plugin is optional and packaged separately; no OBS dependency for the app.
+    (app / "opt/aria-alpha/obs-plugin/aria-canvas.so").unlink()
+    (app / "opt/aria-alpha/install-obs-linux.sh").unlink()
     for name in ["aria-desktop", "aria-cli", "aria-cubism-host"]:
         link = app / "usr/bin" / name
         link.parent.mkdir(parents=True, exist_ok=True)
