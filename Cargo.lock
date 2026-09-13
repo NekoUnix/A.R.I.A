@@ -214,7 +214,7 @@ dependencies = [
  "bytemuck",
  "cpal",
  "eframe",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "gif",
  "glam",
  "gltf",
