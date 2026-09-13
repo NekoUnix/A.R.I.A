@@ -43,6 +43,9 @@ UI, rendering and tracking changes also need a manual check with a relevant avat
 Report the Windows/GPU/input hardware used and what could not be tested. Never
 claim physical webcam, controller or NVIDIA inference coverage from simulated data.
 Use `./scripts/build-windows.ps1` when a portable artifact needs local verification.
+For camera dependency changes, use Python 3.12 x64 to run
+`python -m pip install --dry-run --ignore-installed --only-binary=:all: -r tracking/requirements-lock.txt`
+before installing into a clean test environment. CI also checks this resolution.
 
 ## Code and review expectations
 

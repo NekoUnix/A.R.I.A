@@ -50,7 +50,7 @@ and [CODEOWNERS availability](https://docs.github.com/en/repositories/managing-y
 
 | Check / activity | What it verifies |
 | --- | --- |
-| `test-and-package` (Windows) | Pinned Rust toolchain, formatting, strict Clippy, workspace tests, Python conversion tests and a portable Windows package. |
+| `test-and-package` (Windows) | Pinned Rust toolchain, formatting, strict Clippy, workspace tests, Python 3.12 x64 dependency resolution/conversion tests and a portable Windows package. |
 | `repository-checks` (Repository) | Local documentation links and headings, JSON syntax, pinned Actions, version consistency, camera dependency pins and conversion regression tests. |
 | Independent review | Intended behavior, architecture, correctness, security, migration, performance and what automated tests cannot establish. |
 | Relevant hardware check | Real avatar rendering, camera/controller behavior, SDK interoperability and output behavior for the changed feature. |
@@ -84,6 +84,9 @@ or auto-merged. A clean alert list does not cover every proprietary SDK or runti
 Camera dependency PRs must update both requirements files consistently, install in
 a clean Python 3.12 x64 environment and run real inference before merging. Review
 model hash/source changes and third-party notices separately from version bumps.
+CI resolves the complete camera lock with binary wheels for Python 3.12 x64 before
+packaging. A dependency upgrade that conflicts with MediaPipe's constraints fails
+this check; a successful dry run still needs the real inference check during review.
 Report vulnerabilities according to [SECURITY.md](../SECURITY.md).
 
 ## Release checklist
