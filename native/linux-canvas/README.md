@@ -15,7 +15,10 @@ cmake --build target/obs-plugin
 ctest --test-dir target/obs-plugin --output-on-failure
 ```
 
-The release includes source and Fedora/Arch plugin packages. For the portable
+The release includes source and Fedora/Arch plugin packages. The
+[Linux installation guide](../../docs/linux.md) covers runtime dependencies,
+published package filenames, checksums, installation, upgrades and removal.
+For the portable
 tarball run `sh install-obs-linux.sh`, restart native OBS, add **ARIA Canvas
 (Alpha)**, and select an open sender. Reopen source properties to refresh the list.
 The sender name includes ARIA's process ID; after restarting ARIA, select its new
@@ -28,8 +31,8 @@ against their own OBS 32+ development libraries; `OBS-VERSION.txt` records the
 version in each plugin package. `scripts/build-linux-obs-packages.sh` builds both
 distribution variants in Docker. Do not fix library-name mismatches with symlinks;
 use a matching package or compile this source against your installed libobs.
-Flatpak/Snap sandbox packages
-require their own compatible extension and are not supported by this installer.
+Flatpak/Snap sandbox packages require their own compatible extension and are not
+supported by this installer.
 No root service, virtual camera module, PipeWire portal or compositor capture is
 used. Files are exclusively created with mode 0600 under `/dev/shm`; both programs
 must run as the same user. The transport reserves tmpfs space before mapping it,

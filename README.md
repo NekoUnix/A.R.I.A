@@ -81,7 +81,17 @@ identifies what works, what is partial, and what is not implemented.
 Detailed [Windows installation and build instructions](docs/windows.md),
 [illustrated documentation index](docs/README.md), and [compatibility / validation](docs/validation.md).
 
-For Linux, macOS, Fedora and Arch installation, use the [native package guide](docs/platforms.md#install-an-alpha-release).
+## Start on Linux or macOS
+
+Use the [Linux installation guide](docs/linux.md) for verified downloads, runtime
+dependencies, native OBS setup, updates and removal:
+
+- [Ubuntu 24.04 portable installation](docs/linux.md#ubuntu-installation)
+- [Fedora 44 RPM installation](docs/linux.md#fedora-installation)
+- [Arch Linux package installation](docs/linux.md#arch-installation)
+
+The guide uses the actual published Fedora filenames containing `.alpha.1`.
+For Intel or Apple Silicon Macs, follow the [native package guide](docs/platforms.md#install-an-alpha-release).
 
 ## Your workspace
 

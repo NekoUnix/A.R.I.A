@@ -2,7 +2,8 @@
 
 ![Odette in the v0.25 Alpha output workspace](images/outputs-alpha-v25.png)
 
-Start with [Windows setup](windows.md) or [Linux/macOS package setup](platforms.md), import your avatar, then follow
+Start with [Windows setup](windows.md), [Linux installation](linux.md) or
+[macOS package setup](platforms.md#install-an-alpha-release), import your avatar, then follow
 [personal tracking setup](tracking-setup.md). The left navigation is **Avatar /
 Tracking / Output / Chat / Settings**. Inspector tools stay grouped by tracking,
 avatar, stage and poses. Hover or click any circled **?** for offline explanations.
@@ -51,6 +52,8 @@ and [compatibility reports](https://github.com/NekoUnix/A.R.I.A/issues/new/choos
 
 | I want to… | Open this guide |
 | --- | --- |
+| Install on Ubuntu, Fedora or Arch, including the OBS plugin | [Linux installation](linux.md) |
+| Install on an Intel or Apple Silicon Mac | [Native packages](platforms.md#install-an-alpha-release) |
 | Use a webcam or NVIDIA RTX facial inference | [Webcam tracking](webcam.md) |
 | Connect iPhone VTube Studio or a tracking tool | [Tracking protocol](tracking.md) |
 | Match tracking to my face and rig | [Personal calibration](tracking-setup.md) |

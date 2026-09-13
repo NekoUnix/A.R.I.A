@@ -80,7 +80,7 @@ On Ubuntu 24.04 install native build dependencies first:
 ```sh
 sudo apt-get update
 sudo apt-get install -y build-essential cmake pkg-config libasound2-dev libudev-dev libssl-dev libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libgl1-mesa-dev
-git clone https://github.com/NekoUnix/A.R.I.A.git
+git clone --branch v0.25.0-alpha.1 https://github.com/NekoUnix/A.R.I.A.git
 cd A.R.I.A
 cargo build --locked --release --workspace
 ./target/release/aria-desktop
@@ -108,8 +108,14 @@ repository packages. Cubism Core and private avatar files are not included.
 | Linux x64 | `aria-0.25.0-alpha.1-linux-x64.tar.gz` | Extract, run `./aria-desktop` |
 | macOS Apple Silicon | `aria-0.25.0-alpha.1-macos-arm64.zip` | Extract, open `ARIA Alpha.app` |
 | macOS Intel | `aria-0.25.0-alpha.1-macos-x64.zip` | Extract, open `ARIA Alpha.app` |
-| Fedora x64 | `aria-alpha-0.25.0~alpha.1-1.x86_64.rpm` | Install with DNF; launch ARIA Alpha |
+| Fedora x64 | `aria-alpha-0.25.0.alpha.1-1.x86_64.rpm` | Install with DNF; launch ARIA Alpha |
 | Arch x64 | `aria-alpha-0.25.0alpha.1-1-x86_64.pkg.tar.zst` | Install with pacman; launch ARIA Alpha |
+
+For complete [Ubuntu, Fedora and Arch installation instructions](linux.md),
+including runtime dependencies, checksum verification, optional OBS installation,
+updates and removal, use the Linux guide. The examples below install both the app
+and its optional OBS plugin. GitHub normalizes `~` to `.` in Fedora download
+filenames; the RPM's internal version remains `0.25.0~alpha.1`.
 
 Linux binaries target glibc 2.39 or newer (Ubuntu 24.04+, recent Fedora and current
 Arch), with ALSA, OpenSSL 3, Wayland/X11 libraries, libxkbcommon and a Vulkan driver.
@@ -121,9 +127,10 @@ should use their matching package or compile the included source against their O
 
 ```sh
 # Fedora: run in the downloaded release folder
-sudo dnf install ./aria-alpha-0.25.0~alpha.1-1.x86_64.rpm ./aria-obs-canvas-0.25.0~alpha.1-1.x86_64.rpm
+sudo dnf install ./aria-alpha-0.25.0.alpha.1-1.x86_64.rpm ./aria-obs-canvas-0.25.0.alpha.1-1.x86_64.rpm
 
 # Arch: run in the downloaded release folder
+sudo pacman -Syu
 sudo pacman -U ./aria-alpha-0.25.0alpha.1-1-x86_64.pkg.tar.zst ./aria-obs-canvas-0.25.0alpha.1-1-x86_64.pkg.tar.zst
 ```
 

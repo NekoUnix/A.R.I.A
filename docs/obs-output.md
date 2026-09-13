@@ -188,7 +188,9 @@ Alpha builds are ad-hoc signed, not Developer ID signed or notarized.
 ## Linux ARIA Canvas
 
 Install **aria-obs-canvas** alongside **aria-alpha** using the Fedora or Arch
-packages in [Releases](https://github.com/NekoUnix/A.R.I.A/releases). The portable
+packages in [Releases](https://github.com/NekoUnix/A.R.I.A/releases). Follow the
+[Linux installation guide](linux.md) for exact download filenames, checksum checks
+and separate app/plugin commands for Ubuntu, Fedora and Arch. The portable
 Linux archive includes `install-obs-linux.sh`; run it from the extracted folder to
 install the plugin for your user, then restart native OBS. The portable plugin
 targets Ubuntu 24.04's OBS 30 (`libobs.so.0`). Fedora 44 and current Arch packages
