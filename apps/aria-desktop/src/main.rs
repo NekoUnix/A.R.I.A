@@ -39,6 +39,7 @@ mod spout;
 mod theme;
 mod tracking_guide;
 mod vrm;
+mod webcam;
 
 fn smoke_mode() -> bool {
     cfg!(feature = "screenshots") && std::env::var_os("ARIA_SCREENSHOT_TO").is_some()

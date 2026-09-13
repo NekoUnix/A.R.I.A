@@ -24,17 +24,30 @@ try {
     & cargo build --locked --release --workspace
     if ($LASTEXITCODE -ne 0) { throw 'Rust build failed; no package was produced.' }
 
-    $ariaVersion = '0.22.0'
+    $ariaVersion = '0.23.0'
     $ariaDist = Join-Path $ariaRoot 'dist'
     $ariaStage = Join-Path $ariaDist ('staging\' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force -Path $ariaStage | Out-Null
     Copy-Item -LiteralPath (Join-Path $ariaRoot 'target\release\aria-desktop.exe'), (Join-Path $ariaRoot 'target\release\aria-cli.exe') -Destination $ariaStage
     Copy-Item -LiteralPath (Join-Path $ariaRoot 'README.md'), (Join-Path $ariaRoot 'LICENSE'), (Join-Path $ariaRoot 'THIRD_PARTY.md') -Destination $ariaStage
     Copy-Item -LiteralPath (Join-Path $ariaRoot 'docs') -Destination $ariaStage -Recurse
-    Copy-Item -LiteralPath (Join-Path $ariaRoot 'templates') -Destination $ariaStage -Recurse
+    $ariaTemplates = Join-Path $ariaRoot 'templates'
+    Get-ChildItem -LiteralPath $ariaTemplates -Recurse -File | Where-Object {
+        $_.Extension -notin '.pyc', '.pyo' -and $_.FullName -notmatch '[\\/]__pycache__[\\/]'
+    } | ForEach-Object {
+        $ariaTemplateRelative = $_.FullName.Substring($ariaTemplates.Length).TrimStart('\', '/')
+        $ariaTemplateTarget = Join-Path (Join-Path $ariaStage 'templates') $ariaTemplateRelative
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ariaTemplateTarget) | Out-Null
+        Copy-Item -LiteralPath $_.FullName -Destination $ariaTemplateTarget
+    }
     $ariaScripts = Join-Path $ariaStage 'scripts'
     New-Item -ItemType Directory -Force -Path $ariaScripts | Out-Null
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'allow-tracking-firewall.ps1') -Destination $ariaScripts
+    $ariaTracking = Join-Path $ariaStage 'tracking'
+    New-Item -ItemType Directory -Path $ariaTracking | Out-Null
+    Get-ChildItem -LiteralPath (Join-Path $ariaRoot 'tracking') -File | Where-Object Extension -In '.py', '.txt', '.md' | Copy-Item -Destination $ariaTracking
+    Copy-Item -LiteralPath (Join-Path $ariaRoot 'tracking/nvidia') -Destination $ariaTracking -Recurse
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'setup-webcam.ps1'), (Join-Path $PSScriptRoot 'build-nvidia-bridge.ps1') -Destination $ariaScripts
     # Preserve the license files published with the resolved dependency crates.
     $ariaMetadataJson = & cargo metadata --locked --format-version 1 --filter-platform $ariaHost
     if ($LASTEXITCODE -ne 0) { throw 'Dependency metadata failed; no package was produced.' }

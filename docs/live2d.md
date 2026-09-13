@@ -1,5 +1,7 @@
 # Live2D avatar import on Windows
 
+![ Odette Live2D imported into the current build](images/workspace-v23.png)
+
 ## Pinnable Live2D objects
 
 Drop `.moc3` or `.model3.json` files onto **Your stage** to add independent

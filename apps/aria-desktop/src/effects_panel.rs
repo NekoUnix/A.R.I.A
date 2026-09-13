@@ -66,7 +66,7 @@ impl Effects {
             aria_core::effects::MAX_ACTIVE
         ));
         if let Some(message) = &self.message {
-            ui.colored_label(theme::MINT, message);
+            ui.colored_label(theme::mint(), message);
         }
         if let Some(error) = &self.audio.error {
             ui.colored_label(egui::Color32::LIGHT_RED, error);
@@ -205,7 +205,7 @@ impl Effects {
                 }
                 theme::caption(
                     ui,
-                    "Bind Twitch redeems, cheers, subs, chat commands or other stream events in Streamer.bot to the supplied HTTP/C# adapter. Touch Portal and custom plugins can use the same API. Only saved effect IDs can run; the API cannot open asset paths or execute programs.",
+                    "Bind Twitch redeems, cheers, subs, chat commands or other stream events in Streamer.bot to the supplied HTTP/C# adapter. Touch Portal and custom plugins can use the same API. The effects route runs saved designs. Settings > Developer API also controls poses, parameters and outputs; no route opens arbitrary asset paths or executes programs.",
                 );
             },
         );

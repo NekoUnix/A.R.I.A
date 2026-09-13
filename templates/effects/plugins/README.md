@@ -1,5 +1,7 @@
 # Trigger ARIA from stream events, buttons and plugins
 
+![Current API controls](../../../docs/images/api-v23.png)
+
 1. In ARIA load the intended avatar, create/select an effect, and note its ID.
 2. Expand **Throws & liquid sprays → Stream events & plugins** and enable the
    local API. Default port: **39421**. Click **Copy API key**.

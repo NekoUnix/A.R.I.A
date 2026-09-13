@@ -17,7 +17,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::theme::{self, BG, MINT, MUTED, PANEL};
+use crate::theme::{self, bg, mint, muted, panel};
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 enum Source {
@@ -26,6 +26,8 @@ enum Source {
     Vts,
     Json,
     Local,
+    Webcam,
+    Rtx,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -34,6 +36,9 @@ struct Settings {
     chat_accounts: crate::chat::Accounts,
     image_avatar: Option<PathBuf>,
     vrm_avatar: Option<PathBuf>,
+    theme: crate::theme::Settings,
+    camera_runtime: crate::webcam::Runtime,
+    camera: crate::webcam::Settings,
     effect_api: crate::effect_api::Settings,
     #[serde(default)]
     vts_pitch_revision: u8,
@@ -59,6 +64,9 @@ impl Default for Settings {
             chat_accounts: Default::default(),
             image_avatar: None,
             vrm_avatar: None,
+            theme: Default::default(),
+            camera_runtime: Default::default(),
+            camera: Default::default(),
             effect_api: Default::default(),
             vts_pitch_revision: 1,
             source: Source::Demo,
@@ -98,6 +106,7 @@ impl Settings {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 struct ModelPreferences {
+    camera: crate::webcam::Settings,
     source: Source,
     sender_ip: String,
     request_port: u16,
@@ -118,6 +127,7 @@ impl Default for ModelPreferences {
 impl ModelPreferences {
     fn capture(settings: &Settings) -> Self {
         Self {
+            camera: settings.camera.clone(),
             source: settings.source,
             sender_ip: settings.sender_ip.clone(),
             request_port: settings.request_port,
@@ -132,6 +142,7 @@ impl ModelPreferences {
         }
     }
     fn restore(&self, settings: &mut Settings) {
+        settings.camera = self.camera.clone();
         settings.source = self.source;
         settings.sender_ip = self.sender_ip.clone();
         settings.request_port = self.request_port;
@@ -156,6 +167,7 @@ enum ControlsPage {
     Tracking,
     Output,
     Chat,
+    Settings,
 }
 
 struct PendingImage {
@@ -166,6 +178,8 @@ struct PendingImage {
     job: crate::media::LoadJob,
 }
 pub struct AriaApp {
+    camera: crate::webcam::Camera,
+    api_snapshot_at: Instant,
     tracking_guide: crate::tracking_guide::Guide,
     tracking_filter: aria_core::calibration::Filter,
     importer: crate::avatar_import::Wizard,
@@ -250,6 +264,7 @@ impl AriaApp {
                 .and_then(|s| eframe::get_value(s, "aria-settings-v1"))
                 .unwrap_or_default()
         };
+        theme::apply(&cc.egui_ctx, settings.theme.active.colors);
         settings.migrate_vts_pitch();
         if let Some(preferences) = settings.model_preferences.get("preview-v1").cloned() {
             preferences.restore(&mut settings);
@@ -282,6 +297,8 @@ impl AriaApp {
             OutputSettings::from_legacy(settings.background, settings.zoom, settings.always_on_top)
         }));
         let app = Self {
+            camera: Default::default(),
+            api_snapshot_at: Instant::now(),
             tracking_guide: Default::default(),
             tracking_filter: Default::default(),
             importer: Default::default(),
@@ -395,6 +412,23 @@ impl AriaApp {
                 } else {
                     ControlsPage::Avatar
                 };
+                if scenario.starts_with("theme-") || scenario == "api-controls" {
+                    app.controls_page = ControlsPage::Settings;
+                    if scenario == "theme-light" {
+                        app.settings.theme.active = theme::presets().remove(1);
+                    }
+                    if scenario == "theme-sakura" {
+                        app.settings.theme.active = theme::presets().remove(2);
+                    }
+                }
+                if scenario == "camera-controls" || scenario == "rtx-controls" {
+                    app.controls_page = ControlsPage::Tracking;
+                    app.settings.source = if scenario == "rtx-controls" {
+                        Source::Rtx
+                    } else {
+                        Source::Webcam
+                    };
+                }
                 if scenario == "odette-gifs" {
                     let root = PathBuf::from(
                         std::env::var_os("ARIA_TEST_GIF_DIR").expect("ARIA_TEST_GIF_DIR"),
@@ -693,12 +727,126 @@ impl AriaApp {
         app
     }
 
+    fn apply_api_action(&mut self, action: crate::effect_api::Action) -> anyhow::Result<()> {
+        use crate::effect_api::Action;
+        use anyhow::ensure;
+        let parameters = self.current_parameters();
+        match action {
+            Action::SetParameters { values } => {
+                ensure!(
+                    !values.is_empty() && values.len() <= 64,
+                    "Provide 1–64 parameter values"
+                );
+                for (id, value) in &values {
+                    let p = parameters
+                        .iter()
+                        .find(|p| &p.id == id)
+                        .ok_or_else(|| anyhow::anyhow!("Unknown parameter: {id}"))?;
+                    ensure!(
+                        value.is_finite() && *value >= p.min && *value <= p.max,
+                        "{id} must be within {} to {}",
+                        p.min,
+                        p.max
+                    );
+                }
+                self.input_monitor.saved.config.pose.held.extend(values);
+                self.input_monitor.saved.config.pose.mode = PoseMode::Override;
+            }
+            Action::ReleaseParameters { ids } => {
+                ensure!(ids.len() <= 64, "At most 64 IDs");
+                for id in &ids {
+                    ensure!(
+                        parameters.iter().any(|p| &p.id == id),
+                        "Unknown parameter: {id}"
+                    );
+                }
+                if ids.is_empty() {
+                    self.input_monitor.saved.config.pose.held.clear();
+                } else {
+                    for id in ids {
+                        self.input_monitor.saved.config.pose.held.remove(&id);
+                    }
+                }
+                if self.input_monitor.saved.config.pose.held.is_empty() {
+                    self.input_monitor.saved.config.pose.mode = PoseMode::Live;
+                }
+            }
+            Action::Pose { frozen } => {
+                if frozen {
+                    self.input_monitor.saved.config.capture_pose(&parameters);
+                } else {
+                    self.input_monitor.saved.config.pose.mode = PoseMode::Live;
+                }
+            }
+            Action::Preset { index } => {
+                ensure!(
+                    self.input_monitor
+                        .apply_preset(index, &mut self.settings.mapping),
+                    "Preset missing or invalid"
+                );
+            }
+            Action::Expression { id, enabled } => {
+                ensure!(
+                    self.input_monitor
+                        .expressions
+                        .entries
+                        .iter()
+                        .any(|e| e.file.id == id),
+                    "Unknown expression"
+                );
+                if enabled {
+                    self.input_monitor.saved.config.expressions.insert(id);
+                } else {
+                    self.input_monitor.saved.config.expressions.remove(&id);
+                }
+            }
+            Action::Output {
+                index,
+                open,
+                zoom,
+                position,
+            } => {
+                ensure!(index < 3, "Output index must be 0, 1 or 2");
+                ensure!(
+                    zoom.is_none_or(|v| v.is_finite() && (0.25..=3.).contains(&v)),
+                    "Zoom must be 0.25–3"
+                );
+                ensure!(
+                    position.is_none_or(|v| v
+                        .iter()
+                        .all(|x| x.is_finite() && (-1.0..=1.0).contains(x))),
+                    "Position coordinates must be -1 to 1"
+                );
+                self.outputs.edit_canvas(index, |c| {
+                    if let Some(v) = zoom {
+                        c.zoom = v;
+                    }
+                    if let Some(v) = position {
+                        c.position = v;
+                    }
+                });
+                self.outputs.set_open(index, open);
+            }
+            Action::Theme { name } => {
+                let t = theme::presets()
+                    .into_iter()
+                    .chain(self.settings.theme.custom.iter().cloned())
+                    .find(|t| t.name == name)
+                    .ok_or_else(|| anyhow::anyhow!("Unknown theme"))?;
+                self.settings.theme.active = t;
+            }
+            Action::SaveProfile => {
+                self.input_monitor.save_requested = true;
+            }
+        }
+        Ok(())
+    }
     fn connection_status(&self) -> &str {
         if self.settings.source == Source::Demo {
             "Demo input"
         } else if self.settings.source == Source::Local {
             "Local microphone / manual input"
-        } else if self.receiver.is_none() {
+        } else if self.receiver.is_none() && !self.camera.running() {
             "Disconnected"
         } else {
             self.snapshot.status()
@@ -766,7 +914,14 @@ impl AriaApp {
                     Some("This model's complete profile was saved locally.".into());
             }
         });
-        theme::caption(ui, "Settings belong to this avatar.");
+        theme::caption(
+            ui,
+            if self.controls_page == ControlsPage::Settings {
+                "Appearance and API settings apply to this PC."
+            } else {
+                "Settings belong to this avatar."
+            },
+        );
         theme::segments(
             ui,
             &mut self.controls_page,
@@ -775,11 +930,24 @@ impl AriaApp {
                 (ControlsPage::Tracking, "Tracking"),
                 (ControlsPage::Output, "Output"),
                 (ControlsPage::Chat, "Chat"),
+                (ControlsPage::Settings, "Settings"),
             ],
         );
         ui.add_space(4.0);
     }
     fn controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if self.controls_page == ControlsPage::Settings {
+            theme::category(
+                ui,
+                "appearance-settings",
+                "Appearance & themes",
+                true,
+                |ui| self.settings.theme.ui(ui),
+            );
+            theme::category(ui, "api-settings", "Developer API", true, |ui| {
+                self.effect_api.ui(ui, &mut self.settings.effect_api)
+            });
+        }
         if self.controls_page == ControlsPage::Tracking {
             theme::category(
                 ui,
@@ -798,6 +966,8 @@ impl AriaApp {
                     let old = self.settings.source;
                     egui::ComboBox::from_id_salt("source")
                         .selected_text(match old {
+                            Source::Webcam => "Webcam · MediaPipe",
+                            Source::Rtx => "Webcam · NVIDIA RTX",
                             Source::Demo => "Demo · no device needed",
                             Source::Vts => "iPhone · VTube Studio",
                             Source::Json => "External tool · ARIA JSON",
@@ -805,6 +975,16 @@ impl AriaApp {
                         })
                         .width(230.0)
                         .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut self.settings.source,
+                                Source::Webcam,
+                                "Webcam · MediaPipe",
+                            );
+                            ui.selectable_value(
+                                &mut self.settings.source,
+                                Source::Rtx,
+                                "Webcam · NVIDIA RTX",
+                            );
                             ui.selectable_value(
                                 &mut self.settings.source,
                                 Source::Local,
@@ -827,6 +1007,7 @@ impl AriaApp {
                             );
                         });
                     if old != self.settings.source {
+                        self.camera.stop();
                         self.receiver = None;
                         self.snapshot = Snapshot::default();
                         self.pipeline.reset();
@@ -836,7 +1017,14 @@ impl AriaApp {
                     if self.settings.source == Source::Json {
                         crate::help::label(ui, "Packet format & external tools", "json");
                     }
-                    if matches!(self.settings.source, Source::Demo | Source::Local) {
+                    if matches!(self.settings.source, Source::Webcam | Source::Rtx) {
+                        self.camera.ui(
+                            ui,
+                            &mut self.settings.camera,
+                            &mut self.settings.camera_runtime,
+                            self.settings.source == Source::Rtx,
+                        );
+                    } else if matches!(self.settings.source, Source::Demo | Source::Local) {
                         if self.settings.source == Source::Local
                             && ui.button("Configure microphone").clicked()
                         {
@@ -848,7 +1036,7 @@ impl AriaApp {
                             } else {
                                 "Synthetic movement for checking your avatar and output."
                             })
-                            .color(MUTED),
+                            .color(muted()),
                         );
                     } else {
                         ui.scope(|ui| {
@@ -897,8 +1085,8 @@ impl AriaApp {
                         } else if crate::help::control(ui, "tracking", |ui| {
                             ui.add_sized(
                                 [230.0, 36.0],
-                                egui::Button::new(RichText::new("Connect tracking").color(BG))
-                                    .fill(MINT),
+                                egui::Button::new(RichText::new("Connect tracking").color(bg()))
+                                    .fill(mint()),
                             )
                         })
                         .clicked()
@@ -906,11 +1094,11 @@ impl AriaApp {
                             self.connect();
                         }
                         ui.label(RichText::new(if self.settings.source == Source::Vts { "On iPhone: enable 3rd Party PC Clients in VTube Studio. Use the phone's IPv4 address." }
-                else { "Accepts ARIA JSON v1 packets from this IP. Use 127.0.0.1 for local tools." }).small().color(MUTED));
+                else { "Accepts ARIA JSON v1 packets from this IP. Use 127.0.0.1 for local tools." }).small().color(muted()));
                     }
                     ui.add_space(7.0);
                     let color = if self.raw.as_ref().is_some_and(|f| f.face_found) {
-                        MINT
+                        mint()
                     } else {
                         Color32::from_rgb(238, 191, 119)
                     };
@@ -1225,7 +1413,7 @@ impl AriaApp {
                 }
                 let selected = self.outputs.snapshot().selected;
                 if let Some(status) = &self.broadcasts.status[selected] {
-                    ui.label(RichText::new(status).small().color(MINT));
+                    ui.label(RichText::new(status).small().color(mint()));
                 }
                 ui.collapsing("OBS connection & troubleshooting", |ui| {
                 if crate::help::control(ui, "spout", |ui| ui.small_button("Retry OBS output"))
@@ -1265,7 +1453,7 @@ impl AriaApp {
                     }
                 }
                 theme::caption(ui, "Gives ARIA CPU scheduling preference over normal-priority apps when Windows is busy. It may reduce CPU scheduling hitches, but cannot fix GPU overload or guarantee smooth frames. High is the strongest priority offered here; Realtime can starve Windows, input and OBS. Turn High off if other apps become less responsive. This preference applies to ARIA on this PC.");
-                if let Some(status) = &self.priority_status { ui.label(RichText::new(status).small().color(MINT)); }
+                if let Some(status) = &self.priority_status { ui.label(RichText::new(status).small().color(mint())); }
                 theme::caption(ui, "The FPS target limits model simulation and rendering even while dragging UI controls. Static poses reuse the last model texture. Closed outputs release their capture textures.");
             });
                 ui.hyperlink_to(
@@ -1676,6 +1864,7 @@ impl AriaApp {
             self.settings.request_port,
             self.settings.listen_port,
             serde_json::to_string(&(
+                &self.settings.camera,
                 &self.settings.mapping,
                 self.pipeline.calibration(),
                 &self.input_monitor.saved.config.bindings,
@@ -1737,6 +1926,8 @@ impl AriaApp {
             .insert(self.input_monitor.model_key.clone(), preferences);
     }
     fn restore_model_preferences(&mut self, key: &str) {
+        self.effect_api.invalidate_model();
+        self.camera.stop();
         self.tracking_filter.reset();
         self.items.reset();
         self.effects.reset();
@@ -1930,7 +2121,7 @@ impl AriaApp {
                         "Sender time is preserved; packet age uses the PC's monotonic clock.",
                     )
                     .small()
-                    .color(MUTED),
+                    .color(muted()),
                 );
                 for (name, value) in &f.blend_shapes {
                     meter(ui, name, *value, 0.0, 1.0);
@@ -2008,7 +2199,7 @@ impl AriaApp {
             egui::Window::new("Live2D asset inspection").open(&mut self.model_open).default_width(670.0).show(ctx, |ui| {
                 crate::help::button(ui, "inspection");
  ui.label(report.manifest.display().to_string());
-                ui.colored_label(MINT, format!("{} textures · {} expressions · {} motions · {:.2} MiB on disk", report.texture_count,
+                ui.colored_label(mint(), format!("{} textures · {} expressions · {} motions · {:.2} MiB on disk", report.texture_count,
                     report.expression_count, report.motion_count, report.total_bytes() as f64 / 1048576.0));
                 ui.label(format!("{} file problems. Presence checks do not validate the contents of a .moc3 file.", report.problem_count()));
                 ui.colored_label(Color32::from_rgb(238, 191, 119), "This checks exported assets. It does not load or render a Cubism model.");
@@ -2028,6 +2219,7 @@ impl AriaApp {
 
 impl eframe::App for AriaApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        theme::sync(ctx, self.settings.theme.active.colors);
         self.poll_image_import();
         self.poll_vrm_import();
         self.input_monitor.save_requested |=
@@ -2103,11 +2295,29 @@ impl eframe::App for AriaApp {
         }
         if self.settings.source == Source::Demo {
             self.raw = Some(demo_frame(self.started.elapsed().as_secs_f32()));
+        } else if matches!(self.settings.source, Source::Webcam | Source::Rtx) {
+            self.snapshot = self.camera.snapshot();
+            self.raw = self.snapshot.fresh_frame().cloned();
         } else if let Some(receiver) = &self.receiver {
             self.snapshot = receiver.snapshot();
             self.raw = self.snapshot.fresh_frame().cloned();
         } else {
             self.raw = None;
+        }
+        if self.settings.effect_api.enabled
+            && self.api_snapshot_at.elapsed() >= Duration::from_millis(100)
+        {
+            self.api_snapshot_at = Instant::now();
+            let parameters:Vec<_>=self.current_parameters().iter().map(|p|serde_json::json!({"id":p.id,"min":p.min,"max":p.max,"default":p.default,"value":p.value})).collect();
+            self.effect_api.publish(serde_json::json!({
+                "tracking_status":self.connection_status(),"source":self.settings.source,
+                "parameters":parameters,"inputs":self.live_inputs,"pose":self.input_monitor.saved.config.pose.mode,
+                "presets":self.input_monitor.saved.presets.iter().enumerate().map(|(index,p)|serde_json::json!({"index":index,"name":p.name})).collect::<Vec<_>>(),
+                "expressions":self.input_monitor.expressions.entries.iter().map(|e|serde_json::json!({"id":e.file.id,"name":e.file.name,"active":self.input_monitor.saved.config.expressions.contains(&e.file.id)})).collect::<Vec<_>>(),
+                "outputs":(0..3).map(|i|serde_json::json!({"index":i,"name":crate::output::NAMES[i],"open":self.outputs.is_open(i),"settings":self.outputs.snapshot().canvas(i)})).collect::<Vec<_>>(),
+                "themes":theme::presets().into_iter().chain(self.settings.theme.custom.iter().cloned()).map(|t|t.name).collect::<Vec<_>>(),
+                "theme":self.settings.theme.active.name
+            }));
         }
         for event in self.hotkeys.events() {
             match event {
@@ -2150,16 +2360,26 @@ impl eframe::App for AriaApp {
                 &self.input_monitor.saved.effects,
                 ctx,
             ) {
-                if command.profile == self.input_monitor.model_key {
-                    #[cfg(feature = "screenshots")]
-                    if crate::smoke_mode() {
-                        eprintln!(
-                            "Plugin API accepted effect {} for current avatar",
-                            command.id
-                        );
-                    }
+                let result = if command.profile != self.input_monitor.model_key
+                    || !self.effect_api.is_current(&command)
+                {
+                    Err("Model changed before the command was applied".into())
+                } else if let Some(action) = command.action {
+                    self.apply_api_action(action).map_err(|e| e.to_string())
+                } else if self
+                    .input_monitor
+                    .saved
+                    .effects
+                    .designs
+                    .iter()
+                    .any(|d| d.id == command.id)
+                {
                     self.effects.pending.push(command.id);
-                }
+                    Ok(())
+                } else {
+                    Err("Effect no longer exists".into())
+                };
+                self.effect_api.complete(command.ticket, result);
             }
         }
         if dt > 0.0 {
@@ -2203,8 +2423,11 @@ impl eframe::App for AriaApp {
                     self.snapshot.packets,
                     self.started.elapsed().as_secs_f64(),
                     face_found
-                        && self.receiver.is_some()
-                        && matches!(self.settings.source, Source::Vts | Source::Json),
+                        && (self.receiver.is_some() || self.camera.running())
+                        && matches!(
+                            self.settings.source,
+                            Source::Vts | Source::Json | Source::Webcam | Source::Rtx
+                        ),
                     &measured,
                 );
                 let preview = self.tracking_guide.profile();
@@ -2325,34 +2548,34 @@ impl eframe::App for AriaApp {
 
         self.metrics.update(self.render_state.as_ref());
         egui::TopBottomPanel::top("header")
-            .frame(Frame::new().fill(BG).inner_margin(10.0))
+            .frame(Frame::new().fill(bg()).inner_margin(10.0))
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new("A.R.I.A.")
                             .size(21.0)
                             .strong()
-                            .color(theme::TEXT),
+                            .color(theme::text_color()),
                     );
-                    ui.label(RichText::new("AVATAR STUDIO").size(12.0).color(MUTED));
+                    ui.label(RichText::new("AVATAR STUDIO").size(12.0).color(muted()));
                     crate::help::button(ui, "welcome");
                     if ui.small_button("Help & documentation").clicked() {
                         crate::help::open(ctx, "welcome", String::new());
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            RichText::new("v0.22 · WINDOWS PREVIEW")
+                            RichText::new("v0.23 · WINDOWS PREVIEW")
                                 .small()
-                                .color(MUTED),
+                                .color(muted()),
                         );
                     });
                 });
             });
         egui::TopBottomPanel::bottom("status")
-            .frame(Frame::new().fill(BG).inner_margin(10.0))
+            .frame(Frame::new().fill(bg()).inner_margin(10.0))
             .show(ctx, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new(&self.gpu).small().color(MUTED));
+                    ui.label(RichText::new(&self.gpu).small().color(muted()));
                     ui.separator();
                     ui.label(RichText::new(format!("{:.0} model FPS", self.render_fps)).small());
                     crate::help::button(ui, "performance");
@@ -2364,14 +2587,14 @@ impl eframe::App for AriaApp {
                     ui.label(
                         RichText::new("Local processing · no telemetry")
                             .small()
-                            .color(MUTED),
+                            .color(muted()),
                     );
                 });
             });
         egui::SidePanel::left("controls")
             .exact_width(302.0)
             .resizable(false)
-            .frame(Frame::new().fill(PANEL).inner_margin(12.0))
+            .frame(Frame::new().fill(panel()).inner_margin(12.0))
             .show(ctx, |ui| {
                 self.controls_header(ui);
                 let area = egui::ScrollArea::vertical()
@@ -2382,7 +2605,7 @@ impl eframe::App for AriaApp {
             .default_width(380.0)
             .width_range(330.0..=700.0)
             .resizable(true)
-            .frame(Frame::new().fill(PANEL).inner_margin(12.0))
+            .frame(Frame::new().fill(panel()).inner_margin(12.0))
             .show(ctx, |ui| {
                 section(ui, "INSPECTOR");
                 let kind = self.avatar_kind();
@@ -2402,7 +2625,7 @@ impl eframe::App for AriaApp {
         let output_settings = self.outputs.snapshot();
         let stage_output = output_settings.canvas(output_settings.selected);
         egui::CentralPanel::default()
-            .frame(Frame::new().fill(BG).inner_margin(14.0))
+            .frame(Frame::new().fill(bg()).inner_margin(14.0))
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.heading("Your stage");
@@ -2418,10 +2641,10 @@ impl eframe::App for AriaApp {
                             "MICA / TEST PUPPET"
                         })
                         .small()
-                        .color(MUTED),
+                        .color(muted()),
                     );
                 });
-                ui.label(RichText::new(self.connection_status()).color(MINT));
+                ui.label(RichText::new(self.connection_status()).color(mint()));
                 ui.horizontal_wrapped(|ui| {
                     crate::help::button(ui, "png-items");
                     if ui
@@ -2537,7 +2760,7 @@ impl eframe::App for AriaApp {
                     rect,
                     12.0,
                     if stage_output.background == Background::Transparent {
-                        Color32::from_rgb(30, 34, 48)
+                        theme::card_color()
                     } else {
                         stage_output.background.color(stage_output.key)
                     },
@@ -2547,13 +2770,13 @@ impl eframe::App for AriaApp {
                         let x = rect.left() + rect.width() * i as f32 / 12.0;
                         painter.line_segment(
                             [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
-                            Stroke::new(1.0_f32, Color32::from_rgb(25, 30, 44)),
+                            Stroke::new(1.0_f32, theme::border().gamma_multiply(0.35)),
                         );
                     }
                     painter.circle_stroke(
                         rect.center(),
                         rect.width().min(rect.height()) * 0.38,
-                        Stroke::new(1.0_f32, Color32::from_rgb(45, 60, 69)),
+                        Stroke::new(1.0_f32, theme::border().gamma_multiply(0.6)),
                     );
                 }
                 scene.paint_subject(&painter, rect, self.settings.zoom);
@@ -2563,14 +2786,14 @@ impl eframe::App for AriaApp {
                     rect.left_bottom() + egui::vec2(16.0, -18.0),
                     egui::Align2::LEFT_BOTTOM,
                     if self.settings.source == Source::Demo {
-                        "DEMO INPUT  /  Choose microphone or phone tracking"
+                        "DEMO INPUT  /  Choose webcam, phone or microphone"
                     } else if self.settings.source == Source::Local {
                         "LOCAL INPUT  /  Microphone, image actions and hotkeys"
                     } else {
                         "TRACKING PREVIEW  /  Open the capture window for OBS"
                     },
                     egui::FontId::proportional(11.0),
-                    MUTED,
+                    muted(),
                 );
             });
         #[cfg(feature = "screenshots")]
@@ -2914,7 +3137,7 @@ fn section(ui: &mut egui::Ui, label: &str) {
     ui.add_space(5.0);
     crate::help::label(
         ui,
-        RichText::new(label).size(11.0).strong().color(MUTED),
+        RichText::new(label).size(11.0).strong().color(muted()),
         match label {
             "WORKSPACE" | "INSPECTOR" => "workspace",
             _ => "diagnostics",
@@ -2924,7 +3147,7 @@ fn section(ui: &mut egui::Ui, label: &str) {
 
 fn meter(ui: &mut egui::Ui, label: &str, value: f32, min: f32, max: f32) {
     ui.horizontal(|ui| {
-        ui.label(RichText::new(label).size(11.0).color(MUTED));
+        ui.label(RichText::new(label).size(11.0).color(muted()));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.label(RichText::new(format!("{value:.2}")).monospace().size(11.0));
         });
@@ -2932,7 +3155,7 @@ fn meter(ui: &mut egui::Ui, label: &str, value: f32, min: f32, max: f32) {
     ui.add(
         egui::ProgressBar::new((value - min) / (max - min))
             .desired_height(5.0)
-            .fill(MINT),
+            .fill(mint()),
     );
     ui.add_space(3.0);
 }
@@ -2952,6 +3175,29 @@ fn help_image_memory(ui: &mut egui::Ui, budget: &mut u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn camera_preferences_follow_avatars_while_theme_stays_global() {
+        let mut settings: Settings = serde_json::from_str("{}").unwrap();
+        settings.source = Source::Webcam;
+        settings.camera.device = 2;
+        settings.camera.fps = 24;
+        let a = ModelPreferences::capture(&settings);
+        settings.source = Source::Rtx;
+        settings.camera.device = 5;
+        settings.camera.fps = 60;
+        let b = ModelPreferences::capture(&settings);
+        settings.theme.active = theme::presets().remove(1);
+        let encoded = serde_json::to_string(&(a, b)).unwrap();
+        let (a, b): (ModelPreferences, ModelPreferences) = serde_json::from_str(&encoded).unwrap();
+        a.restore(&mut settings);
+        assert_eq!(settings.camera.device, 2);
+        assert_eq!(settings.camera.fps, 24);
+        assert!(settings.source == Source::Webcam);
+        b.restore(&mut settings);
+        assert_eq!(settings.camera.device, 5);
+        assert!(settings.source == Source::Rtx);
+        assert_eq!(settings.theme.active.name, "Sonoma Light");
+    }
     #[test]
     fn vrm_camera_springs_and_reopen_path_stay_per_avatar() {
         let mut settings = Settings {

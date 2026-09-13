@@ -1,6 +1,39 @@
 # Architecture and next steps
 
+![ Current Rust workspace with the supplied Odette Live2D avatar](images/workspace-v23.png)
+
 ## Guided avatar import and bounded GIF playback (v0.18)
+
+The sections below preserve subsystem history. Current v0.23 additions are:
+
+```mermaid
+flowchart LR
+  Camera[Windows camera] --> Worker[Owned MediaPipe or NVIDIA worker]
+  Worker -->|Bounded numeric JSON pipe| Latest[Latest tracking frame]
+  iPhone[iPhone / external UDP] --> Latest
+  Latest --> Calibration[Per-avatar calibration and mappings]
+  Calibration --> Rig[Live2D / VRM / PNG-GIF]
+  Script[Local script] -->|Bearer HTTP| Queue[Bounded command queue]
+  Queue -->|Validate avatar generation on UI thread| Rig
+  Rig --> Render[Shared wgpu render and OBS outputs]
+  Palette[Global theme palette] --> UI[egui workspace and help]
+```
+
+`webcam.rs` owns camera worker lifetime, bounded stdout/stderr readers, device
+enumeration, optional runtime installation and freshness. It never buffers video
+in the rendering process. Camera/source changes release capture; setup subprocesses
+are grouped in a Windows kill-on-close Job Object. `tracking/worker.py` performs
+MediaPipe inference; `tracking/nvidia.py` calls the optional SDK-compiled C++ bridge.
+NVIDIA headers, feature binaries and models are external dependencies.
+
+`effect_api.rs` retains effects routes and adds typed commands and state snapshots.
+The network thread handles framing/auth/queueing; avatar mutations occur on the UI
+thread after generation and range validation. State updates at roughly 10 Hz only
+while enabled. Bounded results distinguish queued from applied. See [API contract](api.md).
+
+`theme.rs` stores serialized RGB palettes and applies egui styles only on changes.
+Shared accessors also style custom cards; fonts are installed once. Themes and
+runtime paths belong to the machine; camera capture settings are per avatar.
 
 `avatar_import::Wizard` separates type choice, file preparation, review and
 completion. PNG/GIF selection can populate an action library from a folder,

@@ -28,6 +28,8 @@ jobs:
         run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       - name: Test
         run: cargo test --locked --workspace
+      - name: Camera adapter conversion tests
+        run: python -m unittest discover -s tracking -v
       - name: Build portable Windows app
         shell: pwsh
         run: ./scripts/build-windows.ps1 -SkipTests
@@ -35,6 +37,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: aria-windows-x64
-          path: dist/aria-0.22.0-windows-x64.zip
+          path: dist/aria-0.23.0-windows-x64.zip
           if-no-files-found: error
           retention-days: 30

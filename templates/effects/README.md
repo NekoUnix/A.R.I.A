@@ -1,5 +1,7 @@
 # Make your own ARIA throws and sprays
 
+![Effect designer with the supplied Odette avatar](../../docs/images/effects-v23.png)
+
 Open **Throws & liquid sprays → Import design** and choose one of the three
 `.aria-effect.json` files here. Select the imported design and click its **Throw** or **Spray** button.
 All assets in this kit are original ARIA examples under the repository MIT license.

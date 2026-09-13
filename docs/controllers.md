@@ -1,11 +1,11 @@
 # Controllers and Live2D gamepad rigs
 
+![ Controller controls with Odette Live2D](images/controller-v23.png)
+
 ARIA 0.21 reads gamepads directly, alongside iPhone face tracking and microphone
 input. A Nyarupad plugin or a running desktop VTube Studio instance is not needed.
 The old “Unsupported profile input NP_…” warnings meant ARIA had rejected the
 controller assignments; changing their ranges could not fix that missing reader.
-
-![Controller setup in ARIA](images/controller-v21.png)
 
 The documentation image uses Mica and a process-local test controller.
 

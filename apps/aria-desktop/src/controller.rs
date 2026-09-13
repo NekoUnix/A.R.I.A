@@ -345,7 +345,7 @@ impl Controller {
             } else {
                 "Waiting for a controller · connect USB or pair Bluetooth in Windows".into()
             };
-            ui.colored_label(theme::MINT, label);
+            ui.colored_label(theme::mint(), label);
             if let Some(error) = &self.error {
                 ui.colored_label(egui::Color32::LIGHT_RED, error);
             }

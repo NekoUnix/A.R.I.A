@@ -47,7 +47,7 @@ impl Items {
             );
         }
         if let Some(message) = &self.message {
-            ui.label(egui::RichText::new(message).small().color(theme::MINT));
+            ui.label(egui::RichText::new(message).small().color(theme::mint()));
         }
         theme::category(ui, "png-library", "Stage objects", true, |ui| {
             if saved.config.items.is_empty() {

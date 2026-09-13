@@ -1,5 +1,7 @@
 # PNG/GIF action template
 
+![The supplied Odette GIF avatar](../../docs/images/gif-v23.png)
+
 1. Choose **Avatar & appearance → Import PNG / GIF avatar**, select `artwork/idle.png`,
    mark it Idle / base, review and import.
 2. Open **Inspector → Avatar → Artwork & actions → Import actions** and choose `starter.aria-images.json`.

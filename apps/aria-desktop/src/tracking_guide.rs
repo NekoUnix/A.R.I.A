@@ -183,13 +183,14 @@ impl Guide {
                     ui.colored_label(egui::Color32::LIGHT_YELLOW, "A held pose can hide tracking changes.");
                     if ui.button("Resume live movement").clicked() { action = Some(Action::Resume); }
                 }
-                if microphone { theme::caption(ui, "Microphone control is active and may override phone mouth inputs. Disable it in Microphone to check facial lip sync."); }
+                if microphone { theme::caption(ui, "Microphone control is active and may override face-tracker mouth inputs. Disable it in Microphone to check facial lip sync."); }
                 ui.label(format!("Tracker: {status}"));
                 egui::ScrollArea::vertical().max_height((ctx.content_rect().height() - 330.0).clamp(120.0, 420.0)).show(ui, |ui| {
                     match self.stage {
                         0 => {
                             ui.heading("1. Connect and get comfortable");
                             ui.label("Put your camera or phone at eye level, use even lighting, and sit at your usual streaming distance. Keep the same position throughout setup.");
+                            ui.label("For webcam: select MediaPipe or NVIDIA RTX in Tracking, install its runtime, choose a camera and press Start camera. Return when the status says Tracking live.");
                             ui.label("For iPhone VTube Studio: enable 3rd Party PC Clients, use the phone's IPv4 address, and put both devices on the same network. Select iPhone tracking and connect in ARIA.");
                             if ui.button("Open connection settings").clicked() { action = Some(Action::Connection); }
                             ui.label(format!("Found {} model input assignments. Their output ranges, directions, physics and expressions will be preserved.", self.bindings.values().map(Vec::len).sum::<usize>()));

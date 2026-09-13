@@ -285,7 +285,7 @@ impl Images {
             saved.config.images.manual = None;
         }
         if let Some(message) = &self.message {
-            ui.colored_label(theme::MINT, message);
+            ui.colored_label(theme::mint(), message);
         }
         theme::category(ui, "image-library", "Image action library", true, |ui| {
             for s in &mut saved.config.images.states {
@@ -303,7 +303,7 @@ impl Images {
                         });
                     }
                     if self.player.current == Some(s.id) {
-                        ui.colored_label(theme::MINT, "active");
+                        ui.colored_label(theme::mint(), "active");
                     }
                     if let Some(k) = s.hotkey {
                         ui.small(k.label());

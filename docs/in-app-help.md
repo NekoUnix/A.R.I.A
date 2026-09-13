@@ -1,6 +1,34 @@
 # ARIA in-app help
 
+![Current Odette workspace](images/workspace-v23.png)
+
 This guide is bundled into the application and works offline. The topic headers also provide the short hover descriptions for the circled question-mark buttons.
+
+## webcam | Webcam & NVIDIA RTX tracking | Track your face locally with a camera, then calibrate it to this avatar.
+
+Choose Tracking > Tracking source > Webcam (MediaPipe) or Webcam (NVIDIA RTX). Camera access starts only when you press Start camera. Switching source, switching avatar or closing ARIA releases the camera. Frames are processed locally; ARIA does not record or upload them. Only movement numbers reach the Rust renderer.
+
+Open Install / repair camera runtime, install Python 3.12 x64 with its launcher, and click Install webcam runtime. This downloads pinned Python dependencies and Google's face-landmarker model into %LOCALAPPDATA%/ARIA/tracking. Internet is required during installation; tracking works offline afterward. Existing installations can be selected with their Scripts/python.exe. Use Find cameras and choose the physical or virtual camera. Windows Settings > Privacy & security > Camera must allow desktop apps. Close other apps that exclusively own the same camera.
+
+Start with 640 × 480 at 30 FPS. Higher resolutions increase capture and inference cost; actual camera modes depend on the driver. Confidence (MediaPipe only) controls how certain detection must be before reporting a face: lower it if tracking drops in good lighting, raise it if background objects are mistaken for faces. It does not change the strength of model movement. Camera settings are saved per avatar; interpreter and SDK paths belong to the PC.
+
+NVIDIA RTX uses the optional NVIDIA AR SDK FaceExpressions feature on a compatible Tensor Core GPU. NVIDIA Broadcast virtual camera can be selected by either backend, but Broadcast itself is not the AR SDK. Download SDK Core and FaceExpressions, LandmarkDetection and FaceBoxDetection features for your GPU from NVIDIA, then build the supplied ARIA bridge using tracking/nvidia/CMakeLists.txt. Select the SDK root here. NVIDIA access, licenses, drivers and matching feature versions are required; details are in docs/webcam.md. Missing SDKs produce an error and do not silently switch engines.
+
+After Start camera reports Tracking live, click Guided tracking setup. Capture a relaxed neutral pose, turn and tilt your head, blink and smile, open your mouth, and move your eyes. Review the preview before saving. Each avatar retains its own calibration, so the same face can drive very different rigs. X is vertical pitch; Y is horizontal yaw in raw camera packets. Check axis inversion in Movement if your rig moves backwards. Tongue tracking is not supplied by these camera backends. Face loss returns the model toward its resting pose instead of holding stale tracking.
+
+## themes | Themes & custom colors | Pick a palette or make a reusable theme for the entire interface.
+
+Open Settings > Appearance & themes. Choose Sonoma Dark, Sonoma Light, Sakura, Ocean, Forest or High Contrast. The palette changes panels, cards, controls, headings, help windows and category accents immediately. It applies globally across avatars. These are solid colors with no blur, animation or extra render textures. The Studio background follows the palette; transparent and chroma-key outputs retain their chosen backgrounds.
+
+Expand Make your own theme, give it a name, and edit each color with its swatch. The color picker includes numeric values; the hex value beside it helps match branding. Light controls selects light or dark built-in icons. Text, secondary text and borders should remain readable against cards and panels; a low-contrast notice appears when the main text is difficult to distinguish. Save custom theme stores a reusable palette (up to 32). Editing the active theme applies immediately and persists on normal app exit. Delete removes the named saved copy; Reset returns to Sonoma Dark. Export and Import exchange a small JSON palette containing only a name and RGB colors; it cannot contain scripts or assets.
+
+## api | Developer control API | Let scripts control the current avatar through authenticated local HTTP.
+
+Open Settings > Developer API and enable the API. It listens only at 127.0.0.1 on the chosen port (default 39421). Copy API key and keep it private: anyone holding it on this PC can control ARIA while the API is enabled. Rotate key immediately invalidates the old key. The key is never included in status responses or printed in the interface. Browser-origin requests are refused; use desktop integrations, Python, PowerShell, Node.js or Streamer.bot.
+
+GET /v1/state returns a version, the current model generation, live input and parameter values, allowed parameter ranges, presets, expressions, output settings and available themes. Send POST /v1/commands with version 1, that generation and a typed action. The returned ticket means queued, not completed: GET /v1/commands/{ticket} reports applied or rejected. Fetch state again after switching avatars. A stale generation is rejected and a queued command is rechecked on the UI thread. Commands cannot launch programs, open arbitrary files or import models. At most 20 HTTP requests per second, 4 KiB per request body and 32 queued commands are allowed; only the last 128 command results remain available.
+
+SetParameters holds specified native parameters in partial override mode after checking their real limits. ReleaseParameters releases selected holds; an empty list releases all. Pose freezes the rendered values or resumes live movement. Preset applies a saved preset by its current index. Expression enables or disables a known expression ID. Output opens or closes one canvas and optionally adjusts zoom and position. Theme selects a built-in or saved custom palette. SaveProfile saves current per-avatar controls. Settings may also persist during normal application autosave. Full examples and schemas are in docs/api.md and templates/api. Existing /v1/effects and /v1/effects/trigger integrations remain supported.
 
 ## guided-import | Guided avatar import | Choose PNG/GIF or Live2D, prepare its files, review the import and follow the next steps. Once loaded, Avatar and Inspector controls match the primary avatar type.
 
@@ -451,11 +479,13 @@ Edits take effect immediately unless a control says Apply or Assign. Explicit Sa
 
 A profile is the current workspace for one avatar. A movement preset saves rig tuning, mapping, physics and active expressions; a pose preset also captures the final parameter values. Presets do not include connection settings, output layouts, SDK paths or the complete model asset folder. Export a preset to share a compatible configuration, not an avatar.
 
-## tracking | Tracking sources & connection | Demo animates locally. iPhone VTube Studio sends face tracking over your network. ARIA JSON accepts supported packets from an external tool.
+## tracking | Tracking sources & connection | Choose local webcam inference, optional NVIDIA RTX inference, iPhone VTube Studio, external ARIA JSON, or local microphone/manual controls.
 
 @diagram network
 
 ### Choose a source
+
+Webcam · MediaPipe uses a local camera and the separately installed face-landmarker runtime. Webcam · NVIDIA RTX uses the optional NVIDIA AR SDK adapter with matching feature packages. Choose a camera and press Start camera; neither source starts capture automatically. Their setup instructions are in the Webcam & NVIDIA RTX help topic. No UDP ports or firewall changes are needed for these local camera sources.
 
 Demo generates synthetic movement without a phone or network. It is useful for checking artwork, physics and capture, but does not represent your real face. iPhone · VTube Studio subscribes to the phone's tracking stream. External tool · ARIA JSON receives ARIA JSON v1 UDP packets; it is not a general OSC, VMC or VTube Studio desktop WebSocket endpoint.
 

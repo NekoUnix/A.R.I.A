@@ -8,3 +8,5 @@
 Thumbs.db
 aria-settings.json
 /aria-smoke.png
+__pycache__/
+*.pyc

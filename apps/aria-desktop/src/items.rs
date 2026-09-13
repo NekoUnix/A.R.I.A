@@ -791,7 +791,7 @@ impl Items {
                 egui::Align2::LEFT_TOP,
                 "Click the avatar to pin • Esc cancels",
                 egui::FontId::proportional(13.0),
-                crate::theme::MINT,
+                crate::theme::mint(),
             );
         }
         if let Some(draw) = scene
@@ -804,7 +804,7 @@ impl Items {
             for n in 0..4 {
                 painter.line_segment(
                     [points[n], points[(n + 1) % 4]],
-                    egui::Stroke::new(1.0_f32, crate::theme::MINT),
+                    egui::Stroke::new(1.0_f32, crate::theme::mint()),
                 );
             }
             painter.text(
@@ -812,7 +812,7 @@ impl Items {
                 egui::Align2::LEFT_BOTTOM,
                 &draw.item.name,
                 egui::FontId::proportional(11.0),
-                crate::theme::MINT,
+                crate::theme::mint(),
             );
         }
     }

@@ -46,6 +46,7 @@ pub fn capture(ctx: &egui::Context, started: Instant, output: bool) {
         );
         ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
         ctx.data_mut(|d| d.insert_temp(requested, true));
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new("aria-smoke-request-time"), Instant::now()));
     }
     let image = ctx.input(|input| {
         input.events.iter().find_map(|event| {
@@ -76,7 +77,13 @@ pub fn capture(ctx: &egui::Context, started: Instant, output: bool) {
         }
         ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Close);
     }
-    if !output && started.elapsed() > delay + Duration::from_secs(10) {
+    // Large avatars can finish loading long after the requested delay. Give the
+    // GPU ten seconds from the actual screenshot request, not from app startup.
+    if !output
+        && ctx
+            .data(|d| d.get_temp::<Instant>(egui::Id::new("aria-smoke-request-time")))
+            .is_some_and(|at| at.elapsed() > Duration::from_secs(10))
+    {
         eprintln!("Screenshot timed out");
         ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Close);
     }

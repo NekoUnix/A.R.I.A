@@ -73,3 +73,28 @@ Consult Live2D's [SDK licensing information](https://www.live2d.com/en/sdk/licen
 before distributing a product with their runtime. The portable ZIP includes no Core DLL.
 Live2D's release guidance specifically covers VTuber tracking software as an
 Expandable Application; the repository is not evidence of publication-license approval.
+
+## Optional webcam runtime (v0.23)
+
+The standard camera installer separately downloads MediaPipe 0.10.21 (Apache-2.0),
+OpenCV contrib Python 4.11.0.86 (Apache-2.0 and bundled dependency notices), NumPy
+1.26.4 (BSD-3-Clause), cv2-enumerate-cameras 1.3.0 and the transitive distributions
+pinned in `tracking/requirements-lock.txt`. Their license files remain with the
+installed Python distributions. Python itself is supplied by the user under the
+Python Software Foundation license. The portable app includes setup scripts,
+not a redistributed Python environment.
+
+Google's FaceLandmarker task is downloaded separately from the official MediaPipe
+model endpoint. Its SHA-256 is
+`64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff`.
+See [Google's model documentation](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker)
+and applicable model/license terms. No model task binary is committed to this repo.
+
+NVIDIA RTX inference requires the user's NVIDIA AR SDK and matching feature/model
+packages under NVIDIA's SDK and model terms. They are not bundled or downloaded
+by ARIA. The optional bridge is compiled against those headers on the user's PC.
+Reference-sample attribution is in [tracking/nvidia/NOTICE.md](tracking/nvidia/NOTICE.md).
+
+Current documentation screenshots include the owner's supplied Odette Live2D,
+GIF and VRM artwork at their explicit request. The code license does not license
+the depicted art. See [screenshot provenance](docs/images/README.md).

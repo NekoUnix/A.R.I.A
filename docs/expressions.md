@@ -1,5 +1,7 @@
 # Expressions and custom hotkeys
 
+![ Expression controls for the imported Live2D avatar](images/expressions-v23.png)
+
 ARIA v0.6 loads Live2D `.exp3.json` expressions, including JSON expression files
 named `.exp3`. Expressions can control facial features, clothing, accessories or
 any other parameters exported in the avatar. The controls use each loaded model's

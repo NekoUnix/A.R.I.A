@@ -374,7 +374,7 @@ impl InputMonitor {
             ui.label(
                 egui::RichText::new(message)
                     .small()
-                    .color(crate::theme::MINT),
+                    .color(crate::theme::mint()),
             );
         }
         if self.saved.config.pose.mode != PoseMode::Live && self.tab != Tab::Pose {

@@ -1,5 +1,7 @@
 # Input controls, screenshot poses and presets
 
+![ Per-avatar input controls in the current build](images/inputs-v23.png)
+
 ARIA v0.6 organizes the right-hand **INPUT MONITOR** into **Inputs**, **Pose**,
 **Physics**, **Expressions**, **Presets** and **Raw** tabs. Drag its left edge to widen it. These controls use
 the loaded model's actual parameter names, ranges and VTS assignments. The built-in

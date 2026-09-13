@@ -1,5 +1,7 @@
 # Model folders, full-body framing and accessories
 
+![ Stage object and pin controls with Odette](images/items-v23.png)
+
 ARIA v0.20 adds a folder picker for nested Live2D exports and shared attachment
 controls for Live2D, PNG/GIF and VRM avatars. Settings stay with each avatar profile.
 

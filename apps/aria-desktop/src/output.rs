@@ -39,7 +39,7 @@ pub enum Background {
 impl Background {
     pub fn color(self, key: [u8; 3]) -> Color32 {
         match self {
-            Self::Studio => theme::BG,
+            Self::Studio => theme::bg(),
             Self::Green => Color32::from_rgb(key[0], key[1], key[2]),
             Self::Transparent => Color32::TRANSPARENT,
         }
@@ -428,7 +428,7 @@ impl OutputWindows {
             );
         }
         if let Some(message) = &self.message {
-            ui.label(egui::RichText::new(message).small().color(theme::MINT));
+            ui.label(egui::RichText::new(message).small().color(theme::mint()));
         }
         ui.collapsing("Framing & preview size", |ui| {
  crate::help::button(ui, "framing");

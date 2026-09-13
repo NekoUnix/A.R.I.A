@@ -711,7 +711,7 @@ pub fn edit_canvas(
     let mut marker_active = false;
     for (i, r) in routes.iter_mut().enumerate() {
         let color = if *selected == i {
-            theme::MINT
+            theme::mint()
         } else {
             Color32::GRAY
         };
@@ -731,7 +731,7 @@ pub fn edit_canvas(
         painter.add(egui::Shape::line(points, egui::Stroke::new(1.5_f32, color)));
         painter.arrow(last, end - last, egui::Stroke::new(2.0_f32, color));
         for (n, (point, pos, label, tint)) in [
-            (&mut r.origin, start, "Launch", theme::MINT),
+            (&mut r.origin, start, "Launch", theme::mint()),
             (&mut r.target, end, "Aim", Color32::from_rgb(255, 125, 180)),
         ]
         .into_iter()
@@ -758,7 +758,7 @@ pub fn edit_canvas(
                 egui::Align2::CENTER_CENTER,
                 (i + 1).to_string(),
                 egui::FontId::proportional(9.0),
-                theme::BG,
+                theme::bg(),
             );
             if *selected == i {
                 let right = pos.x > rect.center().x;

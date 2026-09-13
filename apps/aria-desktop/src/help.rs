@@ -125,11 +125,12 @@ pub fn context_button(
         )
     });
     let color = if response.hovered() || response.has_focus() {
-        theme::MINT
+        theme::mint()
     } else {
-        theme::MUTED
+        theme::muted()
     };
-    ui.painter().circle_filled(rect.center(), 4.25, theme::CARD);
+    ui.painter()
+        .circle_filled(rect.center(), 4.25, theme::card_color());
     ui.painter()
         .circle_stroke(rect.center(), 4.25, Stroke::new(0.625_f32, color));
     ui.painter().text(
@@ -143,7 +144,7 @@ pub fn context_button(
         ui.painter().rect_stroke(
             rect,
             3.0,
-            Stroke::new(1.0_f32, theme::MINT),
+            Stroke::new(1.0_f32, theme::mint()),
             egui::StrokeKind::Inside,
         );
     }
@@ -216,6 +217,8 @@ pub fn category_topic(title: &str) -> &'static str {
         "Effect hotkey" => "hotkeys",
         "Design file & templates" => "effect-designs",
         "Stream events & plugins" => "effect-api",
+        "Appearance & themes" => "themes",
+        "Developer API" => "api",
         _ => "welcome",
     }
 }
@@ -345,7 +348,7 @@ fn content(ui: &mut egui::Ui, state: &mut State) {
             ui.set_width(ui.available_width());
             ui.heading(a.title);
             ui.add_space(6.0);
-            ui.label(RichText::new(a.summary).color(theme::MINT));
+            ui.label(RichText::new(a.summary).color(theme::mint()));
             if !state.selection.context.is_empty() {
                 ui.add_space(8.0);
                 theme::card(ui, |ui| {
@@ -403,14 +406,14 @@ fn diagram(ui: &mut egui::Ui, kind: &str) {
                     Align2::CENTER_CENTER,
                     text,
                     FontId::proportional(12.0),
-                    theme::TEXT,
+                    theme::text_color(),
                 );
             }
             for destination in [left, right] {
                 ui.painter().arrow(
                     top.center_bottom(),
                     destination.center_top() - top.center_bottom(),
-                    Stroke::new(1.5_f32, theme::MINT),
+                    Stroke::new(1.5_f32, theme::mint()),
                 );
             }
             theme::caption(
@@ -485,14 +488,14 @@ fn diagram(ui: &mut egui::Ui, kind: &str) {
                 Align2::CENTER_CENTER,
                 label,
                 FontId::proportional(12.0),
-                theme::TEXT,
+                theme::text_color(),
             );
             if i + 1 < labels.len() {
                 let (r, _) = ui.allocate_exact_size(Vec2::new(width, 15.0), egui::Sense::hover());
                 ui.painter().arrow(
                     r.center_top(),
                     Vec2::new(0.0, 12.0),
-                    Stroke::new(1.5_f32, theme::MINT),
+                    Stroke::new(1.5_f32, theme::mint()),
                 );
             }
         }
@@ -515,15 +518,15 @@ fn mapping_diagram(ui: &mut egui::Ui) {
         let painter = ui.painter();
         painter.line_segment(
             [pos(0.0, 0.5), pos(1.0, 0.5)],
-            Stroke::new(1.0_f32, theme::MUTED),
+            Stroke::new(1.0_f32, theme::muted()),
         );
         painter.line_segment(
             [pos(0.5, 0.0), pos(0.5, 1.0)],
-            Stroke::new(1.0_f32, theme::MUTED),
+            Stroke::new(1.0_f32, theme::muted()),
         );
         painter.line_segment(
             [pos(0.0, 0.0), pos(1.0, 1.0)],
-            Stroke::new(1.0_f32, theme::MUTED),
+            Stroke::new(1.0_f32, theme::muted()),
         );
         let points = (0..=100)
             .map(|n| {
@@ -533,14 +536,17 @@ fn mapping_diagram(ui: &mut egui::Ui) {
                 pos(x, y)
             })
             .collect();
-        painter.add(egui::Shape::line(points, Stroke::new(2.0_f32, theme::MINT)));
+        painter.add(egui::Shape::line(
+            points,
+            Stroke::new(2.0_f32, theme::mint()),
+        ));
         for (p, align, text) in [
             (plot.left_bottom(), Align2::LEFT_TOP, "−10"),
             (plot.right_bottom(), Align2::RIGHT_TOP, "+10 input"),
             (plot.left_top(), Align2::RIGHT_TOP, "+30"),
             (plot.left_bottom(), Align2::RIGHT_BOTTOM, "−30"),
         ] {
-            painter.text(p, align, text, FontId::proportional(11.0), theme::MUTED);
+            painter.text(p, align, text, FontId::proportional(11.0), theme::muted());
         }
         theme::caption(
             ui,

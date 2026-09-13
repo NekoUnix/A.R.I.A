@@ -1,6 +1,6 @@
 # Twitch and YouTube chat on Windows
 
-![Native Twitch and YouTube panels using labeled preview messages](images/streaming-chat.png)
+![ Chat setup with the supplied Odette avatar](images/chat-v23.png)
 
 Open **Streaming chat** in the studio's left panel. Enable either service or both,
 then **Open chats below portrait**. The native chat companion follows the 9:16

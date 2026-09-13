@@ -1,6 +1,15 @@
 # Tracking inputs
 
+![ Camera tracking controls alongside Odette](images/webcam-v23.png)
+
 ## iPhone VTube Studio
+
+For local cameras, choose **Webcam · MediaPipe** or **Webcam · NVIDIA RTX** and
+follow [Webcam setup](webcam.md). These use an owned local inference process,
+not the UDP connection described below. The same [guided calibration](tracking-setup.md)
+and per-avatar input controls apply to all sources. Use [the control API](api.md)
+for scripted poses, parameters and outputs; external high-rate face data still uses
+the ARIA JSON tracking protocol below.
 
 A.R.I.A. implements the public **third-party iOS tracking UDP interface** documented
 by [DenchiSoft](https://github.com/DenchiSoft/VTubeStudioBlendshapeUDPReceiverTest).

@@ -277,7 +277,7 @@ impl Chats {
                 let style=&mut appearance.styles[i];
                 help::control(ui,"stream-chat",|ui|ui.checkbox(&mut style.visible,format!("Show {name} chat")));
                 let (status,account_name,code,url,official,sealed)={let f=self.feeds[i].lock().unwrap();(f.status.clone(),f.account_name.clone(),f.code.clone(),f.auth_url.clone(),f.official_url.clone(),f.sealed_session.clone())};
-                if !account_name.is_empty(){ui.label(RichText::new(format!("Signed in: {account_name}")).color(theme::MINT));}
+                if !account_name.is_empty(){ui.label(RichText::new(format!("Signed in: {account_name}")).color(theme::mint()));}
                 ui.label(RichText::new(&status).small());
                 if !code.is_empty(){ui.horizontal(|ui|{ui.monospace(format!("Sign-in code: {code}"));if ui.small_button("Copy code").clicked(){ui.ctx().copy_text(code.clone());}});}
                 if let Some(url)=url{ui.hyperlink_to("Continue sign-in in browser ↗",url);}

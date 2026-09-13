@@ -1,9 +1,46 @@
 # Validation
 
+![ Current native Windows build under validation](images/workspace-v23.png)
+
 This file records checks for the development builds. The Windows CI workflow
 is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Local verification on 2026-09-12
+
+### v0.23 cameras, themes and control API
+
+- **147 Rust tests passed**, with eighteen environment-dependent tests ignored.
+  Workspace formatting and strict Clippy passed with all targets/features.
+  Three Python conversion tests passed for independent pitch/yaw/roll, NVIDIA
+  coefficient ordering, invalid native results and face-loss packets.
+- MediaPipe 0.10.21 performed real CPU inference on Google's public `portrait.jpg`
+  fixture and returned a detected face, pose and expression values. Windows
+  DirectShow enumeration found the installed virtual cameras, including NVIDIA
+  Broadcast and OBS. The shipped setup/repair script completed with the pinned
+  FaceLandmarker SHA-256 check and imported its installed dependencies successfully.
+- Native HTTP tests controlled the supplied Odette Live2D model: actual held
+  parameter values, release, freeze, expressions, all three outputs and theme
+  changes. Invalid native ranges/IDs and stale generations were rejected; missing
+  authentication failed. The test confirmed queued commands through result tickets.
+- Native screenshots cover Odette Live2D, custom/theme pages, camera/RTX/API setup,
+  inputs, controller support, physics, expressions, effects, pins, outputs and chat.
+  The guided review screenshot is a deterministic rehearsal, not a recorded human
+  calibration session. Supplied VRM and GIF avatars are included in current docs.
+- The optimized portable ZIP passed CRC, required-file and template checks; Python
+  caches, raw avatars and SDK DLLs are excluded. Its CLI reported 0.23.0, and the
+  packaged desktop launched with supplied VRM, Live2D and GIF avatars using a
+  system-only PATH and isolated preferences. The test profile persisted on exit.
+  All 17 new PNG screenshots decoded and relative links in 26 guides resolved.
+- **Not hardware-validated:** physical webcam tracking and NVIDIA GPU inference.
+  This machine exposed virtual cameras only and had no NVIDIA AR SDK Core/feature
+  packages. The optional NVIDIA bridge source and loader are present; its native
+  SDK build and FaceExpressions inference still require validation with those
+  packages. A missing bridge produces the expected diagnostic without CPU fallback.
+
+The older entries below record their own builds. Their former policy of excluding
+private-avatar screenshots was superseded by the owner's explicit v0.23 request
+to illustrate Git documentation with the supplied models. Raw avatar files remain
+excluded; see [screenshot provenance](images/README.md).
 
 ### v0.22 personal tracking setup
 

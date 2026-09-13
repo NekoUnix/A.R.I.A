@@ -1,19 +1,20 @@
 # Personal tracking setup
 
+![ Guided tracking review on Odette](images/tracking-guide-v23.png)
+
 ARIA can learn how you move and fit those movements to the active avatar's
 tracking inputs. The guide works with Live2D, VRM and PNG/GIF profiles. It uses
 imported model assignments and preserves authored output limits, directions,
 expressions and physics. Unrecognized custom controls remain available for manual
 assignment in the Inputs inspector.
 
-![Reviewing personal tracking ranges on the built-in puppet](images/tracking-setup-v22.png)
-
 The illustration uses a synthetic test capture; personal setup requires a real tracker.
 
 1. Import your avatar, then choose **Set up personal tracking**. You can also open
    **Tracking → Tracking & connection → Guided tracking setup** or use the button
    in **Inspector → Tracking → Inputs**.
-2. Connect a face tracker. For iPhone VTube Studio, enable **3rd Party PC Clients**
+2. Connect a face tracker. For a local webcam, choose MediaPipe or NVIDIA RTX,
+   follow [camera setup](webcam.md), and press **Start camera**. For iPhone VTube Studio, enable **3rd Party PC Clients**
    on the phone, enter its IPv4 address and request port in ARIA, and connect.
    Keep both devices on a reachable network. See [Windows setup](windows.md) for
    connection and firewall troubleshooting. Demo and microphone-only mode cannot
@@ -31,7 +32,7 @@ The illustration uses a synthetic test capture; personal setup requires a real t
 6. Enable **Preview new calibration on stage**. Move or collapse the guide window
    to see the avatar; toggle preview off to compare. Check relaxed pose, both head
    directions, nodding, eyelids, lip sync and eye gaze. Resume live movement if a
-   screenshot pose is active. Microphone mouth control can override phone lip sync.
+   screenshot pose is active. Microphone mouth control can override camera/phone lip sync.
 7. Choose **Save calibration for this avatar**. It is persisted immediately for
    the current model. **Movement & calibration → Use personal tracking calibration**
    bypasses or restores the saved calibration. Save a movement preset to name the

@@ -1,16 +1,246 @@
 use eframe::egui::{self, Color32, RichText, Stroke};
+use serde::{Deserialize, Serialize};
 
-pub const BG: Color32 = Color32::from_rgb(23, 25, 32);
-pub const PANEL: Color32 = Color32::from_rgb(30, 33, 42);
-pub const CARD: Color32 = Color32::from_rgb(40, 44, 56);
-pub const MINT: Color32 = Color32::from_rgb(100, 173, 255);
-pub const MUTED: Color32 = Color32::from_rgb(169, 179, 197);
-pub const TEXT: Color32 = Color32::from_rgb(240, 244, 250);
-pub const BORDER: Color32 = Color32::from_rgb(61, 66, 83);
-pub const TEAL: Color32 = Color32::from_rgb(100, 215, 200);
-pub const PURPLE: Color32 = Color32::from_rgb(188, 157, 255);
-pub const ORANGE: Color32 = Color32::from_rgb(255, 183, 112);
-pub const PINK: Color32 = Color32::from_rgb(244, 146, 188);
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Palette {
+    pub light: bool,
+    pub background: [u8; 3],
+    pub panel: [u8; 3],
+    pub card: [u8; 3],
+    pub accent: [u8; 3],
+    pub text: [u8; 3],
+    pub muted: [u8; 3],
+    pub border: [u8; 3],
+    pub teal: [u8; 3],
+    pub purple: [u8; 3],
+    pub orange: [u8; 3],
+    pub pink: [u8; 3],
+}
+impl Palette {
+    pub const DARK: Self = Self {
+        light: false,
+        background: [23, 25, 32],
+        panel: [30, 33, 42],
+        card: [40, 44, 56],
+        accent: [100, 173, 255],
+        text: [240, 244, 250],
+        muted: [169, 179, 197],
+        border: [61, 66, 83],
+        teal: [100, 215, 200],
+        purple: [188, 157, 255],
+        orange: [255, 183, 112],
+        pink: [244, 146, 188],
+    };
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NamedTheme {
+    pub name: String,
+    pub colors: Palette,
+}
+pub fn presets() -> Vec<NamedTheme> {
+    let light = Palette {
+        light: true,
+        background: [236, 238, 243],
+        panel: [247, 248, 251],
+        card: [255, 255, 255],
+        text: [29, 32, 39],
+        muted: [82, 91, 109],
+        border: [200, 205, 218],
+        accent: [0, 99, 210],
+        teal: [0, 117, 108],
+        purple: [118, 63, 180],
+        orange: [155, 79, 0],
+        pink: [174, 50, 108],
+    };
+    [
+        ("Sonoma Dark", Palette::DARK),
+        ("Sonoma Light", light),
+        (
+            "Sakura",
+            Palette {
+                background: [250, 235, 242],
+                panel: [255, 244, 249],
+                accent: [178, 45, 104],
+                ..light
+            },
+        ),
+        (
+            "Ocean",
+            Palette {
+                background: [11, 24, 36],
+                panel: [17, 34, 49],
+                card: [24, 45, 61],
+                accent: [83, 204, 235],
+                ..Palette::DARK
+            },
+        ),
+        (
+            "Forest",
+            Palette {
+                background: [18, 29, 25],
+                panel: [26, 39, 32],
+                card: [35, 52, 42],
+                accent: [154, 216, 147],
+                ..Palette::DARK
+            },
+        ),
+        (
+            "High Contrast",
+            Palette {
+                background: [0, 0, 0],
+                panel: [8, 8, 8],
+                card: [16, 16, 16],
+                text: [255, 255, 255],
+                muted: [225, 225, 225],
+                border: [170, 170, 170],
+                accent: [255, 228, 74],
+                ..Palette::DARK
+            },
+        ),
+    ]
+    .into_iter()
+    .map(|(name, colors)| NamedTheme {
+        name: name.into(),
+        colors,
+    })
+    .collect()
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Settings {
+    pub active: NamedTheme,
+    pub custom: Vec<NamedTheme>,
+}
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            active: presets().remove(0),
+            custom: vec![],
+        }
+    }
+}
+impl Settings {
+    pub fn ui(&mut self, ui: &mut egui::Ui) {
+        crate::help::label(ui, "Theme & colors", "themes");
+        let before = self.active.colors;
+        egui::ComboBox::from_id_salt("theme-picker")
+            .selected_text(&self.active.name)
+            .show_ui(ui, |ui| {
+                for theme in presets().into_iter().chain(self.custom.iter().cloned()) {
+                    if ui
+                        .selectable_label(self.active.name == theme.name, &theme.name)
+                        .clicked()
+                    {
+                        self.active = theme;
+                    }
+                }
+            });
+        caption(
+            ui,
+            "Applies to every avatar on this PC. Solid colors only: no blur or background animations.",
+        );
+        egui::CollapsingHeader::new("Make your own theme").show(ui,|ui|{
+            ui.label("Theme name"); ui.text_edit_singleline(&mut self.active.name);
+            self.active.name.truncate(self.active.name.char_indices().nth(64).map_or(self.active.name.len(), |(i,_)|i));
+            ui.checkbox(&mut self.active.colors.light,"Light controls").on_hover_text("Choose light or dark built-in control icons. Each surface and accent can be edited below.");
+            let p=&mut self.active.colors;
+            for (label,color) in [("Background",&mut p.background),("Panels",&mut p.panel),("Cards",&mut p.card),("Accent",&mut p.accent),("Text",&mut p.text),("Secondary text",&mut p.muted),("Borders",&mut p.border),("Tracking",&mut p.teal),("Avatar",&mut p.purple),("Effects",&mut p.orange),("Chat / presets",&mut p.pink)] {
+                ui.horizontal(|ui|{ui.color_edit_button_srgb(color);ui.label(label);ui.monospace(crate::chroma::hex(*color));});
+            }
+            if contrast(p.text,p.card)<4.5 { ui.label("Text contrast is low. Darken text or lighten cards (or the reverse) for easier reading."); }
+            if ui.add_enabled(!self.active.name.trim().is_empty() && (self.custom.len()<32 || self.custom.iter().any(|t|t.name==self.active.name)),egui::Button::new("Save custom theme")).clicked() {
+                if presets().iter().any(|t|t.name==self.active.name){self.active.name.push_str(" (custom)");}
+                if let Some(old)=self.custom.iter_mut().find(|t|t.name==self.active.name){*old=self.active.clone();} else {self.custom.push(self.active.clone());}
+            }
+            if ui.button("Delete saved custom theme").clicked(){self.custom.retain(|t|t.name!=self.active.name);}
+        });
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Export theme…").clicked()
+                && let Some(path) = rfd::FileDialog::new()
+                    .add_filter("ARIA theme", &["json"])
+                    .set_file_name("my-theme.json")
+                    .save_file()
+            {
+                match serde_json::to_vec_pretty(&self.active)
+                    .map_err(anyhow::Error::from)
+                    .and_then(|v| std::fs::write(path, v).map_err(Into::into))
+                {
+                    Ok(()) => {}
+                    Err(e) => {
+                        ui.label(e.to_string());
+                    }
+                }
+            }
+            if ui.button("Import theme…").clicked()
+                && let Some(path) = rfd::FileDialog::new()
+                    .add_filter("ARIA theme", &["json"])
+                    .pick_file()
+            {
+                let result = (|| -> anyhow::Result<NamedTheme> {
+                    anyhow::ensure!(
+                        std::fs::metadata(&path)?.len() <= 8192,
+                        "Theme exceeds 8 KiB"
+                    );
+                    parse_theme(&std::fs::read(path)?)
+                })();
+                match result {
+                    Ok(t) => self.active = t,
+                    Err(e) => {
+                        ui.ctx().data_mut(|d| {
+                            d.insert_temp(egui::Id::new("theme-error"), e.to_string())
+                        });
+                    }
+                }
+            }
+            if ui.button("Reset").clicked() {
+                self.active = presets().remove(0);
+            }
+        });
+        if let Some(e) = ui
+            .ctx()
+            .data(|d| d.get_temp::<String>(egui::Id::new("theme-error")))
+        {
+            ui.label(e);
+        }
+        if before != self.active.colors {
+            apply(ui.ctx(), self.active.colors);
+        }
+    }
+}
+pub fn parse_theme(bytes: &[u8]) -> anyhow::Result<NamedTheme> {
+    anyhow::ensure!(bytes.len() <= 8192, "Theme exceeds 8 KiB");
+    let t: NamedTheme = serde_json::from_slice(bytes)?;
+    anyhow::ensure!(
+        !t.name.trim().is_empty() && t.name.chars().count() <= 64,
+        "Theme name must have 1–64 characters"
+    );
+    Ok(t)
+}
+fn contrast(a: [u8; 3], b: [u8; 3]) -> f32 {
+    let luminance = |rgb: [u8; 3]| {
+        rgb.into_iter()
+            .zip([0.2126, 0.7152, 0.0722])
+            .map(|(c, w)| {
+                let c = f32::from(c) / 255.;
+                w * if c <= 0.04045 {
+                    c / 12.92
+                } else {
+                    ((c + 0.055) / 1.055).powf(2.4)
+                }
+            })
+            .sum::<f32>()
+    };
+    let (a, b) = (luminance(a), luminance(b));
+    (a.max(b) + 0.05) / (a.min(b) + 0.05)
+}
+
+thread_local! { static COLORS: std::cell::Cell<Palette> = const { std::cell::Cell::new(Palette::DARK) }; }
+macro_rules! colors {
+    ($($name:ident: $field:ident),*) => { $(pub fn $name() -> Color32 { COLORS.with(|p| { let c=p.get().$field; Color32::from_rgb(c[0],c[1],c[2]) }) })* };
+}
+colors!(bg: background, panel: panel, card_color: card, mint: accent, muted: muted, text_color: text, border: border, teal: teal, purple: purple, orange: orange, pink: pink);
 
 /// Solid category accents; no blur, extra render targets or animated decoration.
 pub fn accent(title: &str) -> Color32 {
@@ -19,31 +249,31 @@ pub fn accent(title: &str) -> Color32 {
         .iter()
         .any(|s| title.contains(s))
     {
-        TEAL
+        teal()
     } else if ["expression", "image", "appearance", "avatar", "vrm", "view"]
         .iter()
         .any(|s| title.contains(s))
     {
-        PURPLE
+        purple()
     } else if ["object", "pin", "placement", "throw", "liquid", "effect"]
         .iter()
         .any(|s| title.contains(s))
     {
-        ORANGE
+        orange()
     } else if ["chat", "preset", "pose", "hotkey", "keyboard"]
         .iter()
         .any(|s| title.contains(s))
     {
-        PINK
+        pink()
     } else {
-        MINT
+        mint()
     }
 }
 fn wash(color: Color32) -> Color32 {
     Color32::from_rgb(
-        ((u16::from(CARD.r()) * 4 + u16::from(color.r())) / 5) as u8,
-        ((u16::from(CARD.g()) * 4 + u16::from(color.g())) / 5) as u8,
-        ((u16::from(CARD.b()) * 4 + u16::from(color.b())) / 5) as u8,
+        ((u16::from(card_color().r()) * 4 + u16::from(color.r())) / 5) as u8,
+        ((u16::from(card_color().g()) * 4 + u16::from(color.g())) / 5) as u8,
+        ((u16::from(card_color().b()) * 4 + u16::from(color.b())) / 5) as u8,
     )
 }
 
@@ -66,18 +296,31 @@ pub fn install(ctx: &egui::Context) {
             .insert(0, "windows-ui".into());
         ctx.set_fonts(fonts);
     }
+}
+
+pub fn apply(ctx: &egui::Context, palette: Palette) {
+    COLORS.with(|p| p.set(palette));
+    ctx.set_theme(if palette.light {
+        egui::Theme::Light
+    } else {
+        egui::Theme::Dark
+    });
     let mut style = (*ctx.style()).clone();
-    style.visuals = egui::Visuals::dark();
-    style.visuals.panel_fill = PANEL;
-    style.visuals.window_fill = CARD;
-    style.visuals.extreme_bg_color = BG;
-    style.visuals.faint_bg_color = CARD;
-    style.visuals.override_text_color = Some(TEXT);
-    style.visuals.selection.bg_fill = Color32::from_rgb(39, 72, 110);
-    style.visuals.selection.stroke = Stroke::new(1.0_f32, MINT);
-    style.visuals.hyperlink_color = MINT;
+    style.visuals = if palette.light {
+        egui::Visuals::light()
+    } else {
+        egui::Visuals::dark()
+    };
+    style.visuals.panel_fill = panel();
+    style.visuals.window_fill = card_color();
+    style.visuals.extreme_bg_color = bg();
+    style.visuals.faint_bg_color = card_color();
+    style.visuals.override_text_color = Some(text_color());
+    style.visuals.selection.bg_fill = wash(mint());
+    style.visuals.selection.stroke = Stroke::new(1.0_f32, mint());
+    style.visuals.hyperlink_color = mint();
     style.visuals.window_corner_radius = 12.into();
-    style.visuals.window_stroke = Stroke::new(1.0_f32, BORDER);
+    style.visuals.window_stroke = Stroke::new(1.0_f32, border());
     for widget in [
         &mut style.visuals.widgets.inactive,
         &mut style.visuals.widgets.active,
@@ -86,16 +329,16 @@ pub fn install(ctx: &egui::Context) {
         &mut style.visuals.widgets.noninteractive,
     ] {
         widget.corner_radius = 7.into();
-        widget.bg_stroke = Stroke::new(1.0_f32, BORDER);
-        widget.fg_stroke = Stroke::new(1.0_f32, TEXT);
+        widget.bg_stroke = Stroke::new(1.0_f32, border());
+        widget.fg_stroke = Stroke::new(1.0_f32, text_color());
     }
-    style.visuals.widgets.inactive.weak_bg_fill = Color32::from_rgb(50, 55, 70);
-    style.visuals.widgets.inactive.bg_fill = Color32::from_rgb(50, 55, 70);
-    style.visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(64, 72, 91);
-    style.visuals.widgets.hovered.bg_fill = Color32::from_rgb(64, 72, 91);
-    style.visuals.widgets.active.bg_fill = Color32::from_rgb(42, 84, 132);
-    style.visuals.widgets.active.weak_bg_fill = Color32::from_rgb(42, 84, 132);
-    style.visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, BORDER);
+    style.visuals.widgets.inactive.weak_bg_fill = wash(border());
+    style.visuals.widgets.inactive.bg_fill = wash(border());
+    style.visuals.widgets.hovered.weak_bg_fill = wash(mint());
+    style.visuals.widgets.hovered.bg_fill = wash(mint());
+    style.visuals.widgets.active.bg_fill = wash(mint());
+    style.visuals.widgets.active.weak_bg_fill = wash(mint());
+    style.visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, border());
     style.animation_time = 0.0;
     style.visuals.window_shadow = egui::epaint::Shadow::NONE;
     style.visuals.popup_shadow = egui::epaint::Shadow::NONE;
@@ -119,14 +362,20 @@ pub fn install(ctx: &egui::Context) {
 
 pub fn card(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
     egui::Frame::new()
-        .fill(CARD)
-        .stroke(Stroke::new(1.0_f32, BORDER))
+        .fill(card_color())
+        .stroke(Stroke::new(1.0_f32, border()))
         .corner_radius(10)
         .inner_margin(8.0)
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             add(ui);
         });
+}
+
+pub fn sync(ctx: &egui::Context, palette: Palette) {
+    if COLORS.with(|p| p.get() != palette) {
+        apply(ctx, palette);
+    }
 }
 
 pub fn open_category(ctx: &egui::Context, title: &str) {
@@ -206,26 +455,29 @@ pub fn category(
 }
 
 pub fn caption(ui: &mut egui::Ui, text: impl Into<String>) {
-    ui.label(RichText::new(text).small().color(MUTED));
+    ui.label(RichText::new(text).small().color(muted()));
 }
 
 /// Compact, keyboard-accessible category navigation; only the selected page is laid out.
 pub fn segments<T: Copy + PartialEq>(ui: &mut egui::Ui, selected: &mut T, options: &[(T, &str)]) {
     egui::Frame::new()
-        .fill(BG)
+        .fill(bg())
         .corner_radius(7)
         .inner_margin(3.0)
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
+            // Five workspace pages must fit without widening the fixed sidebar.
+            ui.spacing_mut().button_padding.x = 3.0;
             let width =
                 (ui.available_width() - (options.len() - 1) as f32 * 2.0) / options.len() as f32;
             ui.horizontal(|ui| {
                 for &(value, label) in options {
                     let active = *selected == value;
-                    let text =
-                        RichText::new(label)
-                            .size(12.0)
-                            .color(if active { TEXT } else { MUTED });
+                    let text = RichText::new(label).size(12.0).color(if active {
+                        text_color()
+                    } else {
+                        muted()
+                    });
                     let color = accent(label);
                     let button = egui::Button::new(text)
                         .fill(if active {
@@ -249,4 +501,21 @@ pub fn segments<T: Copy + PartialEq>(ui: &mut egui::Ui, selected: &mut T, option
                 }
             });
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn builtin_text_is_readable_and_custom_themes_round_trip() {
+        for t in presets() {
+            assert!(contrast(t.colors.text, t.colors.card) >= 4.5, "{}", t.name);
+            let bytes = serde_json::to_vec(&t).unwrap();
+            assert_eq!(parse_theme(&bytes).unwrap().colors, t.colors);
+        }
+        assert!(parse_theme(&vec![b' '; 8193]).is_err());
+        let mut t = presets().remove(0);
+        t.name = String::new();
+        assert!(parse_theme(&serde_json::to_vec(&t).unwrap()).is_err());
+    }
 }

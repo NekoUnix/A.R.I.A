@@ -151,11 +151,11 @@ impl Wizard {
                     ui.heading("Your avatar is ready");
                     ui.label("The studio now shows tools for this avatar type. Save profile keeps its settings together.");
                     if self.kind==Some(Kind::Images) {
-                        ui.label("Additional image actions load in the background. Idle is the fallback; talking responds to the microphone or phone mouth input. Mute and deafened images are manual actions until you assign hotkeys.");
+                        ui.label("Additional image actions load in the background. Idle is the fallback; talking responds to the microphone or face-tracker mouth input. Mute and deafened images are manual actions until you assign hotkeys.");
                         ui.label("Idle artwork  →  talking input  →  Talking artwork");
                         if ui.button("Set up microphone").clicked() { request=Some(Request::Microphone); }
                     } else {
-                        ui.label("Use Tracking for phone/microphone inputs, and Avatar in the Inspector for physics groups and expression hotkeys. The exported model defines the available controls.");
+                        ui.label("Use Tracking for webcam, phone or microphone inputs, and Avatar in the Inspector for physics groups and expression hotkeys. The exported model defines the available controls.");
                     }
                     if ui.button("Open avatar controls").clicked() { request=Some(Request::Controls); }
                     if ui.button("Set up personal tracking…").clicked() { request=Some(Request::Tracking); }
@@ -223,7 +223,7 @@ impl Wizard {
                         ui.label("Choose a .vrm file exported by your avatar author. The file contains the skeleton, meshes, textures, expressions and spring settings. No Cubism SDK is needed.");
                         if ui.button("Choose VRM avatar…").clicked() && let Some(path)=rfd::FileDialog::new().add_filter("VRM avatar",&["vrm"]).pick_file(){self.model=Some(path);self.model_summary=None;self.error=None;}
                         if let Some(path)=&self.model {ui.label(path.display().to_string());}
-                        ui.label("After import: set up phone tracking or the microphone, choose full-body or portrait framing, then tune spring bones and expression hotkeys. All changes are saved for this avatar.");
+                        ui.label("After import: set up webcam, phone tracking or the microphone, choose full-body or portrait framing, then tune spring bones and expression hotkeys. All changes are saved for this avatar.");
                     } else {
                         ui.label("Choose the exported .model3.json, or its .moc3 with a matching manifest beside it. Keep the atlas PNGs, physics and expressions in the exported folder structure.");
                         if ui.button("Choose Live2D export…").clicked() && let Some(path)=rfd::FileDialog::new().add_filter("Cubism export",&["json","moc3"]).pick_file(){self.model=Some(path);self.model_summary=None;self.error=None;}

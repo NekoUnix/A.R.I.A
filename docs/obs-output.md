@@ -1,5 +1,7 @@
 # OBS output: landscape, portrait and Freeform
 
+![ Compact output and capture controls with Odette](images/outputs-v23.png)
+
 For Twitch and YouTube chat under the portrait preview, open **Streaming chat**.
 The [chat companion](streaming-chat.md) supports either service or both with
 independent transparency and background colors. It is a separate native window;
@@ -19,8 +21,6 @@ All three can run together, with separate positions, scales, backgrounds, keys,
 resolutions and framing locks. They share the same Live2D model render and atlases;
 additional outputs allocate canvas textures, not another copy of the avatar.
 PNG puppets and Mica also support all three outputs.
-
-![Capture controls with the original Mica puppet and a detected key color](images/obs-controls.png)
 
 ## Open and frame the windows
 

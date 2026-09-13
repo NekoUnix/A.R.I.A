@@ -40,7 +40,7 @@ sdl2 = { version = "=0.38.0", default-features = false, features = ["bundled", "
 rodio = { version = "0.22.2", default-features = false, features = ["playback", "symphonia-wav", "symphonia-mp3", "symphonia-vorbis", "symphonia-ogg", "symphonia-flac", "symphonia-pcm"] }
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.58", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Cryptography", "Win32_System_Memory", "Win32_System_Registry", "Win32_System_Threading", "Win32_System_ProcessStatus", "Win32_Graphics_Direct3D11", "Win32_Graphics_Direct3D11on12", "Win32_Graphics_Direct3D12", "Win32_Graphics_Dxgi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Cryptography", "Win32_System_Memory", "Win32_System_Registry", "Win32_System_Threading", "Win32_System_JobObjects", "Win32_System_ProcessStatus", "Win32_Graphics_Direct3D11", "Win32_Graphics_Direct3D11on12", "Win32_Graphics_Direct3D12", "Win32_Graphics_Dxgi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
 pollster = "0.4"

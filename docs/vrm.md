@@ -1,12 +1,14 @@
 # VRM avatars on Windows
 
+![ The supplied NekoUnity2 VRM in ARIA](images/vrm-v23.png)
+
 ARIA v0.19 supports primary VRM 0.x and VRM 1.0 avatars. The Rust runtime reads
 the embedded humanoid, skins, facial morphs, textures and spring bones. Windows
 renders them using wgpu/DX12. Unity and Cubism Core are not required for VRM.
 
 ## Import and run
 
-1. Extract `aria-0.22.0-windows-x64.zip` and run `aria-desktop.exe`.
+1. Extract `aria-0.23.0-windows-x64.zip` and run `aria-desktop.exe`.
 2. Open **Avatar & appearance → Import VRM avatar…**. If another avatar is active,
    use **Change avatar / type… → VRM 3D avatar**.
 3. Choose a `.vrm` file, review its author, declared license and rig summary,
@@ -34,8 +36,6 @@ cargo run --locked --release -p aria-desktop -- "C:\path\to\your-avatar.vrm"
 ARIA remembers the last VRM path and reopens it on the next launch. Moving the
 file requires choosing its new location. Profiles use the content of the file
 as their identity; re-exporting or editing the VRM creates a new identity.
-
-![VRM guided import](images/vrm-import.png)
 
 ## Phone tracking and microphone
 
