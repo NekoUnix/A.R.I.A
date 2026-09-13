@@ -121,7 +121,7 @@ fn protect(bytes: &[u8], decrypt: bool) -> Result<Vec<u8>> {
                 std::ptr::write_volatile(output.pbData.add(i), 0);
             }
         }
-        let _ = LocalFree(HLOCAL(output.pbData.cast()));
+        let _ = LocalFree(Some(HLOCAL(output.pbData.cast())));
         Ok(result)
     }
 }

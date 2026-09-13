@@ -22,8 +22,8 @@ bytemuck = { version = "1", features = ["derive"] }
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
-eframe = { version = "=0.33.0", default-features = false, features = ["default_fonts", "wgpu", "persistence", "x11", "wayland"] }
-wgpu = { version = "27.0.1", default-features = false, features = ["std", "dx12", "vulkan", "wgsl"] }
+eframe = { version = "=0.36.2", default-features = false, features = ["default_fonts", "wgpu", "persistence", "x11", "wayland"] }
+wgpu = { version = "30.0.1", default-features = false, features = ["std", "dx12", "vulkan", "wgsl"] }
 rfd = "0.15"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif"] }
 gif = "0.14.2"
@@ -31,8 +31,8 @@ cpal = "=0.17.3"
 gltf = { version = "1.4.1", default-features = false, features = ["utils", "names"] }
 ufbx = "0.11.3"
 glam = "0.30"
-base64 = "0.22"
-getrandom = "0.3"
+base64 = "0.23"
+getrandom = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 tungstenite = { version = "0.28", features = ["native-tls"] }
 sha2 = "0.10"
@@ -40,7 +40,7 @@ sdl2 = { version = "=0.38.0", default-features = false, features = ["bundled", "
 rodio = { version = "0.22.2", default-features = false, features = ["playback", "symphonia-wav", "symphonia-mp3", "symphonia-vorbis", "symphonia-ogg", "symphonia-flac", "symphonia-pcm"] }
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.58", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Cryptography", "Win32_System_Memory", "Win32_System_Registry", "Win32_System_Threading", "Win32_System_JobObjects", "Win32_System_ProcessStatus", "Win32_Graphics_Direct3D11", "Win32_Graphics_Direct3D11on12", "Win32_Graphics_Direct3D12", "Win32_Graphics_Dxgi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Cryptography", "Win32_System_Memory", "Win32_System_Registry", "Win32_System_Threading", "Win32_System_JobObjects", "Win32_System_ProcessStatus", "Win32_Graphics_Direct3D11", "Win32_Graphics_Direct3D11on12", "Win32_Graphics_Direct3D12", "Win32_Graphics_Dxgi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
 pollster = "0.4"

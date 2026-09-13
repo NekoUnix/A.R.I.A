@@ -17,34 +17,34 @@ The default maintainer is **NekoUnix**, recorded in
 for the owner's PRs. The current team also includes **Silvani-In-The-Net** and
 **BennyBusinessButton**; repository access is managed in GitHub settings.
 
-### Enforcement status
+### Active protections
 
-On 2026-09-12, GitHub refused branch protection for this private repository with:
-"Upgrade to GitHub Pro or make this repository public to enable this feature."
-The repository remains private. The review rules below are the working agreement;
-GitHub does **not yet block** a collaborator from bypassing them. Automatic
-CODEOWNERS routing is also plan-dependent, so request reviewers manually.
+The repository is public. Its existing
+[Protection ruleset](https://github.com/NekoUnix/A.R.I.A/rules/23132231) targets
+`refs/heads/main` and is active. It requires a pull request, one independent
+approval, approval of the latest reviewable push, resolved review conversations,
+an up-to-date branch and the two CI checks below. New reviewable changes dismiss
+stale approvals. Only squash merges are permitted; linear history is required.
+Force pushes and deletion of `main` are blocked. No bypass actors are configured,
+so these requirements also apply to administrators.
 
-The [ready-to-apply protection configuration](https://github.com/NekoUnix/A.R.I.A/blob/main/.github/main-protection.json)
-requires an up-to-date branch, the two check names below, one independent approval,
-reapproval after new changes, resolved conversations and linear history. It
-includes administrators and prohibits force pushes and deletion of `main`.
-Code-owner approval is optional so the owner can receive review from another
-collaborator. This file is a configuration template, not evidence of active rules.
-
-Once the owner enables a supporting plan, an authenticated repository administrator
-can apply it from the checkout with GitHub CLI:
+CODEOWNERS now routes eligible PRs to the default maintainer. Code-owner approval
+is optional so the owner can receive review from another write-access collaborator.
+The [ruleset configuration](https://github.com/NekoUnix/A.R.I.A/blob/main/.github/main-ruleset.json)
+records the applied settings. An administrator can inspect the live configuration
+and update this same ruleset with GitHub CLI:
 
 ```powershell
-gh api --method PUT repos/NekoUnix/A.R.I.A/branches/main/protection --input .github/main-protection.json
-gh api repos/NekoUnix/A.R.I.A/branches/main/protection
+gh api repos/NekoUnix/A.R.I.A/rulesets/23132231
+gh api --method PUT repos/NekoUnix/A.R.I.A/rulesets/23132231 --input .github/main-ruleset.json
+gh api repos/NekoUnix/A.R.I.A/rules/branches/main
 ```
 
-Inspect existing protections first and preserve any stronger rules added since
-this template was written. Verify both CI jobs have run successfully and the
-readback has the intended settings before claiming enforcement is active.
-GitHub documents [branch protection](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)
-and [CODEOWNERS availability](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners).
+Inspect the live rules first and preserve any stronger settings added since this
+file was written. Verify the branch-level readback after updates; an active ruleset
+with an empty target list protects no branches. GitHub documents
+[rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)
+and [CODEOWNERS](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners).
 
 ## Checks and review
 
@@ -61,25 +61,34 @@ read-only, checkout does not persist credentials, Actions use full commit SHAs,
 and PR jobs do not need proprietary models, SDK downloads or repository secrets.
 Hardware-dependent Rust tests stay explicitly ignored unless a developer supplies
 the required fixtures. The package job uploads reviewable build artifacts.
+External-fork workflow runs require maintainer approval before they execute.
+This approval is separate from approving the code for merge. Inspect fork changes
+before authorizing a run, and retain the read-only token and no-secrets PR design.
 
 A reviewer should inspect the diff and validation evidence, run relevant checks
 when needed, and request changes for unresolved correctness or compatibility
 problems. Focus especially on per-avatar settings, authored parameter ranges,
 input axes, tracking loss, bounded work, native resource lifetimes and API access.
-Never approve your own change or convert automated lint results into a human review.
+Never approve your own change or convert automated lint results into a review.
+A maintainer can explicitly delegate review to a coding agent; identify that
+delegation in the review and still inspect the diff and validation evidence.
+GitHub's separate-author and latest-push approval requirements continue to apply.
 
 After a new push, review the new diff and approve the current revision. Resolve
 conversations only after the concern is addressed. Merge when the independent
-approval and both checks are green. For an urgent exception, the owner records
-the reason and follow-up review in the PR; do not silently bypass the process.
+approval and both checks are green. User-authorized automatic merging follows the
+same gates. Self-authored PRs need another eligible collaborator's approval.
+Do not silently bypass the process.
 
 ## Dependencies and security
 
 Dependabot checks Cargo, Actions and `/tracking` Python requirements weekly.
 Compatible updates are grouped; major updates remain separate. At most three
 version-update PRs per ecosystem are open at once. Security alerts and security
-update PRs are enabled in repository settings. No dependency PR is auto-approved
-or auto-merged. A clean alert list does not cover every proprietary SDK or runtime.
+update PRs are enabled in repository settings. Dependabot does not approve its own
+changes. An authorized maintainer can enable auto-merge for an individually
+reviewed PR; GitHub waits for the same approval and CI requirements. A clean alert
+list does not cover every proprietary SDK or runtime.
 
 Camera dependency PRs must update both requirements files consistently, install in
 a clean Python 3.12 x64 environment and run real inference before merging. Review
@@ -88,6 +97,8 @@ CI resolves the complete camera lock with binary wheels for Python 3.12 x64 befo
 packaging. A dependency upgrade that conflicts with MediaPipe's constraints fails
 this check; a successful dry run still needs the real inference check during review.
 Report vulnerabilities according to [SECURITY.md](../SECURITY.md).
+Private vulnerability reporting, secret scanning and secret push protection are
+enabled. Ordinary issues and discussions remain public regardless of their labels.
 
 ## Release checklist
 
@@ -107,4 +118,4 @@ Report vulnerabilities according to [SECURITY.md](../SECURITY.md).
    GitHub Actions artifacts expire; a release asset requires a deliberate upload.
 
 Repository administration changes should be reviewed like code. Keep this page,
-the protection template and actual GitHub settings consistent when policy changes.
+the ruleset configuration and actual GitHub settings consistent when policy changes.

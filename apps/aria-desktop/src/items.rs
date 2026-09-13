@@ -1055,7 +1055,8 @@ mod tests {
         for size in [vec2(1920., 1080.), vec2(1080., 1920.), vec2(750., 610.)] {
             let canvas = Rect::from_min_size(Pos2::ZERO, size);
             let pose = scene.items[0].pose(&scene, canvas, 0.9).unwrap();
-            let out = ctx.run(
+            let out = crate::run_test_ui(
+                &ctx,
                 egui::RawInput {
                     screen_rect: Some(canvas),
                     ..Default::default()
@@ -1104,7 +1105,8 @@ mod tests {
         let mut time = 1.0;
         let mut run = |events: Vec<egui::Event>| {
             time += 0.1;
-            let _ = ctx.run(
+            let _ = crate::run_test_ui(
+                &ctx,
                 egui::RawInput {
                     screen_rect: Some(canvas),
                     events,
@@ -1224,7 +1226,8 @@ mod tests {
         let mut time = 0.0;
         let mut run = |events, manager: &mut Items, config: &mut RigConfig| {
             time += 0.1;
-            let _ = ctx.run(
+            let _ = crate::run_test_ui(
+                &ctx,
                 egui::RawInput {
                     screen_rect: Some(canvas),
                     events,
@@ -1351,7 +1354,8 @@ mod tests {
             let b = scene.items[0].pose(&scene, small, 1.0).unwrap();
             assert!((a.center.to_vec2() - b.center.to_vec2() * 4.0).length() < 1e-3);
             assert!((a.size - b.size * 4.0).length() < 1e-3);
-            let output = ctx.run(
+            let output = crate::run_test_ui(
+                &ctx,
                 egui::RawInput {
                     screen_rect: Some(large),
                     ..Default::default()

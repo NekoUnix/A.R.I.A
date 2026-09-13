@@ -160,7 +160,7 @@ impl ModelPreferences {
     }
 }
 
-#[derive(Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Hash, Debug)]
 enum ControlsPage {
     #[default]
     Avatar,
@@ -2218,7 +2218,8 @@ impl AriaApp {
 }
 
 impl eframe::App for AriaApp {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn ui(&mut self, root_ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        let ctx = &root_ui.ctx().clone();
         theme::sync(ctx, self.settings.theme.active.colors);
         self.poll_image_import();
         self.poll_vrm_import();
@@ -2247,10 +2248,9 @@ impl eframe::App for AriaApp {
                 let identity = self.live2d.as_ref().map(|a| a.model_key.clone());
                 ctx.data_mut(|d| d.insert_temp(egui::Id::new("smoke-main-identity"), identity));
                 ctx.input_mut(|i| {
-                    i.raw.dropped_files.push(egui::DroppedFile {
-                        path: Some(path.into()),
-                        ..Default::default()
-                    })
+                    i.raw.dropped_files.push(std::sync::Arc::new(
+                        crate::screenshot::SmokeDroppedFile(path.into()),
+                    ))
                 });
                 ctx.data_mut(|d| d.insert_temp(key, true));
             }
@@ -2259,7 +2259,7 @@ impl eframe::App for AriaApp {
             i.raw
                 .dropped_files
                 .iter()
-                .filter_map(|f| f.path.clone())
+                .map(|f| f.path().to_owned())
                 .collect::<Vec<_>>()
         });
         let mut dropped_items: Vec<_> =
@@ -2547,9 +2547,9 @@ impl eframe::App for AriaApp {
         );
 
         self.metrics.update(self.render_state.as_ref());
-        egui::TopBottomPanel::top("header")
+        egui::Panel::top("header")
             .frame(Frame::new().fill(bg()).inner_margin(10.0))
-            .show(ctx, |ui| {
+            .show(root_ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new("A.R.I.A.")
@@ -2564,16 +2564,16 @@ impl eframe::App for AriaApp {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            RichText::new("v0.23 · WINDOWS PREVIEW")
+                            RichText::new("v0.24 · WINDOWS PREVIEW")
                                 .small()
                                 .color(muted()),
                         );
                     });
                 });
             });
-        egui::TopBottomPanel::bottom("status")
+        egui::Panel::bottom("status")
             .frame(Frame::new().fill(bg()).inner_margin(10.0))
-            .show(ctx, |ui| {
+            .show(root_ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(RichText::new(&self.gpu).small().color(muted()));
                     ui.separator();
@@ -2591,22 +2591,22 @@ impl eframe::App for AriaApp {
                     );
                 });
             });
-        egui::SidePanel::left("controls")
-            .exact_width(302.0)
+        egui::Panel::left("controls")
+            .exact_size(302.0)
             .resizable(false)
             .frame(Frame::new().fill(panel()).inner_margin(12.0))
-            .show(ctx, |ui| {
+            .show(root_ui, |ui| {
                 self.controls_header(ui);
                 let area = egui::ScrollArea::vertical()
                     .id_salt(("controls-scroll-v17", self.controls_page));
                 area.show(ui, |ui| self.controls(ui, ctx));
             });
-        egui::SidePanel::right("diagnostics")
-            .default_width(380.0)
-            .width_range(330.0..=700.0)
+        egui::Panel::right("diagnostics")
+            .default_size(380.0)
+            .size_range(330.0..=700.0)
             .resizable(true)
             .frame(Frame::new().fill(panel()).inner_margin(12.0))
-            .show(ctx, |ui| {
+            .show(root_ui, |ui| {
                 section(ui, "INSPECTOR");
                 let kind = self.avatar_kind();
                 self.input_monitor.navigation(ui, kind);
@@ -2626,7 +2626,7 @@ impl eframe::App for AriaApp {
         let stage_output = output_settings.canvas(output_settings.selected);
         egui::CentralPanel::default()
             .frame(Frame::new().fill(bg()).inner_margin(14.0))
-            .show(ctx, |ui| {
+            .show(root_ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.heading("Your stage");
                     crate::help::button(ui, "stage");
@@ -3265,6 +3265,9 @@ mod tests {
         }
         fn set_string(&mut self, key: &str, value: String) {
             self.0.insert(key.into(), value);
+        }
+        fn remove_string(&mut self, key: &str) {
+            self.0.remove(key);
         }
         fn flush(&mut self) {}
     }

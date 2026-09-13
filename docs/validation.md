@@ -1,11 +1,34 @@
 # Validation
 
-![ Current native Windows build under validation](images/workspace-v23.png)
+![ Current native Windows build under validation](images/workspace-v24.png)
 
 This file records checks for the development builds. The Windows CI workflow
 is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Local verification on 2026-09-12
+
+### v0.24 public release and dependency compatibility
+
+- **147 Rust tests passed**, with eighteen environment-dependent tests ignored.
+  Formatting and strict Clippy passed across all targets and features after the
+  egui/eframe 0.36, wgpu 30 and Windows bindings migration. Headless UI checks
+  explicitly discard unused texture deltas; native outputs consume root textures.
+- Four additional native DX12 checks passed: Live2D clipping/blending/culling/draw
+  order, Spout transfer with alpha to an independent DX11 receiver and cleanup,
+  generated VRM 0.x/1.0 rendering and morphs, and the supplied VRM's tracking,
+  expressions, springs and frozen poses.
+- MediaPipe 1.0.1 installed in a clean Python 3.12 x64 environment and detected a
+  face with pose and expressions in Google's public portrait fixture. Setup/repair
+  also upgraded an older ARIA environment, removed obsolete protobuf/JAX packages,
+  passed `pip check` and repeated real inference successfully. The lock has twenty
+  distributions, down from twenty-seven. Three Python conversion tests passed.
+- Native captures verified the supplied Odette Live2D avatar and the separate
+  help window after the UI migration. The workspace image above is from this build.
+- Documentation links, JSON, pinned Actions, camera pins and package versions
+  passed repository checks. The public `main` ruleset and security reporting
+  settings were read back from GitHub; CI results remain specific to their commit.
+- Physical camera/controller/phone and NVIDIA SDK hardware limitations listed
+  below still apply. Debug screenshots are visual checks, not performance results.
 
 ### v0.23 cameras, themes and control API
 

@@ -184,14 +184,14 @@ fn render_canvas(
     let size = [view.texture().width(), view.texture().height()];
     let rect =
         egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(size[0] as f32, size[1] as f32));
-    let output = paint_context.run(
+    let mut output = paint_context.run_ui(
         egui::RawInput {
             screen_rect: Some(rect),
             ..Default::default()
         },
         |ctx| {
             scene.paint(
-                &ctx.layer_painter(egui::LayerId::background()),
+                &ctx.ctx().layer_painter(egui::LayerId::background()),
                 rect,
                 config,
             );
@@ -199,6 +199,8 @@ fn render_canvas(
     );
     // These shapes reference the root renderer's existing model/sprite textures.
     // No second atlas upload, no scaled desktop screenshot, and no CPU pixels.
+    // This geometry-only context has no text; discard its unused default font atlas.
+    output.textures_delta.clear();
     let jobs = root.tessellate(output.shapes, 1.0);
     let screen = ScreenDescriptor {
         size_in_pixels: size,
@@ -322,7 +324,7 @@ pub fn save_png(
         timeout: Some(Duration::from_secs(5)),
     })?;
     rx.recv_timeout(Duration::from_secs(1))??;
-    let mapped = buffer.slice(..).get_mapped_range();
+    let mapped = buffer.slice(..).get_mapped_range()?;
     let mut rgba = Vec::with_capacity(size[0] as usize * size[1] as usize * 4);
     for row in mapped.chunks_exact(stride as usize) {
         for pixel in row[..size[0] as usize * 4].as_chunks::<4>().0 {

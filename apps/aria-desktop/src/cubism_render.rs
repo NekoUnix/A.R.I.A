@@ -184,7 +184,7 @@ impl ModelRenderer {
             timeout: Some(std::time::Duration::from_secs(5)),
         })?;
         rx.recv_timeout(std::time::Duration::from_secs(1))??;
-        let mapped = buffer.slice(..).get_mapped_range();
+        let mapped = buffer.slice(..).get_mapped_range()?;
         let mut rgba = Vec::with_capacity(size.width as usize * size.height as usize * 4);
         for row in mapped.chunks_exact(stride as usize) {
             for pixel in row[..size.width as usize * 4].as_chunks::<4>().0 {
@@ -429,8 +429,8 @@ impl ModelRenderer {
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Cubism pipeline"),
-            bind_group_layouts: &[&atlas_layout, &style_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&atlas_layout), Some(&style_layout)],
+            immediate_size: 0,
         });
         let mut pipelines = Vec::new();
         for mode in [Blend::Normal, Blend::Add, Blend::Multiply] {
@@ -751,11 +751,11 @@ fn pipeline(
             module: shader,
             entry_point: Some("vertex"),
             compilation_options: Default::default(),
-            buffers: &[wgpu::VertexBufferLayout {
+            buffers: &[Some(wgpu::VertexBufferLayout {
                 array_stride: 16,
                 step_mode: wgpu::VertexStepMode::Vertex,
                 attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2],
-            }],
+            })],
         },
         fragment: Some(wgpu::FragmentState {
             module: shader,
@@ -778,7 +778,7 @@ fn pipeline(
         },
         depth_stencil: None,
         multisample: Default::default(),
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     })
 }
@@ -844,7 +844,11 @@ mod tests {
             .poll(wgpu::PollType::wait_indefinitely())
             .unwrap();
         rx.recv().unwrap().unwrap();
-        let data = buffer.slice(..).get_mapped_range().to_vec();
+        let data = buffer
+            .slice(..)
+            .get_mapped_range()
+            .expect("mapped GPU readback")
+            .to_vec();
         buffer.unmap();
         data
     }
@@ -890,15 +894,17 @@ mod tests {
     #[test]
     #[ignore = "requires a graphics adapter; no Cubism SDK or model needed"]
     fn gpu_clipping_blending_colors_culling_and_draw_order() {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::DX12 | wgpu::Backends::VULKAN,
-            ..Default::default()
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
         let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();
         let (device, queue) =
             pollster::block_on(adapter.request_device(&Default::default())).unwrap();
         let renderer = eframe::egui_wgpu::Renderer::new(&device, FORMAT, Default::default());
         let state = RenderState {
+            instance: instance.clone(),
+            surface_config: eframe::egui_wgpu::SurfaceConfig::LOW_LATENCY,
             adapter,
             available_adapters: vec![],
             device,

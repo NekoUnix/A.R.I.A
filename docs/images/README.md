@@ -20,3 +20,10 @@ Screenshots use the feature-gated native screenshot harness with an isolated
 configuration, not fabricated live inference. Guided tracking review uses a
 deterministic calibration rehearsal. Demo movement is labeled in the interface.
 No login credentials, API keys or raw camera images are included.
+
+## v0.24 renderer update
+
+`workspace-v24.png` is an unedited native Windows capture of the v0.24 screenshot
+build, using the same owner-provided Odette Live2D export with permission. It uses
+an isolated test profile and Demo input. Resource numbers from this debug capture
+are not a release benchmark. Raw model files and SDK binaries are not included.

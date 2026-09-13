@@ -1,6 +1,6 @@
-# ARIA documentation — v0.23
+# ARIA documentation — v0.24
 
-![Odette in the current Windows workspace](images/workspace-v23.png)
+![Odette in the current Windows workspace](images/workspace-v24.png)
 
 Start with [Windows setup](windows.md), import your avatar, then follow
 [personal tracking setup](tracking-setup.md). The left navigation is **Avatar /
@@ -29,6 +29,7 @@ avatar, stage and poses. Hover or click any circled **?** for offline explanatio
 | Understand code or verified limitations | [Architecture](architecture.md), [validation](validation.md) |
 | Contribute code or review a pull request | [Contribution guide](../CONTRIBUTING.md), [development workflow](development.md) |
 
-Screenshots show the current v0.23 build with the owner's supplied avatars.
+The workspace screenshot shows v0.24. Other images show the v0.23 interface
+with the owner's supplied avatars; v0.24 retains those controls.
 They demonstrate UI layout; camera configuration screens do not imply an active
 camera connection. [Artwork provenance and reproduction notes](images/README.md).

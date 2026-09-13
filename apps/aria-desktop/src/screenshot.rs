@@ -88,3 +88,13 @@ pub fn capture(ctx: &egui::Context, started: Instant, output: bool) {
         ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Close);
     }
 }
+#[derive(Debug)]
+pub struct SmokeDroppedFile(pub std::path::PathBuf);
+impl eframe::egui::DroppedFile for SmokeDroppedFile {
+    fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+    fn bytes(&self) -> Result<Vec<u8>, String> {
+        std::fs::read(&self.0).map_err(|error| error.to_string())
+    }
+}

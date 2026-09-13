@@ -276,24 +276,16 @@ pub fn show(ctx: &egui::Context, _started: std::time::Instant) {
             .with_inner_size([880.0, 690.0])
             .with_min_inner_size([700.0, 430.0])
             .with_resizable(true),
-        move |ctx, class| {
+        move |root_ui, _class| {
+            let ctx = &root_ui.ctx().clone();
             let mut state = shared.lock().unwrap();
             if ctx.input(|i| i.viewport().close_requested()) {
                 state.open = false;
                 ctx.request_repaint_of(egui::ViewportId::ROOT);
                 return;
             }
-            if class == egui::ViewportClass::Embedded {
-                let mut open = state.open;
-                egui::Window::new("ARIA help & documentation")
-                    .open(&mut open)
-                    .resizable(true)
-                    .default_size([850.0, 620.0])
-                    .show(ctx, |ui| content(ui, &mut state));
-                state.open = open;
-            } else {
-                egui::CentralPanel::default().show(ctx, |ui| content(ui, &mut state));
-            }
+            // egui provides an embedded Window itself when native viewports are unavailable.
+            egui::CentralPanel::default().show(root_ui, |ui| content(ui, &mut state));
             #[cfg(feature = "screenshots")]
             if crate::smoke_mode() {
                 crate::screenshot::capture(ctx, _started, false);
@@ -565,7 +557,8 @@ mod tests {
         add: impl FnMut(&mut egui::Ui),
     ) -> egui::FullOutput {
         let mut add = add;
-        ctx.run(
+        crate::run_test_ui(
+            ctx,
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -584,7 +577,7 @@ mod tests {
     #[test]
     fn question_mark_hover_click_and_keyboard_open_context_without_changing_a_control() {
         let ctx = egui::Context::default();
-        ctx.style_mut(|style| {
+        ctx.global_style_mut(|style| {
             style.interaction.tooltip_delay = 0.0;
             style.interaction.tooltip_grace_time = 0.0;
         });
@@ -732,7 +725,7 @@ mod tests {
         let ctx = egui::Context::default();
         ctx.set_embed_viewports(false);
         open(&ctx, "physics", String::new());
-        let out = ctx.run(egui::RawInput::default(), |ctx| {
+        let out = crate::run_test_ui(&ctx, egui::RawInput::default(), |ctx| {
             show(ctx, std::time::Instant::now())
         });
         let help = out
@@ -752,7 +745,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let closed = ctx.run(raw, |ctx| callback(ctx));
+        let closed = crate::run_test_ui(&ctx, raw, |ctx| callback(ctx));
         assert!(!state(&ctx).lock().unwrap().open);
         assert!(closed.viewport_output.values().all(|v| {
             !v.commands
@@ -769,7 +762,8 @@ mod tests {
                 theme::install(&ctx);
                 let mut state = State::default();
                 state.select(a.id, Arc::from(""));
-                let out = ctx.run(
+                let out = crate::run_test_ui(
+                    &ctx,
                     egui::RawInput {
                         screen_rect: Some(egui::Rect::from_min_size(
                             egui::Pos2::ZERO,

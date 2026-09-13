@@ -4,5 +4,5 @@ contact_links:
     url: https://github.com/NekoUnix/A.R.I.A/blob/main/docs/README.md
     about: Read illustrated Windows, avatar, tracking and API documentation.
   - name: Security reporting
-    url: https://github.com/NekoUnix/A.R.I.A/blob/main/SECURITY.md
-    about: Read the reporting policy before sharing a vulnerability.
+    url: https://github.com/NekoUnix/A.R.I.A/security/advisories/new
+    about: Privately report a vulnerability to the maintainers; ordinary issues are public.

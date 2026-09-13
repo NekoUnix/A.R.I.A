@@ -305,7 +305,7 @@ pub fn apply(ctx: &egui::Context, palette: Palette) {
     } else {
         egui::Theme::Dark
     });
-    let mut style = (*ctx.style()).clone();
+    let mut style = (*ctx.global_style()).clone();
     style.visuals = if palette.light {
         egui::Visuals::light()
     } else {
@@ -357,7 +357,7 @@ pub fn apply(ctx: &egui::Context, palette: Palette) {
             .text_styles
             .insert(text, egui::FontId::proportional(size));
     }
-    ctx.set_style(style);
+    ctx.set_global_style(style);
 }
 
 pub fn card(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
@@ -384,7 +384,7 @@ pub fn open_category(ctx: &egui::Context, title: &str) {
 
 pub fn category(
     ui: &mut egui::Ui,
-    id: impl std::hash::Hash,
+    id: impl std::hash::Hash + std::fmt::Debug,
     title: &str,
     default_open: bool,
     add: impl FnOnce(&mut egui::Ui),

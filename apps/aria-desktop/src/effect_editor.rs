@@ -835,7 +835,8 @@ mod tests {
         let mut time = 0.0;
         let mut run = |events, tool, routes: &mut Vec<Route>| {
             time += 0.1;
-            let _ = ctx.run(
+            let _ = crate::run_test_ui(
+                &ctx,
                 egui::RawInput {
                     screen_rect: Some(rect),
                     events,

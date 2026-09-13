@@ -10,6 +10,9 @@ Windows x64. The built-in Mica puppet runs without proprietary SDKs or avatar fi
    behavior. Small, clear fixes can go straight to a pull request.
 2. Update `main`, then create a short-lived branch such as `fix/head-pitch`,
    `feature/camera-controls` or `docs/setup`. Coding agents use `codex/` branches.
+   Public contributors without write access should fork the repository and open
+   a pull request from their fork. A maintainer must approve external-fork workflow
+   runs; that permission is separate from reviewing the proposed code.
 3. Keep the change focused. Include profile migration when saved settings change;
    preserve authored model ranges and keep avatar settings scoped to that avatar.
 4. Run the checks below and open a draft PR early if feedback would help.
@@ -18,10 +21,13 @@ Windows x64. The built-in Mica puppet runs without proprietary SDKs or avatar fi
 6. Obtain one approving review and green checks for the latest revision, then
    squash merge. The merged branch is deleted automatically by GitHub.
 
-The repository currently has a private-plan limitation on enforced branch
-protection and automatic code-owner review requests. Follow this process manually
-until enforcement is available; see [review policy and activation](docs/development.md).
-Do not treat a green build or an AI-generated review as a human approval.
+The public repository enforces pull requests, one independent approval, resolved
+review conversations and both CI checks on `main`, including for administrators.
+See the [review policy](docs/development.md). CODEOWNERS requests the default
+maintainer on eligible PRs; the owner's PRs need another write-access reviewer.
+Green checks alone do not constitute review. Maintainers may explicitly delegate
+review to a coding agent, which must identify that delegation in its review;
+GitHub's separate-author and latest-push approval requirements still apply.
 
 ## Local checks
 
@@ -67,7 +73,9 @@ before installing into a clean test environment. CI also checks this resolution.
 
 Dependabot opens grouped weekly update PRs for Cargo, GitHub Actions and the
 camera Python environment. Updates require the same review and validation as
-other code; they are not automatically merged. Major upgrades stay separate.
+other code. A maintainer can authorize auto-merge for an individually reviewed PR
+after checking compatibility; GitHub still requires passing checks and approval.
+Major upgrades stay separate.
 
 For releases, follow the [release checklist](docs/development.md#release-checklist).
 Use the artifact from a successful Windows run for the exact release commit.

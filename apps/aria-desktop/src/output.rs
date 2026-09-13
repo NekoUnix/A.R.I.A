@@ -593,7 +593,43 @@ impl Scene {
         };
         if !config.locked && ui.ctx().current_pass_index() == 0 && ui.rect_contains_pointer(canvas)
         {
-            let scroll = ui.input(|i| i.raw_scroll_delta.y);
+            // Use this pass's physical wheel events, not a smoothed tail that
+            // would continue resizing after the user stops scrolling.
+            let options = ui.ctx().options(|options| options.input_options);
+            let scroll: f32 = ui.input(|i| {
+                i.raw
+                    .events
+                    .iter()
+                    .filter_map(|event| {
+                        let egui::Event::MouseWheel {
+                            unit,
+                            delta,
+                            modifiers,
+                            ..
+                        } = event
+                        else {
+                            return None;
+                        };
+                        let scale = match unit {
+                            egui::MouseWheelUnit::Point => 1.0,
+                            egui::MouseWheelUnit::Line => options.line_scroll_speed,
+                            egui::MouseWheelUnit::Page => i.viewport_rect().height(),
+                        };
+                        let horizontal = modifiers.matches_any(options.horizontal_scroll_modifier);
+                        let vertical = modifiers.matches_any(options.vertical_scroll_modifier);
+                        Some(
+                            scale
+                                * if horizontal && !vertical {
+                                    0.0
+                                } else if vertical && !horizontal {
+                                    delta.x + delta.y
+                                } else {
+                                    delta.y
+                                },
+                        )
+                    })
+                    .sum()
+            });
             if scroll != 0.0 {
                 let zoom = (config.zoom * (scroll * 0.002).exp()).clamp(0.25, 3.0);
                 dirty |= zoom != config.zoom;
@@ -749,7 +785,8 @@ mod tests {
             let mut run = |events: Vec<egui::Event>, config: &mut CanvasSettings| {
                 time += 0.1;
                 let mut dirty = false;
-                let _ = ctx.run(
+                let _ = crate::run_test_ui(
+                    &ctx,
                     egui::RawInput {
                         screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, size)),
                         events,
@@ -885,12 +922,14 @@ mod tests {
             let mut c = CanvasSettings::default();
             let mut run = |scroll: f32, locked: bool| {
                 c.locked = locked;
-                let _ = ctx.run(
+                let _ = crate::run_test_ui(
+                    &ctx,
                     egui::RawInput {
                         screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, size.into())),
                         events: vec![
                             egui::Event::PointerMoved(egui::pos2(100., 100.)),
                             egui::Event::MouseWheel {
+                                phase: egui::TouchPhase::Move,
                                 unit: egui::MouseWheelUnit::Point,
                                 delta: egui::vec2(0., scroll),
                                 modifiers: egui::Modifiers::NONE,

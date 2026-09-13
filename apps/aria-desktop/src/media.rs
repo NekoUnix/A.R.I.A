@@ -465,7 +465,7 @@ mod tests {
             let sprite = loop {
                 // Drain eframe texture deltas just as the application does each frame;
                 // the worker has already uploaded these to the offscreen renderer.
-                let _ = ctx.run(Default::default(), |_| {});
+                let _ = crate::run_test_ui(&ctx, Default::default(), |_| {});
                 if let Some(result) = job.poll() {
                     break result.unwrap();
                 }

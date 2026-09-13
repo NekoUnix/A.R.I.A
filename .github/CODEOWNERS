@@ -1,5 +1,5 @@
 # Default maintainer. Request another write-access collaborator for the owner's PRs.
-# Automatic routing on private repositories requires a supporting GitHub plan.
+# Public pull requests use these owners for automatic review routing.
 * @NekoUnix
 /.github/ @NekoUnix
 /SECURITY.md @NekoUnix

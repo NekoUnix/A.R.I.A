@@ -10,9 +10,18 @@ A Windows-first avatar app built in Rust with egui and wgpu. Run **Live2D**, **V
 0.x / 1.0**, or **PNG/GIF** avatars, connect tracking, build expressions and effects,
 and send compact-preview, full-resolution canvases to OBS.
 
-![Odette Live2D in ARIA v0.23](docs/images/workspace-v23.png)
+![Odette Live2D in ARIA v0.24](docs/images/workspace-v24.png)
 
-## New in v0.23
+## New in v0.24
+
+- Updated Windows renderer to egui/eframe 0.36 and wgpu 30, including native
+  outputs, model rendering, mouse interaction and help windows.
+- Upgraded MediaPipe to 1.0.1 with a smaller, compatible camera runtime. Repair
+  removes obsolete protobuf/JAX dependencies from ARIA's dedicated environment.
+- Public contribution workflow, enforced reviews and CI, private vulnerability
+  reporting, and updated dependencies and GitHub Actions.
+
+### Included from v0.23
 
 - **Webcam tracking:** local MediaPipe facial inference, camera discovery, rate /
   resolution controls, setup and repair, and integration with per-avatar calibration.
@@ -26,8 +35,9 @@ and send compact-preview, full-resolution canvases to OBS.
 
 ## Start on Windows
 
-1. Download the **aria-windows-x64** artifact from a successful [Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml).
-2. Extract the artifact, then extract `aria-0.23.0-windows-x64.zip` inside it.
+1. Download `aria-0.24.0-windows-x64.zip` from [Releases](https://github.com/NekoUnix/A.R.I.A/releases).
+2. Extract the ZIP into a writable folder. CI development builds are also available
+   as **aria-windows-x64** artifacts from the [Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml); extract their outer artifact ZIP first.
 3. Run `aria-desktop.exe`. The built-in Mica puppet needs no extra files.
 4. Open **Avatar → Avatar & appearance → Import avatar** and choose PNG/GIF,
    Live2D or VRM. Follow the guided import. Live2D needs your official Cubism Core
@@ -81,7 +91,8 @@ it can reduce scheduling contention but cannot fix GPU overload.
 Work on a short-lived branch and open a pull request. Follow the
 [contribution guide](CONTRIBUTING.md) for setup, validation and independent review,
 and the [development policy](docs/development.md) for CI, release steps and the
-current GitHub-plan limit on enforced branch protection. Design discussions belong
+enforced review rules on `main`. Public contributors can fork this repository.
+Design discussions belong
 in [Discussions](https://github.com/NekoUnix/A.R.I.A/discussions); reproducible
 problems and proposed features belong in Issues.
 

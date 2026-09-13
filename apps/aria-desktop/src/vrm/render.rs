@@ -128,8 +128,12 @@ impl Renderer {
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("VRM pipeline"),
-            bind_group_layouts: &[&frame_layout, &material_layout, &skin_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[
+                Some(&frame_layout),
+                Some(&material_layout),
+                Some(&skin_layout),
+            ],
+            immediate_size: 0,
         });
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("ARIA VRM toon and skinning"),
@@ -138,11 +142,11 @@ impl Renderer {
         let pipeline = |cull, transparent: bool, outline: bool| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{
             label:Some("VRM material pipeline"),layout:Some(&layout),
-            vertex:wgpu::VertexState{module:&shader,entry_point:Some(if outline{"vs_outline"}else{"vs"}),compilation_options:Default::default(),buffers:&[wgpu::VertexBufferLayout{array_stride:std::mem::size_of::<Vertex>()as u64,step_mode:wgpu::VertexStepMode::Vertex,attributes:&wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Float32x4,4=>Uint32x4,5=>Float32x4]}]},
+            vertex:wgpu::VertexState{module:&shader,entry_point:Some(if outline{"vs_outline"}else{"vs"}),compilation_options:Default::default(),buffers:&[Some(wgpu::VertexBufferLayout{array_stride:std::mem::size_of::<Vertex>()as u64,step_mode:wgpu::VertexStepMode::Vertex,attributes:&wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Float32x4,4=>Uint32x4,5=>Float32x4]})]},
             fragment:Some(wgpu::FragmentState{module:&shader,entry_point:Some(if outline{"fs_outline"}else{"fs"}),compilation_options:Default::default(),targets:&[Some(wgpu::ColorTargetState{format:FORMAT,blend:Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),write_mask:wgpu::ColorWrites::ALL})]}),
             primitive:wgpu::PrimitiveState{cull_mode:cull,..Default::default()},
-            depth_stencil:Some(wgpu::DepthStencilState{format:wgpu::TextureFormat::Depth32Float,depth_write_enabled:!transparent,depth_compare:wgpu::CompareFunction::LessEqual,stencil:Default::default(),bias:Default::default()}),
-            multisample:wgpu::MultisampleState{count:4,..Default::default()},multiview:None,cache:None})
+            depth_stencil:Some(wgpu::DepthStencilState{format:wgpu::TextureFormat::Depth32Float,depth_write_enabled:Some(!transparent),depth_compare:Some(wgpu::CompareFunction::LessEqual),stencil:Default::default(),bias:Default::default()}),
+            multisample:wgpu::MultisampleState{count:4,..Default::default()},multiview_mask:None,cache:None})
         };
         let pipelines = (0..6)
             .map(|i| {
@@ -445,6 +449,7 @@ impl Renderer {
                 }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             pass.set_bind_group(0, &self.frame, &[]);
             for p in &self.parts {
@@ -500,7 +505,7 @@ impl Renderer {
             timeout: Some(std::time::Duration::from_secs(15)),
         })?;
         rx.recv_timeout(std::time::Duration::from_secs(1))??;
-        let data = buffer.slice(..).get_mapped_range();
+        let data = buffer.slice(..).get_mapped_range()?;
         Ok(data
             .chunks_exact(stride as usize)
             .flat_map(|row| row[..size.width as usize * 4].iter().copied())

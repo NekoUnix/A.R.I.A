@@ -41,6 +41,18 @@ mod tracking_guide;
 mod vrm;
 mod webcam;
 
+/// Headless interaction tests inspect shapes and events without a GPU texture consumer.
+#[cfg(test)]
+fn run_test_ui(
+    ctx: &eframe::egui::Context,
+    input: eframe::egui::RawInput,
+    ui: impl FnMut(&mut eframe::egui::Ui),
+) -> eframe::egui::FullOutput {
+    let mut output = ctx.run_ui(input, ui);
+    output.textures_delta.clear();
+    output
+}
+
 fn smoke_mode() -> bool {
     cfg!(feature = "screenshots") && std::env::var_os("ARIA_SCREENSHOT_TO").is_some()
 }
@@ -71,7 +83,7 @@ fn main() -> eframe::Result {
                     std::env::temp_dir().join(format!("aria-smoke-{}", std::process::id()))
                 })
             })
-            // eframe 0.33's implementation expects the file, despite its field
+            // eframe's implementation expects the file, despite its field
             // documentation describing a folder.
             .map(|directory| directory.join("app.ron")),
         ..Default::default()

@@ -6,7 +6,7 @@ use aria_core::{
 use eframe::egui;
 use std::{collections::BTreeMap, path::PathBuf};
 
-#[derive(Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Hash, Debug)]
 pub enum Tab {
     #[default]
     Inputs,
@@ -1119,7 +1119,7 @@ mod tests {
             (Kind::Live2d, Tab::Items, Tab::Items),
         ] {
             monitor.tab = initial;
-            let _ = ctx.run(Default::default(), |ctx| {
+            let _ = crate::run_test_ui(&ctx, Default::default(), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| monitor.navigation(ui, Some(kind)));
             });
             assert!(monitor.tab == expected);

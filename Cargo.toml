@@ -3,9 +3,9 @@ members = ["crates/aria-core", "crates/aria-tracking", "crates/aria-model", "cra
 resolver = "2"
 
 [workspace.package]
-version = "0.23.0"
+version = "0.24.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.95"
 license = "MIT"
 repository = "https://github.com/NekoUnix/A.R.I.A"
 

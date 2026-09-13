@@ -74,11 +74,11 @@ before distributing a product with their runtime. The portable ZIP includes no C
 Live2D's release guidance specifically covers VTuber tracking software as an
 Expandable Application; the repository is not evidence of publication-license approval.
 
-## Optional webcam runtime (v0.23)
+## Optional webcam runtime (v0.24)
 
-The standard camera installer separately downloads MediaPipe 0.10.21 (Apache-2.0),
+The standard camera installer separately downloads MediaPipe 1.0.1 (Apache-2.0),
 OpenCV contrib Python 4.11.0.86 (Apache-2.0 and bundled dependency notices), NumPy
-1.26.4 (BSD-3-Clause), cv2-enumerate-cameras 1.3.0 and the transitive distributions
+1.26.4 (BSD-3-Clause), cv2-enumerate-cameras 1.3.3 and the transitive distributions
 pinned in `tracking/requirements-lock.txt`. Their license files remain with the
 installed Python distributions. Python itself is supplied by the user under the
 Python Software Foundation license. The portable app includes setup scripts,

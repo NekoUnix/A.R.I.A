@@ -18,6 +18,8 @@ process and is neither recorded nor uploaded.
    the versions in `tracking/requirements-lock.txt`, and downloads Google's
    FaceLandmarker model with a pinned SHA-256 check. Internet is needed only for setup.
    Your system Python packages are not changed. A failed setup can be retried.
+   Use a dedicated ARIA runtime folder. Repairing an older installation removes
+   the obsolete protobuf/JAX/scientific packages that MediaPipe 1 no longer needs.
 3. Click **Find cameras** and select a device. An index can also be entered manually.
    Windows DirectShow supplies the device list. Start with **640 × 480, 30 FPS**.
 4. Press **Start camera**. The avatar moves when a face is detected. Use **Stop camera**

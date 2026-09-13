@@ -40,7 +40,7 @@ impl NamedMutex {
         match unsafe { WaitForSingleObject(self.0.0, timeout) } {
             WAIT_OBJECT_0 | WAIT_ABANDONED => Ok(Some(Lock(self))),
             WAIT_TIMEOUT => Ok(None),
-            _ => Err(windows::core::Error::from_win32().into()),
+            _ => Err(windows::core::Error::from_thread().into()),
         }
     }
 }
@@ -378,9 +378,9 @@ pub(crate) mod tests {
         assert_eq!(bytes[255], 0);
     }
     pub fn gpu_state() -> RenderState {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::DX12,
-            ..Default::default()
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
         let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();
         let (device, queue) =
@@ -391,6 +391,8 @@ pub(crate) mod tests {
             Default::default(),
         );
         RenderState {
+            instance: instance.clone(),
+            surface_config: eframe::egui_wgpu::SurfaceConfig::LOW_LATENCY,
             adapter,
             available_adapters: vec![],
             device,

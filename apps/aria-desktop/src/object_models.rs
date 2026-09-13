@@ -422,9 +422,9 @@ mod tests {
         item.model.textures = files.textures.clone();
         assert_eq!(object_files(&item).unwrap().textures, files.textures);
         item.model.textures.clear();
-        let instance = eframe::wgpu::Instance::new(&eframe::wgpu::InstanceDescriptor {
+        let instance = eframe::wgpu::Instance::new(eframe::wgpu::InstanceDescriptor {
             backends: eframe::wgpu::Backends::DX12,
-            ..Default::default()
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
         let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();
         let (device, queue) =
@@ -432,6 +432,8 @@ mod tests {
         let format = eframe::wgpu::TextureFormat::Rgba8Unorm;
         let renderer = eframe::egui_wgpu::Renderer::new(&device, format, Default::default());
         let state = RenderState {
+            instance: instance.clone(),
+            surface_config: eframe::egui_wgpu::SurfaceConfig::LOW_LATENCY,
             adapter,
             available_adapters: vec![],
             device,
