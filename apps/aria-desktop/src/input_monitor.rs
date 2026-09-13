@@ -19,10 +19,12 @@ pub enum Tab {
     Effects,
     Images,
     Vrm,
+    Layers,
     Microphone,
     Controller,
 }
 pub struct InputMonitor {
+    pub layers_panel: crate::layers_panel::Panel,
     pub setup_tracking_requested: bool,
     pub effect_requests: Vec<u64>,
     pub saved: SavedRig,
@@ -111,6 +113,7 @@ impl InputMonitor {
             saved,
             model_key,
             tab: Tab::Inputs,
+            layers_panel: Default::default(),
             message,
             hotkey_status: None,
             save_requested: repaired > 0,
@@ -181,6 +184,10 @@ impl InputMonitor {
                 self.message = self.expressions.toggle(&id, &mut self.saved);
                 self.save_requested = true;
             }
+            crate::hotkeys::Action::Layers(id) => {
+                self.saved.config.layers.toggle(id);
+                self.save_requested = true;
+            }
             crate::hotkeys::Action::ItemToggle(id) => {
                 if let Some(item) = self.saved.config.items.iter_mut().find(|i| i.id == id) {
                     item.visible = !item.visible;
@@ -222,6 +229,14 @@ impl InputMonitor {
                 });
             }
         }
+        for group in &self.saved.config.layers.groups {
+            if let Some(&shortcut) = self.saved.layer_hotkeys.get(&group.id) {
+                keys.push(Registration {
+                    shortcut,
+                    action: Action::Layers(group.id),
+                });
+            }
+        }
         for item in &self.saved.config.items {
             if let Some(&shortcut) = self.saved.item_hotkeys.get(&item.id) {
                 keys.push(Registration {
@@ -250,6 +265,7 @@ impl InputMonitor {
                 .expression_hotkeys
                 .values()
                 .chain(self.saved.item_hotkeys.values())
+                .chain(self.saved.layer_hotkeys.values())
                 .chain(
                     self.saved
                         .effects
@@ -269,6 +285,9 @@ impl InputMonitor {
         })
     }
     pub fn navigation(&mut self, ui: &mut egui::Ui, kind: Option<crate::avatar_import::Kind>) {
+        if self.tab == Tab::Layers && kind != Some(crate::avatar_import::Kind::Live2d) {
+            self.tab = Tab::Inputs;
+        }
         if kind == Some(crate::avatar_import::Kind::Live2d) && self.tab == Tab::Images {
             self.tab = Tab::Physics;
         }
@@ -285,7 +304,7 @@ impl InputMonitor {
         }
         let mut group = match self.tab {
             Tab::Inputs | Tab::Microphone | Tab::Controller | Tab::Raw => 0,
-            Tab::Physics | Tab::Expressions | Tab::Images | Tab::Vrm => 1,
+            Tab::Physics | Tab::Expressions | Tab::Images | Tab::Vrm | Tab::Layers => 1,
             Tab::Items | Tab::Effects => 2,
             Tab::Pose | Tab::Presets => 3,
         };
@@ -304,9 +323,11 @@ impl InputMonitor {
             ],
             1 => match kind {
                 Some(crate::avatar_import::Kind::Images) => &[(Tab::Images, "Artwork & actions")],
-                Some(crate::avatar_import::Kind::Live2d) => {
-                    &[(Tab::Physics, "Physics"), (Tab::Expressions, "Expressions")]
-                }
+                Some(crate::avatar_import::Kind::Live2d) => &[
+                    (Tab::Physics, "Physics"),
+                    (Tab::Expressions, "Expressions"),
+                    (Tab::Layers, "Layers"),
+                ],
                 Some(crate::avatar_import::Kind::Vrm) => &[
                     (Tab::Vrm, "View"),
                     (Tab::Physics, "Springs"),
@@ -354,6 +375,7 @@ impl InputMonitor {
                     }
                 }
                 Tab::Vrm => "vrm-view",
+                Tab::Layers => "live2d-layers",
                 Tab::Expressions => {
                     if self.model_key.starts_with("vrm:") {
                         "vrm-expressions"
@@ -427,6 +449,7 @@ impl InputMonitor {
             | Tab::Microphone
             | Tab::Controller
             | Tab::Vrm
+            | Tab::Layers
             | Tab::Physics => {}
         }
     }
@@ -1100,6 +1123,70 @@ fn hotkey_combo(ui: &mut egui::Ui, id: &str, key: &mut Option<u8>) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn layer_groups_persist_dispatch_and_reject_all_shortcut_conflicts() {
+        use crate::hotkeys::Action;
+        use aria_core::{layers::Group, shortcuts::Shortcut};
+        let parameters = aria_core::movement::preview_parameters(aria_core::Parameters::default());
+        let mut monitor = InputMonitor::new(
+            "avatar-a".into(),
+            RigConfig::from_parameters(&parameters),
+            None,
+            &parameters,
+        );
+        let key = Shortcut {
+            ctrl: true,
+            alt: true,
+            key: b'L'.into(),
+            ..Default::default()
+        };
+        monitor.saved.config.layers.groups.push(Group {
+            id: 1,
+            name: "Jacket".into(),
+            layers: ["ArtMeshJacket".into()].into(),
+            opacity: 0.,
+            active: false,
+        });
+        monitor.saved.layer_hotkeys.insert(1, key);
+        monitor.saved.global_hotkeys = true;
+        monitor.saved.validate(&parameters).unwrap();
+        assert!(
+            monitor
+                .hotkey_keys()
+                .iter()
+                .any(|r| r.shortcut == key && r.action == Action::Layers(1))
+        );
+        monitor.hotkey_action(Action::Layers(1), &parameters, &mut Default::default());
+        assert_eq!(monitor.saved.config.layers.opacity("ArtMeshJacket"), 0.);
+        let saved = serde_json::from_slice(&serde_json::to_vec(&monitor.saved).unwrap()).unwrap();
+        let mut restored = InputMonitor::new(
+            "avatar-a".into(),
+            RigConfig::from_parameters(&parameters),
+            Some(saved),
+            &parameters,
+        );
+        restored.hotkey_action(Action::Layers(1), &parameters, &mut Default::default());
+        assert_eq!(restored.saved.config.layers.opacity("ArtMeshJacket"), 1.);
+        assert!(crate::items::Items::assign(&mut restored.saved, 1, key).is_err());
+        assert!(
+            crate::expressions_panel::ExpressionsPanel::assign(&mut restored.saved, "smile", key)
+                .is_err()
+        );
+        restored.saved.effects.designs[0].hotkey = Some(key);
+        assert!(restored.saved.validate(&parameters).is_err());
+        restored.saved.effects.designs[0].hotkey = None;
+        restored.saved.layer_hotkeys.insert(2, key);
+        assert!(restored.saved.validate(&parameters).is_err());
+        let other = InputMonitor::new(
+            "avatar-b".into(),
+            RigConfig::from_parameters(&parameters),
+            None,
+            &parameters,
+        );
+        assert!(
+            other.saved.config.layers.groups.is_empty() && other.saved.layer_hotkeys.is_empty()
+        );
+    }
     use super::*;
     #[test]
     fn imported_avatar_type_selects_only_relevant_controls() {

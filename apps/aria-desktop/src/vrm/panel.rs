@@ -6,6 +6,72 @@ use crate::{
 };
 use eframe::egui;
 
+fn motion(ui: &mut egui::Ui, avatar: &mut Avatar, monitor: &mut InputMonitor) {
+    let before = monitor.saved.config.vrm.motion.clone();
+    let frozen = monitor.saved.config.pose.mode == aria_core::movement::PoseMode::Frozen;
+    let settings = &mut monitor.saved.config.vrm.motion;
+    theme::category(ui, "vrm-life", "Life & idle movement", true, |ui| {
+        help::button(ui, "vrm-motion");
+        help::control(ui, "vrm-motion", |ui| {
+            ui.checkbox(&mut settings.enabled, "Natural idle movement")
+        });
+        for (value, label) in [
+            (&mut settings.sway, "Body sway"),
+            (&mut settings.breathing, "Breathing"),
+            (&mut settings.arms, "Arms & elbows"),
+        ] {
+            help::control(ui, "vrm-motion", |ui| {
+                ui.add(egui::Slider::new(value, 0.0..=2.0).text(label))
+            });
+        }
+        help::control(ui, "vrm-motion", |ui| {
+            ui.add(egui::Slider::new(&mut settings.speed, 0.25..=2.0).text("Idle speed"))
+        });
+        theme::caption(
+            ui,
+            "Subtle movement adds to face tracking and feeds the avatar's spring bones. Set a strength to zero to disable that motion. Tune Relax arms in Pose controls for the resting arm position.",
+        );
+    });
+    theme::category(ui, "vrm-gestures", "Gesture animations", true, |ui| {
+        help::button(ui, "vrm-motion");
+        if frozen {
+            ui.label("Resume the pose to play animations. Freeze captures the current gesture and secondary motion.");
+        }
+        ui.add_enabled_ui(!frozen, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                for gesture in super::motion::Gesture::ALL {
+                    if ui
+                        .selectable_label(avatar.motion.current == Some(gesture), gesture.name())
+                        .clicked()
+                    {
+                        avatar.motion.play(gesture);
+                    }
+                }
+                if ui.button("Stop / return to tracking").clicked() {
+                    avatar.motion.stop();
+                }
+            });
+        });
+        help::control(ui, "vrm-motion", |ui| {
+            ui.add(
+                egui::Slider::new(&mut settings.gesture_strength, 0.0..=2.0)
+                    .text("Gesture strength"),
+            )
+        });
+        help::control(ui, "vrm-motion", |ui| {
+            ui.add(egui::Slider::new(&mut settings.gesture_speed, 0.25..=2.0).text("Gesture speed"))
+        });
+        help::control(ui, "vrm-motion", |ui| {
+            ui.checkbox(&mut settings.gesture_loop, "Repeat gestures")
+        });
+        theme::caption(
+            ui,
+            "Click a gesture to play or restart it. Switching and stopping blend over 0.3 seconds. Settings save with this model and its presets; gestures do not start automatically when importing a model. Missing optional bones are skipped. These are procedural gestures, without hand/body capture or collision avoidance.",
+        );
+    });
+    monitor.save_requested |= before != *settings;
+}
+
 pub fn details(ui: &mut egui::Ui, avatar: &Avatar) {
     ui.collapsing("Model details", |ui| {
         help::button(ui, "vrm-import");
@@ -29,7 +95,8 @@ pub fn details(ui: &mut egui::Ui, avatar: &Avatar) {
         }
     });
 }
-pub fn view(ui: &mut egui::Ui, avatar: &Avatar, monitor: &mut InputMonitor) {
+pub fn view(ui: &mut egui::Ui, avatar: &mut Avatar, monitor: &mut InputMonitor) {
+    motion(ui, avatar, monitor);
     let before = monitor.saved.config.vrm.clone();
     let settings = &mut monitor.saved.config.vrm;
     theme::category(ui, "vrm-camera", "View & framing", true, |ui| {

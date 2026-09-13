@@ -2,6 +2,7 @@
 pub mod asset;
 #[cfg(test)]
 mod fixtures;
+pub mod motion;
 pub mod panel;
 mod pins;
 mod render;
@@ -91,6 +92,7 @@ pub struct Avatar {
     last_physics: Option<aria_core::physics::PhysicsSettings>,
     last_pose: PoseMode,
     clock: f32,
+    pub motion: motion::Player,
 }
 pub fn expression_id(index: usize) -> String {
     format!("VRMExpression:{index}")
@@ -193,6 +195,7 @@ impl Avatar {
             last_physics: None,
             last_pose: PoseMode::Live,
             clock: 0.,
+            motion: Default::default(),
         };
         avatar.update(
             &Inputs::new(),
@@ -264,7 +267,10 @@ impl Avatar {
                 .copied()
                 .ne(self.parameters.iter().map(|p| p.value));
         let moving = !frozen
-            && (config.physics.enabled && !self.asset.springs.is_empty() || config.vrm.auto_blink);
+            && (config.physics.enabled && !self.asset.springs.is_empty()
+                || config.vrm.auto_blink
+                || config.vrm.motion.moving()
+                || self.motion.active());
         if !changed && !moving {
             return Ok(false);
         }
@@ -272,6 +278,35 @@ impl Avatar {
             self.clock += dt.clamp(0., 0.1);
         }
         self.pose(&config.vrm, frozen.then_some(config.vrm_pose.blink));
+        let offsets = if frozen {
+            motion::BONES.map(|bone| {
+                glam::Vec3::from_array(config.vrm_pose.motion.get(bone).copied().unwrap_or([0.; 3]))
+            })
+        } else {
+            self.motion.update(dt, &config.vrm.motion)
+        };
+        for (bone, degrees) in motion::BONES.into_iter().zip(offsets) {
+            if !frozen {
+                config
+                    .vrm_pose
+                    .motion
+                    .insert(bone.into(), degrees.to_array());
+            }
+            let bone = if bone == "chest" && !self.asset.bones.contains_key("chest") {
+                "spine"
+            } else {
+                bone
+            };
+            self.add_rotation(
+                bone,
+                Quat::from_euler(
+                    glam::EulerRot::YXZ,
+                    degrees.y.to_radians(),
+                    degrees.x.to_radians(),
+                    degrees.z.to_radians(),
+                ),
+            );
+        }
         spring::world_matrices(
             &self.asset.nodes,
             &self.asset.order,
@@ -343,6 +378,17 @@ impl Avatar {
             });
             self.rotations[node] =
                 (parent.inverse() * native * parent * self.asset.nodes[node].rotation).normalize();
+        }
+    }
+    fn add_rotation(&mut self, bone: &str, rotation: Quat) {
+        if let Some(&node) = self.asset.bones.get(bone) {
+            let front = Quat::from_mat4(&self.asset.front);
+            let native = front.inverse() * rotation * front;
+            let parent = self.asset.nodes[node].parent.map_or(Quat::IDENTITY, |p| {
+                self.asset.nodes[p].world.to_scale_rotation_translation().1
+            });
+            self.rotations[node] =
+                (parent.inverse() * native * parent * self.rotations[node]).normalize();
         }
     }
     fn blink(&self) -> f32 {
@@ -541,6 +587,7 @@ mod tests {
         let mut avatar = Avatar::from_asset(&state, asset).unwrap();
         let mut config = avatar.initial_config.clone();
         config.physics.enabled = false;
+        config.vrm.motion.enabled = false;
         let mut expressions = crate::expressions_panel::ExpressionsPanel::default();
         let neutral =
             aria_core::rig::tracking_inputs(None, aria_core::Parameters::default(), false, 1.);
@@ -603,12 +650,20 @@ mod tests {
         assert!(before != after, "Tracking must change the rendered avatar");
         assert!(avatar.weights.iter().flatten().any(|w| *w > 0.));
         config.physics.enabled = true;
+        config.vrm.motion.enabled = true;
+        let arm = avatar.asset.bones["rightUpperArm"];
+        let rest_arm = avatar.rotations[arm];
+        avatar.motion.play(motion::Gesture::Wave);
         for _ in 0..60 {
             avatar
                 .update(&input, &mut config, &mut expressions, 1. / 60.)
                 .unwrap();
         }
         assert!(avatar.world.iter().all(|m| m.is_finite()));
+        assert!(
+            !rest_arm.abs_diff_eq(avatar.rotations[arm], 0.1),
+            "Wave must move the arm"
+        );
         config.capture_pose(avatar.parameters());
         avatar
             .update(&input, &mut config, &mut expressions, 1. / 60.)
@@ -652,11 +707,16 @@ mod tests {
             changed < frozen.len() / 1000,
             "Saved pose changed {changed} channels after rerender"
         );
+        let frozen_head = avatar.rotations[head];
         config.pose.frozen.insert("ParamAngleY".into(), -20.);
         assert!(
             avatar
                 .update(&input, &mut config, &mut expressions, 1. / 60.)
                 .unwrap()
+        );
+        assert!(
+            !frozen_head.abs_diff_eq(avatar.rotations[head], 0.1),
+            "Frozen motion must still allow parameter edits"
         );
         if let Some((index, _)) = avatar
             .asset

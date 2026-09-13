@@ -216,7 +216,7 @@ impl ObjectModels {
             });
             crate::theme::caption(
                 ui,
-                "Off keeps a static pose that can still follow its pin. On uses this object's own tracking mappings and optional physics. Freeze pose pauses both the main avatar and its objects.",
+                "New Live2D objects receive tracking automatically. Off keeps a static pose that can still follow its pin. On uses this object's own tracking mappings and optional physics. Freeze pose pauses both the main avatar and its objects.",
             );
             if item
                 .path
@@ -380,6 +380,11 @@ mod tests {
             path: "prop.moc3".into(),
             ..Default::default()
         };
+        assert!(
+            item.model.animate,
+            "New Live2D objects follow tracking by default"
+        );
+        item.model.animate = false;
         item.model.parameters.insert("angle".into(), 12.0);
         item.model.snapshot.insert("secondary".into(), 0.4);
         let mut object = RigConfig::default();

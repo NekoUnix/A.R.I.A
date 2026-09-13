@@ -5,6 +5,28 @@
 This file records checks for the development builds. The Windows CI workflow
 is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
+## Avatar customization upgrade — 2026-09-13 source build
+
+- 166 standard Rust tests passed locally, plus strict workspace/all-target/all-feature
+  Clippy and formatting. Simulated pointer input verifies anchor dragging keeps
+  an object's rendered center, size and angle unchanged; locked objects cannot drag.
+- Six opt-in integration checks passed on Windows with an NVIDIA GeForce RTX 5090
+  using DX12: clipping/blending with hidden masks and half-opacity layers; Odette
+  fully hiding/restoring with pixel-identical recovery on a frozen pose; independent
+  tracked Live2D attachments; the supplied NekoUnity2 VRM with gesture, spring and
+  frozen-pose restoration; generated VRM 0/1 rendering/morphs; and native/worker
+  frame parity with stable layer IDs and worker-exit handling.
+- Regression tests cover group overlap, persistence and hotkey conflict/dispatch,
+  per-model isolation, motion settings migration/validation, gesture completion,
+  loops, smooth stopping, finite angles and frame-rate-independent idle movement.
+- Unedited native screenshots show the new layer controls with Odette and the
+  waving NekoUnity2 VRM with idle/gesture controls. Isolated profiles preserve the
+  owner's settings. Debug resource readings are not release benchmarks.
+- New features have not had physical Linux/macOS desktop acceptance or arbitrary
+  avatar/costume coverage. Gesture collisions are not simulated. Tracking tests
+  use supplied scalar inputs, not new physical-phone or webcam measurements.
+  The published v0.25.0-alpha.1 packages predate these source changes.
+
 ## v0.25 Alpha native outputs — 2026-09-13
 
 - Windows: 160 standard Rust tests, strict Clippy and formatting passed locally.

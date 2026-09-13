@@ -14,7 +14,7 @@ use std::{
 };
 
 const MAGIC: &[u8; 8] = b"ARIACORE";
-const VERSION: u16 = 1;
+const VERSION: u16 = 2;
 const MAX_PACKET: usize = 128 * 1024 * 1024;
 
 #[derive(Serialize, Deserialize)]
@@ -402,6 +402,13 @@ mod tests {
         let bytes = std::fs::read(&moc).unwrap();
         let mut native = CubismModel::load(&core, &bytes, 32).unwrap();
         let mut hosted = HostedModel::load_with_host(&host, &core, &moc, 32).unwrap();
+        assert!(
+            native
+                .drawables
+                .iter()
+                .zip(&hosted.drawables)
+                .all(|(a, b)| a.id == b.id && a.part == b.part)
+        );
         for max in [true, false, true] {
             for p in native.parameters().to_vec() {
                 let value = if max { p.max } else { p.min };

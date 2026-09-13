@@ -29,7 +29,9 @@ This is a release status grid, not a promise of universal model/device compatibi
 | Xbox / PlayStation / Switch controller inputs | Partial validation | SDL mappings and virtual-controller tests; physical controllers/adapters still need coverage. |
 | Per-avatar mapping, ranges, poses and presets | Working | Individual guided exercises, illustrated tracking face, selectable takes, calibration, inversion, holds/freeze, profiles and Windows hotkeys. |
 | Live2D expressions and physics groups | Working with limits | exp3 blending and per-model/group settings; only the documented Cubism subset is supported. |
-| Pinned PNG/GIF and Live2D objects | Working | Independent object settings and model-following pins; limited simultaneous Live2D object instances. |
+| Live2D layer visibility groups | Implemented in source | Exported ArtMesh opacity, reversible hiding, named groups, presets and Windows hotkeys. |
+| VRM idle motion and gestures | Implemented in source | Configurable sway, breathing and arms; six procedural gestures, blending and frozen poses. |
+| Pinned PNG/GIF and Live2D objects | Working | Independent anchor editing, tracking enabled on new Live2D objects; limited simultaneous Live2D object instances. |
 | Custom throw assets | Updated | Replace/add controls, exact quantities, background PNG/GIF loading, file-specific errors and save validation; large 3D/Live2D props still have cold-load costs. |
 | 3D throw assets | Working with limits | Static GLB/glTF, VRM, FBX and OBJ; native .blend/.max/.ma project files must be exported first. |
 | Throws, sounds, bounce/stick and visual dents | Working with limits | Saved visual designs, routes, lifetime and 2D impact deformation; not full soft-body simulation. |
@@ -60,6 +62,7 @@ and [compatibility reports](https://github.com/NekoUnix/A.R.I.A/issues/new/choos
 | Use a gamepad with my avatar | [Controllers](controllers.md) |
 | Tune ranges, hold parameters, create presets | [Input controls](input-controls.md) |
 | Load exported Live2D files | [Live2D](live2d.md) |
+| Hide Live2D layers and save groups with hotkeys | [Layer visibility](live2d-layers.md) |
 | Import and tune a 3D VRM | [VRM](vrm.md) |
 | Choose from nested model folders or pin items | [Folders and pins](model-folders-and-pins.md) |
 | Configure secondary motion | [Physics](physics.md) |
@@ -78,3 +81,12 @@ The output screenshot shows v0.25 Alpha. Other guides retain v0.23/v0.24 images
 of controls that remain available, using the owner's supplied avatars.
 They demonstrate UI layout; camera configuration screens do not imply an active
 camera connection. [Artwork provenance and reproduction notes](images/README.md).
+
+## Avatar customization upgrade (development branch)
+
+- [Live2D layers](live2d-layers.md): reversible hiding/transparency, model-owned groups and user-defined hotkeys.
+- [Stage anchors](model-folders-and-pins.md): move a pin independently of its object; new Live2D attachments receive tracking automatically.
+- [VRM motion](vrm.md#natural-movement-and-gesture-animations): configurable sway, breathing and arms, plus six clickable gestures and screenshot freezing.
+
+These features are in the source build. The published v0.25.0-alpha.1 binaries
+predate this upgrade; build the branch or use a subsequent release to try it.

@@ -15,6 +15,7 @@ pub enum Action {
     TogglePose,
     Expression(String),
     ItemToggle(u64),
+    Layers(u64),
     Effect(u64),
     Image(u64),
 }

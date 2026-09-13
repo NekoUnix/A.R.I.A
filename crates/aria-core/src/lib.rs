@@ -7,6 +7,7 @@ pub mod effects;
 pub mod expressions;
 pub mod image_actions;
 pub mod items;
+pub mod layers;
 pub mod microphone;
 pub mod movement;
 pub mod physics;

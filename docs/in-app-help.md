@@ -376,7 +376,7 @@ Atlas order comes from the export or its creator; ARIA does not guess from filen
 
 ### Object pose and movement
 
-Animate object from tracking starts off. In this mode the object uses its authored defaults plus the values in Object parameters. It can still follow its pin on a moving main avatar. Enable animation to feed the current processed tracking inputs through this object's own imported or standard mappings. Use object's physics enables this object's imported physics file and secondary motion while animation is on. This checkbox does not change the main avatar's physics settings. Missing optional files are reported in the object's status.
+Animate object from tracking starts on for new objects; previously saved static choices are preserved. Turn it off to use authored defaults plus Object parameters while still following a moving pin. Animation feeds the current processed tracking inputs through this object's own imported or standard mappings. Use object's physics enables this object's imported physics file and secondary motion while animation is on. This checkbox does not change the main avatar's physics settings. Missing optional files are reported in the object's status.
 
 Object parameters lists this object's actual IDs, labels and authored limits. Search filters IDs and labels. Check Override to hold the current value, or drag the slider to choose and hold a new value. A slider edit enables the override automatically. Uncheck Override to return that parameter to its authored default in static mode, or to its normal evaluation in animated mode. Overrides take precedence over tracking and physics. Reset object parameters clears all overrides; in a frozen pose it also clears the stored object snapshot back to defaults. Turning animation off returns unheld values to authored defaults.
 
@@ -1350,3 +1350,33 @@ Clear signal means measured movement is sufficiently larger than resting noise. 
 Up to five takes per exercise remain in memory. Remove one to make room for another. Only the selected take affects the result. Skip deselects this exercise so its existing behavior is retained; other exercises are preserved. Stop this take cancels only its current partial recording. Changing the selected neutral take clears movement takes in this draft because their baseline has changed; movement recapture follows when you continue. Making another neutral take alone does not discard the old selection.
 
 All takes are temporary scalar tracking values, not camera images or video. Cancel, closing the guide or changing its avatar/tracker/mapping context discards them. Saving stores only the final ranges for this avatar and its future movement presets. The live illustrated face uses vector drawing and no extra camera or image textures.
+
+## live2d-layers | Live2D layers and saved looks | Hide or fade exported ArtMeshes, save groups and toggle them with your own shortcuts.
+
+Open Inspector → Avatar → Layers. Search the exported ArtMesh IDs or their parent part names, select rows, then Hide selected, Half opacity or Restore selected. A row's slider changes its individual opacity from zero (hidden) to one (authored opacity). The displayed percentage includes active groups. Original PSD layers merged or omitted during export cannot be recovered. Your avatar's files are never modified.
+
+To save a reusable look, select layers, enter a group name and Create group from selection. A new group starts inactive with zero opacity. Check its name to apply it. Expand Group settings & shortcut to change its opacity, delete it, or Edit selected layers; the name field and Save group selection update that group. Select results adds every search result; Clear selection only clears the editing selection.
+
+Choose Ctrl, Alt, Shift or Win plus a main key, then Assign chosen shortcut in the intended group. Clear shortcut removes it. Conflicts with other actions are rejected. Global shortcuts currently require Windows and Enable global hotkeys for this avatar; group buttons work on every platform. A shortcut toggles the group's active state. Settings save for this avatar and are included in movement and pose presets. There are up to 128 groups; absent saved layers are skipped and counted.
+
+Effective opacity = authored animated opacity × lowest of the individual override and all active group opacities. Overlapping half-opacity groups stay at 50%. Restore selected removes individual overrides, but active groups can still hide those layers. Show all layers clears overrides and turns every group off. A layer hidden by the model's own parameters stays hidden until those controls reveal it.
+
+Mask geometry remains available to dependent artwork when a layer is hidden. Core still evaluates hidden meshes and retains their texture memory. All outputs and PNG exports share the result. Layer changes also work on frozen poses; unchanged frozen frames skip rendering.
+
+## pin-edit | Move the attachment anchor | Relocate a pin without changing the attached object's position, rotation or size.
+
+Select an attached object in Stage → Objects, expand Pin to avatar, unlock stage dragging and choose Move anchor only. The stage shows a circle at the pin and a line to the object. Drag the circle onto another solid part of the avatar, or click a new surface. The offset is recalculated to preserve the object's rendered center, angle and size while the pin changes. Empty space leaves the last valid anchor intact. Click Finish moving anchor or press Esc to finish; accepted anchor changes remain saved.
+
+Choose pin point is the original snap-to-point placement tool; Move anchor only preserves the object. Pin here uses the object's center. Normal dragging changes the object's offset instead of the anchor. Follow pin rotation, Follow surface stretch and Follow surface visibility control how the selected attachment reacts afterward. A distant anchor outside the supported offset range is rejected rather than moving the object unexpectedly.
+
+This works for Live2D mesh pins, VRM surface pins and PNG/GIF artwork pins. Anchors and offsets are stored with the parent avatar and its presets. To edit a truly still composition, first freeze the model's pose: after anchor editing ends, live tracking moves the object with its newly selected surface again.
+
+## vrm-motion | Natural VRM movement and gestures | Add configurable idle movement and play built-in humanoid animations.
+
+Open Inspector → Avatar → View. Life & idle movement enables a subtle body sway, chest breathing and relaxed arm/elbow motion. Each strength runs from zero to two; zero disables that component. Idle speed runs from 0.25× to 2×. These motions add to tracking in avatar-facing axes and feed the model's spring-bone physics. Tune Relax arms in Pose controls for its resting arm angle. Chest motion falls back to the spine when the optional chest bone is absent.
+
+Gesture animations offers Wave, Nod, Shake head, Bow, Cheer and Stretch. Click a button to play or restart; selecting another gesture blends to it over 0.3 seconds. Stop / return to tracking blends the gesture out. Gesture strength runs from zero to two and Gesture speed from 0.25× to 2×. Repeat gestures repeats the chosen clip, including its rest transition. At normal speed clips last 2.4–4 seconds. Face tracking and idle movement continue underneath.
+
+Freeze pose captures the sampled gesture, idle motion, automatic blink and spring rotations. Further tracking and animation pause, while held pose parameters remain editable. Resume continues the paused gesture. The camera can still be adjusted while frozen. Movement and pose presets include this model's tuning; live gesture playback does not automatically restart when importing an avatar. Missing optional bones are skipped.
+
+These are procedural humanoid animations, not recorded motion capture. Hands, clothing and bodies have no gesture collision avoidance, and highly customized rigs may require reduced strength or a different Relax arms value. Disable Natural idle movement and stop gestures for a stationary untracked rig. There are no extra image textures or inference models for this feature; animated frames do need normal rendering work.
