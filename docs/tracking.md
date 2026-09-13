@@ -221,3 +221,12 @@ model pitch. ARIA JSON already uses internal pitch/yaw/roll and is unchanged.
 Saved VTS neutral-pitch offsets migrate once with the sign correction. Imported
 per-avatar parameter ranges are preserved. If you previously compensated with
 Invert pitch, review that option and recalibrate while looking straight ahead.
+
+## VBridger equations and extra channels
+
+The **experimental** [VBridger config editor](vbridger.md) imports `.vbridger` files per avatar and
+provides input/output curves, offsets, delay, smoothing, steps and expressions.
+Existing trackers continue to send raw tracking to ARIA. The optional ARIA JSON
+`parameters` object accepts up to 128 named, finite values in ±1,000,000 for
+visemes, body channels and declared plugin inputs. Names are case-sensitive;
+the 16 KiB UDP packet limit still applies. VTS packets have no such extra object.

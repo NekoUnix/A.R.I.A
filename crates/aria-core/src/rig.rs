@@ -309,6 +309,15 @@ pub struct ImportedProfile {
 }
 
 pub fn import_profile(bytes: &[u8], parameters: &[RigParameter]) -> Result<ImportedProfile> {
+    import_profile_with_inputs(bytes, parameters, &[])
+}
+
+/// Additional names are supplied only by a validated VBridger import.
+pub fn import_profile_with_inputs(
+    bytes: &[u8],
+    parameters: &[RigParameter],
+    extra: &[&str],
+) -> Result<ImportedProfile> {
     ensure!(
         bytes.len() <= crate::asset_limits::MODEL_JSON,
         "VTS profile exceeds 20 MiB"
@@ -340,6 +349,7 @@ pub fn import_profile(bytes: &[u8], parameters: &[RigParameter]) -> Result<Impor
             continue;
         }
         if !INPUT_NAMES.contains(&input)
+            && !extra.contains(&input)
             && !upgraded_input(input)
             && !PARAMETER_SPECS.iter().any(|s| s.0 == input)
         {

@@ -877,6 +877,7 @@ impl AriaApp {
     }
 
     fn connect(&mut self) {
+        self.input_monitor.vbridger_runtime.reset();
         let Ok(sender_ip) = self.settings.sender_ip.trim().parse::<Ipv4Addr>() else {
             self.status_message = Some("Enter an IPv4 address, for example 192.168.1.42.".into());
             return;
@@ -979,6 +980,13 @@ impl AriaApp {
                 true,
                 |ui| {
                     crate::help::label(ui, "Tracking source", "tracking");
+                    if crate::help::control(ui, "vbridger", |ui| {
+                        ui.button("Import / edit VBridger config…")
+                    })
+                    .clicked()
+                    {
+                        self.input_monitor.vbridger.open = true;
+                    }
                     if crate::help::control(ui, "tracking-guide", |ui| {
                         ui.button("Guided tracking setup…")
                     })
@@ -1030,6 +1038,7 @@ impl AriaApp {
                             );
                         });
                     if old != self.settings.source {
+                        self.input_monitor.vbridger_runtime.reset();
                         self.camera.stop();
                         self.receiver = None;
                         self.snapshot = Snapshot::default();
@@ -1388,6 +1397,12 @@ impl AriaApp {
                                     avatar.model.version, avatar.imported_count
                                 ));
                                 for note in &avatar.files.warnings {
+                                    let restored=note.strip_prefix("Unsupported profile input ").and_then(|s|s.split_once(" for ")).is_some_and(|(input,id)| {
+                                        self.input_monitor.saved.config.vbridger.enabled
+                                        && self.input_monitor.saved.config.vbridger.output(input).is_some_and(|o|o.enabled)
+                                        && self.input_monitor.saved.config.bindings.get(id).is_some_and(|b|b.input==input)
+                                    });
+                                    if restored {continue;}
                                     ui.small(note);
                                 }
                                 if avatar.files.source.extension().is_some_and(|e| e.eq_ignore_ascii_case("json"))
@@ -1945,6 +1960,11 @@ impl AriaApp {
         )
     }
     fn start_tracking_guide(&mut self) {
+        if self.input_monitor.saved.config.vbridger.enabled {
+            self.input_monitor.vbridger.open = true;
+            self.input_monitor.message=Some("Imported equations replace personal range calibration for their channels. Edit their input curves here, or disable imported tracking before running ARIA's guided range setup.".into());
+            return;
+        }
         self.controls_page = ControlsPage::Tracking;
         self.tracking_guide.start(
             self.tracking_context(),
@@ -2542,8 +2562,10 @@ impl eframe::App for AriaApp {
             } else {
                 self.tracking_filter.reset();
             }
-            self.speech_filter
-                .apply(mouth_response, &mut self.live_inputs, dt);
+            if !self.input_monitor.saved.config.vbridger.enabled {
+                self.speech_filter
+                    .apply(mouth_response, &mut self.live_inputs, dt);
+            }
             self.microphone
                 .update(&self.input_monitor.saved.microphone, dt);
             self.microphone
@@ -2554,6 +2576,17 @@ impl eframe::App for AriaApp {
                 dt,
                 &mut self.live_inputs,
             );
+            self.input_monitor.saved.config.vbridger.apply(
+                self.raw.as_ref(),
+                self.pipeline.calibration(),
+                &mut self.live_inputs,
+                &mut self.input_monitor.vbridger_runtime,
+                dt,
+            );
+            if self.input_monitor.saved.config.vbridger.enabled {
+                self.speech_filter
+                    .apply(mouth_response, &mut self.live_inputs, dt);
+            }
             if let Some(avatar) = &mut self.live2d {
                 if std::mem::take(&mut self.input_monitor.reset_motion) {
                     avatar.reset_motion();
@@ -2974,6 +3007,37 @@ impl eframe::App for AriaApp {
             }
         }
         self.tracking_guide_window(ctx);
+        #[cfg(feature = "screenshots")]
+        if crate::smoke_mode() && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("vbridger")
+        {
+            let id = egui::Id::new("vbridger-smoke-loaded");
+            if !ctx.data(|d| d.get_temp::<bool>(id).unwrap_or(false)) {
+                if let Some(path) = std::env::var_os("ARIA_TEST_VBRIDGER") {
+                    self.input_monitor.vbridger.load(Path::new(&path));
+                }
+                ctx.data_mut(|d| d.insert_temp(id, true));
+            }
+        }
+        if self.input_monitor.vbridger.open {
+            let parameters = self.current_parameters();
+            self.input_monitor.vbridger.window(
+                ctx,
+                &mut self.input_monitor.saved.config,
+                &parameters,
+                &self.live_inputs,
+                self.raw.as_ref(),
+                self.live2d
+                    .as_ref()
+                    .and_then(|a| a.files.tracking_profile.as_deref()),
+            );
+        }
+        if std::mem::take(&mut self.input_monitor.vbridger.dirty) {
+            self.input_monitor.vbridger_runtime.reset();
+            self.input_monitor.saved.config.reset_filters();
+            self.speech_filter.reset();
+            self.input_monitor.save_requested = true;
+            self.tracking_guide.open = false;
+        }
         if !self.hotkeys.available() {
             self.input_monitor.hotkey_status =
                 Some("Hotkey worker could not start. Preset buttons remain available.".into());

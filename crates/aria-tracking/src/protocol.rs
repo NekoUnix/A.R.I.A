@@ -70,6 +70,7 @@ pub fn decode(bytes: &[u8], protocol: Protocol) -> Result<TrackingFrame> {
                 eye_right: p.eye_right,
                 hotkey: p.hotkey,
                 blend_shapes: p.blend_shapes.into_iter().map(|b| (b.k, b.v)).collect(),
+                parameters: Default::default(),
             }
         }
         Protocol::AriaJson => {
@@ -137,6 +138,44 @@ pub fn encode(frame: &TrackingFrame, protocol: Protocol) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn external_parameters_roundtrip_and_validate_without_clamping_body_axes() {
+        let mut f = aria_core::demo_frame(0.0);
+        f.parameters.insert("ChestX".into(), -12.0);
+        f.parameters.insert("viseme_AA".into(), 0.7);
+        let decoded = decode(&encode(&f, Protocol::AriaJson).unwrap(), Protocol::AriaJson).unwrap();
+        assert_eq!(decoded.parameters, f.parameters);
+        assert!(
+            decode(
+                &encode(&f, Protocol::VTubeStudio).unwrap(),
+                Protocol::VTubeStudio
+            )
+            .unwrap()
+            .parameters
+            .is_empty()
+        );
+        f.parameters.insert("bad".into(), 1e7);
+        assert!(decode(&encode(&f, Protocol::AriaJson).unwrap(), Protocol::AriaJson).is_err());
+        f.parameters = (0..129).map(|i| (format!("p{i}"), 0.0)).collect();
+        assert!(decode(&encode(&f, Protocol::AriaJson).unwrap(), Protocol::AriaJson).is_err());
+    }
+    #[test]
+    fn vts_wire_axes_remain_separate_through_imported_equations() {
+        let config=aria_core::vbridger::import(br#"{"store":[{"output":"FaceAngle","equation":"-headRotY","equationY":"-headRotX","equationZ":"headRotZ","vectorMode":true,"min":-50,"max":50,"defaultValue":0}]}"#,"axes").unwrap();
+        let wire=br#"{"Timestamp":1,"FaceFound":true,"Rotation":{"x":15,"y":-8,"z":4},"Position":{"x":0,"y":0,"z":0},"BlendShapes":[]}"#;
+        let f = decode(wire, Protocol::VTubeStudio).unwrap();
+        let mut inputs = aria_core::rig::Inputs::new();
+        config.apply(
+            Some(&f),
+            Vec3::default(),
+            &mut inputs,
+            &mut aria_core::vbridger::Runtime::default(),
+            0.016,
+        );
+        assert_eq!(inputs["FaceAngleX"], 15.0);
+        assert_eq!(inputs["FaceAngleY"], 8.0);
+        assert_eq!(inputs["FaceAngleZ"], 4.0);
+    }
     #[test]
     fn json_pitch_is_unchanged_and_phone_invert_remains_explicit() {
         let canonical = TrackingFrame {

@@ -28,6 +28,7 @@ pub struct Pose {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RigConfig {
+    pub vbridger: crate::vbridger::Config,
     pub mouth_response: crate::speech::Response,
     pub layers: crate::layers::Config,
     pub tracking: crate::calibration::Profile,
@@ -132,6 +133,7 @@ impl RigConfig {
         }
     }
     pub fn validate(&self, parameters: &[RigParameter]) -> Result<()> {
+        self.vbridger.validate()?;
         self.mouth_response.validate()?;
         self.tracking.validate()?;
         self.layers.validate()?;

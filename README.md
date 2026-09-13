@@ -15,17 +15,21 @@ and send compact-preview, full-resolution canvases to OBS.
 
 ![Odette in ARIA v0.26 Alpha tracking controls](docs/images/responsive-speech-v26.png)
 
-## Development update: performance graphs
+## New in v0.27 Alpha: experimental VBridger configs and performance graphs
 
-The current source adds colorful performance graphs with hover readings and
+**Experimental:** import and edit [VBridger tracking configs](docs/vbridger.md) per avatar: equations,
+input/output curves, delay, smoothing, steps, vector channels, presets and exports.
+The editor reports missing tracking signals and unsupported settings before Apply.
+
+v0.27 adds colorful performance graphs with hover readings and
 session low/high records. The footer stays compact; **Graphs** opens collapsible
 counter groups. History covers two minutes, while extrema last until ARIA closes.
 See [graph controls and counter meanings](docs/responsiveness.md#read-the-bottom-bar).
-This update is newer than the published v0.26.0-alpha.1 packages.
+Download [v0.27.0-alpha.1](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.27.0-alpha.1) for these features. See the [release notes](docs/release-v27.md).
 
 ![Odette with colorful performance graphs in the bottom bar](docs/images/performance-footer.png)
 
-## New in v0.26 Alpha
+## Included from v0.26 Alpha
 
 - **Responsive speech:** per-avatar mouth smoothing with Instant, Quick and Soft choices; avoids stacked VTube Studio profile delay.
 - **Expanded bottom bar:** owned-worker CPU/RAM, GPU allocation, packet rate/age and expandable frame, memory and I/O details.
@@ -69,6 +73,8 @@ This update is newer than the published v0.26.0-alpha.1 packages.
 | --- | --- | --- |
 | Live2D, PNG/GIF and VRM avatars | Implemented; Windows model checks | Advanced Cubism and full VRM shader compatibility |
 | Custom throws, sprays, sounds and pins | Implemented; custom image loading updated | More real-world asset coverage; static 3D formats only |
+| VBridger config import and editor | Experimental in v0.27 Alpha | Equations, curves and modifiers; exact third-party timing and standalone input-file compatibility remain unverified |
+| Performance graphs | Implemented in v0.27 Alpha | Hover values and session extrema; OS counter availability varies by platform |
 | Mapping, calibration, expressions, physics and presets | Implemented | Broader rig/device acceptance |
 | Webcam / iPhone / controller input | Partial hardware validation | Physical camera, phone and controller testing |
 | NVIDIA RTX tracking | Experimental adapter | Native SDK build and actual GPU inference validation |
@@ -85,7 +91,7 @@ identifies what works, what is partial, and what is not implemented.
 
 ## Start on Windows
 
-1. Download the Windows x64 ZIP from [Releases](https://github.com/NekoUnix/A.R.I.A/releases). Check its version: the v0.26 changes require a v0.26 build or the source/CI instructions below.
+1. Download the Windows x64 ZIP from [Releases](https://github.com/NekoUnix/A.R.I.A/releases). Choose **v0.27.0-alpha.1** for experimental VBridger imports and performance graphs.
 2. Extract the ZIP into a writable folder. CI development builds are also available
    as **aria-windows-x64** artifacts from the [Windows workflow](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml); extract their outer artifact ZIP first.
 3. Run `aria-desktop.exe`. The built-in Mica puppet needs no extra files.
@@ -127,6 +133,7 @@ for a short explanation, or click it for searchable offline help in a separate w
 | --- | --- |
 | Webcam / optional NVIDIA RTX inference | [Camera setup](docs/webcam.md) |
 | iPhone VTube Studio / external JSON | [Tracking sources and protocol](docs/tracking.md) |
+| Experimental VBridger equations, curves and configs | [Import and editor](docs/vbridger.md) |
 | Personal neutral pose and movement ranges | [Guided calibration](docs/tracking-setup.md) |
 | Xbox, PlayStation, Switch and mapped gamepads | [Controller support](docs/controllers.md) |
 | Parameter ranges, stepping, holds and presets | [Input controls](docs/input-controls.md) |
@@ -194,5 +201,5 @@ limits; no engine can automatically correct missing or incorrectly authored rigs
 - [Stage anchors](docs/model-folders-and-pins.md): move a pin independently of its object; new Live2D attachments receive tracking automatically.
 - [VRM motion](docs/vrm.md#natural-movement-and-gesture-animations): configurable sway, breathing and arms, plus six clickable gestures and screenshot freezing.
 
-These features are included in v0.26.0-alpha.1. Download the matching package from
-[Releases](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.26.0-alpha.1).
+These features remain included in v0.27.0-alpha.1. Download the matching package from
+[Releases](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.27.0-alpha.1).

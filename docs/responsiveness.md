@@ -1,4 +1,4 @@
-# Responsive speech and performance — v0.26 Alpha
+# Responsive speech and performance — v0.27 Alpha
 
 ![Odette in the responsive tracking workspace](images/responsive-speech-v26.png)
 
@@ -44,10 +44,9 @@ Set that target under **Output → Capture & performance → FPS target**.
 
 ![Colorful performance graphs and collapsible counter groups](images/performance-graphs.png)
 
-The current development build replaces the numeric footer with six colorful
+v0.27 Alpha replaces the numeric footer with six colorful
 mini graphs: **FPS, CPU, RAM, VRAM, tracking Hz and packet age**. Click **Graphs**
-for a scrollable view of all counters in collapsible groups. The published
-v0.26.0-alpha.1 release predates this graph update.
+for a scrollable view of all counters in collapsible groups.
 
 - Hover along a graph for the actual sampled value, its session time/age, the
   latest value, and **Session low / Session high**.
@@ -92,7 +91,6 @@ size and other GPU-heavy programs. A smaller preview window does not lower OBS
 canvas resolution. Windows High priority can help CPU scheduling contention, but
 does not increase tracking capture rate or GPU capacity.
 
-Responsive speech and the original numeric counters are included in **0.26.0-alpha.1**;
-the graph update currently requires building this source branch. Download published packages
-from [Releases](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.26.0-alpha.1). See [Windows builds](windows.md), [Linux installs](linux.md)
+Responsive speech and the graph update are included in **0.27.0-alpha.1**. Download packages
+from [Releases](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.27.0-alpha.1). See [Windows builds](windows.md), [Linux installs](linux.md)
 and [platform packages](platforms.md) for the appropriate installation path.
