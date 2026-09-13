@@ -7,6 +7,26 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Local verification on 2026-09-12
 
+### v0.24 first-release fixes verified on 2026-09-13
+
+- **151 Rust tests passed**, including custom PNG/GIF selection, replacement,
+  quantities, saved paths, asynchronous bursts, failed-file diagnostics and retry.
+  Strict all-target/all-feature Clippy passed. Twenty environment-dependent tests
+  remain opt-in after the new native checks were added.
+- A native demo-avatar regression rendered seven custom assets in one burst: PNG,
+  animated GIF, GLB, glTF, OBJ, FBX and the supplied independent Live2D model.
+  This validates the selected-file playback path; an exact file from the reported
+  failed demo was not supplied, so it does not establish compatibility with that file.
+- The separate Cubism worker matched direct Core vertex deformation over minimum
+  and maximum parameter frames on the supplied model. Terminating that worker
+  returned a recoverable error without crashing the parent test process.
+- Protocol tests reject bad headers/versions, oversized or truncated messages and
+  trailing data. SDK-layout tests resolve native Windows/Linux/macOS siblings and
+  reject a Windows-only DLL when no native sibling exists.
+- Linux/macOS CI was added. Graphical and native SDK execution on those operating
+  systems remains unverified locally; this Windows host has no installed WSL distro
+  or macOS runtime. See [platform support](platforms.md) and the per-commit CI results.
+
 ### v0.24 public release and dependency compatibility
 
 - **147 Rust tests passed**, with eighteen environment-dependent tests ignored.
@@ -529,7 +549,15 @@ excluded; see [screenshot provenance](images/README.md).
   range clamping, face-loss neutral pose and frame-rate-independent smoothing.
 - Model3 version validation, missing files and external/path-traversal references.
 
-Additional local integration checks (not run by normal CI):
+Additional local integration checks (not run by normal CI). Tests that import a
+Live2D avatar use the standalone worker from the same build:
+
+```powershell
+cargo build --locked --workspace
+$env:ARIA_CUBISM_HOST = (Resolve-Path .\target\debug\aria-cubism-host.exe).Path
+```
+
+Then run the appropriate check:
 
 ```powershell
 # Uses synthetic quads; requires a working GPU, no SDK.

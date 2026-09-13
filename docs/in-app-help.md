@@ -270,6 +270,8 @@ GLB/glTF and VRM use glTF triangle geometry; FBX and OBJ use the native ufbx imp
 
 Keep local buffer, MTL and texture companions within the asset folder. Remote texture URLs and references outside it are rejected. Use at most 200,000 triangles, 256 material batches, 128 MiB per model file and 4096 pixels per texture edge. Active 3D resources have a 512 MiB budget; each prop is rendered to a shared 512 × 512 transparent texture. All copies share that asset's 3D orientation, with individual flight and screen-space spin. Reload assets / audio clears playback and retries edited or missing files. Small exports load faster and consume less VRAM.
 
+Use Replace assets to choose only your own artwork, or Add assets to keep the existing pool. Selected paths are checked before saving. Large PNG/GIF imports show loading progress and finish before the burst starts; Clear cancels pending loading. Errors name the failing file. Keep cloud files downloaded, repair missing companion files, then Reload assets and retry. A design stores paths, not embedded copies of your artwork.
+
 ## effect-motion | Emission, flight and impact | Set the burst count, trajectory, size, timing and recoil. Positions are measured relative to the avatar canvas so a design scales with every output resolution.
 
 ### Coordinates and size
@@ -597,17 +599,22 @@ Import PNG / GIF avatar guides you through choosing PNG/GIF artwork and action r
 
 Zoom from 0.5 to 1.5 changes the studio preview. Each output has its own Model scale and position. Model details reports meshes, tracked assignments, decoded atlas memory and Core version. Configure avatar physics opens that avatar's discovered groups; Model parameters opens Inputs. A model can have many parameters without all of them having tracking assignments.
 
-## runtime | Cubism Core DLL setup | Select Live2DCubismCore.dll from the official Native SDK's Windows x86_64 folder. This local runtime path is shared across avatars.
+## runtime | Cubism Core runtime setup | Select the official Core library for this OS, or select an extracted Native SDK folder in guided import. Each model runs in a separate runtime process.
 
 ### Select the runtime
 
-Use Select Core DLL or enter the complete file path. For the official Native SDK, the expected location is Core/dll/windows/x86_64/Live2DCubismCore.dll. Use the 64-bit Windows DLL, not the x86 build, a Unity library or a library for another OS. Then open the avatar again. The SDK download link opens your browser; the help text itself works offline.
+Use Choose Core library or enter the complete path. Windows x64 uses Core/dll/windows/x86_64/Live2DCubismCore.dll. Linux x64 uses Core/dll/linux/x86_64/libLive2DCubismCore.so. macOS uses the SDK's macOS libLive2DCubismCore.dylib or matching architecture variant. Guided import can find the native library from the extracted SDK folder. Static .lib/.a archives and Android libraries do not work as desktop runtimes.
 
-### Files and compatibility
+### What the container does
 
-The Core DLL evaluates the exported model; the model's texture atlases and manifest must also be present. Changing the saved path does not copy the DLL or reinstall a runtime. Use a trusted official SDK and comply with its license. ARIA packages omit this DLL and private avatar assets. A moc3 created with a newer unsupported format may require a compatible Core release.
+ARIA launches a separate, hidden runtime process for each Live2D model. The library and native model memory stay there; parameter values go in and mesh data comes back over private pipes. A worker crash or timeout reports an error for that model; reload it to start a new worker. The main app renders textures and owns your settings. No network service or SDK installation is performed automatically.
 
-If loading fails, check the reported error, the DLL architecture, file availability and manifest references. The asset inspector checks referenced files but does not validate Core compatibility or prove that the model can render. Reload the avatar after changing runtime or asset paths.
+This is process isolation, not Windows emulation or a security sandbox. A Windows DLL alone cannot run on Linux or macOS. Use the official native library for that operating system and architecture. Only load an SDK you trust. ARIA does not distribute Core or your avatar files.
+
+### Troubleshooting
+
+Keep the model manifest, moc3 and atlases together. Select the correct native Core and reload after changing it. Missing symbols or unsupported moc versions require a compatible official SDK. A stopped worker must be reloaded; unsupported Cubism offscreen rendering cannot be enabled by changing libraries. See the bundled native platform guide for the experimental Linux/macOS build and hardware-validation limits.
+
 
 ## textures | Bare moc3 & texture atlas order | A bare moc3 needs its exported texture atlases in texture-index order. Prefer the matching model3 manifest whenever it is available.
 

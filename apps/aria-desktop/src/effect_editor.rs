@@ -242,6 +242,7 @@ impl Editor {
                     ui.strong(format!("{} objects per trigger",self.draft.total_count()));
                     if help::control(ui,"effect-editor",|ui|ui.button("Preview burst")).clicked() {
                         match self.draft.validate() {Ok(())=>{
+                            self.message=None;
                             self.preview.clear();self.preview.paused=false;
                             self.preview.pending.push(self.draft.id);
                         },Err(e)=>self.message=Some(e.to_string())}
@@ -436,7 +437,16 @@ impl Editor {
     }
     fn assets(&mut self, ui: &mut egui::Ui) {
         help::label(ui, "Assets and exact quantities", "effect-assets");
-        if ui.button("Choose files…").clicked()
+        let mut selection = None;
+        ui.horizontal_wrapped(|ui| {
+            if help::control(ui, "effect-assets", |ui| ui.button("Replace assets…")).clicked() {
+                selection = Some(true);
+            }
+            if help::control(ui, "effect-assets", |ui| ui.button("Add assets…")).clicked() {
+                selection = Some(false);
+            }
+        });
+        if let Some(replace) = selection
             && let Some(paths) = rfd::FileDialog::new()
                 .add_filter(
                     "Effect assets",
@@ -446,10 +456,12 @@ impl Editor {
                 )
                 .pick_files()
         {
-            for path in paths.into_iter().take(256 - self.draft.assets.len()) {
-                self.draft.assets.push(path);
-                self.draft.asset_counts.push(1);
-            }
+            self.message = match self.choose_assets(paths, replace) {
+                Ok(count) => Some(format!(
+                    "Selected {count} files. Set quantities, then Preview burst and Save toggle."
+                )),
+                Err(error) => Some(format!("{error:#}")),
+            };
         }
         ui.horizontal_wrapped(|ui| {
             for (label, p) in [
@@ -476,16 +488,49 @@ impl Editor {
                         remove = Some(i);
                     }
                 });
+                if let Err(error) = crate::effects::validate_asset_path(path) {
+                    ui.colored_label(Color32::LIGHT_RED, error.to_string());
+                }
             });
         }
-        if let Some(i) = remove
-            && self.draft.assets.len() > 1
-        {
+        if let Some(i) = remove {
             self.draft.assets.remove(i);
             self.draft.asset_counts.remove(i);
         }
         ui.small("Zero skips an asset. Quantities are exact; Every path multiplies them by the path count. The complete burst is limited to 1,000 objects.");
         ui.small("Live2D: keep the matching model3.json and textures. 3D: static GLB/glTF, VRM, FBX and OBJ props.");
+        ui.small("Custom artwork stays in its original folder. Large PNG/GIF files load in the background on the first preview/throw. Errors identify the file; use Reload assets after repairing it.");
+    }
+    fn choose_assets(
+        &mut self,
+        paths: Vec<std::path::PathBuf>,
+        replace: bool,
+    ) -> anyhow::Result<usize> {
+        let available = if replace {
+            256
+        } else {
+            256_usize.saturating_sub(self.draft.assets.len())
+        };
+        anyhow::ensure!(
+            !paths.is_empty() && paths.len() <= available,
+            "Choose 1–{available} assets"
+        );
+        let mut selected = Vec::new();
+        for path in paths {
+            crate::effects::validate_asset_path(&path)?;
+            selected.push(path.canonicalize()?);
+        }
+        self.preview.clear();
+        if replace {
+            self.draft.assets.clear();
+            self.draft.asset_counts.clear();
+        }
+        let count = selected.len();
+        self.draft.assets.extend(selected);
+        self.draft
+            .asset_counts
+            .extend(std::iter::repeat_n(1, count));
+        Ok(count)
     }
     fn motion(&mut self, ui: &mut egui::Ui) {
         help::label(
@@ -666,6 +711,11 @@ impl Editor {
 }
 pub fn validate_save(d: &Design, saved: &SavedRig) -> anyhow::Result<()> {
     d.validate()?;
+    for (i, path) in d.assets.iter().enumerate() {
+        if d.asset_counts.get(i) != Some(&0) {
+            crate::effects::validate_asset_path(path)?;
+        }
+    }
     if let Some(key) = d.hotkey {
         anyhow::ensure!(
             key != Shortcut::pose()
@@ -793,6 +843,43 @@ pub fn edit_canvas(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn choosing_custom_assets_replaces_defaults_preserves_quantities_and_saves_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let png = dir.path().join("Custom artwork ' sample.PNG");
+        image::RgbaImage::from_pixel(8, 8, image::Rgba([200, 80, 40, 255]))
+            .save_with_format(&png, image::ImageFormat::Png)
+            .unwrap();
+        let gif = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../templates/images/artwork/excited.gif");
+        let mut editor = Editor::new(Design::default());
+        editor.choose_assets(vec![png.clone()], true).unwrap();
+        assert_eq!(editor.draft.assets, vec![png.canonicalize().unwrap()]);
+        editor.draft.asset_counts[0] = 3;
+        editor.choose_assets(vec![gif], false).unwrap();
+        assert_eq!(editor.draft.asset_counts, [3, 1]);
+        validate_save(&editor.draft, &SavedRig::default()).unwrap();
+        let file = dir.path().join("my-throw.aria-effect.json");
+        effects_panel::export(&file, &editor.draft).unwrap();
+        assert_eq!(effects_panel::import(&file).unwrap(), editor.draft);
+        let original = editor.draft.clone();
+        assert!(
+            editor
+                .choose_assets(vec![dir.path().join("not-visual.exp3.json")], true)
+                .is_err()
+        );
+        assert_eq!(
+            editor.draft, original,
+            "A rejected choice must not erase the previous assets"
+        );
+        std::fs::remove_file(png).unwrap();
+        assert!(
+            validate_save(&editor.draft, &SavedRig::default())
+                .unwrap_err()
+                .to_string()
+                .contains("missing")
+        );
+    }
     #[test]
     fn draft_edits_and_preview_do_not_change_saved_avatar_and_reject_conflicts() {
         let saved = SavedRig::default();

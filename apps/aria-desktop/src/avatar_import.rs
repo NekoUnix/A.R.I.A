@@ -239,17 +239,19 @@ impl Wizard {
                         }
                         theme::caption(ui,"Nested folders, spaces and Unicode names are supported. Extract ZIP/RAR downloads first. For OneDrive, choose Always keep on this device before importing.");
                         if let Some(path)=&self.model {ui.label(path.display().to_string());}
-                        help::label(ui,"Cubism Core x64 runtime","runtime");
-                        ui.label("Select Core/dll/windows/x86_64/Live2DCubismCore.dll from the official Native SDK. ARIA remembers this path.");
+                        help::label(ui,"Cubism Core runtime","runtime");
+                        ui.label(aria_live2d::platform::guidance());
+                        ui.small("Core runs in a separate runtime process. Select the library for this operating system; no SDK binaries are bundled.");
                         ui.text_edit_singleline(core);
-                        if ui.button("Choose Cubism Core DLL…").clicked()&&let Some(path)=rfd::FileDialog::new().add_filter("Cubism Core",&["dll"]).pick_file(){*core=path.display().to_string();}
+                        if ui.button("Choose Cubism Core library…").clicked()&&let Some(path)=rfd::FileDialog::new().add_filter("Cubism Core",aria_live2d::platform::extensions()).pick_file(){*core=path.display().to_string();}
+                        if ui.button("Choose extracted SDK folder…").clicked() && let Some(folder)=rfd::FileDialog::new().pick_folder() { match aria_live2d::platform::resolve(&folder) { Ok(path)=>*core=path.display().to_string(), Err(error)=>self.error=Some(error.to_string()) } }
                         ui.hyperlink_to("Get the official Cubism Native SDK","https://www.live2d.com/en/sdk/download/native/");
                     }
                     ui.horizontal(|ui| {
                         if ui.button("Back").clicked(){self.step=0;}
                         let ready = if self.kind==Some(Kind::Images) {
                             !self.artwork.is_empty()&&self.artwork.len()<=128&&self.artwork.iter().all(|a|a.info.is_ok())&&self.artwork.iter().filter(|a|a.trigger==Trigger::Idle).count()==1
-                        }else{self.model.as_ref().is_some_and(|p|p.is_file())&&(self.kind==Some(Kind::Vrm)||Path::new(core.trim()).is_file())};
+                        }else{self.model.as_ref().is_some_and(|p|p.is_file())&&(self.kind==Some(Kind::Vrm)||aria_live2d::platform::resolve(Path::new(core.trim())).is_ok())};
                         if ui.add_enabled(ready,egui::Button::new("Review import →")).clicked(){self.step=2;self.error=None;}
                     });
                 } else {

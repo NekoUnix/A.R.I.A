@@ -14,8 +14,10 @@ pub struct Article {
 
 pub fn articles() -> &'static [Article] {
     static ARTICLES: OnceLock<Vec<Article>> = OnceLock::new();
+    static SOURCE: OnceLock<String> = OnceLock::new();
     ARTICLES.get_or_init(|| {
-        include_str!("../../../docs/in-app-help.md")
+        SOURCE
+            .get_or_init(|| include_str!("../../../docs/in-app-help.md").replace("\r\n", "\n"))
             .split("\n## ")
             .skip(1)
             .map(|section| {

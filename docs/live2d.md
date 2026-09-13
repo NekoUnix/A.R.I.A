@@ -1,4 +1,4 @@
-# Live2D avatar import on Windows
+# Live2D avatar import and native runtime
 
 ![ Odette Live2D imported into the current build](images/workspace-v23.png)
 
@@ -18,8 +18,8 @@ the in-app **?** for the detailed workflow and resource limits. To replace
 the main avatar, use **Avatar & appearance → Import Live2D avatar** (or
 **Change avatar / type → Live2D** when an avatar is already loaded).
 
-ARIA v0.6 evaluates real `.moc3` models through Cubism Core and renders their
-ArtMeshes with wgpu/Direct3D 12. You need **the model, its texture images, and the
+ARIA evaluates real `.moc3` models through a separate Cubism Core runtime process
+and renders their ArtMeshes with wgpu (Direct3D 12 on Windows). You need **the model, its texture images, and the
 official Cubism Core DLL**. A moc3 contains the rig, not the texture artwork.
 
 ## 1. Install the runtime
@@ -29,15 +29,15 @@ official Cubism Core DLL**. A moc3 contains the rig, not the texture artwork.
    `C:\Tools\CubismSdkForNative-5-r.5`.
 2. Run ARIA. Choose **Avatar & appearance → Import Live2D avatar**.
    The guided importer asks for the export and runtime together.
-3. Click **Choose Cubism Core DLL…** and select:
+3. Click **Choose Cubism Core library…** and select:
 
    ```text
    C:\Tools\CubismSdkForNative-5-r.5\Core\dll\windows\x86_64\Live2DCubismCore.dll
    ```
 
 Use **x86_64**, not x86. Select the `.dll`, not a `.lib` in `Core/lib`. ARIA loads
-the DLL directly; no C++ wrapper, SDK compilation, Unity, or desktop VTube Studio
-is required. The DLL path is saved in ARIA's local preferences. Changes take effect
+the DLL inside a separate native worker; no SDK compilation, Unity, or desktop
+VTube Studio is required. The DLL path is saved in ARIA's local preferences. Changes take effect
 on the next avatar import. Keep the SDK folder in place.
 
 The SDK used for local verification was Native **5-r.5**, whose Core reports
@@ -50,6 +50,11 @@ Core is executable native software. Select an official SDK DLL, not an arbitrary
 DLL received with an avatar. ARIA only loads the explicitly selected absolute path;
 it does not search the model folder for executable code. Neither Core nor licensed
 model artwork is included in ARIA's ZIP or MIT source license.
+
+Linux and macOS use their official `.so` / `.dylib` Core libraries in the same
+worker architecture. Select the extracted SDK folder in guided import to discover
+the native library. A Windows DLL alone cannot run on those systems. See
+[native platform setup and limitations](platforms.md).
 
 ## 2. Open the avatar
 

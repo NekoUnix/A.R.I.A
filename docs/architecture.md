@@ -4,7 +4,18 @@
 
 ## Guided avatar import and bounded GIF playback (v0.18)
 
-The sections below preserve subsystem history. Current v0.23 additions are:
+The sections below preserve subsystem history. v0.24 adds
+`aria-live2d::host::HostedModel`: the app keeps Rust mesh/parameter data while a
+separate child process owns `CubismModel`, native allocations and the Core library.
+Private versioned pipes carry parameter frames and dynamic geometry. Static
+topology transfers once, textures stay in the main GPU renderer, and worker exits
+or timeouts become model errors. Native-library discovery handles SDK layouts for
+Windows, Linux and macOS; this is process isolation, not a Windows emulator. See
+[platform architecture and limits](platforms.md).
+
+Custom PNG/GIF throws now use `media::LoadJob` too. A burst remains pending until
+all selected assets load; file-specific errors, cancellation and retry avoid
+decoding large animations on the UI thread. Other v0.23 additions are:
 
 ```mermaid
 flowchart LR

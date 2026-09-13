@@ -1,13 +1,15 @@
 //! Owned, single-threaded Cubism Core runtime. Rendering consumes plain Rust mesh data.
 //! Core must be supplied separately under Live2D's license.
 mod ffi;
+pub mod host;
+pub mod platform;
 use anyhow::{Context, Result, ensure};
 use ffi::{Aligned, Api, V2, array, count};
 use std::{collections::BTreeMap, ffi::CStr, marker::PhantomData, path::Path, rc::Rc};
 
 pub use aria_core::rig::RigParameter as Parameter;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Blend {
     #[default]
     Normal,
@@ -15,7 +17,7 @@ pub enum Blend {
     Multiply,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Drawable {
     pub positions: Vec<[f32; 2]>,
     pub uvs: Vec<[f32; 2]>,
@@ -33,7 +35,7 @@ pub struct Drawable {
     pub blend: Blend,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Canvas {
     pub size: [f32; 2],
     pub origin: [f32; 2],

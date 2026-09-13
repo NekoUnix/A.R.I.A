@@ -7,6 +7,47 @@ Start with [Windows setup](windows.md), import your avatar, then follow
 Tracking / Output / Chat / Settings**. Inspector tools stay grouped by tracking,
 avatar, stage and poses. Hover or click any circled **?** for offline explanations.
 
+## Current and planned features
+
+**Working** means implemented with the validation described below, primarily on
+Windows. **Partial / experimental** identifies an implementation with known limits
+or missing real-device validation. **Planned** means it is not available yet.
+This is a release status grid, not a promise of universal model/device compatibility.
+
+| Feature | Status | What works / what remains |
+| --- | --- | --- |
+| Built-in demo avatar | Working | Starts without extra model files or SDKs. |
+| Live2D model3/moc3 imports and nested folders | Working with limits | Standard ArtMeshes, authored mappings, full-body framing and exported textures; advanced Cubism 5.3 offscreen rendering is unsupported. |
+| Separate Cubism runtime process | Implemented | Native Core worker, private binary pipes, bounded messages and failure timeouts; use the library matching the OS. |
+| PNG/GIF avatars | Working | Guided import, talking/blinking states, transitions and bounded GIF playback; large sources may be downscaled to the playback budget. |
+| VRM 0.x / 1.0 | Working with limits | Native GPU rendering, supported expressions/skinning/springs and pins; this is not a complete reference VRM/MToon renderer. |
+| iPhone VTube Studio / external JSON | Partial validation | Protocol, axes, loopback packets and calibration tested; physical phone/network acceptance remains. |
+| Webcam MediaPipe tracking | Partial validation | Clean/repair installation and real image inference tested; physical camera tracking remains to be checked. |
+| NVIDIA RTX webcam tracking | Experimental | Adapter/setup code exists; NVIDIA SDK bridge build and real GPU inference remain unverified. |
+| Microphone talking controls | Implemented | Audio levels drive image/model controls; device-specific acceptance remains. |
+| Xbox / PlayStation / Switch controller inputs | Partial validation | SDL mappings and virtual-controller tests; physical controllers/adapters still need coverage. |
+| Per-avatar mapping, ranges, poses and presets | Working | Calibration, inversion, holds/freeze, saved profiles and user hotkeys on Windows. |
+| Live2D expressions and physics groups | Working with limits | exp3 blending and per-model/group settings; only the documented Cubism subset is supported. |
+| Pinned PNG/GIF and Live2D objects | Working | Independent object settings and model-following pins; limited simultaneous Live2D object instances. |
+| Custom throw assets | Updated | Replace/add controls, exact quantities, background PNG/GIF loading, file-specific errors and save validation; large 3D/Live2D props still have cold-load costs. |
+| 3D throw assets | Working with limits | Static GLB/glTF, VRM, FBX and OBJ; native .blend/.max/.ma project files must be exported first. |
+| Throws, sounds, bounce/stick and visual dents | Working with limits | Saved visual designs, routes, lifetime and 2D impact deformation; not full soft-body simulation. |
+| Anime liquid sprays | Working with limits | Stylized configurable droplets, gloss, foam, trails and drips; not a physically accurate fluid simulation. |
+| OBS 16:9 / 9:16 / Freeform outputs | Working on Windows | Compact previews, independent canvas resolution, Spout sharing, dragging/zoom and backgrounds. |
+| Twitch / YouTube chat | Partial validation | OAuth/chat/style implementation and local tests; real account/provider acceptance remains. |
+| Themes and contextual documentation | Working | Six palettes, custom colors, import/export and offline help with diagrams. |
+| Authenticated local control API | Working | Native model values, presets, expressions, outputs and effects verified; arbitrary file/program execution is not exposed. |
+| Linux/macOS desktop builds | Experimental | Native build/test workflow, Vulkan/Metal and native Core selection; graphical and SDK execution on those machines needs acceptance testing. |
+| Native Linux/macOS OBS sharing, global hotkeys, account key storage | Planned | Platform integrations still needed; Windows-specific controls are not cross-platform guarantees. |
+| Windows DLL execution under Wine on Linux/macOS | Not implemented | Use the official native Core library. The runtime process is not a Windows emulator. |
+| Signed installers, macOS notarization and native distribution packages | Planned | The first Windows release is an unsigned portable ZIP. |
+| Full Cubism advanced rendering / full VRM shader parity | Planned | Unsupported features remain documented; model coverage will expand through reproducible compatibility reports. |
+
+See [validation evidence](validation.md), [native platform setup](platforms.md),
+and [compatibility reports](https://github.com/NekoUnix/A.R.I.A/issues/new/choose).
+
+## Find a guide
+
 | I want to… | Open this guide |
 | --- | --- |
 | Use a webcam or NVIDIA RTX facial inference | [Webcam tracking](webcam.md) |

@@ -25,8 +25,12 @@ The repository is public. Its existing
 approval, approval of the latest reviewable push, resolved review conversations,
 an up-to-date branch and the two CI checks below. New reviewable changes dismiss
 stale approvals. Only squash merges are permitted; linear history is required.
-Force pushes and deletion of `main` are blocked. No bypass actors are configured,
-so these requirements also apply to administrators.
+Force pushes and deletion of `main` are blocked for normal contributors. At the
+owner's explicit request, **only NekoUnix (user ID 215495180)** has `always` bypass
+access. No administrator role, team, bot or other user is on the bypass list.
+NekoUnix authorized bypass for the first release; ordinary contributions should
+continue through review and CI. Keep this individual exception narrow when editing
+the ruleset; granting an admin-role bypass would also grant access to future admins.
 
 CODEOWNERS now routes eligible PRs to the default maintainer. Code-owner approval
 is optional so the owner can receive review from another write-access collaborator.
@@ -77,8 +81,10 @@ GitHub's separate-author and latest-push approval requirements continue to apply
 After a new push, review the new diff and approve the current revision. Resolve
 conversations only after the concern is addressed. Merge when the independent
 approval and both checks are green. User-authorized automatic merging follows the
-same gates. Self-authored PRs need another eligible collaborator's approval.
-Do not silently bypass the process.
+same gates for contributors. Self-authored PRs normally need another eligible
+collaborator's approval. NekoUnix may explicitly use the owner-only exception;
+record that decision and validation in the release/PR rather than claiming an
+independent approval that did not occur.
 
 ## Dependencies and security
 

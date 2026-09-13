@@ -75,7 +75,7 @@ impl ObjectModels {
             let loaded = (|| -> Result<Loaded> {
                 ensure!(self.entries.len() < aria_core::items::MAX_MODEL_ITEMS, "Maximum four Live2D objects");
                 let state = state.ok_or_else(|| anyhow::anyhow!("GPU renderer unavailable"))?;
-                ensure!(core.is_file(), "Choose the Cubism Core x64 DLL under Avatar & appearance → Cubism runtime setup, then retry");
+                let native_core = aria_live2d::platform::resolve(core)?;
                 let files = object_files(item)?;
                 let mut estimate = 0_u64;
                 for path in &files.textures {
@@ -84,7 +84,7 @@ impl ObjectModels {
                     estimate += u64::from(w)*u64::from(h)*4;
                     ensure!(estimate.saturating_add(used) <= ATLAS_BUDGET, "Live2D object atlases exceed the combined 10 GiB budget; use smaller atlases or remove another object");
                 }
-                let avatar = Avatar::load(state, core, files)?;
+                let avatar = Avatar::load(state, &native_core, files)?;
                 ensure!((avatar.atlas_mib()*1048576.0) as u64 + used <= ATLAS_BUDGET, "Live2D object atlas budget exceeded");
                 let rig = avatar.initial_config.clone();
                 Ok(Loaded { avatar,rig,expressions:Default::default(),revision:0,error:None })
@@ -142,6 +142,12 @@ impl ObjectModels {
             _lease: loaded.avatar.image_lease(),
             revision: loaded.revision,
         })
+    }
+    pub fn error(&self, id: u64) -> Option<&str> {
+        match &self.entries.get(&id)?.loaded {
+            Err(error) => Some(error),
+            Ok(loaded) => loaded.error.as_deref(),
+        }
     }
     pub fn merge_palette(&self, palette: &mut crate::chroma::Palette) {
         for loaded in self.entries.values().filter_map(|e| e.loaded.as_ref().ok()) {

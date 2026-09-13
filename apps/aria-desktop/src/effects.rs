@@ -40,6 +40,7 @@ pub struct Effects {
     pub selected: Option<u64>,
     pub message: Option<String>,
     cache: BTreeMap<PathBuf, Asset>,
+    image_job: Option<(PathBuf, crate::media::LoadJob)>,
     mocs: crate::object_models::ObjectModels,
     moc_rig: RigConfig,
     last: BTreeMap<u64, Instant>,
@@ -119,6 +120,7 @@ impl Effects {
         self.liquid_art = Default::default();
         self.dirty = true;
         self.pending.clear();
+        self.image_job = None;
         self.simulation.clear();
         self.draws = Arc::from([]);
         self.audio.stop();
@@ -143,7 +145,8 @@ impl Effects {
         let (library, pose) = settings;
         let was =
             self.simulation.active() || !self.impacts.is_empty() || std::mem::take(&mut self.dirty);
-        for id in std::mem::take(&mut self.pending) {
+        let mut requests = std::mem::take(&mut self.pending).into_iter();
+        while let Some(id) = requests.next() {
             let Some(design) = library.designs.iter().find(|d| d.id == id) else {
                 self.message = Some("Effect no longer exists in this avatar's library".into());
                 continue;
@@ -157,9 +160,18 @@ impl Effects {
                 continue;
             }
             self.message = None;
-            let result = self
-                .prepare(ctx, state, core, design)
-                .and_then(|_| self.simulation.trigger(design));
+            let result = match self.prepare(ctx, state, core, design) {
+                Ok(false) => {
+                    // Finish this import before starting another burst. No particles,
+                    // cooldown or sounds start until every requested asset is ready.
+                    self.pending.push(id);
+                    self.pending.extend(requests);
+                    ctx.request_repaint_after(std::time::Duration::from_millis(30));
+                    break;
+                }
+                Ok(true) => self.simulation.trigger(design),
+                Err(error) => Err(error),
+            };
             match result {
                 Ok(()) => {
                     self.last.insert(id, Instant::now());
@@ -340,7 +352,7 @@ impl Effects {
         }
         draws.extend(base_draws.into_iter().map(|(_, draw)| draw));
         self.draws = draws.into();
-        was || active || self.simulation.active()
+        was || active || self.simulation.active() || !self.pending.is_empty()
     }
     pub fn take_save(&mut self) -> bool {
         if self
@@ -359,7 +371,7 @@ impl Effects {
         state: Option<&RenderState>,
         core: &Path,
         design: &Design,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         design.validate()?;
         // Retain only cached assets still participating in playback or this next burst.
         let keep: BTreeSet<_> = self
@@ -378,6 +390,7 @@ impl Effects {
             if self.cache.contains_key(path) {
                 continue;
             }
+            validate_asset_path(path)?;
             if aria_core::items::is_model(path) {
                 ensure!(
                     self.moc_rig.items.len() < 4,
@@ -393,9 +406,15 @@ impl Effects {
                 self.mocs
                     .update(&mut self.moc_rig, &Default::default(), 0.016);
                 if self.mocs.image(id).is_none() {
+                    let reason = self
+                        .mocs
+                        .error(id)
+                        .unwrap_or("No rendered image")
+                        .to_owned();
                     self.moc_rig.items.retain(|i| i.id != id);
                     anyhow::bail!(
-                        "Live2D prop could not load. Keep its matching model3.json and atlases together and select Cubism Core in Avatar setup."
+                        "Cannot load Live2D throw asset {}: {reason}",
+                        path.display()
                     );
                 }
                 self.cache.insert(path.clone(), Asset::Moc(id));
@@ -404,7 +423,8 @@ impl Effects {
                 let mesh = if path.to_string_lossy() == "builtin:cube" {
                     crate::mesh_asset::cube()
                 } else {
-                    crate::mesh_asset::load(path)?
+                    crate::mesh_asset::load(path)
+                        .with_context(|| format!("Cannot load 3D throw asset {}", path.display()))?
                 };
                 let used: u64 = self
                     .cache
@@ -442,16 +462,45 @@ impl Effects {
                         _ => 0,
                     })
                     .sum();
-                let sprite =
-                    if let Some(name) = path.to_str().and_then(|s| s.strip_prefix("builtin:")) {
-                        builtin(ctx, state, name)?
-                    } else {
-                        ensure!(
-                            crate::items::is_png(path),
-                            "Use PNG/GIF, moc3/model3.json, GLB/glTF, VRM, FBX or OBJ assets"
-                        );
-                        crate::items::load_png(ctx, state, path, used)?
-                    };
+                let sprite = if let Some(name) =
+                    path.to_str().and_then(|s| s.strip_prefix("builtin:"))
+                {
+                    builtin(ctx, state, name)?
+                } else {
+                    if self
+                        .image_job
+                        .as_ref()
+                        .is_none_or(|(source, _)| source != path)
+                    {
+                        self.image_job = Some((
+                            path.clone(),
+                            crate::media::LoadJob::start(
+                                ctx,
+                                state,
+                                path,
+                                used,
+                                aria_core::asset_limits::GIF_PLAYBACK_MIB,
+                            )?,
+                        ));
+                    }
+                    let job = &self.image_job.as_ref().unwrap().1;
+                    match job.poll() {
+                        Some(result) => {
+                            self.image_job = None;
+                            result.map_err(anyhow::Error::msg).with_context(|| {
+                                format!("Cannot load throw asset {}", path.display())
+                            })?
+                        }
+                        None => {
+                            let (done, total) = job.progress();
+                            self.message = Some(format!(
+                                "Loading {} · {done}/{total} frames. The burst starts when all assets are ready; Clear cancels.",
+                                path.file_name().unwrap_or_default().to_string_lossy()
+                            ));
+                            return Ok(false);
+                        }
+                    }
+                };
                 ensure!(
                     used.saturating_add(sprite.bytes())
                         <= aria_core::asset_limits::IMAGE_COLLECTION,
@@ -461,8 +510,28 @@ impl Effects {
                     .insert(path.clone(), Asset::Image(ItemImage::Png(sprite)));
             }
         }
-        Ok(())
+        Ok(true)
     }
+}
+pub fn validate_asset_path(path: &Path) -> Result<()> {
+    if let Some(name) = path.to_str().and_then(|s| s.strip_prefix("builtin:")) {
+        ensure!(
+            ["star", "ball", "drop", "cube"].contains(&name),
+            "Unknown built-in asset {name}"
+        );
+        return Ok(());
+    }
+    ensure!(
+        crate::items::is_png(path) || aria_core::items::is_model(path) || is_3d(path),
+        "{}: choose PNG/GIF, moc3/model3.json, GLB/glTF, VRM, FBX or OBJ. Other JSON files are settings, not visual assets.",
+        path.display()
+    );
+    ensure!(
+        path.is_file(),
+        "{} is missing or not available locally. Keep downloaded/cloud artwork on this device, then choose it again.",
+        path.display()
+    );
+    Ok(())
 }
 pub fn is_3d(path: &Path) -> bool {
     path.extension().is_some_and(|e| {
@@ -535,6 +604,196 @@ fn builtin(ctx: &egui::Context, state: Option<&RenderState>, name: &str) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[cfg(windows)]
+    #[ignore = "requires a DX12 GPU; optional ARIA_TEST_MODEL and ARIA_CUBISM_CORE exercise an independent Live2D throw"]
+    fn custom_assets_render_on_demo_with_native_gpu_and_optional_cubism_host() {
+        let state = crate::spout::tests::gpu_state();
+        let ctx = egui::Context::default();
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../templates");
+        let mut assets: Vec<PathBuf> = [
+            "effects/assets/star.png",
+            "images/artwork/excited.gif",
+            "effects/assets/cube.glb",
+            "effects/assets/cube.gltf",
+            "effects/assets/cube.obj",
+            "effects/assets/cube.fbx",
+        ]
+        .iter()
+        .map(|p| root.join(p))
+        .collect();
+        if let Some(model) = std::env::var_os("ARIA_TEST_MODEL") {
+            assets.push(model.into());
+        }
+        let core = std::env::var_os("ARIA_CUBISM_CORE")
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        let library = Library {
+            designs: vec![Design {
+                asset_counts: vec![1; assets.len()],
+                assets: assets.clone(),
+                interval: 0.0,
+                cooldown: 0.0,
+                lifetime: 30.0,
+                ..Default::default()
+            }],
+            muted: true,
+            ..Default::default()
+        };
+        let mut effects = Effects::default();
+        effects.pending.push(1);
+        let start = Instant::now();
+        while effects.draws.len() < assets.len() {
+            effects.update(
+                &ctx,
+                Some(&state),
+                &core,
+                (&library, PoseMode::Live),
+                None,
+                0.001,
+            );
+            assert!(start.elapsed().as_secs() < 45, "{:?}", effects.message);
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        for asset in &assets {
+            assert_eq!(
+                effects
+                    .simulation
+                    .particles
+                    .iter()
+                    .filter(|p| &p.asset == asset)
+                    .count(),
+                1
+            );
+            assert!(effects.cache.contains_key(asset));
+        }
+        assert!(effects.draws.iter().all(|d| match &d.image {
+            ItemImage::Png(sprite) => sprite.size.x > 0.0,
+            ItemImage::Model { image, .. } => image.size.x > 0.0,
+        }));
+        eprintln!(
+            "Verified {} custom PNG/GIF/3D/Live2D throw assets on the demo avatar",
+            assets.len()
+        );
+    }
+    #[test]
+    fn custom_png_gif_burst_waits_for_loading_renders_exact_counts_and_retries_bad_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let png = dir.path().join("Custom ' item.PNG");
+        image::RgbaImage::from_pixel(16, 24, image::Rgba([255, 90, 30, 255]))
+            .save_with_format(&png, image::ImageFormat::Png)
+            .unwrap();
+        let gif = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../templates/images/artwork/excited.gif");
+        let library = Library {
+            designs: vec![Design {
+                assets: vec![png.clone(), gif.clone()],
+                asset_counts: vec![2, 3],
+                interval: 0.0,
+                cooldown: 0.0,
+                ..Default::default()
+            }],
+            muted: true,
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        let mut effects = Effects::default();
+        effects.pending.push(1);
+        let start = Instant::now();
+        effects.update(
+            &ctx,
+            None,
+            Path::new(""),
+            (&library, PoseMode::Live),
+            None,
+            0.0,
+        );
+        assert!(
+            effects.simulation.particles.is_empty(),
+            "Do not launch part of a burst during import"
+        );
+        while effects.draws.len() < 5 {
+            effects.update(
+                &ctx,
+                None,
+                Path::new(""),
+                (&library, PoseMode::Live),
+                None,
+                0.001,
+            );
+            assert!(start.elapsed().as_secs() < 15, "{:?}", effects.message);
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        assert_eq!(
+            effects
+                .simulation
+                .particles
+                .iter()
+                .filter(|p| p.asset == png)
+                .count(),
+            2
+        );
+        assert_eq!(
+            effects
+                .simulation
+                .particles
+                .iter()
+                .filter(|p| p.asset == gif)
+                .count(),
+            3
+        );
+        assert!(
+            matches!(effects.cache.get(&gif), Some(Asset::Image(ItemImage::Png(sprite))) if sprite.animation.is_some())
+        );
+        effects.reload();
+        std::fs::write(&png, b"not a png").unwrap();
+        effects.pending.push(1);
+        let start = Instant::now();
+        loop {
+            effects.update(
+                &ctx,
+                None,
+                Path::new(""),
+                (&library, PoseMode::Live),
+                None,
+                0.0,
+            );
+            if effects.pending.is_empty() {
+                break;
+            }
+            assert!(start.elapsed().as_secs() < 15);
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        assert!(effects.draws.is_empty());
+        assert!(
+            effects
+                .message
+                .as_deref()
+                .unwrap()
+                .contains("Custom ' item.PNG")
+        );
+        image::RgbaImage::from_pixel(16, 24, image::Rgba([255, 90, 30, 255]))
+            .save_with_format(&png, image::ImageFormat::Png)
+            .unwrap();
+        effects.pending.push(1);
+        let start = Instant::now();
+        while effects.draws.len() < 5 {
+            effects.update(
+                &ctx,
+                None,
+                Path::new(""),
+                (&library, PoseMode::Live),
+                None,
+                0.001,
+            );
+            assert!(start.elapsed().as_secs() < 15, "{:?}", effects.message);
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        effects.clear();
+        assert!(
+            effects.pending.is_empty() && effects.image_job.is_none() && effects.draws.is_empty()
+        );
+    }
     #[test]
     fn dents_outlive_particles_freeze_and_clear_without_touching_shared_art() {
         let ctx = egui::Context::default();

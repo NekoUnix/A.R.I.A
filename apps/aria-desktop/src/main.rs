@@ -58,6 +58,15 @@ fn smoke_mode() -> bool {
 }
 
 fn main() -> eframe::Result {
+    // Reuse this executable as the worker so `cargo run -p aria-desktop` and
+    // portable bundles do not depend on a separately installed helper binary.
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "--cubism-host")
+    {
+        let result = aria_live2d::host::serve(std::io::stdin().lock(), std::io::stdout().lock());
+        std::process::exit(if result.is_ok() { 0 } else { 1 });
+    }
     let mut wgpu_options = eframe::egui_wgpu::WgpuConfiguration::default();
     if cfg!(target_os = "windows")
         && let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &mut wgpu_options.wgpu_setup

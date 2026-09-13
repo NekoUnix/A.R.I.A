@@ -24,6 +24,17 @@ edits to those sample files. It uses Python 3's standard library only. Edit the
 generator to change its mathematical artwork and sound synthesis; SVG files can
 also be edited and exported manually without Python.
 
+## Choose your own throw artwork
+
+Open **Edit toggle / directions → Assets**. **Replace assets** removes the current
+selection (including the starter star); **Add assets** keeps it and appends files.
+Set each quantity, press **Preview burst**, then **Save toggle**. A zero quantity
+skips an asset. PNG/GIF loading runs in the background and the whole burst waits
+until all selected assets are ready. **Clear preview / Clear active effects** cancels
+pending image loading. Missing or invalid files report their path; fix the file and
+use **Reload assets / audio**, then retry. Keep cloud files available locally.
+Design JSON saves paths and settings; it does not copy the selected artwork.
+
 ## Live2D and VRM
 
 `live2d/MyProp.model3.json.template` shows the export layout. Export your own model

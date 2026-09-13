@@ -38,7 +38,7 @@ macro_rules! api {
         impl Api {
             // The selected library is executable native code. Only load an official SDK DLL.
             pub fn load(path: &Path) -> Result<Self> {
-                let path = path.canonicalize().context("Select the official x64 Live2DCubismCore.dll from the Native SDK")?;
+                let path = crate::platform::resolve(path)?;
                 // SAFETY: Explicit absolute path; Core's documented ABI is checked by symbol lookup.
                 // Windows searches only the DLL's folder and System32 for its dependencies.
                 unsafe {

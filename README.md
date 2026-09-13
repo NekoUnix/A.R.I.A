@@ -18,7 +18,9 @@ and send compact-preview, full-resolution canvases to OBS.
   outputs, model rendering, mouse interaction and help windows.
 - Upgraded MediaPipe to 1.0.1 with a smaller, compatible camera runtime. Repair
   removes obsolete protobuf/JAX dependencies from ARIA's dedicated environment.
-- Public contribution workflow, enforced reviews and CI, private vulnerability
+- Separate Cubism runtime processes, native OS library discovery and Linux/macOS build checks.
+- Custom throw asset replacement, background PNG/GIF loading and visible import errors.
+- Public contribution workflow, reviews and CI with an explicit owner-only bypass, private vulnerability
   reporting, and updated dependencies and GitHub Actions.
 
 ### Included from v0.23
@@ -32,6 +34,24 @@ and send compact-preview, full-resolution canvases to OBS.
 - **Control API:** authenticated local HTTP for parameters, poses, presets, expressions,
   outputs, themes and effects, with command-result tickets and avatar-switch protection.
 - **Updated illustrated documentation** using the owner's supplied Odette artwork.
+
+## Feature status at a glance
+
+| Feature | Current status | Next / known gap |
+| --- | --- | --- |
+| Live2D, PNG/GIF and VRM avatars | Implemented; Windows model checks | Advanced Cubism and full VRM shader compatibility |
+| Custom throws, sprays, sounds and pins | Implemented; custom image loading updated | More real-world asset coverage; static 3D formats only |
+| Mapping, calibration, expressions, physics and presets | Implemented | Broader rig/device acceptance |
+| Webcam / iPhone / controller input | Partial hardware validation | Physical camera, phone and controller testing |
+| NVIDIA RTX tracking | Experimental adapter | Native SDK build and actual GPU inference validation |
+| OBS outputs and Spout | Working on Windows | Linux/macOS sharing integrations planned |
+| Themes, offline help and local API | Implemented and tested | Continued documentation/device coverage |
+| Twitch / YouTube chat | Implemented; live-account testing pending | Provider/account acceptance |
+| Cubism runtime process and Linux/macOS builds | Experimental native platform support | Native-machine graphics/SDK validation; use each OS's Core library |
+| Signed installers and native OS packages | Planned | First release is an unsigned Windows portable ZIP |
+
+The [full current/planned feature grid](docs/README.md#current-and-planned-features)
+identifies what works, what is partial, and what is not implemented.
 
 ## Start on Windows
 

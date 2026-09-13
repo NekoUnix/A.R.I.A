@@ -22,7 +22,9 @@ Windows x64. The built-in Mica puppet runs without proprietary SDKs or avatar fi
    squash merge. The merged branch is deleted automatically by GitHub.
 
 The public repository enforces pull requests, one independent approval, resolved
-review conversations and both CI checks on `main`, including for administrators.
+review conversations and both CI checks on `main`. Only NekoUnix has the explicit
+owner bypass described in [the development guide](docs/development.md); there is
+no blanket administrator, bot or collaborator bypass.
 See the [review policy](docs/development.md). CODEOWNERS requests the default
 maintainer on eligible PRs; the owner's PRs need another write-access reviewer.
 Green checks alone do not constitute review. Maintainers may explicitly delegate

@@ -1342,11 +1342,13 @@ impl AriaApp {
                             });
                         }
                         ui.collapsing("Cubism runtime", |ui| {
-                            crate::help::label(ui, "Core DLL path", "runtime");
+                            crate::help::label(ui, "Core library path", "runtime");
+                            ui.small(aria_live2d::platform::guidance());
+                            ui.small("Runs in a separate Cubism runtime process.");
                             ui.text_edit_singleline(&mut self.settings.cubism_core);
-                            if ui.button("Choose Core DLL…").clicked()
+                            if ui.button("Choose Core library…").clicked()
                                 && let Some(path) = rfd::FileDialog::new()
-                                    .add_filter("Cubism Core", &["dll"])
+                                    .add_filter("Cubism Core", aria_live2d::platform::extensions())
                                     .pick_file()
                             {
                                 self.settings.cubism_core = path.display().to_string();
@@ -1694,7 +1696,7 @@ impl AriaApp {
         self.pending_vrm = None;
         anyhow::ensure!(
             !self.settings.cubism_core.trim().is_empty(),
-            "First choose the official x64 Cubism Core DLL under Cubism runtime setup."
+            "First choose the official native Cubism Core library under Cubism runtime setup."
         );
         let state = self
             .render_state

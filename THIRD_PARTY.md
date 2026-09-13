@@ -18,6 +18,7 @@ Primary dependencies (exact versions are recorded in Cargo.lock):
 | anyhow | Error reporting | https://github.com/dtolnay/anyhow |
 | tempfile | Isolated test files | https://github.com/Stebalien/tempfile |
 | libloading | Explicit native Cubism Core loading | https://github.com/nagisa/rust_libloading |
+| postcard | Compact private Cubism host protocol | https://github.com/jamesmunns/postcard |
 | bytemuck | Typed GPU buffer serialization | https://github.com/Lokathor/bytemuck |
 | windows-rs | Windows process and DXGI memory counters | https://github.com/microsoft/windows-rs |
 | Spout2 SDK protocol | Sender registry, synchronization and D3D11On12 sharing conventions | https://github.com/leadedge/Spout2 |

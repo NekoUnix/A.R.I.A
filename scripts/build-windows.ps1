@@ -28,7 +28,7 @@ try {
     $ariaDist = Join-Path $ariaRoot 'dist'
     $ariaStage = Join-Path $ariaDist ('staging\' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force -Path $ariaStage | Out-Null
-    Copy-Item -LiteralPath (Join-Path $ariaRoot 'target\release\aria-desktop.exe'), (Join-Path $ariaRoot 'target\release\aria-cli.exe') -Destination $ariaStage
+    Copy-Item -LiteralPath (Join-Path $ariaRoot 'target\release\aria-desktop.exe'), (Join-Path $ariaRoot 'target\release\aria-cli.exe'), (Join-Path $ariaRoot 'target\release\aria-cubism-host.exe') -Destination $ariaStage
     Copy-Item -LiteralPath (Join-Path $ariaRoot 'README.md'), (Join-Path $ariaRoot 'LICENSE'), (Join-Path $ariaRoot 'THIRD_PARTY.md'), (Join-Path $ariaRoot 'CONTRIBUTING.md'), (Join-Path $ariaRoot 'SECURITY.md'), (Join-Path $ariaRoot 'CODE_OF_CONDUCT.md') -Destination $ariaStage
     Copy-Item -LiteralPath (Join-Path $ariaRoot 'docs') -Destination $ariaStage -Recurse
     $ariaTemplates = Join-Path $ariaRoot 'templates'

@@ -2,13 +2,12 @@
   "name": "Protection",
   "target": "branch",
   "enforcement": "active",
-  "bypass_actors": [],
   "conditions": {
     "ref_name": {
+      "exclude": [],
       "include": [
         "refs/heads/main"
-      ],
-      "exclude": []
+      ]
     }
   },
   "rules": [
@@ -39,6 +38,8 @@
     {
       "type": "required_status_checks",
       "parameters": {
+        "strict_required_status_checks_policy": true,
+        "do_not_enforce_on_create": false,
         "required_status_checks": [
           {
             "context": "test-and-package",
@@ -48,9 +49,15 @@
             "context": "repository-checks",
             "integration_id": 15368
           }
-        ],
-        "strict_required_status_checks_policy": true
+        ]
       }
+    }
+  ],
+  "bypass_actors": [
+    {
+      "actor_id": 215495180,
+      "actor_type": "User",
+      "bypass_mode": "always"
     }
   ]
 }

@@ -9,3 +9,12 @@ license.workspace = true
 aria-core.workspace = true
 anyhow.workspace = true
 libloading = "0.8"
+serde.workspace = true
+postcard = { version = "1.1.3", default-features = false, features = ["use-std"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "aria-cubism-host"
+path = "src/bin/host.rs"
