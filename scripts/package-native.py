@@ -31,7 +31,7 @@ def contents(stage):
     stage.mkdir(parents=True, exist_ok=True)
     for name in ["aria-desktop", "aria-cli", "aria-cubism-host"]:
         copy(ROOT / "target/release" / name, stage / name)
-    for name in ["README.md", "LICENSE", "THIRD_PARTY.md", "CONTRIBUTING.md", "SECURITY.md", "CODE_OF_CONDUCT.md", "docs", "templates", "tracking", "native"]:
+    for name in ["README.md", "CHANGELOG.md", "LICENSE", "THIRD_PARTY.md", "CONTRIBUTING.md", "SECURITY.md", "CODE_OF_CONDUCT.md", "docs", "templates", "tracking", "native"]:
         copy(ROOT / name, stage / name)
     revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     (stage / "BUILD-INFO.txt").write_text(f"A.R.I.A. Alpha {VERSION}\nCommit: {revision}\nPlatform: {platform.system()} {platform.machine()}\nUnsigned alpha: see docs/platforms.md for setup and validation limits.\n")

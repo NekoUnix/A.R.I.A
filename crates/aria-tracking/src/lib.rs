@@ -1,4 +1,5 @@
 //! One socket worker, a bounded latest-frame mailbox, and explicit connection ownership.
+pub mod ifacial;
 pub mod protocol;
 pub use protocol::Protocol;
 
@@ -83,7 +84,7 @@ impl Receiver {
             "Enter the sender's unicast IPv4 address"
         );
         ensure!(
-            config.protocol != Protocol::VTubeStudio || config.request_port > 0,
+            config.protocol == Protocol::AriaJson || config.request_port > 0,
             "Request port must be 1-65535"
         );
         // Loopback tests/tools never open a LAN listener. An explicit LAN peer enables LAN binding.
@@ -134,7 +135,11 @@ fn run(
     state: Arc<Mutex<Snapshot>>,
     stop: Arc<AtomicBool>,
 ) {
-    let request = protocol::subscription(local_port);
+    let request = match config.protocol {
+        Protocol::VTubeStudio => protocol::subscription(local_port),
+        Protocol::IFacialMocap => ifacial::START.to_vec(),
+        Protocol::AriaJson => Vec::new(),
+    };
     let peer = SocketAddrV4::new(config.sender_ip, config.request_port);
     // Full UDP maximum buffer avoids treating a truncated datagram as a valid packet.
     let mut buffer = vec![0_u8; 65535];
@@ -142,14 +147,30 @@ fn run(
     let mut rate_start = Instant::now();
     let mut rate_count = 0;
     while !stop.load(Ordering::Acquire) {
-        if config.protocol == Protocol::VTubeStudio && Instant::now() >= next_request {
+        let needs_request = match config.protocol {
+            Protocol::VTubeStudio => true,
+            Protocol::IFacialMocap => state
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .fresh_frame()
+                .is_none(),
+            Protocol::AriaJson => false,
+        };
+        if needs_request && Instant::now() >= next_request {
             let result = socket.send_to(&request, peer);
             let mut s = state.lock().unwrap_or_else(|p| p.into_inner());
             match result {
                 Ok(_) => s.requests += 1,
                 Err(e) => s.last_error = Some(format!("Subscription send failed: {e}")),
             }
-            next_request = Instant::now() + Duration::from_secs(1);
+            // VTS has a renewable lease. iFacialMocap needs one start command;
+            // retry it only while disconnected/stale, without resetting a live stream.
+            next_request = Instant::now()
+                + Duration::from_secs(if config.protocol == Protocol::IFacialMocap {
+                    3
+                } else {
+                    1
+                });
         }
         match socket.recv_from(&mut buffer) {
             Ok((len, from)) => {
@@ -214,6 +235,49 @@ mod tests {
             assert!(Instant::now() < deadline, "timed out");
             thread::sleep(Duration::from_millis(10));
         }
+    }
+
+    #[test]
+    fn ifacial_start_live_stream_loss_retry_and_shutdown() {
+        let phone = UdpSocket::bind("127.0.0.1:0").unwrap();
+        phone
+            .set_read_timeout(Some(Duration::from_secs(4)))
+            .unwrap();
+        let receiver = Receiver::start(ReceiverConfig {
+            protocol: Protocol::IFacialMocap,
+            request_port: phone.local_addr().unwrap().port(),
+            listen_port: 0,
+            ..Default::default()
+        })
+        .unwrap();
+        let mut buf = [0; 1024];
+        let (len, from) = phone.recv_from(&mut buf).unwrap();
+        assert_eq!(&buf[..len], ifacial::START);
+        assert_eq!(from.port(), receiver.local_port);
+        phone.set_nonblocking(true).unwrap();
+        let packet = b"jawOpen-80|eyeBlink_L-20|=head#-12,23,4,0,0,0|";
+        // A healthy stream must not repeatedly receive initialization commands.
+        for _ in 0..85 {
+            phone.send_to(packet, from).unwrap();
+            thread::sleep(Duration::from_millis(40));
+            assert!(phone.recv_from(&mut buf).is_err());
+        }
+        wait_until(|| receiver.snapshot().packets == 85);
+        assert_eq!(receiver.snapshot().requests, 1);
+        assert_eq!(receiver.snapshot().frame.unwrap().blend("jawopen"), 0.8);
+        phone.send_to(b"jawOpen-30|", from).unwrap();
+        wait_until(|| receiver.snapshot().rejected == 1);
+        wait_until(|| receiver.snapshot().fresh_frame().is_none());
+        phone.set_nonblocking(false).unwrap();
+        let (len, _) = phone.recv_from(&mut buf).unwrap();
+        assert_eq!(&buf[..len], ifacial::START);
+        phone.send_to(packet, from).unwrap();
+        wait_until(|| receiver.snapshot().status() == "Tracking live");
+        let port = receiver.local_port;
+        let start = Instant::now();
+        drop(receiver);
+        assert!(start.elapsed() < Duration::from_secs(1));
+        assert!(UdpSocket::bind((Ipv4Addr::LOCALHOST, port)).is_ok());
     }
 
     #[test]

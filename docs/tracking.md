@@ -1,5 +1,9 @@
 # Tracking inputs
 
+For first-time setup, use the [beginner walkthrough](../README.md#4-choose-how-you-want-to-control-it).
+Direct [iFacialMocap input](ifacialmocap.md) is available in v0.28 Alpha, alongside
+the VTube Studio and external JSON sources below.
+
 ![ Camera tracking controls alongside Odette](images/webcam-v23.png)
 
 ## iPhone VTube Studio

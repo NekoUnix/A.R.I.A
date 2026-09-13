@@ -225,11 +225,12 @@ mod tests {
         let mut values = model.parameters().to_vec();
         let mut snapshots = Vec::new();
         for mouth in [0.0, 1.0] {
-            let frame = aria_core::TrackingFrame {
-                face_found: true,
-                blend_shapes: BTreeMap::from([("jawopen".into(), mouth)]),
-                ..Default::default()
-            };
+            let packet = format!("jawOpen&{}|=head#0,0,0,0,0,0|", mouth * 100.0);
+            let frame = aria_tracking::protocol::decode(
+                packet.as_bytes(),
+                aria_tracking::Protocol::IFacialMocap,
+            )
+            .unwrap();
             for _ in 0..60 {
                 let mut input = Inputs::new();
                 rig.vbridger.apply(

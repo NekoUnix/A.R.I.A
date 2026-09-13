@@ -10,6 +10,8 @@ parameter mappings; a config does not add missing tracking hardware or rigging.
 
 1. Load your avatar and connect an [iPhone/external tracker](tracking.md) or
    [webcam](webcam.md).
+   v0.28 also supports direct [iFacialMocap input](ifacialmocap.md); connect it before
+   testing the imported equations.
 2. Open **Tracking → Import / edit VBridger config**, or **Inspector → Tracking →
    Inputs → VBridger config & equations**.
 3. Choose a `.vbridger` file. Review its output names, ranges, equations, target

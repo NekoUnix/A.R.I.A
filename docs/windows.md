@@ -2,7 +2,7 @@
 
 ![Odette in the v0.26 Alpha Windows build](images/responsive-speech-v26.png)
 
-ARIA v0.27 Alpha adds [experimental VBridger imports](vbridger.md) and [performance graphs](responsiveness.md). Download the v0.27 Alpha package from [Releases](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.27.0-alpha.1), or build current source. It includes webcam tracking,
+ARIA v0.28 Alpha adds [iFacialMocap input](ifacialmocap.md), alongside [experimental VBridger imports](vbridger.md) and [performance graphs](responsiveness.md). Download the v0.28 Alpha package from [Releases](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.28.0-alpha.1), or build current source. It includes webcam tracking,
 the optional NVIDIA RTX adapter, themes and the control API introduced in v0.23.
 Guided tracking setup remains available for every avatar. See [Tracking setup](tracking-setup.md).
 Direct gamepad input and Live2D `NP_*` assignments remain available.

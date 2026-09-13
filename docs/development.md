@@ -5,7 +5,7 @@ Start with [CONTRIBUTING.md](../CONTRIBUTING.md) for the normal development loop
 
 ## Current repository setup
 
-The About panel describes ARIA and links to the documentation index. Issues use
+The About panel describes ARIA and links to the user-focused README. Issues use
 bug, feature and model/device compatibility forms. Labels separate concerns such
 as tracking, rendering, API, UI, security, performance and CI. Use Discussions for
 open-ended design conversations; keep reproducible defects and accepted work in

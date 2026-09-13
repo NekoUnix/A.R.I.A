@@ -1,4 +1,4 @@
-//! Wire formats are implemented from DenchiSoft's published protocol (see docs/tracking.md).
+//! Documented tracking wire formats (see docs/tracking.md and docs/ifacialmocap.md).
 use anyhow::{Result, bail, ensure};
 use aria_core::{TrackingFrame, Vec3};
 use serde::{Deserialize, Serialize};
@@ -10,6 +10,7 @@ pub enum Protocol {
     #[default]
     VTubeStudio,
     AriaJson,
+    IFacialMocap,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -51,6 +52,7 @@ pub fn decode(bytes: &[u8], protocol: Protocol) -> Result<TrackingFrame> {
         "Packet exceeds 16 KiB limit"
     );
     let mut frame = match protocol {
+        Protocol::IFacialMocap => super::ifacial::decode(bytes)?,
         Protocol::VTubeStudio => {
             let p: VtsPacket = serde_json::from_slice(bytes)?;
             ensure!(p.blend_shapes.len() <= 128, "Too many blendshapes");
@@ -110,6 +112,7 @@ pub fn subscription(listen_port: u16) -> Vec<u8> {
 /// Simulator output uses the same documented wire schema, including PascalCase VTS keys.
 pub fn encode(frame: &TrackingFrame, protocol: Protocol) -> Result<Vec<u8>> {
     match protocol {
+        Protocol::IFacialMocap => super::ifacial::encode(frame),
         Protocol::AriaJson => Ok(serde_json::to_vec(&AriaPacket {
             version: 1,
             frame: frame.clone(),
