@@ -1,0 +1,40 @@
+name: Bug report
+description: Report a reproducible problem in ARIA.
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Check existing issues first. Redact keys and personal paths; share only artwork you have permission to share. For security problems, follow SECURITY.md."
+  - type: input
+    id: version
+    attributes:
+      label: ARIA version or commit
+      placeholder: "0.23.0 or a commit hash"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Windows version, GPU/driver, avatar type and tracking source. Include SDK versions when relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Open...\n2. Choose...\n3. Observe..."
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs, screenshots and workaround
+      description: Include the smallest useful evidence and note whether the built-in Mica puppet also reproduces it.

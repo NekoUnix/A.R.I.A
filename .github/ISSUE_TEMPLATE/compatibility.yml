@@ -1,0 +1,31 @@
+name: Model or device compatibility
+description: Report an import, controller, camera or tracking compatibility problem.
+title: "[Compatibility] "
+labels: [bug, compatibility]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options: [Live2D, VRM, PNG/GIF, Webcam, NVIDIA RTX, iPhone tracking, Controller, OBS output]
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Versions and configuration
+      description: ARIA version, Windows, GPU, driver, device/connection type and relevant SDK/export versions.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction and observed result
+      description: Include errors and expected behavior. For imports, describe the folder layout without personal paths. Do not attach paid/private models or SDK binaries.
+    validations:
+      required: true
+  - type: textarea
+    id: comparison
+    attributes:
+      label: Comparison and minimal example
+      description: Does Mica, a sample model or another device work? Link only redistributable samples.

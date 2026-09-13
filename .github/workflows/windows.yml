@@ -18,7 +18,9 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Install pinned Rust toolchain
         shell: pwsh
         run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
@@ -34,7 +36,7 @@ jobs:
         shell: pwsh
         run: ./scripts/build-windows.ps1 -SkipTests
       - name: Upload app and instructions
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: aria-windows-x64
           path: dist/aria-0.23.0-windows-x64.zip

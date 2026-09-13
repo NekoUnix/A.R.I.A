@@ -27,6 +27,7 @@ avatar, stage and poses. Hover or click any circled **?** for offline explanatio
 | Animate talking PNG/GIF states | [Image templates](../templates/images/README.md) |
 | Read every contextual explanation | [In-app help reference](in-app-help.md) |
 | Understand code or verified limitations | [Architecture](architecture.md), [validation](validation.md) |
+| Contribute code or review a pull request | [Contribution guide](../CONTRIBUTING.md), [development workflow](development.md) |
 
 Screenshots show the current v0.23 build with the owner's supplied avatars.
 They demonstrate UI layout; camera configuration screens do not imply an active

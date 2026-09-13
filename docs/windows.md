@@ -28,7 +28,7 @@ Open **PNG / GIF actions** to assign artwork to talking, blinking, custom input
 ranges or hotkeys. Configure transitions, shake/jump/blip and GIF playback per action.
 Open **Microphone** for device selection, sensitivity, smoothing and talking thresholds.
 Image states, microphone settings and presets save with each avatar.
-See the [step-by-step designer guide](../README.md#throws-liquid-sprays-and-stream-events),
+See the [step-by-step designer guide](../templates/effects/README.md),
 [template kit](../templates/effects/README.md) and [plugin guide](../templates/effects/plugins/README.md).
 Settings save per avatar. The previous vertical iPhone tracking correction remains.
 Existing VTS neutral-pitch calibrations migrate once. If you manually enabled

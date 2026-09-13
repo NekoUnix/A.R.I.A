@@ -1,5 +1,11 @@
 # A.R.I.A. — Avatar Studio
 
+[![Windows build](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml/badge.svg)](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml)
+[![Repository checks](https://github.com/NekoUnix/A.R.I.A/actions/workflows/repository.yml/badge.svg)](https://github.com/NekoUnix/A.R.I.A/actions/workflows/repository.yml)
+
+[User guides](docs/README.md) · [Contribute](CONTRIBUTING.md) ·
+[Code review and releases](docs/development.md) · [Report a bug](https://github.com/NekoUnix/A.R.I.A/issues/new/choose)
+
 A Windows-first avatar app built in Rust with egui and wgpu. Run **Live2D**, **VRM
 0.x / 1.0**, or **PNG/GIF** avatars, connect tracking, build expressions and effects,
 and send compact-preview, full-resolution canvases to OBS.
@@ -71,6 +77,13 @@ The status bar reports frame rate, VRAM, CPU and memory. High priority is option
 it can reduce scheduling contention but cannot fix GPU overload.
 
 ## Development
+
+Work on a short-lived branch and open a pull request. Follow the
+[contribution guide](CONTRIBUTING.md) for setup, validation and independent review,
+and the [development policy](docs/development.md) for CI, release steps and the
+current GitHub-plan limit on enforced branch protection. Design discussions belong
+in [Discussions](https://github.com/NekoUnix/A.R.I.A/discussions); reproducible
+problems and proposed features belong in Issues.
 
 Use the pinned Rust toolchain and Windows C++ build prerequisites described in
 [docs/windows.md](docs/windows.md). From this checkout:

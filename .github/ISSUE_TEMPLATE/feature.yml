@@ -1,0 +1,24 @@
+name: Feature proposal
+description: Describe a user problem and a proposed improvement.
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Who needs this and what are they trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Proposed behavior
+      description: Include a concrete workflow and how you would tell that it works.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and constraints
+      description: Consider current workarounds, performance, hardware, compatibility and SDK requirements.
