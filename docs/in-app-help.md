@@ -4,6 +4,16 @@
 
 This guide is bundled into the application and works offline. The topic headers also provide the short hover descriptions for the circled question-mark buttons.
 
+## ifacialmocap | iFacialMocap on iPhone | Connect live iFacialMocap face tracking over your local network; start with both UDP ports at 49983.
+
+Open iFacialMocap on your iPhone, allow camera and Local Network access, and keep its face preview running. Put the phone and computer on the same trusted Wi-Fi/router; the computer can use Ethernet. In ARIA choose Tracking > iPhone · iFacialMocap, enter the phone's IPv4 address shown in the app, then click Connect tracking. Leave both ports at 49983 for the first connection. No desktop bridge or VTube Studio app is needed.
+
+Wait for Tracking live before calibrating. Look forward comfortably, click Calibrate neutral pose, and test turning, nodding, leaning, blinking and mouth opening separately. Use Guided tracking setup for one exercise at a time. Existing experimental VBridger configs can use the incoming ARKit channels; importing a config does not connect a phone automatically. Phone address and ports save separately from VTube Studio and per avatar.
+
+If ARIA cannot bind the port, close another tracking receiver using 49983. If it says Waiting for data, check the phone address, Local Network permission, firewall, guest-network isolation and the phone's UDP connection mode. For Windows, allow this app on your trusted Private network. A custom PC receive port also needs to match the destination selected in iFacialMocap; ARIA's start command does not negotiate that port. Do not enable internet port forwarding.
+
+This integration receives live UDP face coefficients, head position/rotation and eye rotation, including the legacy and v2 delimiters. It does not receive Bluetooth, TCP recordings or body motion. Tracking status uses local packet freshness because this wire format has no face-confidence flag; frozen values still transmitted by the phone cannot be distinguished from a motionless face. Physical iPhone direction/latency acceptance remains to be checked on your setup. Invert pitch/yaw/roll individually if the avatar moves backwards.
+
 ## webcam | Webcam & NVIDIA RTX tracking | Track your face locally with a camera, then calibrate it to this avatar.
 
 Choose Tracking > Tracking source > Webcam (MediaPipe) or Webcam (NVIDIA RTX). Camera access starts only when you press Start camera. Switching source, switching avatar or closing ARIA releases the camera. Frames are processed locally; ARIA does not record or upload them. Only movement numbers reach the Rust renderer.
@@ -481,7 +491,7 @@ Edits take effect immediately unless a control says Apply or Assign. Explicit Sa
 
 A profile is the current workspace for one avatar. A movement preset saves rig tuning, mapping, physics and active expressions; a pose preset also captures the final parameter values. Presets do not include connection settings, output layouts, SDK paths or the complete model asset folder. Export a preset to share a compatible configuration, not an avatar.
 
-## tracking | Tracking sources & connection | Choose local webcam inference, optional NVIDIA RTX inference, iPhone VTube Studio, external ARIA JSON, or local microphone/manual controls.
+## tracking | Tracking sources & connection | Choose webcam, optional NVIDIA RTX, iPhone VTube Studio or iFacialMocap, external ARIA JSON, or local microphone/manual controls.
 
 @diagram network
 
@@ -510,6 +520,8 @@ iPhone IPv4 address means the phone's local IPv4 address, not the PC's address, 
 ### Ports
 
 Phone request port is where ARIA sends VTube Studio subscription requests; 21412 is the default. PC receive port is where ARIA listens for tracking packets; 11125 is the default. The JSON source only needs the receive port. Values must be whole numbers between 1 and 65535. Changing a port in ARIA does not reconfigure the sending tool or a firewall.
+
+iFacialMocap has its own saved connection settings: phone request and PC receive both default to 49983. A custom receive port must match the phone app's configured destination. ARIA requests live UDP on connection and retries while stale; it does not repeatedly initialize a healthy stream. Open the iFacialMocap help article for setup and troubleshooting.
 
 ### Diagnose a connection
 

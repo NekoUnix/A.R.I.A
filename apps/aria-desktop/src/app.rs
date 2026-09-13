@@ -24,15 +24,34 @@ enum Source {
     #[default]
     Demo,
     Vts,
+    IFacial,
     Json,
     Local,
     Webcam,
     Rtx,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
+struct IFacialSettings {
+    sender_ip: String,
+    request_port: u16,
+    listen_port: u16,
+}
+impl Default for IFacialSettings {
+    fn default() -> Self {
+        Self {
+            sender_ip: "127.0.0.1".into(),
+            request_port: aria_tracking::ifacial::PORT,
+            listen_port: aria_tracking::ifacial::PORT,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 struct Settings {
+    ifacial: IFacialSettings,
     chat_accounts: crate::chat::Accounts,
     image_avatar: Option<PathBuf>,
     vrm_avatar: Option<PathBuf>,
@@ -61,6 +80,7 @@ struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            ifacial: IFacialSettings::default(),
             chat_accounts: Default::default(),
             image_avatar: None,
             vrm_avatar: None,
@@ -106,6 +126,7 @@ impl Settings {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 struct ModelPreferences {
+    ifacial: IFacialSettings,
     camera: crate::webcam::Settings,
     source: Source,
     sender_ip: String,
@@ -127,6 +148,7 @@ impl Default for ModelPreferences {
 impl ModelPreferences {
     fn capture(settings: &Settings) -> Self {
         Self {
+            ifacial: settings.ifacial.clone(),
             camera: settings.camera.clone(),
             source: settings.source,
             sender_ip: settings.sender_ip.clone(),
@@ -142,6 +164,7 @@ impl ModelPreferences {
         }
     }
     fn restore(&self, settings: &mut Settings) {
+        settings.ifacial = self.ifacial.clone();
         settings.camera = self.camera.clone();
         settings.source = self.source;
         settings.sender_ip = self.sender_ip.clone();
@@ -639,6 +662,20 @@ impl AriaApp {
                             app.status_message
                         );
                     }
+                    Ok("ifacialmocap") => {
+                        app.settings.source = Source::IFacial;
+                        app.controls_page = ControlsPage::Tracking;
+                        app.settings.ifacial.sender_ip = "127.0.0.1".into();
+                        app.settings.ifacial.request_port = std::env::var("ARIA_TEST_IFACIAL_PORT")
+                            .ok()
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(49984);
+                        app.connect();
+                        assert!(
+                            app.receiver.is_some(),
+                            "iFacialMocap smoke connection failed"
+                        );
+                    }
                     Ok("output") => {
                         app.outputs.set_open(0, true);
                         app.outputs
@@ -878,34 +915,47 @@ impl AriaApp {
 
     fn connect(&mut self) {
         self.input_monitor.vbridger_runtime.reset();
-        let Ok(sender_ip) = self.settings.sender_ip.trim().parse::<Ipv4Addr>() else {
+        let (sender, request_port, listen_port) = if self.settings.source == Source::IFacial {
+            (
+                &self.settings.ifacial.sender_ip,
+                self.settings.ifacial.request_port,
+                self.settings.ifacial.listen_port,
+            )
+        } else {
+            (
+                &self.settings.sender_ip,
+                self.settings.request_port,
+                self.settings.listen_port,
+            )
+        };
+        let Ok(sender_ip) = sender.trim().parse::<Ipv4Addr>() else {
             self.status_message = Some("Enter an IPv4 address, for example 192.168.1.42.".into());
             return;
         };
-        if self.settings.listen_port == 0 || self.settings.request_port == 0 {
+        if listen_port == 0 || request_port == 0 {
             self.status_message = Some("Ports must be between 1 and 65535.".into());
             return;
         }
         let config = ReceiverConfig {
             sender_ip,
-            request_port: self.settings.request_port,
+            request_port,
             // Smoke runs may coexist with the user's running copy. Ask Windows
             // for a free loopback port and advertise it in the subscription.
-            listen_port: if crate::smoke_mode() {
-                0
-            } else {
-                self.settings.listen_port
-            },
-            protocol: if self.settings.source == Source::Vts {
-                Protocol::VTubeStudio
-            } else {
-                Protocol::AriaJson
+            listen_port: if crate::smoke_mode() { 0 } else { listen_port },
+            protocol: match self.settings.source {
+                Source::Vts => Protocol::VTubeStudio,
+                Source::IFacial => Protocol::IFacialMocap,
+                _ => Protocol::AriaJson,
             },
         };
         match Receiver::start(config) {
             Ok(receiver) => {
                 if crate::smoke_mode() {
-                    self.settings.listen_port = receiver.local_port;
+                    if self.settings.source == Source::IFacial {
+                        self.settings.ifacial.listen_port = receiver.local_port;
+                    } else {
+                        self.settings.listen_port = receiver.local_port;
+                    }
                 }
                 self.receiver = Some(receiver);
                 self.snapshot = Snapshot::default();
@@ -1001,6 +1051,7 @@ impl AriaApp {
                             Source::Rtx => "Webcam · NVIDIA RTX",
                             Source::Demo => "Demo · no device needed",
                             Source::Vts => "iPhone · VTube Studio",
+                            Source::IFacial => "iPhone · iFacialMocap",
                             Source::Json => "External tool · ARIA JSON",
                             Source::Local => "Microphone / manual · no tracker",
                         })
@@ -1036,6 +1087,11 @@ impl AriaApp {
                                 Source::Json,
                                 "External tool · ARIA JSON",
                             );
+                            ui.selectable_value(
+                                &mut self.settings.source,
+                                Source::IFacial,
+                                "iPhone · iFacialMocap",
+                            );
                         });
                     if old != self.settings.source {
                         self.input_monitor.vbridger_runtime.reset();
@@ -1048,6 +1104,19 @@ impl AriaApp {
                     }
                     if self.settings.source == Source::Json {
                         crate::help::label(ui, "Packet format & external tools", "json");
+                    }
+                    if self.settings.source == Source::IFacial {
+                        crate::help::label(
+                            ui,
+                            "iFacialMocap setup & troubleshooting",
+                            "ifacialmocap",
+                        );
+                        if crate::smoke_mode() {
+                            ui.colored_label(
+                                theme::orange(),
+                                "SIMULATED iFacialMocap PHONE · local protocol test",
+                            );
+                        }
                     }
                     if matches!(self.settings.source, Source::Webcam | Source::Rtx) {
                         self.camera.ui(
@@ -1072,7 +1141,23 @@ impl AriaApp {
                         );
                     } else {
                         ui.scope(|ui| {
-                            ui.label(if self.settings.source == Source::Vts {
+                            let phone =
+                                matches!(self.settings.source, Source::Vts | Source::IFacial);
+                            let (sender, request, listen) =
+                                if self.settings.source == Source::IFacial {
+                                    (
+                                        &mut self.settings.ifacial.sender_ip,
+                                        &mut self.settings.ifacial.request_port,
+                                        &mut self.settings.ifacial.listen_port,
+                                    )
+                                } else {
+                                    (
+                                        &mut self.settings.sender_ip,
+                                        &mut self.settings.request_port,
+                                        &mut self.settings.listen_port,
+                                    )
+                                };
+                            ui.label(if phone {
                                 "iPhone IPv4 address"
                             } else {
                                 "Allowed sender IPv4 address"
@@ -1080,18 +1165,16 @@ impl AriaApp {
                             crate::help::control(ui, "network", |ui| {
                                 ui.add_enabled(
                                     self.receiver.is_none(),
-                                    egui::TextEdit::singleline(&mut self.settings.sender_ip)
-                                        .desired_width(230.0),
+                                    egui::TextEdit::singleline(sender).desired_width(230.0),
                                 )
                             });
                             egui::Grid::new("ports").num_columns(2).show(ui, |ui| {
-                                if self.settings.source == Source::Vts {
+                                if phone {
                                     ui.label("Phone request port");
                                     crate::help::control(ui, "network", |ui| {
                                         ui.add_enabled(
                                             self.receiver.is_none(),
-                                            egui::DragValue::new(&mut self.settings.request_port)
-                                                .range(1..=65535),
+                                            egui::DragValue::new(request).range(1..=65535),
                                         )
                                     });
                                     ui.end_row();
@@ -1100,8 +1183,7 @@ impl AriaApp {
                                 crate::help::control(ui, "network", |ui| {
                                     ui.add_enabled(
                                         self.receiver.is_none(),
-                                        egui::DragValue::new(&mut self.settings.listen_port)
-                                            .range(1..=65535),
+                                        egui::DragValue::new(listen).range(1..=65535),
                                     )
                                 });
                                 ui.end_row();
@@ -1125,8 +1207,16 @@ impl AriaApp {
                         {
                             self.connect();
                         }
-                        ui.label(RichText::new(if self.settings.source == Source::Vts { "On iPhone: enable 3rd Party PC Clients in VTube Studio. Use the phone's IPv4 address." }
-                else { "Accepts ARIA JSON v1 packets from this IP. Use 127.0.0.1 for local tools." }).small().color(muted()));
+                        ui.label(RichText::new(match self.settings.source {
+                            Source::Vts => "On iPhone: enable 3rd Party PC Clients in VTube Studio. Use the phone's IPv4 address.",
+                            Source::IFacial => "Open iFacialMocap on your iPhone and allow Local Network access. Use the same Wi-Fi/LAN and enter the phone's IPv4 address. Start with both ports at 49983; close other apps receiving on that PC port. ARIA requests live UDP tracking when you connect.",
+                            _ => "Accepts ARIA JSON v1 packets from this IP. Use 127.0.0.1 for local tools.",
+                        }).small().color(muted()));
+                        if self.settings.source == Source::IFacial
+                            && self.settings.ifacial.listen_port != aria_tracking::ifacial::PORT
+                        {
+                            ui.small("A custom receive port must also be configured as the PC destination in iFacialMocap. The start command does not advertise a replacement port.");
+                        }
                     }
                     ui.add_space(7.0);
                     let color = if self.raw.as_ref().is_some_and(|f| f.face_found) {
@@ -2540,7 +2630,11 @@ impl eframe::App for AriaApp {
                         && (self.receiver.is_some() || self.camera.running())
                         && matches!(
                             self.settings.source,
-                            Source::Vts | Source::Json | Source::Webcam | Source::Rtx
+                            Source::Vts
+                                | Source::IFacial
+                                | Source::Json
+                                | Source::Webcam
+                                | Source::Rtx
                         ),
                     &measured,
                 );
@@ -3154,12 +3248,12 @@ impl eframe::App for AriaApp {
                 }
             }
             if crate::smoke_mode()
-                && self.settings.source == Source::Vts
+                && matches!(self.settings.source, Source::Vts | Source::IFacial)
                 && self.started.elapsed() > crate::screenshot::delay()
             {
                 assert!(
                     self.snapshot.fresh_frame().is_some_and(|f| f.face_found),
-                    "Smoke run needs fresh VTS tracking, not a disconnected screenshot"
+                    "Smoke run needs fresh phone tracking, not a disconnected screenshot"
                 );
             }
             if crate::smoke_mode()
@@ -3644,6 +3738,50 @@ mod tests {
                 .expressions
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn ifacial_connection_settings_are_per_avatar_and_preserve_vts_settings() {
+        let mut settings = Settings {
+            source: Source::IFacial,
+            sender_ip: "192.0.2.10".into(),
+            request_port: 21413,
+            listen_port: 11126,
+            ifacial: IFacialSettings {
+                sender_ip: "192.0.2.20".into(),
+                request_port: 49984,
+                listen_port: 49985,
+            },
+            ..Default::default()
+        };
+        settings
+            .model_preferences
+            .insert("a".into(), ModelPreferences::capture(&settings));
+        settings.ifacial.sender_ip = "192.0.2.30".into();
+        settings
+            .model_preferences
+            .insert("b".into(), ModelPreferences::capture(&settings));
+        let mut memory = Memory::default();
+        eframe::set_value(&mut memory, "settings", &settings);
+        let mut restored: Settings = eframe::get_value(&memory, "settings").unwrap();
+        restored.model_preferences["a"]
+            .clone()
+            .restore(&mut restored);
+        assert!(restored.source == Source::IFacial);
+        assert_eq!(restored.ifacial.sender_ip, "192.0.2.20");
+        assert_eq!(restored.ifacial.listen_port, 49985);
+        assert_eq!(restored.sender_ip, "192.0.2.10");
+        assert_eq!(restored.request_port, 21413);
+        assert_eq!(restored.listen_port, 11126);
+        restored.model_preferences["b"]
+            .clone()
+            .restore(&mut restored);
+        assert_eq!(restored.ifacial.sender_ip, "192.0.2.30");
+        let mut old = serde_json::to_value(Settings::default()).unwrap();
+        old.as_object_mut().unwrap().remove("ifacial");
+        let migrated: Settings = serde_json::from_value(old).unwrap();
+        assert_eq!(migrated.ifacial.listen_port, 49983);
+        assert_eq!(migrated.ifacial.request_port, 49983);
     }
     #[test]
     fn v07_two_canvas_ron_profiles_migrate_without_losing_framing() {

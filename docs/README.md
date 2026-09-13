@@ -1,14 +1,18 @@
-# ARIA documentation — v0.27 Alpha
+# ARIA documentation — v0.28 Alpha
 
-![Odette in the v0.26 Alpha tracking workspace](images/responsive-speech-v26.png)
+![Odette in ARIA v0.28 with a clearly labeled simulated iFacialMocap source](images/ifacialmocap-v28.png)
 
-Start with [Windows setup](windows.md), [Linux installation](linux.md) or
+New to ARIA? Start with the [beginner setup walkthrough](../README.md#first-time-setup)
+and [changelog](../CHANGELOG.md). For system-specific steps use [Windows setup](windows.md), [Linux installation](linux.md) or
 [macOS package setup](platforms.md#install-an-alpha-release), import your avatar, then follow
 [personal tracking setup](tracking-setup.md). The left navigation is **Avatar /
 Tracking / Output / Chat / Settings**. Inspector tools stay grouped by tracking,
 avatar, stage and poses. Hover or click any circled **?** for offline explanations.
 
-[New responsive speech controls and resource counters](responsiveness.md) explain the v0.26 Alpha upgrade.
+v0.28 adds [iFacialMocap phone tracking](ifacialmocap.md), with direct live UDP,
+separate per-avatar connection settings and guided setup. The README puts user
+instructions first; [technical references](../README.md#technical-guides-and-development)
+are collected below them.
 
 v0.27 Alpha adds **experimental** [VBridger config import and editing](vbridger.md), with
 per-avatar equations, curves, modifiers and portable exports.
@@ -26,6 +30,7 @@ This is a release status grid, not a promise of universal model/device compatibi
 | Feature | Status | What works / what remains |
 | --- | --- | --- |
 | Built-in demo avatar | Working | Starts without extra model files or SDKs. |
+| iFacialMocap live UDP input | Implemented in v0.28 Alpha | Legacy/v2 parsing, head/eye/blendshape data, scoped receiver and stale recovery; physical phone acceptance remains unverified. No TCP/Bluetooth/recording transfer. |
 | Live2D model3/moc3 imports and nested folders | Working with limits | Standard ArtMeshes, authored mappings, full-body framing and exported textures; advanced Cubism 5.3 offscreen rendering is unsupported. |
 | Separate Cubism runtime process | Implemented | Native Core worker, private binary pipes, bounded messages and failure timeouts; use the library matching the OS. |
 | PNG/GIF avatars | Working | Guided import, talking/blinking states, transitions and bounded GIF playback; large sources may be downscaled to the playback budget. |
@@ -38,7 +43,6 @@ This is a release status grid, not a promise of universal model/device compatibi
 | NVIDIA RTX webcam tracking | Experimental | Adapter/setup code exists; NVIDIA SDK bridge build and real GPU inference remain unverified. |
 | Microphone talking controls | Implemented | Audio levels drive image/model controls; device-specific acceptance remains. |
 | Xbox / PlayStation / Switch controller inputs | Partial validation | SDL mappings and virtual-controller tests; physical controllers/adapters still need coverage. |
-| VBridger configuration import/editor | Experimental | Legacy/V2 outputs, equations, weighted curves, delay/smoothing/steps, vectors and saved configs tested; native VMC and audio phoneme inference excluded. [Compatibility](vbridger.md). |
 | Per-avatar mapping, ranges, poses and presets | Working | Individual guided exercises, illustrated tracking face, selectable takes, calibration, inversion, holds/freeze, profiles and Windows hotkeys. |
 | Live2D expressions and physics groups | Working with limits | exp3 blending and per-model/group settings; only the documented Cubism subset is supported. |
 | Live2D layer visibility groups | Implemented in v0.26 Alpha | Exported ArtMesh opacity, reversible hiding, named groups, presets and Windows hotkeys. |
@@ -70,6 +74,7 @@ and [compatibility reports](https://github.com/NekoUnix/A.R.I.A/issues/new/choos
 | Install on an Intel or Apple Silicon Mac | [Native packages](platforms.md#install-an-alpha-release) |
 | Use a webcam or NVIDIA RTX facial inference | [Webcam tracking](webcam.md) |
 | Connect iPhone VTube Studio or a tracking tool | [Tracking protocol](tracking.md) |
+| Connect iFacialMocap on my iPhone | [iFacialMocap setup and troubleshooting](ifacialmocap.md) |
 | Import or customize VBridger equations | [VBridger config editor](vbridger.md) |
 | Match tracking to my face and rig | [Personal calibration](tracking-setup.md) |
 | Use a gamepad with my avatar | [Controllers](controllers.md) |
@@ -90,7 +95,8 @@ and [compatibility reports](https://github.com/NekoUnix/A.R.I.A/issues/new/choos
 | Understand code or verified limitations | [Architecture](architecture.md), [validation](validation.md) |
 | Contribute code or review a pull request | [Contribution guide](../CONTRIBUTING.md), [development workflow](development.md) |
 
-The tracking screenshot shows v0.26 Alpha. Other guides retain v0.23–v0.25 images
+The tracking screenshot shows v0.28 Alpha with a labeled local iFacialMocap simulator.
+Other guides retain earlier images
 of controls that remain available, using the owner's supplied avatars.
 They demonstrate UI layout; camera configuration screens do not imply an active
 camera connection. [Artwork provenance and reproduction notes](images/README.md).

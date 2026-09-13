@@ -16,6 +16,8 @@ The illustration uses a synthetic test capture; personal setup requires a real t
 2. Connect a face tracker. For a local webcam, choose MediaPipe or NVIDIA RTX,
    follow [camera setup](webcam.md), and press **Start camera**. For iPhone VTube Studio, enable **3rd Party PC Clients**
    on the phone, enter its IPv4 address and request port in ARIA, and connect.
+   For iFacialMocap choose **iPhone · iFacialMocap**, enter the phone's IPv4 address,
+   start with both ports at **49983**, and connect using the [phone setup guide](ifacialmocap.md).
    Keep both devices on a reachable network. See [Windows setup](windows.md) for
    connection and firewall troubleshooting. Demo and microphone-only mode cannot
    calibrate your facial movement; microphone sensitivity has its own controls.

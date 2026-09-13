@@ -769,3 +769,27 @@ screenshot scenario `vbridger` previews the import with an isolated profile.
 VBridger timing parity, standalone input-curve files, native application reimport
 of ARIA exports and physical tracking-device acceptance remain unverified. See
 [the Experimental compatibility guide](vbridger.md).
+
+## v0.28 Alpha iFacialMocap update
+
+Local Windows validation with Rust 1.98.1 includes **200 passing workspace tests**
+(22 hardware/fixture checks remain opt-in), strict all-target/all-feature Clippy,
+formatting and repository contracts. Receiver tests exercise the documented UDP
+start request, legacy and v2 packets, blendshape aliases, independent head axes,
+malformed/oversized packets, stale recovery, no repeated starts during a healthy
+stream, cooperative shutdown and release of the socket. Profile tests round-trip
+separate iFacialMocap settings per avatar and preserve existing VTube Studio ports.
+
+The optional native VBridger test above now decodes iFacialMocap mouth packets
+before evaluating the supplied config against the owner's full Odette model:
+34 outputs, 26 connected assignments, changed geometry and exact frozen poses.
+The `ifacialmocap` screenshot scenario additionally receives live UDP from ARIA's
+local simulator and asserts fresh tracking while rendering that model in the
+native Windows app. The published screenshot labels this simulated phone clearly.
+
+These checks do not establish physical iPhone direction, latency, network or
+cross-platform hardware acceptance. On a real phone, verify head directions,
+blink/gaze/mouth ranges, calibration and reconnection after backgrounding the app.
+iFacialMocap UDP has no explicit face-found flag; ARIA uses packet freshness.
+TCP, Bluetooth and recording transfer are not implemented. See the
+[setup and protocol guide](ifacialmocap.md) for the supported interface and limits.

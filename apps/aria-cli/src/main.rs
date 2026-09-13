@@ -27,6 +27,15 @@ enum Command {
         #[arg(long, default_value_t = 60)]
         seconds: u32,
     },
+    /// Emulate live iFacialMocap UDP on loopback (diagnostics, not a real camera).
+    SimulateIfacial {
+        #[arg(long, default_value_t = 49984)]
+        port: u16,
+        #[arg(long, default_value_t = 60)]
+        fps: u32,
+        #[arg(long, default_value_t = 60)]
+        seconds: u32,
+    },
     /// Send versioned ARIA JSON tracking to an explicit destination.
     SendJson {
         #[arg(long, default_value = "127.0.0.1:11125")]
@@ -38,12 +47,15 @@ enum Command {
     Listen {
         #[arg(long, default_value = "127.0.0.1")]
         sender: Ipv4Addr,
-        #[arg(long, default_value_t = 21412)]
-        request_port: u16,
-        #[arg(long, default_value_t = 11125)]
-        listen_port: u16,
         #[arg(long)]
+        request_port: Option<u16>,
+        #[arg(long)]
+        listen_port: Option<u16>,
+        #[arg(long, conflicts_with = "ifacialmocap")]
         json: bool,
+        /// Receive iFacialMocap UDP; both ports default to 49983.
+        #[arg(long)]
+        ifacialmocap: bool,
         #[arg(long, default_value_t = 30)]
         seconds: u32,
     },
@@ -58,9 +70,49 @@ fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
+fn simulate_ifacial(port: u16, fps: u32, seconds: u32) -> Result<()> {
+    ensure!(
+        port > 0 && (1..=120).contains(&fps) && seconds > 0,
+        "Use a nonzero port/duration and 1–120 FPS"
+    );
+    let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, port))?;
+    socket.set_nonblocking(true)?;
+    eprintln!(
+        "Synthetic iFacialMocap phone on 127.0.0.1:{port}. This is a diagnostic simulation, not camera tracking."
+    );
+    let start = Instant::now();
+    let mut client = None;
+    let mut buffer = [0; 1024];
+    while start.elapsed() < Duration::from_secs(seconds.into()) {
+        // Bound request processing so a noisy local peer cannot starve frame sending.
+        for _ in 0..32 {
+            match socket.recv_from(&mut buffer) {
+                Ok((len, from)) if &buffer[..len] == aria_tracking::ifacial::START => {
+                    client = Some(from)
+                }
+                Ok(_) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e.into()),
+            }
+        }
+        if let Some(client) = client {
+            socket.send_to(
+                &protocol::encode(
+                    &demo_frame(start.elapsed().as_secs_f32()),
+                    Protocol::IFacialMocap,
+                )?,
+                client,
+            )?;
+        }
+        thread::sleep(Duration::from_secs_f64(1.0 / f64::from(fps)));
+    }
+    Ok(())
+}
+
 fn main() -> Result<()> {
     match Args::parse().command {
         Command::SimulateVts { port, fps, seconds } => simulate_vts(port, fps, seconds),
+        Command::SimulateIfacial { port, fps, seconds } => simulate_ifacial(port, fps, seconds),
         Command::SendJson { target, seconds } => {
             ensure!(seconds > 0, "seconds must be positive");
             let socket = UdpSocket::bind("0.0.0.0:0")?;
@@ -78,14 +130,25 @@ fn main() -> Result<()> {
             request_port,
             listen_port,
             json,
+            ifacialmocap,
             seconds,
         } => {
             ensure!(seconds > 0, "seconds must be positive");
             let receiver = Receiver::start(ReceiverConfig {
                 sender_ip: sender,
-                request_port,
-                listen_port,
-                protocol: if json {
+                request_port: request_port.unwrap_or(if ifacialmocap {
+                    aria_tracking::ifacial::PORT
+                } else {
+                    21412
+                }),
+                listen_port: listen_port.unwrap_or(if ifacialmocap {
+                    aria_tracking::ifacial::PORT
+                } else {
+                    11125
+                }),
+                protocol: if ifacialmocap {
+                    Protocol::IFacialMocap
+                } else if json {
                     Protocol::AriaJson
                 } else {
                     Protocol::VTubeStudio

@@ -78,3 +78,15 @@ label. The owner-provided Odette model is behind the floating editor. Tracking
 uses visibly labeled Demo input; this is an import/layout check, not a phone
 recording. An isolated profile protects personal settings. The screenshot
 contains no raw config, model files or SDK binaries.
+
+## v0.28 iFacialMocap update
+
+`ifacialmocap-v28.png` is an unedited native Windows capture of the optimized
+v0.28.0-alpha.1 screenshot build with the owner's full Odette model. A separate
+loopback CLI simulator sends real UDP packets through the new adapter; the UI
+explicitly labels the source as simulated. Temporary test ports avoid collisions
+with a user's tracker. This validates connection/layout/rendering, not physical
+iPhone capture or latency. An isolated profile protects saved app settings.
+The README's Cubism instructions were checked against the official Native SDK
+page/library list and the locally extracted SDK's Windows/Linux/macOS layout.
+No private avatar files, config exports or SDK binaries are included.
