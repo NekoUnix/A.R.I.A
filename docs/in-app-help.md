@@ -948,7 +948,7 @@ Enable Send full resolution to OBS (Spout), install the separate OBS Spout2 plug
 
 @diagram capture
 
-## spout | Full-resolution OBS capture | Spout shares the full canvas texture with OBS on Windows. Use the separate Spout2 Capture plugin and keep ARIA and OBS on the same GPU.
+## spout | Native full-resolution OBS capture | Windows uses Spout2, macOS uses Syphon and Linux uses the included ARIA Canvas OBS plugin. The OBS canvas stays full resolution while the preview stays small.
 
 ### Set up OBS
 
@@ -961,6 +961,14 @@ The sender uses OBS canvas resolution even if the desktop preview is small or mi
 ### Missing or stalled source
 
 Check the output's live status text, open switch and Send switch. Retry OBS output recreates sender resources after a failure; it may briefly interrupt all active senders. The Windows DirectX 12 renderer supports ARIA's current Spout bridge; a different backend may report that sharing is unavailable. Keep the output open while using it. Closing it releases its capture texture and sender, while minimizing preserves full-resolution frames.
+
+### macOS and Linux
+
+On macOS add Syphon Client in OBS, choose ARIA and the canvas name shown in the status. The complete Alpha app includes Syphon.framework. Enable alpha, and turn off transparency correction if offered because the canvas is already premultiplied. Metal copies stay on the GPU.
+
+On Linux install the included aria-obs-canvas package or run install-obs-linux.sh from the portable folder, restart native OBS, and add ARIA Canvas (Alpha). Choose the live sender. Reopen properties to refresh senders; select the new PID after restarting ARIA. Resizing reconnects automatically. Run both apps as the same user. The plugin preserves alpha without chroma filtering and uses local shared memory; no network server is started.
+
+Linux uses one asynchronous readback buffer per canvas, capped at 60 FPS. It uses more CPU/memory bandwidth than Spout or Syphon; try 1080p at 30 FPS on slower systems. A full /dev/shm reports an allocation error: lower the resolution and use Retry OBS output. Flatpak/Snap OBS requires a matching extension and is not supported by the bundled installer. The native source is independent of Wayland/X11 screen capture.
 
 ## resolution | Canvas resolution & resource cost | Canvas resolution sets the actual pixels sent to OBS. Preview size controls desktop space separately; increasing resolution raises GPU work and memory use.
 

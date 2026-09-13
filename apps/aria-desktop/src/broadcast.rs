@@ -1,5 +1,4 @@
 //! Full-resolution offscreen canvases, independent of native preview windows.
-#[cfg(windows)]
 use crate::output::SENDERS;
 use crate::output::{CanvasSettings, Scene};
 use eframe::{
@@ -10,8 +9,7 @@ use std::time::{Duration, Instant};
 
 #[derive(Default)]
 pub struct Broadcasts {
-    #[cfg(windows)]
-    bridge: Option<crate::spout::Bridge>,
+    bridge: Option<crate::native_output::Bridge>,
     attempted_bridge: bool,
     bridge_error: Option<String>,
     targets: [Option<Target>; 3],
@@ -22,8 +20,7 @@ pub struct Broadcasts {
 }
 struct Target {
     view: wgpu::TextureView,
-    #[cfg(windows)]
-    sender: crate::spout::Sender,
+    sender: crate::native_output::Sender,
     last: Option<(CanvasSettings, u64)>,
 }
 impl Broadcasts {
@@ -33,10 +30,7 @@ impl Broadcasts {
         self.attempted_size = Default::default();
         self.pending_resize = Default::default();
         self.status = Default::default();
-        #[cfg(windows)]
-        {
-            self.bridge = None;
-        }
+        self.bridge = None;
         self.attempted_bridge = false;
         self.bridge_error = None;
     }
@@ -64,15 +58,9 @@ impl Broadcasts {
         }
         if !self.attempted_bridge {
             self.attempted_bridge = true;
-            #[cfg(windows)]
-            match crate::spout::Bridge::new(state) {
+            match crate::native_output::Bridge::new(state) {
                 Ok(bridge) => self.bridge = Some(bridge),
-                Err(e) => self.bridge_error = Some(format!("Spout unavailable: {e:#}")),
-            }
-            #[cfg(not(windows))]
-            {
-                self.bridge_error =
-                    Some("Spout output currently requires Windows and DirectX 12.".into());
+                Err(e) => self.bridge_error = Some(format!("Native OBS output unavailable: {e:#}")),
             }
         }
         for (i, config) in configs.iter().enumerate() {
@@ -97,7 +85,6 @@ impl Broadcasts {
                 self.pending_resize[i] = None;
                 self.targets[i] = None;
                 self.attempted_size[i] = Some(size);
-                #[cfg(windows)]
                 match self.create_target(state, i, size) {
                     Ok(target) => self.targets[i] = Some(target),
                     Err(e) => {
@@ -109,35 +96,35 @@ impl Broadcasts {
             let Some(target) = &mut self.targets[i] else {
                 continue;
             };
-            if target
+            let changed = !target
                 .last
                 .as_ref()
-                .is_some_and(|(c, r)| c == config && *r == revision)
-            {
-                continue;
+                .is_some_and(|(c, r)| c == config && *r == revision);
+            if changed {
+                render_canvas(ctx, &self.paint_context, state, &target.view, scene, config);
             }
-            render_canvas(ctx, &self.paint_context, state, &target.view, scene, config);
-            #[cfg(windows)]
-            match self.bridge.as_ref().unwrap().send(&target.sender) {
-                Ok(true) => {
+            match crate::native_output::send(
+                self.bridge.as_ref().unwrap(),
+                &mut target.sender,
+                changed,
+            ) {
+                Ok(sent) => {
                     self.status[i] = Some(format!(
-                        "{} · {} × {} · GPU sharing active",
+                        "{} · {} × {} · {}{}",
                         target.sender.name(),
                         size[0],
-                        size[1]
+                        size[1],
+                        crate::native_output::description(),
+                        if sent { "" } else { " · frame pending" }
                     ));
                     target.last = Some((config.clone(), revision));
                 }
-                Ok(false) => {
-                    self.status[i] = Some("Receiver busy · keeping previous frame".into());
-                }
                 Err(e) => {
-                    self.status[i] = Some(format!("Spout send failed: {e:#}"));
+                    self.status[i] = Some(format!("OBS send failed: {e:#}. Use Retry OBS output."));
                 }
             }
         }
     }
-    #[cfg(windows)]
     fn create_target(
         &self,
         state: &RenderState,
@@ -160,7 +147,9 @@ impl Broadcasts {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: state.target_format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
         let sender = self
@@ -244,7 +233,7 @@ fn render_canvas(
         .submit(commands.into_iter().chain([encoder.finish()]));
 }
 
-/// One-shot readback for image export. Live outputs continue to share GPU textures.
+/// One-shot readback for image export; independent of native live outputs.
 pub fn save_png(
     ctx: &egui::Context,
     state: &RenderState,
@@ -277,7 +266,9 @@ pub fn save_png(
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
         format: state.target_format,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::COPY_SRC
+            | wgpu::TextureUsages::TEXTURE_BINDING,
         view_formats: &[],
     });
     let config = CanvasSettings {

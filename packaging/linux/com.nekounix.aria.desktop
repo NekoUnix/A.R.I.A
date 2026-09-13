@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ARIA Alpha
+Comment=Avatar Studio - Live2D, VRM and PNG/GIF tracking (Alpha)
+Exec=aria-desktop
+Icon=com.nekounix.aria
+Terminal=false
+Categories=AudioVideo;Graphics;
+StartupWMClass=com.nekounix.aria

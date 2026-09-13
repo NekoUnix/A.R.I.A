@@ -1423,15 +1423,12 @@ impl AriaApp {
                     ui.label(RichText::new(status).small().color(mint()));
                 }
                 ui.collapsing("OBS connection & troubleshooting", |ui| {
-                if crate::help::control(ui, "spout", |ui| ui.small_button("Retry OBS output"))
-                    .clicked()
-                {
-                    self.broadcasts.retry();
-                }
-                theme::caption(
-                    ui,
-                    "OBS → Spout2 Capture → select the matching ARIA sender. Keep ARIA and OBS on the same GPU. Leave the output open; minimizing its preview keeps the full-resolution sender running.",
-                );
+                    if crate::help::control(ui, "spout", |ui| ui.small_button("Retry OBS output"))
+                        .clicked()
+                    {
+                        self.broadcasts.retry();
+                    }
+                    theme::caption(ui, crate::native_output::GUIDE);
                 });
                 crate::help::label(ui, "Frame rate target", "performance");
                 egui::ComboBox::from_id_salt("fps")
@@ -2572,11 +2569,11 @@ impl eframe::App for AriaApp {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
                             RichText::new(if cfg!(windows) {
-                                "v0.24 · WINDOWS PREVIEW"
+                                "v0.25 · WINDOWS ALPHA"
                             } else if cfg!(target_os = "macos") {
-                                "v0.24 · MACOS EXPERIMENTAL"
+                                "v0.25 · MACOS ALPHA"
                             } else {
-                                "v0.24 · LINUX EXPERIMENTAL"
+                                "v0.25 · LINUX ALPHA"
                             })
                             .small()
                             .color(muted()),

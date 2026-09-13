@@ -1,0 +1,100 @@
+name: Alpha packages
+
+on:
+  push:
+    branches: [codex/native-obs-alpha]
+    tags: ['v*-alpha.*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alpha-packages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux
+            arch: x64
+          - os: macos-15
+            platform: macos
+            arch: arm64
+          - os: macos-15-intel
+            platform: macos
+            arch: x64
+          - os: windows-latest
+            platform: windows
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: alpha-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            alpha-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}-
+            alpha-${{ matrix.os }}-
+      - name: Linux native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake pkg-config libasound2-dev libudev-dev libssl-dev libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libgl1-mesa-dev libobs-dev rpm zstd xvfb mesa-vulkan-drivers
+      - name: Install pinned compiler
+        run: rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Formatting and repository contracts
+        run: |
+          cargo fmt --all --check
+          python scripts/check-repository.py
+          python -m unittest discover -s tracking -v
+      - name: Native lint and regression tests
+        run: |
+          cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+          cargo test --locked --workspace
+      - name: Linux OBS plugin and protocol tests
+        if: runner.os == 'Linux'
+        run: |
+          cmake -S native/linux-canvas -B target/obs-plugin -DCMAKE_BUILD_TYPE=Release
+          cmake --build target/obs-plugin --parallel 2
+          ctest --test-dir target/obs-plugin --output-on-failure
+      - name: macOS Syphon framework
+        if: runner.os == 'macOS'
+        run: sh scripts/build-syphon.sh
+      - name: Optimized native executables
+        if: runner.os != 'Windows'
+        run: cargo build --locked --release --workspace
+      - name: Linux and macOS Alpha packages
+        if: runner.os != 'Windows'
+        run: python scripts/package-native.py ${{ matrix.platform }}
+      - name: Windows Alpha package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -SkipTests
+      - name: Upload Alpha packages
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: aria-alpha-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+            dist/*.rpm
+            dist/*.pkg.tar.zst
+          if-no-files-found: error
+          retention-days: 30

@@ -173,7 +173,7 @@ dependencies = [
 
 [[package]]
 name = "aria-cli"
-version = "0.24.0"
+version = "0.25.0-alpha.1"
 dependencies = [
  "anyhow",
  "aria-core",
@@ -185,7 +185,7 @@ dependencies = [
 
 [[package]]
 name = "aria-core"
-version = "0.24.0"
+version = "0.25.0-alpha.1"
 dependencies = [
  "anyhow",
  "serde",
@@ -194,7 +194,7 @@ dependencies = [
 
 [[package]]
 name = "aria-desktop"
-version = "0.24.0"
+version = "0.25.0-alpha.1"
 dependencies = [
  "anyhow",
  "aria-core",
@@ -203,6 +203,7 @@ dependencies = [
  "aria-tracking",
  "base64 0.23.1",
  "bytemuck",
+ "cc",
  "cpal",
  "eframe",
  "getrandom 0.4.3",
@@ -227,7 +228,7 @@ dependencies = [
 
 [[package]]
 name = "aria-live2d"
-version = "0.24.0"
+version = "0.25.0-alpha.1"
 dependencies = [
  "anyhow",
  "aria-core",
@@ -239,7 +240,7 @@ dependencies = [
 
 [[package]]
 name = "aria-model"
-version = "0.24.0"
+version = "0.25.0-alpha.1"
 dependencies = [
  "anyhow",
  "aria-core",
@@ -250,7 +251,7 @@ dependencies = [
 
 [[package]]
 name = "aria-tracking"
-version = "0.24.0"
+version = "0.25.0-alpha.1"
 dependencies = [
  "anyhow",
  "aria-core",
