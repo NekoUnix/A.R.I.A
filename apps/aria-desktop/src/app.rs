@@ -2645,7 +2645,7 @@ impl eframe::App for AriaApp {
             &self.input_monitor.saved.config,
         );
 
-        self.metrics.update(
+        if self.metrics.update(
             self.render_state.as_ref(),
             self.live2d
                 .iter()
@@ -2653,7 +2653,10 @@ impl eframe::App for AriaApp {
                 .chain(self.items.models.process_ids())
                 .chain(self.effects.process_ids())
                 .chain(self.camera.process_ids()),
-        );
+        ) {
+            self.metrics
+                .record_graphs(&self.snapshot, self.render_fps, frame.info().cpu_usage);
+        }
         egui::Panel::top("header")
             .frame(Frame::new().fill(bg()).inner_margin(10.0))
             .show(root_ui, |ui| {
@@ -2692,13 +2695,7 @@ impl eframe::App for AriaApp {
             .frame(Frame::new().fill(bg()).inner_margin(10.0))
             .show(root_ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    self.metrics.footer(
-                        ui,
-                        &self.snapshot,
-                        self.render_fps,
-                        frame.info().cpu_usage,
-                        &self.gpu,
-                    );
+                    self.metrics.footer(ui, &self.gpu);
                 });
             });
         egui::Panel::left("controls")

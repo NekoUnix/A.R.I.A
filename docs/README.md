@@ -10,6 +10,10 @@ avatar, stage and poses. Hover or click any circled **?** for offline explanatio
 
 [New responsive speech controls and resource counters](responsiveness.md) explain the v0.26 Alpha upgrade.
 
+The current source adds [colorful performance graphs](responsiveness.md#read-the-bottom-bar)
+with hover readings and session low/high records. This update is newer than the
+published v0.26.0-alpha.1 downloads.
+
 ## Current and planned features
 
 **Working** means implemented with the validation described below, primarily on

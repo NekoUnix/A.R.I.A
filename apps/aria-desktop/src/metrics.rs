@@ -4,6 +4,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     time::{Duration, Instant},
 };
+mod graphs;
 
 #[derive(Default, serde::Serialize)]
 pub struct Usage {
@@ -41,6 +42,7 @@ struct ProcessSample {
 #[derive(Default)]
 pub struct Metrics {
     pub usage: Usage,
+    graphs: graphs::History,
     last_sample: Option<Instant>,
     previous: BTreeMap<u32, ProcessSample>,
     frame_intervals: VecDeque<f64>,
@@ -58,13 +60,17 @@ impl Metrics {
             self.usage.slow_frames = self.usage.slow_frames.saturating_add(1);
         }
     }
-    pub fn update(&mut self, state: Option<&RenderState>, workers: impl Iterator<Item = u32>) {
+    pub fn update(
+        &mut self,
+        state: Option<&RenderState>,
+        workers: impl Iterator<Item = u32>,
+    ) -> bool {
         let now = Instant::now();
         if self
             .last_sample
             .is_some_and(|last| now.duration_since(last) < Duration::from_secs(1))
         {
-            return;
+            return false;
         }
         let seconds = self
             .last_sample
@@ -110,85 +116,19 @@ impl Metrics {
             u.frame_average_ms = Some(frames.iter().sum::<f64>() / frames.len() as f64);
             u.frame_p95_ms = Some(frames[(frames.len() * 95).div_ceil(100) - 1]);
         }
+        true
     }
-    pub fn footer(
-        &self,
-        ui: &mut egui::Ui,
+    pub fn record_graphs(
+        &mut self,
         snapshot: &aria_tracking::Snapshot,
         fps: f32,
         ui_seconds: Option<f32>,
-        gpu: &str,
     ) {
-        let u = &self.usage;
-        ui.small(format!("{fps:.0} FPS")).on_hover_text(
-            "Model update rate. This can differ from phone tracking rate and display refresh rate.",
-        );
-        ui.separator();
-        ui.small(format!("CPU {}", number(u.managed_cpu_percent, "%"))).on_hover_text("Desktop + owned Cubism/camera workers; normalized across logical processors. First sample or an unreadable worker shows N/A.");
-        ui.small(format!("RAM {}", mib(u.managed_ram_bytes))).on_hover_text("Sum of resident working sets for ARIA and owned workers. Shared pages may be counted in more than one process.");
-        ui.small(format!("VRAM {}", mib(u.vram_bytes))).on_hover_text("ARIA local GPU allocation, not GPU utilization. Budget and shared GPU memory are in Details.");
-        let age = snapshot
-            .received_at
-            .map(|t| t.elapsed().as_secs_f64() * 1000.0);
-        let fresh = age.is_some_and(|ms| ms < 1000.0);
-        let tracking = if fresh {
-            format!(
-                "Tracking {:.0} Hz · {:.0} ms",
-                snapshot.packets_per_second,
-                age.unwrap()
-            )
-        } else {
-            "Tracking —".into()
-        };
-        ui.small(tracking).on_hover_text("Accepted tracking packets per second and time since the latest packet arrived locally. This is not camera-to-screen latency. Demo/disconnected sources show a dash.");
-        let details = ui.button("Details");
-        let popup = egui::Popup::menu(&details);
-        #[cfg(feature = "screenshots")]
-        let popup = if crate::smoke_mode()
-            && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("performance-details")
-        {
-            popup.open(true)
-        } else {
-            popup
-        };
-        popup.show(|ui| {
-            ui.set_min_width(325.0);
-            ui.strong("Performance · local counters");
-            crate::help::button(ui, "metrics");
-            ui.small(gpu);
-            ui.separator();
-            egui::Grid::new("resource-details").num_columns(2).show(ui, |ui| {
-                let mut row = |name: &str, value: String| { ui.label(name); ui.monospace(value); ui.end_row(); };
-                row("Desktop CPU", number(u.cpu_percent, "%"));
-                row("Desktop RAM", mib(u.ram_bytes));
-                row("Owned processes readable", format!("{} / {}",u.readable_processes,u.managed_processes));
-                row("Total private commit", mib(u.managed_private_bytes));
-                row("System RAM available / total", format!("{} / {}",mib(u.system_ram_available_bytes),mib(u.system_ram_total_bytes)));
-                row("GPU budget", mib(u.vram_budget_bytes));
-                row("Shared GPU memory", mib(u.shared_gpu_bytes));
-                row("Process I/O read / write", format!("{} / {}", rate_text(u.io_read_bytes_per_second), rate_text(u.io_write_bytes_per_second)));
-                row("Open handles", u.handles.map_or_else(||"N/A".into(),|n|n.to_string()));
-                row("Frame interval average / p95", format!("{} / {}", number(u.frame_average_ms," ms"),number(u.frame_p95_ms," ms")));
-                row("Slow updates this session", u.slow_frames.to_string());
-                row("Previous UI work", number(ui_seconds.map(|v|f64::from(v)*1000.0)," ms"));
-                row("Accepted / rejected / ignored packets", format!("{} / {} / {}",snapshot.packets,snapshot.rejected,snapshot.ignored));
-            });
-            ui.separator();
-            ui.small("OS counters: 1 Hz. Frame history: last 120 updates.\nSlow: >1.5× frame budget. I/O includes pipes and network.\nOnly directly owned workers are included. N/A = unavailable.\nThese counters stay on your computer.");
-        });
+        self.graphs.record(&self.usage, snapshot, fps, ui_seconds);
     }
-}
-fn number(value: Option<f64>, unit: &str) -> String {
-    value.map_or_else(|| "N/A".into(), |v| format!("{v:.1}{unit}"))
-}
-fn mib(value: Option<u64>) -> String {
-    value.map_or_else(
-        || "N/A".into(),
-        |v| format!("{:.0} MiB", v as f64 / 1048576.0),
-    )
-}
-fn rate_text(value: Option<f64>) -> String {
-    number(value.map(|v| v / 1024.0), " KiB/s")
+    pub fn footer(&self, ui: &mut egui::Ui, gpu: &str) {
+        self.graphs.footer(ui, gpu);
+    }
 }
 fn counter_rate(before: u64, after: u64, seconds: f64) -> Option<f64> {
     if !seconds.is_finite() || seconds <= 0.0 {
@@ -378,8 +318,6 @@ mod tests {
         assert_eq!(counter_rate(10, 9, 1.0), None);
         assert_eq!(counter_rate(0, 1, 0.0), None);
         assert_eq!(counter_rate(0, 1, f64::NAN), None);
-        assert_eq!(mib(None), "N/A");
-        assert_eq!(mib(Some(0)), "0 MiB");
     }
     #[test]
     fn frame_history_is_bounded_and_counts_stalls() {

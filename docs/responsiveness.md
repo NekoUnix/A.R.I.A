@@ -42,10 +42,26 @@ Set that target under **Output → Capture & performance → FPS target**.
 
 ## Read the bottom bar
 
-![Expanded performance counters with Odette](images/performance-details-v26.png)
+![Colorful performance graphs and collapsible counter groups](images/performance-graphs.png)
 
-**FPS · CPU · RAM · VRAM · Tracking Hz / age** stays compact; **Details** opens
-the extra information on demand.
+The current development build replaces the numeric footer with six colorful
+mini graphs: **FPS, CPU, RAM, VRAM, tracking Hz and packet age**. Click **Graphs**
+for a scrollable view of all counters in collapsible groups. The published
+v0.26.0-alpha.1 release predates this graph update.
+
+- Hover along a graph for the actual sampled value, its session time/age, the
+  latest value, and **Session low / Session high**.
+- The graph retains at most **two minutes / 121 samples**. Low/high include all
+  valid one-second samples for the entire time this ARIA instance is open.
+- Switching models, freezing a pose, hiding the detailed view or reconnecting
+  tracking does not clear the extrema. Closing and reopening ARIA resets them.
+- Gaps and **N/A** mean unavailable, not zero. Missing readings do not change
+  the extrema, and long pauses are not connected by invented lines.
+- Every graph scales independently; its tooltip includes units and the vertical
+  scale. Colors identify metrics, not warning thresholds. Hover values are real
+  samples rather than interpolated measurements.
+- Session extrema describe the sampled readings, not unmeasured peaks between
+  one-second samples. History is kept in bounded memory and is not saved to disk.
 
 | Counter | Meaning |
 | --- | --- |
@@ -69,13 +85,14 @@ the optional [control API](api.md).
 - Tracking snapshots are copied on model ticks, not on each UI layout/pointer repaint.
 - Model timing retains scheduled deadlines and skips missed slots after stalls.
 - Live2D layer opacity is calculated when visibility settings change, then reused.
-- Performance history is bounded and Details is only laid out while open.
+- Performance history is bounded and expanded graphs are only laid out while open.
 
 For low FPS, first check output resolutions and active canvases, then avatar atlas
 size and other GPU-heavy programs. A smaller preview window does not lower OBS
 canvas resolution. Windows High priority can help CPU scheduling contention, but
 does not increase tracking capture rate or GPU capacity.
 
-These changes are included in **0.26.0-alpha.1**. Download the matching package
+Responsive speech and the original numeric counters are included in **0.26.0-alpha.1**;
+the graph update currently requires building this source branch. Download published packages
 from [Releases](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.26.0-alpha.1). See [Windows builds](windows.md), [Linux installs](linux.md)
 and [platform packages](platforms.md) for the appropriate installation path.
