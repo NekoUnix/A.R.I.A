@@ -31,7 +31,7 @@ cpal = "=0.17.3"
 gltf = { version = "1.4.1", default-features = false, features = ["utils", "names"] }
 ufbx = "0.11.3"
 glam = "0.30"
-base64 = "0.22"
+base64 = "0.23"
 getrandom = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 tungstenite = { version = "0.28", features = ["native-tls"] }
