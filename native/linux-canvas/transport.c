@@ -11,7 +11,7 @@
 #include <errno.h>
 
 struct aria_canvas { int fd; uint8_t *map; size_t bytes; char path[192]; };
-static const char magic[8] = "ARIACV01";
+static const char magic[8] = {'A', 'R', 'I', 'A', 'C', 'V', '0', '1'};
 static void put32(uint8_t *p, uint32_t v) { memcpy(p, &v, 4); }
 static uint32_t get32(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v; }
 static uint64_t get64(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return v; }

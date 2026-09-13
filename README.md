@@ -2,6 +2,7 @@
 
 [![Windows build](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml/badge.svg)](https://github.com/NekoUnix/A.R.I.A/actions/workflows/windows.yml)
 [![Repository checks](https://github.com/NekoUnix/A.R.I.A/actions/workflows/repository.yml/badge.svg)](https://github.com/NekoUnix/A.R.I.A/actions/workflows/repository.yml)
+[![Alpha packages](https://github.com/NekoUnix/A.R.I.A/actions/workflows/alpha-build.yml/badge.svg)](https://github.com/NekoUnix/A.R.I.A/actions/workflows/alpha-build.yml)
 
 [User guides](docs/README.md) · [Contribute](CONTRIBUTING.md) ·
 [Code review and releases](docs/development.md) · [Report a bug](https://github.com/NekoUnix/A.R.I.A/issues/new/choose)
@@ -10,7 +11,7 @@ A cross-platform Alpha avatar app built in Rust with egui and wgpu. Run **Live2D
 0.x / 1.0**, or **PNG/GIF** avatars, connect tracking, build expressions and effects,
 and send compact-preview, full-resolution canvases to OBS.
 
-![Odette Live2D in ARIA v0.24](docs/images/workspace-v24.png)
+![Odette Live2D in ARIA v0.25 Alpha output controls](docs/images/outputs-alpha-v25.png)
 
 ## New in v0.25 Alpha
 
@@ -51,11 +52,12 @@ and send compact-preview, full-resolution canvases to OBS.
 | Mapping, calibration, expressions, physics and presets | Implemented | Broader rig/device acceptance |
 | Webcam / iPhone / controller input | Partial hardware validation | Physical camera, phone and controller testing |
 | NVIDIA RTX tracking | Experimental adapter | Native SDK build and actual GPU inference validation |
-| OBS outputs and Spout | Working on Windows | Linux/macOS sharing integrations planned |
+| Native OBS outputs | Alpha: Windows Spout2, macOS Syphon, Linux ARIA Canvas | Linux uses asynchronous readback; broader GPU/OBS acceptance remains |
 | Themes, offline help and local API | Implemented and tested | Continued documentation/device coverage |
 | Twitch / YouTube chat | Implemented; live-account testing pending | Provider/account acceptance |
 | Cubism runtime process and Linux/macOS builds | Experimental native platform support | Native-machine graphics/SDK validation; use each OS's Core library |
-| Signed installers and native OS packages | Planned | First release is an unsigned Windows portable ZIP |
+| Native OS packages | Alpha | Windows ZIP, macOS Intel/ARM app ZIPs, Linux tarball, Fedora RPM and Arch packages |
+| Developer signing and macOS notarization | Planned | Alpha packages are unsigned or locally ad-hoc signed |
 
 The [full current/planned feature grid](docs/README.md#current-and-planned-features)
 identifies what works, what is partial, and what is not implemented.

@@ -71,6 +71,9 @@ jobs:
           cmake --build target/obs-plugin --parallel 2
           ctest --test-dir target/obs-plugin --output-on-failure
           xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 target/obs-plugin/obs-canvas-test "$PWD/target/obs-plugin/aria-canvas.so"
+      - name: Build OBS plugins against Fedora and Arch
+        if: runner.os == 'Linux'
+        run: sh scripts/build-linux-obs-packages.sh
       - name: macOS Syphon framework
         if: runner.os == 'macOS'
         run: |
@@ -87,9 +90,6 @@ jobs:
       - name: Optimized native executables
         if: runner.os != 'Windows'
         run: cargo build --locked --release --workspace
-      - name: Build OBS plugins against Fedora and Arch
-        if: runner.os == 'Linux'
-        run: sh scripts/build-linux-obs-packages.sh
       - name: Linux and macOS Alpha packages
         if: runner.os != 'Windows'
         run: python scripts/package-native.py ${{ matrix.platform }}

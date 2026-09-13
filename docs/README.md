@@ -1,8 +1,8 @@
 # ARIA documentation — v0.25 Alpha
 
-![Odette in the current Windows workspace](images/workspace-v24.png)
+![Odette in the v0.25 Alpha output workspace](images/outputs-alpha-v25.png)
 
-Start with [Windows setup](windows.md), import your avatar, then follow
+Start with [Windows setup](windows.md) or [Linux/macOS package setup](platforms.md), import your avatar, then follow
 [personal tracking setup](tracking-setup.md). The left navigation is **Avatar /
 Tracking / Output / Chat / Settings**. Inspector tools stay grouped by tracking,
 avatar, stage and poses. Hover or click any circled **?** for offline explanations.
@@ -71,7 +71,7 @@ and [compatibility reports](https://github.com/NekoUnix/A.R.I.A/issues/new/choos
 | Understand code or verified limitations | [Architecture](architecture.md), [validation](validation.md) |
 | Contribute code or review a pull request | [Contribution guide](../CONTRIBUTING.md), [development workflow](development.md) |
 
-The workspace screenshot shows v0.24. Other images show the v0.23 interface
-with the owner's supplied avatars; v0.24 retains those controls.
+The output screenshot shows v0.25 Alpha. Other guides retain v0.23/v0.24 images
+of controls that remain available, using the owner's supplied avatars.
 They demonstrate UI layout; camera configuration screens do not imply an active
 camera connection. [Artwork provenance and reproduction notes](images/README.md).
