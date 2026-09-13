@@ -76,6 +76,6 @@ size and other GPU-heavy programs. A smaller preview window does not lower OBS
 canvas resolution. Windows High priority can help CPU scheduling contention, but
 does not increase tracking capture rate or GPU capacity.
 
-This is a **0.26.0-alpha.1 source/development build**. Published 0.25 binaries do
-not contain these changes. See [Windows builds](windows.md), [Linux installs](linux.md)
+These changes are included in **0.26.0-alpha.1**. Download the matching package
+from [Releases](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.26.0-alpha.1). See [Windows builds](windows.md), [Linux installs](linux.md)
 and [platform packages](platforms.md) for the appropriate installation path.

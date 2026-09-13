@@ -13,13 +13,13 @@ and send compact-preview, full-resolution canvases to OBS.
 
 ![Odette in ARIA v0.26 Alpha tracking controls](docs/images/responsive-speech-v26.png)
 
-## New in v0.26 Alpha (source build)
+## New in v0.26 Alpha
 
 - **Responsive speech:** per-avatar mouth smoothing with Instant, Quick and Soft choices; avoids stacked VTube Studio profile delay.
 - **Expanded bottom bar:** owned-worker CPU/RAM, GPU allocation, packet rate/age and expandable frame, memory and I/O details.
 - **Performance:** steadier frame deadlines, fewer tracking copies and cached Live2D visibility calculations.
 - Includes the Live2D layer groups, movable pins and configurable VRM motion upgrade.
-- [Setup, counter meanings and limitations](docs/responsiveness.md). Published 0.25 packages predate these source changes.
+- [Setup, counter meanings and limitations](docs/responsiveness.md). Included in the v0.26 Alpha release.
 
 ### Included from v0.25
 
@@ -61,7 +61,7 @@ and send compact-preview, full-resolution canvases to OBS.
 | Webcam / iPhone / controller input | Partial hardware validation | Physical camera, phone and controller testing |
 | NVIDIA RTX tracking | Experimental adapter | Native SDK build and actual GPU inference validation |
 | Native OBS outputs | Alpha: Windows Spout2, macOS Syphon, Linux ARIA Canvas | Linux uses asynchronous readback; broader GPU/OBS acceptance remains |
-| Responsive speech and resource details | Implemented in v0.26 source | Automated response tests; physical phone latency remains unmeasured |
+| Responsive speech and resource details | Implemented in v0.26 Alpha | Automated response tests; physical phone latency remains unmeasured |
 | Themes, offline help and local API | Implemented and tested | Continued documentation/device coverage |
 | Twitch / YouTube chat | Implemented; live-account testing pending | Provider/account acceptance |
 | Cubism runtime process and Linux/macOS builds | Experimental native platform support | Native-machine graphics/SDK validation; use each OS's Core library |
@@ -172,15 +172,15 @@ permission does **not** grant rights to reuse the artwork. Raw avatar files,
 textures, account credentials and Cubism/NVIDIA SDK binaries are not distributed.
 See [screenshot provenance](docs/images/README.md).
 
-This is a development build. Live2D motion3/pose3 playback and Cubism advanced
+This is an Alpha release. Live2D motion3/pose3 playback and Cubism advanced
 offscreen blending remain unsupported. Read the model-specific guides for other
 limits; no engine can automatically correct missing or incorrectly authored rigs.
 
-## Avatar customization included in v0.26 source
+## Avatar customization included in v0.26 Alpha
 
 - [Live2D layers](docs/live2d-layers.md): reversible hiding/transparency, model-owned groups and user-defined hotkeys.
 - [Stage anchors](docs/model-folders-and-pins.md): move a pin independently of its object; new Live2D attachments receive tracking automatically.
 - [VRM motion](docs/vrm.md#natural-movement-and-gesture-animations): configurable sway, breathing and arms, plus six clickable gestures and screenshot freezing.
 
-These features are in the source build. The published v0.25.0-alpha.1 binaries
-predate this upgrade; build the branch or use a subsequent release to try it.
+These features are included in v0.26.0-alpha.1. Download the matching package from
+[Releases](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.26.0-alpha.1).

@@ -1,8 +1,8 @@
 # Windows setup and operation
 
-![Odette in the v0.26 Alpha Windows source build](images/responsive-speech-v26.png)
+![Odette in the v0.26 Alpha Windows build](images/responsive-speech-v26.png)
 
-ARIA v0.26 Alpha adds [responsive speech and expanded performance counters](responsiveness.md). Build current source or use a v0.26 CI package to try it; published 0.25 packages predate this upgrade. It includes webcam tracking,
+ARIA v0.26 Alpha adds [responsive speech and expanded performance counters](responsiveness.md). Download the v0.26 Alpha package from [Releases](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.26.0-alpha.1), or build current source. It includes webcam tracking,
 the optional NVIDIA RTX adapter, themes and the control API introduced in v0.23.
 Guided tracking setup remains available for every avatar. See [Tracking setup](tracking-setup.md).
 Direct gamepad input and Live2D `NP_*` assignments remain available.

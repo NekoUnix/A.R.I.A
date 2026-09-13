@@ -8,7 +8,7 @@ Start with [Windows setup](windows.md), [Linux installation](linux.md) or
 Tracking / Output / Chat / Settings**. Inspector tools stay grouped by tracking,
 avatar, stage and poses. Hover or click any circled **?** for offline explanations.
 
-[New responsive speech controls and resource counters](responsiveness.md) explain the v0.26 source upgrade.
+[New responsive speech controls and resource counters](responsiveness.md) explain the v0.26 Alpha upgrade.
 
 ## Current and planned features
 
@@ -25,15 +25,15 @@ This is a release status grid, not a promise of universal model/device compatibi
 | PNG/GIF avatars | Working | Guided import, talking/blinking states, transitions and bounded GIF playback; large sources may be downscaled to the playback budget. |
 | VRM 0.x / 1.0 | Working with limits | Native GPU rendering, supported expressions/skinning/springs and pins; this is not a complete reference VRM/MToon renderer. |
 | iPhone VTube Studio / external JSON | Partial validation | Protocol, axes, loopback packets and calibration tested; physical phone/network acceptance remains. |
-| Responsive mouth input / resource details | Implemented in v0.26 source | Single speech filter, preset persistence, owned-process counters and frame/packet timing; physical phone latency remains unmeasured. |
+| Responsive mouth input / resource details | Implemented in v0.26 Alpha | Single speech filter, preset persistence, owned-process counters and frame/packet timing; physical phone latency remains unmeasured. |
 | Webcam MediaPipe tracking | Partial validation | Clean/repair installation and real image inference tested; physical camera tracking remains to be checked. |
 | NVIDIA RTX webcam tracking | Experimental | Adapter/setup code exists; NVIDIA SDK bridge build and real GPU inference remain unverified. |
 | Microphone talking controls | Implemented | Audio levels drive image/model controls; device-specific acceptance remains. |
 | Xbox / PlayStation / Switch controller inputs | Partial validation | SDL mappings and virtual-controller tests; physical controllers/adapters still need coverage. |
 | Per-avatar mapping, ranges, poses and presets | Working | Individual guided exercises, illustrated tracking face, selectable takes, calibration, inversion, holds/freeze, profiles and Windows hotkeys. |
 | Live2D expressions and physics groups | Working with limits | exp3 blending and per-model/group settings; only the documented Cubism subset is supported. |
-| Live2D layer visibility groups | Implemented in source | Exported ArtMesh opacity, reversible hiding, named groups, presets and Windows hotkeys. |
-| VRM idle motion and gestures | Implemented in source | Configurable sway, breathing and arms; six procedural gestures, blending and frozen poses. |
+| Live2D layer visibility groups | Implemented in v0.26 Alpha | Exported ArtMesh opacity, reversible hiding, named groups, presets and Windows hotkeys. |
+| VRM idle motion and gestures | Implemented in v0.26 Alpha | Configurable sway, breathing and arms; six procedural gestures, blending and frozen poses. |
 | Pinned PNG/GIF and Live2D objects | Working | Independent anchor editing, tracking enabled on new Live2D objects; limited simultaneous Live2D object instances. |
 | Custom throw assets | Updated | Replace/add controls, exact quantities, background PNG/GIF loading, file-specific errors and save validation; large 3D/Live2D props still have cold-load costs. |
 | 3D throw assets | Working with limits | Static GLB/glTF, VRM, FBX and OBJ; native .blend/.max/.ma project files must be exported first. |
@@ -85,11 +85,11 @@ of controls that remain available, using the owner's supplied avatars.
 They demonstrate UI layout; camera configuration screens do not imply an active
 camera connection. [Artwork provenance and reproduction notes](images/README.md).
 
-## Avatar customization included in v0.26 source
+## Avatar customization included in v0.26 Alpha
 
 - [Live2D layers](live2d-layers.md): reversible hiding/transparency, model-owned groups and user-defined hotkeys.
 - [Stage anchors](model-folders-and-pins.md): move a pin independently of its object; new Live2D attachments receive tracking automatically.
 - [VRM motion](vrm.md#natural-movement-and-gesture-animations): configurable sway, breathing and arms, plus six clickable gestures and screenshot freezing.
 
-These features are in the source build. The published v0.25.0-alpha.1 binaries
-predate this upgrade; build the branch or use a subsequent release to try it.
+These features are included in v0.26.0-alpha.1. Download the matching package from
+[Releases](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.26.0-alpha.1).
