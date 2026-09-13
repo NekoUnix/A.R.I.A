@@ -120,11 +120,11 @@ pub struct ModelRenderer {
 }
 
 impl ModelRenderer {
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub fn read_rgba_for_test(&self) -> Result<(Vec<u8>, [u32; 2])> {
         self.read_rgba()
     }
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub fn vertex_staging_capacity(&self) -> usize {
         self.vertex_staging.capacity()
     }

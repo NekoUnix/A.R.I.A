@@ -469,7 +469,7 @@ impl Renderer {
         queue.submit([encoder.finish()]);
         Ok(())
     }
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub fn read_rgba(&self) -> Result<Vec<u8>> {
         let size = self.output.texture().size();
         let stride = (size.width * 4).div_ceil(256) * 256;

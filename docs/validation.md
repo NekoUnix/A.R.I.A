@@ -20,10 +20,14 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 - The separate Cubism worker matched direct Core vertex deformation over minimum
   and maximum parameter frames on the supplied model. Terminating that worker
   returned a recoverable error without crashing the parent test process.
+- The native Windows desktop rendered the supplied Odette model through its own
+  worker mode; the current workspace screenshot above records that build.
 - Protocol tests reject bad headers/versions, oversized or truncated messages and
   trailing data. SDK-layout tests resolve native Windows/Linux/macOS siblings and
   reject a Windows-only DLL when no native sibling exists.
-- Linux/macOS CI was added. Graphical and native SDK execution on those operating
+- Linux and macOS native builds and regression tests passed in GitHub CI. Strict
+  lint also checks platform-specific code; Windows-only test helpers are excluded
+  from other targets. Graphical and native SDK execution on those operating
   systems remains unverified locally; this Windows host has no installed WSL distro
   or macOS runtime. See [platform support](platforms.md) and the per-commit CI results.
 

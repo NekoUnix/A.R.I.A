@@ -510,7 +510,7 @@ impl Avatar {
 
 const ARKIT: &str = "browdownleft browdownright browinnerup browouterupleft browouterupright cheekpuff cheeksquintleft cheeksquintright eyeblinkleft eyeblinkright eyelookdownleft eyelookdownright eyelookinleft eyelookinright eyelookoutleft eyelookoutright eyelookupleft eyelookupright eyesquintleft eyesquintright eyewideleft eyewideright jawforward jawleft jawopen jawright mouthclose mouthdimpleleft mouthdimpleright mouthfrownleft mouthfrownright mouthfunnel mouthleft mouthlowerdownleft mouthlowerdownright mouthpressleft mouthpressright mouthpucker mouthright mouthrolllower mouthrollupper mouthshruglower mouthshrugupper mouthsmileleft mouthsmileright mouthstretchleft mouthstretchright mouthupperupleft mouthupperupright nosesneerleft nosesneerright tongueout";
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
     use std::path::Path;

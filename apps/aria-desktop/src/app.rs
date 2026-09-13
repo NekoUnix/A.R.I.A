@@ -2566,9 +2566,15 @@ impl eframe::App for AriaApp {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            RichText::new("v0.24 · WINDOWS PREVIEW")
-                                .small()
-                                .color(muted()),
+                            RichText::new(if cfg!(windows) {
+                                "v0.24 · WINDOWS PREVIEW"
+                            } else if cfg!(target_os = "macos") {
+                                "v0.24 · MACOS EXPERIMENTAL"
+                            } else {
+                                "v0.24 · LINUX EXPERIMENTAL"
+                            })
+                            .small()
+                            .color(muted()),
                         );
                     });
                 });

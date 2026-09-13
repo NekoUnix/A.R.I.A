@@ -1,5 +1,7 @@
 //! Full-resolution offscreen canvases, independent of native preview windows.
-use crate::output::{CanvasSettings, SENDERS, Scene};
+#[cfg(windows)]
+use crate::output::SENDERS;
+use crate::output::{CanvasSettings, Scene};
 use eframe::{
     egui,
     egui_wgpu::{RenderState, ScreenDescriptor},

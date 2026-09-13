@@ -24,6 +24,6 @@ No login credentials, API keys or raw camera images are included.
 ## v0.24 renderer update
 
 `workspace-v24.png` is an unedited native Windows capture of the v0.24 screenshot
-build, using the same owner-provided Odette Live2D export with permission. It uses
+build on 2026-09-13, with the isolated Cubism process, using the same owner-provided Odette Live2D export with permission. It uses
 an isolated test profile and Demo input. Resource numbers from this debug capture
 are not a release benchmark. Raw model files and SDK binaries are not included.

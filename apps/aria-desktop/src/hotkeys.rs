@@ -24,10 +24,9 @@ pub struct Registration {
     pub action: Action,
 }
 pub enum Event {
-    Pressed {
-        generation: u64,
-        action: Action,
-    },
+    // Native global hotkey events are currently emitted only by the Windows backend.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    Pressed { generation: u64, action: Action },
     Registered {
         generation: u64,
         errors: Vec<String>,
