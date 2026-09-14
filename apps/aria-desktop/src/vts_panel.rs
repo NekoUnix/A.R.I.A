@@ -322,7 +322,6 @@ fn preview(
     })
 }
 impl Panel {
-    #[cfg(test)]
     fn undo_import(&mut self, avatar: &mut crate::live2d::Avatar, saved: &mut SavedRig) {
         if let Some(undo) = self.undo.take() {
             *saved = undo.saved;
@@ -691,8 +690,7 @@ impl Panel {
             if apply {self.error=self.apply(avatar,saved).err().map(|e|format!("Nothing applied: {e:#}"));}
             if cancel {self.preview=None;}
             if self.undo.is_some() && ui.button("Undo last import").clicked() {
-                let undo=self.undo.take().unwrap();*saved=undo.saved;
-                if let Some(physics)=&mut avatar.physics{physics.set_multipliers(&undo.multipliers);}
+                self.undo_import(avatar,saved);
                 self.runtime.reset();self.dirty=true;self.error=None;
             }
             if !saved.vts.actions.is_empty() || saved.vts.idle.is_some() {
