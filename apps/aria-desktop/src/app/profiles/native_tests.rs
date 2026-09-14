@@ -134,40 +134,48 @@ fn native_mixed_workspace_keeps_four_avatars_live_and_composes_all_outputs() {
             }
         }
     }
-    for _ in 0..2 {
-        let mut output = ctx.run_ui(
-            egui::RawInput {
-                screen_rect: Some(egui::Rect::from_min_size(
-                    egui::Pos2::ZERO,
-                    egui::vec2(ui_size[0] as f32, ui_size[1] as f32),
-                )),
-                ..Default::default()
-            },
-            |root| {
-                eframe::App::ui(&mut app, root, &mut eframe::Frame::_new_kittest());
-            },
-        );
-        {
-            let mut renderer = state.renderer.write();
-            for (id, deltas) in &output.textures_delta.set {
-                for delta in deltas {
-                    renderer.update_texture(&state.device, &state.queue, *id, delta);
+    for (theme_index, image_name) in [
+        (6, "profiles-ui.png"),
+        (7, "glass-light.png"),
+        (5, "high-contrast.png"),
+    ] {
+        app.settings.theme.active = crate::theme::presets().remove(theme_index);
+        crate::theme::apply(&ctx, app.settings.theme.active.colors);
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(ui_size[0] as f32, ui_size[1] as f32),
+                    )),
+                    ..Default::default()
+                },
+                |root| {
+                    eframe::App::ui(&mut app, root, &mut eframe::Frame::_new_kittest());
+                },
+            );
+            {
+                let mut renderer = state.renderer.write();
+                for (id, deltas) in &output.textures_delta.set {
+                    for delta in deltas {
+                        renderer.update_texture(&state.device, &state.queue, *id, delta);
+                    }
+                }
+                for id in &output.textures_delta.free {
+                    renderer.free_texture(id);
                 }
             }
-            for id in &output.textures_delta.free {
-                renderer.free_texture(id);
-            }
+            output.textures_delta.clear();
+            crate::broadcast::save_canvas_png(
+                &ctx,
+                &state,
+                &UiArtwork(output.shapes),
+                &Default::default(),
+                ui_size,
+                &output_dir.join(image_name),
+            )
+            .unwrap();
         }
-        output.textures_delta.clear();
-        crate::broadcast::save_canvas_png(
-            &ctx,
-            &state,
-            &UiArtwork(output.shapes),
-            &Default::default(),
-            ui_size,
-            &output_dir.join("profiles-ui.png"),
-        )
-        .unwrap();
     }
     // Editing a different stage reuses its runtime rather than reopening Cubism.
     app.focus_profile(ids[0]);

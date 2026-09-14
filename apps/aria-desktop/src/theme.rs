@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 pub struct Palette {
     pub light: bool,
+    #[serde(default = "default_glass")]
+    pub glass: bool,
     pub background: [u8; 3],
     pub panel: [u8; 3],
     pub card: [u8; 3],
@@ -17,9 +19,13 @@ pub struct Palette {
     pub orange: [u8; 3],
     pub pink: [u8; 3],
 }
+fn default_glass() -> bool {
+    true
+}
 impl Palette {
     pub const DARK: Self = Self {
         light: false,
+        glass: true,
         background: [23, 25, 32],
         panel: [30, 33, 42],
         card: [40, 44, 56],
@@ -42,6 +48,7 @@ pub struct NamedTheme {
 pub fn presets() -> Vec<NamedTheme> {
     let light = Palette {
         light: true,
+        glass: true,
         background: [236, 238, 243],
         panel: [247, 248, 251],
         card: [255, 255, 255],
@@ -89,6 +96,7 @@ pub fn presets() -> Vec<NamedTheme> {
         (
             "High Contrast",
             Palette {
+                glass: false,
                 background: [0, 0, 0],
                 panel: [8, 8, 8],
                 card: [16, 16, 16],
@@ -97,6 +105,28 @@ pub fn presets() -> Vec<NamedTheme> {
                 border: [170, 170, 170],
                 accent: [255, 228, 74],
                 ..Palette::DARK
+            },
+        ),
+        (
+            "Glass Dark",
+            Palette {
+                background: [18, 22, 32],
+                panel: [30, 37, 51],
+                card: [43, 51, 67],
+                border: [74, 87, 110],
+                accent: [132, 194, 255],
+                ..Palette::DARK
+            },
+        ),
+        (
+            "Glass Light",
+            Palette {
+                background: [222, 231, 243],
+                panel: [239, 245, 252],
+                card: [255, 255, 255],
+                border: [183, 198, 218],
+                accent: [0, 94, 190],
+                ..light
             },
         ),
     ]
@@ -116,7 +146,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            active: presets().remove(0),
+            active: presets().remove(6),
             custom: vec![],
         }
     }
@@ -139,8 +169,10 @@ impl Settings {
             });
         caption(
             ui,
-            "Applies to every avatar on this PC. Solid colors only: no blur or background animations.",
+            "Applies to every avatar on this PC. Glass uses soft tint and light edges; your capture background stays under your control.",
         );
+        ui.checkbox(&mut self.active.colors.glass, "Glass surfaces")
+            .on_hover_text("Translucent cards and a subtle static color wash. Uses the existing UI renderer, without blur passes or background animation. Turn off for solid surfaces. High Contrast always stays solid.");
         egui::CollapsingHeader::new("Make your own theme").show(ui,|ui|{
             ui.label("Theme name"); ui.text_edit_singleline(&mut self.active.name);
             self.active.name.truncate(self.active.name.char_indices().nth(64).map_or(self.active.name.len(), |(i,_)|i));
@@ -195,7 +227,7 @@ impl Settings {
                 }
             }
             if ui.button("Reset").clicked() {
-                self.active = presets().remove(0);
+                self.active = presets().remove(6);
             }
         });
         if let Some(e) = ui
@@ -241,6 +273,62 @@ macro_rules! colors {
     ($($name:ident: $field:ident),*) => { $(pub fn $name() -> Color32 { COLORS.with(|p| { let c=p.get().$field; Color32::from_rgb(c[0],c[1],c[2]) }) })* };
 }
 colors!(bg: background, panel: panel, card_color: card, mint: accent, muted: muted, text_color: text, border: border, teal: teal, purple: purple, orange: orange, pink: pink);
+
+fn glass_enabled() -> bool {
+    COLORS.with(|p| {
+        let p = p.get();
+        // Preserve the older High Contrast palette even when its saved JSON lacks `glass`.
+        p.glass && !(p.background == [0; 3] && p.card == [16; 3] && p.text == [255; 3])
+    })
+}
+
+fn translucent(color: Color32, alpha: u8) -> Color32 {
+    if glass_enabled() {
+        Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
+    } else {
+        color
+    }
+}
+
+pub fn surface_edge() -> Stroke {
+    Stroke::new(1.0, border())
+}
+
+pub fn glass_card() -> egui::Frame {
+    egui::Frame::new()
+        .fill(translucent(card_color(), 224))
+        .stroke(surface_edge())
+        .corner_radius(13)
+        .inner_margin(8.0)
+}
+
+pub fn chrome(margin: f32) -> egui::Frame {
+    egui::Frame::new()
+        .fill(translucent(panel(), 210))
+        .stroke(surface_edge())
+        .inner_margin(margin)
+}
+
+/// A static four-vertex wash behind UI panels; no texture, blur or extra render target.
+pub fn workspace_backdrop(ui: &egui::Ui) {
+    if !glass_enabled() {
+        return;
+    }
+    let rect = ui.max_rect();
+    let tint = |color: Color32| bg().lerp_to_gamma(color, 0.10);
+    let mut mesh = egui::Mesh::default();
+    for (pos, color) in [
+        (rect.left_top(), tint(purple())),
+        (rect.right_top(), tint(teal())),
+        (rect.right_bottom(), bg()),
+        (rect.left_bottom(), tint(mint())),
+    ] {
+        mesh.colored_vertex(pos, color);
+    }
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    ui.painter().add(egui::Shape::mesh(mesh));
+}
 
 /// Solid category accents; no blur, extra render targets or animated decoration.
 pub fn accent(title: &str) -> Color32 {
@@ -311,15 +399,16 @@ pub fn apply(ctx: &egui::Context, palette: Palette) {
     } else {
         egui::Visuals::dark()
     };
-    style.visuals.panel_fill = panel();
-    style.visuals.window_fill = card_color();
+    style.visuals.panel_fill = translucent(panel(), 210);
+    // Popups stay nearly opaque so text beneath cannot compete with their content.
+    style.visuals.window_fill = translucent(card_color(), 248);
     style.visuals.extreme_bg_color = bg();
     style.visuals.faint_bg_color = card_color();
     style.visuals.override_text_color = Some(text_color());
     style.visuals.selection.bg_fill = wash(mint());
     style.visuals.selection.stroke = Stroke::new(1.0_f32, mint());
     style.visuals.hyperlink_color = mint();
-    style.visuals.window_corner_radius = 12.into();
+    style.visuals.window_corner_radius = 16.into();
     style.visuals.window_stroke = Stroke::new(1.0_f32, border());
     for widget in [
         &mut style.visuals.widgets.inactive,
@@ -328,7 +417,7 @@ pub fn apply(ctx: &egui::Context, palette: Palette) {
         &mut style.visuals.widgets.open,
         &mut style.visuals.widgets.noninteractive,
     ] {
-        widget.corner_radius = 7.into();
+        widget.corner_radius = 9.into();
         widget.bg_stroke = Stroke::new(1.0_f32, border());
         widget.fg_stroke = Stroke::new(1.0_f32, text_color());
     }
@@ -338,6 +427,8 @@ pub fn apply(ctx: &egui::Context, palette: Palette) {
     style.visuals.widgets.hovered.bg_fill = wash(mint());
     style.visuals.widgets.active.bg_fill = wash(mint());
     style.visuals.widgets.active.weak_bg_fill = wash(mint());
+    style.visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, mint());
+    style.visuals.widgets.active.bg_stroke = Stroke::new(1.0, mint());
     style.visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, border());
     style.animation_time = 0.0;
     style.visuals.window_shadow = egui::epaint::Shadow::NONE;
@@ -361,15 +452,10 @@ pub fn apply(ctx: &egui::Context, palette: Palette) {
 }
 
 pub fn card(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
-    egui::Frame::new()
-        .fill(card_color())
-        .stroke(Stroke::new(1.0_f32, border()))
-        .corner_radius(10)
-        .inner_margin(8.0)
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            add(ui);
-        });
+    glass_card().show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        add(ui);
+    });
 }
 
 pub fn sync(ctx: &egui::Context, palette: Palette) {
@@ -432,7 +518,7 @@ pub fn category(
         ui.horizontal(|ui| {
             let color = accent(title);
             let (badge, _) = ui.allocate_exact_size(egui::vec2(7.0, 16.0), egui::Sense::hover());
-            ui.painter().rect_filled(badge, 3.0, color);
+            ui.painter().circle_filled(badge.center(), 3.5, color);
             let (_, toggle) = ui.allocate_exact_size(egui::vec2(16.0, 22.0), egui::Sense::click());
             egui::collapsing_header::paint_default_icon(ui, state.openness(ui.ctx()), &toggle);
             if toggle.clicked() {
@@ -440,7 +526,7 @@ pub fn category(
             }
             if ui
                 .add(
-                    egui::Label::new(RichText::new(title).strong().color(color))
+                    egui::Label::new(RichText::new(title).strong().color(text_color()))
                         .sense(egui::Sense::click()),
                 )
                 .clicked()
@@ -461,8 +547,9 @@ pub fn caption(ui: &mut egui::Ui, text: impl Into<String>) {
 /// Compact, keyboard-accessible category navigation; only the selected page is laid out.
 pub fn segments<T: Copy + PartialEq>(ui: &mut egui::Ui, selected: &mut T, options: &[(T, &str)]) {
     egui::Frame::new()
-        .fill(bg())
-        .corner_radius(7)
+        .fill(translucent(bg(), 145))
+        .stroke(surface_edge())
+        .corner_radius(11)
         .inner_margin(3.0)
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
@@ -485,8 +572,8 @@ pub fn segments<T: Copy + PartialEq>(ui: &mut egui::Ui, selected: &mut T, option
                         } else {
                             egui::Color32::TRANSPARENT
                         })
-                        .stroke(Stroke::NONE)
-                        .corner_radius(5)
+                        .stroke(if active { surface_edge() } else { Stroke::NONE })
+                        .corner_radius(8)
                         .selected(active);
                     let response = ui
                         .scope(|ui| {
@@ -512,7 +599,20 @@ mod tests {
             assert!(contrast(t.colors.text, t.colors.card) >= 4.5, "{}", t.name);
             let bytes = serde_json::to_vec(&t).unwrap();
             assert_eq!(parse_theme(&bytes).unwrap().colors, t.colors);
+            let mut legacy = serde_json::to_value(&t).unwrap();
+            legacy["colors"].as_object_mut().unwrap().remove("glass");
+            let old = parse_theme(&serde_json::to_vec(&legacy).unwrap()).unwrap();
+            assert_eq!(old.colors.text, t.colors.text);
+            apply(&egui::Context::default(), old.colors);
+            assert_eq!(glass_enabled(), t.name != "High Contrast");
+            let opaque = Palette {
+                glass: false,
+                ..t.colors
+            };
+            apply(&egui::Context::default(), opaque);
+            assert_eq!(translucent(card_color(), 224).a(), 255);
         }
+        apply(&egui::Context::default(), Palette::DARK);
         assert!(parse_theme(&vec![b' '; 8193]).is_err());
         let mut t = presets().remove(0);
         t.name = String::new();

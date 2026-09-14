@@ -1,3 +1,5 @@
+#[cfg(test)]
+mod performance_tests;
 mod profiles;
 
 use crate::avatar::{self, Sprite};
@@ -19,7 +21,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::theme::{self, bg, mint, muted, panel};
+use crate::theme::{self, bg, mint, muted};
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 enum Source {
@@ -64,6 +66,8 @@ struct Settings {
     effect_api: crate::effect_api::Settings,
     #[serde(default)]
     vts_pitch_revision: u8,
+    #[serde(default)]
+    vts_roll_revision: u8,
     source: Source,
     sender_ip: String,
     request_port: u16,
@@ -93,6 +97,7 @@ impl Default for Settings {
             camera: Default::default(),
             effect_api: Default::default(),
             vts_pitch_revision: 1,
+            vts_roll_revision: 1,
             source: Source::Demo,
             sender_ip: "127.0.0.1".into(),
             request_port: 21412,
@@ -112,6 +117,21 @@ impl Default for Settings {
 }
 
 impl Settings {
+    fn migrate_vts_roll(&mut self) {
+        if self.vts_roll_revision != 0 {
+            return;
+        }
+        for (key, preferences) in &mut self.model_preferences {
+            if preferences.source == Source::Vts {
+                preferences.calibration.z = -preferences.calibration.z;
+                if let Some(rig) = self.saved_rigs.get_mut(key) {
+                    migrate_roll_rig(rig);
+                }
+            }
+        }
+        self.profiles.migrate_vts_roll();
+        self.vts_roll_revision = 1;
+    }
     fn migrate_vts_pitch(&mut self) {
         if self.vts_pitch_revision == 0 {
             for p in self
@@ -122,6 +142,18 @@ impl Settings {
                 p.calibration.x = -p.calibration.x;
             }
             self.vts_pitch_revision = 1;
+        }
+    }
+}
+
+fn migrate_roll_rig(rig: &mut SavedRig) {
+    for config in std::iter::once(&mut rig.config).chain(rig.presets.iter_mut().map(|p| &mut p.rig))
+    {
+        config.tracking.origin.z = -config.tracking.origin.z;
+        for name in ["FaceAngleZ", "ParamAngleZ"] {
+            if let Some(range) = config.tracking.ranges.get_mut(name) {
+                (range.low, range.neutral, range.high) = (-range.high, -range.neutral, -range.low);
+            }
         }
     }
 }
@@ -150,6 +182,25 @@ impl Default for ModelPreferences {
     }
 }
 impl ModelPreferences {
+    /// The live frame loop exchanges ownership, without cloning camera settings
+    /// or any of the workspace's output maps. Saved preferences still use
+    /// capture/restore at import, persistence and explicit profile boundaries.
+    fn exchange_live(&mut self, settings: &mut Settings) {
+        std::mem::swap(&mut self.ifacial, &mut settings.ifacial);
+        std::mem::swap(&mut self.camera, &mut settings.camera);
+        std::mem::swap(&mut self.source, &mut settings.source);
+        std::mem::swap(&mut self.sender_ip, &mut settings.sender_ip);
+        std::mem::swap(&mut self.request_port, &mut settings.request_port);
+        std::mem::swap(&mut self.listen_port, &mut settings.listen_port);
+        std::mem::swap(&mut self.mapping, &mut settings.mapping);
+        std::mem::swap(&mut self.background, &mut settings.background);
+        std::mem::swap(&mut self.zoom, &mut settings.zoom);
+        settings.zoom = if settings.zoom.is_finite() {
+            settings.zoom.clamp(0.5, 1.5)
+        } else {
+            1.0
+        };
+    }
     fn capture(settings: &Settings) -> Self {
         Self {
             ifacial: settings.ifacial.clone(),
@@ -305,6 +356,7 @@ impl AriaApp {
         };
         theme::apply(&cc.egui_ctx, settings.theme.active.colors);
         settings.migrate_vts_pitch();
+        settings.migrate_vts_roll();
         if settings.profiles.entries.is_empty()
             && let Some(preferences) = settings.model_preferences.get("preview-v1").cloned()
         {
@@ -3100,8 +3152,9 @@ impl eframe::App for AriaApp {
             self.metrics
                 .record_graphs(&self.snapshot, self.render_fps, frame.info().cpu_usage);
         }
+        theme::workspace_backdrop(root_ui);
         egui::Panel::top("header")
-            .frame(Frame::new().fill(bg()).inner_margin(10.0))
+            .frame(theme::chrome(10.0))
             .show(root_ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
@@ -3138,7 +3191,7 @@ impl eframe::App for AriaApp {
                 });
             });
         egui::Panel::bottom("status")
-            .frame(Frame::new().fill(bg()).inner_margin(10.0))
+            .frame(theme::chrome(10.0))
             .show(root_ui, |ui| {
                 ui.horizontal(|ui| {
                     let width =
@@ -3163,7 +3216,7 @@ impl eframe::App for AriaApp {
         egui::Panel::left("controls")
             .exact_size(302.0)
             .resizable(false)
-            .frame(Frame::new().fill(panel()).inner_margin(12.0))
+            .frame(theme::chrome(12.0))
             .show(root_ui, |ui| {
                 self.controls_header(ui);
                 let area = egui::ScrollArea::vertical()
@@ -3174,7 +3227,7 @@ impl eframe::App for AriaApp {
             .default_size(380.0)
             .size_range(330.0..=700.0)
             .resizable(true)
-            .frame(Frame::new().fill(panel()).inner_margin(12.0))
+            .frame(theme::chrome(12.0))
             .show(root_ui, |ui| {
                 section(ui, "INSPECTOR");
                 ui.label(RichText::new(self.profile_name()).strong().color(mint()));
@@ -3195,7 +3248,7 @@ impl eframe::App for AriaApp {
         let output_settings = self.outputs.snapshot();
         let stage_output = output_settings.canvas(output_settings.selected);
         egui::CentralPanel::default()
-            .frame(Frame::new().fill(bg()).inner_margin(14.0))
+            .frame(Frame::new().fill(egui::Color32::TRANSPARENT).inner_margin(14.0))
             .show(root_ui, |ui| {
                 self.profile_tabs(ui);
                 if self.profiles.current.is_none() && !self.settings.profiles.entries.is_empty() {

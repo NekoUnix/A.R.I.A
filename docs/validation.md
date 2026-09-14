@@ -5,6 +5,38 @@
 This file records checks for the development builds. The Windows CI workflow
 is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
+## v0.33 glass workspace, tracking and engine efficiency — 2026-09-14
+
+- 242 standard workspace Rust tests pass, plus strict all-target/all-feature
+  Clippy and formatting. Tracking regressions cover signed/wrapped VTS head roll,
+  Mirror and Invert controls, authored parameter bindings, neutral calibration,
+  protocol round trips and unchanged iFacialMocap behavior. Saved-setting tests
+  cover one-time migration, disabled/shared profiles, presets and unrelated values.
+- The optimized settings-handoff benchmark measured a median **403.4 ns before
+  and 2.9 ns after** across seven rounds of 20,000 handoffs, alternating run order.
+  Host: AMD Ryzen Threadripper 9960X (24 cores / 48 threads), Windows, Rust 1.98.1,
+  release build with thin LTO. This is about **99.3% less CPU time for this small
+  settings operation**, not an overall FPS gain. It does not measure avatar
+  rendering, tracking or the glass UI. See [reproduction details](performance.md).
+- The Windows native GPU check loads the supplied full Odette and OilBun Live2D
+  models, animated Odette GIF and NekoUnity2 VRM together. It advances all four
+  runtimes, checks each avatar's pixels in three output formats and confirms
+  independent Cubism workers survive editor changes and unrelated unloading.
+- Theme checks preserve old JSON imports and saved palette colors, verify builtin
+  text contrast and round trips, and keep old/new High Contrast palettes solid.
+  Documentation images render the actual Glass Dark / Glass Light UI, with the
+  same four supplied avatars, isolated state and synthetic Demo input. Resource
+  readings in these images are not benchmarks. The High Contrast render is also
+  inspected locally; model sources and private profiles are not distributed.
+- The native macOS regression uses a real Syphon publisher/client and checks
+  asymmetric pixels in OBS's row convention, BGRA/RGBA, transparency, all canvas
+  shapes, resize and late clients. A counted queue checks 120 unchanged sends
+  without new GPU publication commands. It runs in macOS CI; this Windows host
+  cannot execute it. CI results belong to the exact release source revision.
+- These automated checks do not establish physical phone tracking or an
+  end-to-end recording in the OBS desktop application. Remove previous roll or
+  OBS rotation/flip workarounds when validating the update on those devices.
+
 ## v0.32 multiple avatars — 2026-09-14
 
 - 239 standard workspace Rust tests passed, along with strict all-target/all-feature

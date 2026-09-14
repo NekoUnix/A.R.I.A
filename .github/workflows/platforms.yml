@@ -45,6 +45,9 @@ jobs:
         run: rustup toolchain install 1.98.1 --profile minimal --component clippy
       - name: Build desktop, CLI and Cubism host
         run: cargo build --locked --workspace
+      - name: macOS Syphon orientation and idle-frame regression
+        if: runner.os == 'macOS'
+        run: sh scripts/test-syphon.sh
       - name: Platform regression tests
         run: cargo test --locked --workspace
       - name: Platform lint

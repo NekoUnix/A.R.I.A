@@ -15,6 +15,7 @@
 @property(strong) ARIASyphonAPI *server;
 @property(strong) id<MTLCommandQueue> queue;
 @property BOOL published;
+@property BOOL dirty;
 @end
 @implementation ARIASender
 - (void)dealloc { [_server stop]; }
@@ -35,9 +36,14 @@ void *aria_syphon_create(const char *framework, const char *name, void *device, 
         return (__bridge_retained void *)sender;
     }
 }
-int aria_syphon_send(void *handle, void *texture) {
+int aria_syphon_send(void *handle, void *texture, int changed) {
     @autoreleasepool {
         ARIASender *sender = (__bridge ARIASender *)handle;
+        sender.dirty = sender.dirty || changed || !sender.published;
+        // A frozen/unchanged canvas already has a valid shared frame. Keep a
+        // pending change when nobody is listening, so a later client receives
+        // the latest canvas even if it stops changing before OBS connects.
+        if (!sender.dirty) return 1;
         if (sender.published && !sender.server.hasClients) return 1;
         // Bound GPU work; never wait for OBS or the GPU on the event thread.
         if (atomic_load(&sender->pending) >= 3) return 0;
@@ -46,7 +52,10 @@ int aria_syphon_send(void *handle, void *texture) {
         id<MTLTexture> source = (__bridge id<MTLTexture>)texture;
         atomic_fetch_add(&sender->pending, 1);
         [sender.server publishFrameTexture:source onCommandBuffer:commands
-            imageRegion:NSMakeRect(0, 0, source.width, source.height) flipped:NO];
+            // wgpu renders top-left first. Syphon/OBS consume a bottom-left
+            // image: flip vertically here, preserving left/right and alpha.
+            // No CPU readback or additional ARIA intermediate texture.
+            imageRegion:NSMakeRect(0, 0, source.width, source.height) flipped:YES];
         [commands addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
             (void)buffer;
             atomic_fetch_sub(&sender->pending, 1);
@@ -55,6 +64,7 @@ int aria_syphon_send(void *handle, void *texture) {
         // stay ordered without CPU waits or a second Metal device.
         [commands commit];
         sender.published = YES;
+        sender.dirty = NO;
         return 1;
     }
 }

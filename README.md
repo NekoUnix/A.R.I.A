@@ -4,7 +4,7 @@ Bring your **Live2D, VRM and PNG/GIF avatars** to life, tune how it follows you,
 arrange them together in OBS. ARIA runs on Windows, Linux and macOS. You can start with the
 included Mica puppet before importing a model or connecting a camera.
 
-**[Download v0.32 Alpha](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.32.0-alpha.1)** ·
+**[Download v0.33 Alpha](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.33.0-alpha.1)** ·
 [What's new](#whats-new) · [First-time setup](#first-time-setup) ·
 [Help when something goes wrong](#help-when-something-goes-wrong)
 
@@ -12,55 +12,62 @@ ARIA is still **Alpha**, so some features and device combinations need more
 real-world testing. **VTube Studio import and VBridger import are Experimental.** Your avatar files and any
 required third-party tracking app or runtime are supplied separately.
 
-![Odette in the customizable Live2D workspace](docs/images/customization-v30.png)
+![Glass workspace with multiple avatars](docs/images/profiles-v33.png)
 
 ## What's new
 
-**v0.32.0-alpha.1** lets you put **multiple Live2D, PNG/GIF and VRM avatars in
-the same OBS scene**. Open **Workspace → Profiles → + Add avatar…**, finish its
-guided import, and repeat for your other avatars. Check any combination to load
-them together. Uncheck one to free its resources while keeping its settings.
+**v0.33.0-alpha.1 fixes head tilt from iPhone VTube Studio and upside-down
+Syphon capture on macOS**, adds a glass-inspired workspace, and reduces repeated
+work in the multi-avatar engine.
 
-**Edit** and the stage tabs choose the avatar you are working on. Its name appears
-in the workspace, above the stage and in the inspector. Each avatar keeps its own
-tracking mappings, pose, expressions, physics, appearance, image actions and pins.
-The other loaded avatars keep moving while you edit.
+- **Head tilt follows you:** the VTS input adapter now corrects the lean direction
+  before it reaches your avatar, attached models or profiles sharing that tracker.
+  Existing VTS neutral calibration and personal lean ranges are updated once,
+  including saved movement presets. Other tracking sources keep their directions.
+- **Upright Syphon output:** macOS native output now uses the image orientation
+  expected by OBS. Landscape, portrait and Freeform keep their left/right order,
+  colors and transparency. If you previously rotated or flipped this source in OBS
+  as a workaround, remove that adjustment after updating.
+- **Less repeated work:** live avatar switching exchanges settings without copying
+  camera settings and every OBS layout. Syphon skips GPU publication of unchanged
+  canvases, remembers changes made while OBS is disconnected, and sends the current
+  image when a client connects. [Performance checks and limits](docs/performance.md).
+- **Glass workspace:** softer translucent cards, rounded controls and a clear
+  editing-profile outline. Choose **Settings → Appearance & themes → Glass Dark
+  or Glass Light**, customize the colors, or turn off **Glass surfaces** for solid
+  panels. High Contrast stays solid. [Theme guide](docs/themes.md).
 
-![Multiple profiles in the avatar workspace](docs/images/profiles-v32.png)
+If you previously enabled **Tracking → Axis correction → Invert roll (tilt)**
+to fix the old VTS behavior, turn that workaround off and test a gentle lean each
+way. Intentional inversion and Mirror settings remain yours to control. Use
+**Calibrate neutral pose** and **Guided tracking setup** if you need to retune.
+Custom input ranges and Experimental VBridger equations may need the same review.
 
-Open an OBS preview to arrange the whole group: click an avatar and drag it, or
-scroll over it to change its size. For overlapping avatars, choose a name from
-the preview's avatar menu first. Landscape, portrait and Freeform each keep their
-own layout. Native OBS output contains the avatars and effects without the
-preview's targeting menu or outlines.
+All existing multi-avatar features remain: **Workspace → Profiles → + Add avatar…**
+loads Live2D, PNG/GIF and VRM avatars together. Check profiles to load them, use
+**Edit** or named stage tabs to choose what you are configuring, and drag/scale
+avatars independently inside each OBS preview.
 
-New profiles can **follow an already loaded profile's face tracker**, with their
-own calibration and response settings. Choose **Own connection** for a separate
-camera or sender. Shared shortcuts trigger matching actions on every loaded
-profile using that key; use different shortcuts for individual control.
+![Glass Light theme in the avatar workspace](docs/images/glass-light-v33.png)
 
-[Step-by-step profiles guide](docs/profiles.md) ·
-[OBS arrangement guide](docs/obs-output.md) · [Complete changelog](CHANGELOG.md)
-
-Frozen layer selection, blue selection highlights, protected groups,
-customization, bread, performance graphs, diagnostics, iFacialMocap and the
-Experimental VTube Studio/VBridger imports remain included.
+[Profiles guide](docs/profiles.md) · [Tracking setup](docs/tracking-setup.md) ·
+[OBS guide](docs/obs-output.md) · [Complete changelog](CHANGELOG.md)
 
 ## First-time setup
 
 ### 1. Download the right file
 
-Open the [v0.32 Alpha release](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.32.0-alpha.1)
+Open the [v0.33 Alpha release](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.33.0-alpha.1)
 and expand **Assets** if the downloads are hidden. Choose the file for your computer:
 
 | Your computer | Download |
 | --- | --- |
-| Windows 10/11, 64-bit Intel or AMD | `aria-0.32.0-alpha.1-windows-x64.zip` |
-| Mac with an M-series chip | `aria-0.32.0-alpha.1-macos-arm64.zip` |
-| Mac with an Intel processor | `aria-0.32.0-alpha.1-macos-x64.zip` |
-| Ubuntu 24.04, 64-bit Intel or AMD | `aria-0.32.0-alpha.1-linux-x64.tar.gz` |
-| Fedora 44, 64-bit Intel or AMD | `aria-alpha-0.32.0.alpha.1-1.x86_64.rpm` |
-| Current Arch Linux, 64-bit Intel or AMD | `aria-alpha-0.32.0alpha.1-1-x86_64.pkg.tar.zst` |
+| Windows 10/11, 64-bit Intel or AMD | `aria-0.33.0-alpha.1-windows-x64.zip` |
+| Mac with an M-series chip | `aria-0.33.0-alpha.1-macos-arm64.zip` |
+| Mac with an Intel processor | `aria-0.33.0-alpha.1-macos-x64.zip` |
+| Ubuntu 24.04, 64-bit Intel or AMD | `aria-0.33.0-alpha.1-linux-x64.tar.gz` |
+| Fedora 44, 64-bit Intel or AMD | `aria-alpha-0.33.0.alpha.1-1.x86_64.rpm` |
+| Current Arch Linux, 64-bit Intel or AMD | `aria-alpha-0.33.0alpha.1-1-x86_64.pkg.tar.zst` |
 
 On a Mac, **Apple menu → About This Mac** tells you whether it has an Apple chip
 or an Intel processor. Linux ARM, Windows ARM, `.deb`, AppImage and Flatpak/Snap
@@ -296,7 +303,7 @@ Export important configurations before experimenting with a new Alpha build.
 | Problem | First things to check |
 | --- | --- |
 | ARIA will not open | Extract the complete package, use the right CPU/OS download and update the graphics driver. Read the error dialog and your installation guide. |
-| Clicking an online link does nothing | Install this updated v0.32 Alpha build. Set a default browser in your operating system and check behind ARIA for a new tab or window. If it still fails, use **Diagnostics / export logs** and describe the link you clicked. |
+| Clicking an online link does nothing | Install this updated v0.33 Alpha build. Set a default browser in your operating system and check behind ARIA for a new tab or window. If it still fails, use **Diagnostics / export logs** and describe the link you clicked. |
 | A phone connects but no motion arrives | Check **Tracking live**, the current phone IP, matching ports, Local Network permission, firewall and same LAN. Demo motion does not confirm a phone connection. |
 | Cannot bind the tracking port | Close the other application receiving on that port, or configure matching custom ports on both sides. |
 | Mouth feels slow | Try **Quick** or **Instant** mouth response; check the tracking-rate and packet-age graphs. Phone sampling and network delay remain outside that setting. |
@@ -375,5 +382,6 @@ The ready-to-run packages above do not require a compiler.
 | [Native platform packages](docs/platforms.md) / [validation](docs/validation.md) | Build instructions, test evidence and hardware acceptance limits |
 | [Contributing](CONTRIBUTING.md) / [review and releases](docs/development.md) | Development workflow and review gates |
 | [Security](SECURITY.md) / [third-party notices](THIRD_PARTY.md) | Reporting and runtime/dependency licenses |
+| [Every package and version](THIRD_PARTY.md#find-every-package-and-version) / [engine performance](docs/performance.md) | Full dependency indexes, locked versions and measured runtime changes |
 | [Image templates](templates/images/README.md) / [effects templates](templates/effects/README.md) | Custom artwork, actions, throws and sprays |
 | [Screenshot provenance](docs/images/README.md) / [changelog](CHANGELOG.md) | Documentation artwork permissions and version history |

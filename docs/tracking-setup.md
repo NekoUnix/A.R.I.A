@@ -123,3 +123,14 @@ Choose **Import / edit VBridger config** from the Tracking page to use the
 tracking and personal calibration. While the import is enabled, the range-guide
 button opens the editor so you can tune its raw input offsets and curves.
 Disable imported tracking to resume the ordinary step-by-step range guide.
+
+## Upgrading VTS head-tilt calibration
+
+v0.33 fixes the lean direction at VTube Studio input. Saved ARIA VTS calibrations
+and movement presets migrate automatically; each profile stays independent.
+If you added a manual **Invert roll (tilt)** or reversed input/output range to
+work around the old direction, remove that workaround first. Keep Mirror only if
+you want mirrored movement. Calibrate your neutral pose, then use the separate
+left-shoulder and right-shoulder exercises to check your comfortable ranges.
+Review custom Experimental VBridger equations and separately imported older
+movement-preset files after upgrading, because their intended reversal is unknown.

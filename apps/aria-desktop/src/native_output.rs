@@ -31,8 +31,7 @@ pub fn send(bridge: &Bridge, sender: &mut Sender, changed: bool) -> anyhow::Resu
     }
     #[cfg(target_os = "macos")]
     {
-        let _ = changed;
-        bridge.send(sender)
+        bridge.send(sender, changed)
     }
     #[cfg(target_os = "linux")]
     {
