@@ -36,7 +36,7 @@ base64 = "0.23"
 getrandom = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 tungstenite = { version = "0.28", features = ["native-tls"] }
-sha2 = "0.10"
+sha2 = "0.11"
 sdl2 = { version = "=0.38.0", default-features = false, features = ["bundled", "static-link"] }
 rodio = { version = "0.22.2", default-features = false, features = ["playback", "symphonia-wav", "symphonia-mp3", "symphonia-vorbis", "symphonia-ogg", "symphonia-flac", "symphonia-pcm"] }
 
