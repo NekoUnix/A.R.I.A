@@ -59,7 +59,7 @@ use the Star toss defaults. `id` is reassigned on import. `name` is 1–80 chara
 | Field | Meaning |
 | --- | --- |
 | `kind` | `Throw` keeps object artwork; `Spray` expands/drips when attached and enables the built-in water material |
-| `assets` | 1–256 file paths or `builtin:star`, `builtin:ball`, `builtin:cube`, `builtin:drop` |
+| `assets` | 1–256 file paths or `builtin:star`, `builtin:ball`, `builtin:cube`, `builtin:drop`, `builtin:bread` |
 | `selection`, `count` (legacy) | `Random` / `Cycle`: total particles; `All`: copies of each asset; at most 1,000 per trigger |
 | `asset_counts` | Exact quantity per asset in the same order; 0 skips it; empty uses legacy selection/count |
 | `routes` | Up to 16 `{origin:[X,Y],target:[X,Y]}` pairs; empty uses legacy origin/target |

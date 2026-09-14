@@ -67,6 +67,7 @@ struct Style {
     screen: [f32; 4],
     control: [f32; 4],
 }
+#[derive(Clone)]
 struct Mesh {
     indices: Range<u32>,
 }
@@ -114,6 +115,115 @@ pub struct ModelRenderer {
 }
 
 impl ModelRenderer {
+    /// A separate render target for a frozen editing preview. Atlases, pipelines
+    /// and immutable indices are shared; writable buffers and masks are private.
+    /// This never reloads artwork or starts another Cubism process.
+    pub fn fork_preview(&self) -> Self {
+        let device = &self.state.device;
+        let size = self.output.texture().size();
+        let output = target(
+            device,
+            size.width,
+            size.height,
+            wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
+            "Frozen layer preview",
+        )
+        .create_view(&Default::default());
+        let mask = target(
+            device,
+            size.width,
+            size.height,
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            "Frozen layer mask",
+        )
+        .create_view(&Default::default());
+        let vertices = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Frozen layer vertices"),
+            size: self.vertices.size(),
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Frozen layer styles"),
+            size: self.uniforms.size(),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let white = target(
+            device,
+            1,
+            1,
+            wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+            "Frozen no mask",
+        );
+        self.state.queue.write_texture(
+            white.as_image_copy(),
+            &[255; 4],
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4),
+                rows_per_image: Some(1),
+            },
+            white.size(),
+        );
+        let layout = self.pipelines[0].get_bind_group_layout(1);
+        let group = |view: &wgpu::TextureView| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Frozen layer style"),
+                layout: &layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                            buffer: &uniforms,
+                            offset: 0,
+                            size: NonZeroU64::new(48),
+                        }),
+                    },
+                ],
+            })
+        };
+        let clipped = group(&mask);
+        let unclipped = group(&white.create_view(&Default::default()));
+        let (id, lease) = ModelTexture::register(&self.state, &output);
+        Self {
+            state: self.state.clone(),
+            image: ModelImage {
+                id,
+                size: self.image.size,
+            },
+            lease,
+            output,
+            mask,
+            atlases: self.atlases.clone(),
+            clipped,
+            unclipped,
+            pipelines: self.pipelines.clone(),
+            mask_pipelines: self.mask_pipelines.clone(),
+            vertices,
+            indices: self.indices.clone(),
+            uniforms,
+            uniform_stride: self.uniform_stride,
+            meshes: self.meshes.clone(),
+            vertex_count: self.vertex_count,
+            atlas_mib: 0.,
+            import_notes: vec![],
+            palette: self.palette.clone(),
+            vertex_staging: Vec::with_capacity(self.vertex_count),
+            style_staging: vec![0; self.meshes.len() * self.uniform_stride],
+            order: Vec::with_capacity(self.meshes.len()),
+            layer_config: Default::default(),
+            layer_opacities: vec![],
+            bounds: self.bounds,
+            view_canvas: self.view_canvas,
+        }
+    }
     #[cfg(all(test, windows))]
     pub fn read_rgba_for_test(&self) -> Result<(Vec<u8>, [u32; 2])> {
         self.read_rgba()

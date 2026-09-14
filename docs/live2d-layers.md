@@ -1,6 +1,8 @@
 # Live2D layers, transparency and saved looks
 
-![Dragging a selection over Odette in the native app](images/layer-selection-v30.png)
+![Selecting artwork in a separate frozen model window](images/frozen-layer-editor.png)
+
+The frozen selector is available in the next source build after v0.30.0-alpha.1.
 
 Open **Inspector → Avatar → Layers** with a Live2D avatar loaded. The list comes
 from that avatar's exported ArtMeshes, with parent part names from its display
@@ -8,12 +10,14 @@ information file when available. It works with any supported export; it does not
 depend on Odette's parameter names or artwork. Original PSD layers that were
 merged or omitted during export cannot be recovered from a moc3.
 
-1. Turn on **Select layers** above Your stage and drag a rectangle over the
-   artwork. Shift adds, Alt removes, Ctrl/Cmd toggles; Escape cancels the drag.
-   A click selects the frontmost mesh. Alternatively, search the list, click
-   individual rows, Shift-click or drag across row buttons for a range, or use
-   **Select results** to select all matching rows. Turn selection mode off to
-   resume dragging pinned objects.
+1. Click **Select layers…** above Your stage or in this inspector. In the
+   separate window, **Add** mode lets you click artwork or draw multiple boxes
+   with the left mouse button, without holding Shift. Your live model keeps
+   tracking while this preview stays frozen. **Remove**, **Replace** and
+   **Toggle** offer explicit mouse-only alternatives. Use **Hide selected**,
+   **Restore selected**, or **Undo**. Wheel to zoom and right/middle drag to pan;
+   **Refresh frozen pose** takes a new snapshot. Read the
+   [complete mouse guide](live2d-customization.md#select-several-layers-with-your-mouse).
 2. Drag a row's opacity slider, or apply **Hide selected**, **Half opacity** or
    **Restore selected** to the selection. Zero removes that layer from the picture;
    it does not delete any model data. One retains its authored opacity.
@@ -25,10 +29,13 @@ merged or omitted during export cannot be recovered from a moc3.
    intended group. The shortcut toggles that group. Conflicts with poses,
    presets, expressions, objects, image actions or effects are rejected.
 
-Selection uses deformed mesh triangles, including their transparent texture
-areas. Hidden meshes are excluded unless **Include hidden layers in stage selection**
-is enabled; collapsed zero-area layers can still be picked from the list. Stage
-selection outlines never enter OBS output or PNG exports.
+Selection uses mesh triangles, including transparent texture areas. Use
+**Reveal ARIA-hidden layers in this preview** to select artwork hidden by ARIA
+opacity or groups without changing its visibility on the live model. Artwork
+hidden by authored parameters stays hidden until you change those parameters
+and refresh the pose. Collapsed layers can be picked from the main list.
+The optional **On stage** picker has its own **Include hidden layers** option.
+Selection outlines never enter OBS output or PNG exports.
 
 **Selected layer colors** applies or restores a multiply tint. White preserves
 texture colors; multiplication cannot recolor black artwork. See the

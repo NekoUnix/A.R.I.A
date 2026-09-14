@@ -47,11 +47,38 @@ pub struct Effects {
     pub audio: crate::effect_audio::Audio,
     time: f32,
     pub paused: bool,
+    bread_last: Option<Instant>,
     dirty: bool,
     pub save_after: Option<Instant>,
     pub search: String,
 }
 impl Effects {
+    pub fn throw_bread(&mut self, ctx: &egui::Context, state: Option<&RenderState>) {
+        if self
+            .bread_last
+            .is_some_and(|last| last.elapsed().as_secs_f32() < 0.3)
+        {
+            return;
+        }
+        let design = crate::bread::design();
+        let path = PathBuf::from("builtin:bread");
+        let result = (|| {
+            if let std::collections::btree_map::Entry::Vacant(entry) = self.cache.entry(path) {
+                let sprite = builtin(ctx, state, "bread")?;
+                entry.insert(Asset::Image(ItemImage::Png(sprite)));
+            }
+            self.simulation.trigger(&design)
+        })();
+        match result {
+            Ok(()) => {
+                self.bread_last = Some(Instant::now());
+                ctx.request_repaint();
+            }
+            Err(error) => {
+                self.message = Some(format!("Cannot launch bread: {error:#}"));
+            }
+        }
+    }
     pub fn process_ids(&self) -> impl Iterator<Item = u32> + '_ {
         self.mocs.process_ids()
     }
@@ -519,7 +546,7 @@ impl Effects {
 pub fn validate_asset_path(path: &Path) -> Result<()> {
     if let Some(name) = path.to_str().and_then(|s| s.strip_prefix("builtin:")) {
         ensure!(
-            ["star", "ball", "drop", "cube"].contains(&name),
+            ["star", "ball", "drop", "cube", "bread"].contains(&name),
             "Unknown built-in asset {name}"
         );
         return Ok(());
@@ -545,7 +572,7 @@ pub fn is_3d(path: &Path) -> bool {
 }
 fn builtin(ctx: &egui::Context, state: Option<&RenderState>, name: &str) -> Result<Sprite> {
     ensure!(
-        ["star", "ball", "drop"].contains(&name),
+        ["star", "ball", "drop", "bread"].contains(&name),
         "Unknown built-in effect asset"
     );
     let size = 128;
@@ -578,6 +605,9 @@ fn builtin(ctx: &egui::Context, state: Option<&RenderState>, name: &str) -> Resu
             rgba[i + 3] = (alpha * 255.0) as u8;
         }
     }
+    if name == "bread" {
+        rgba = crate::bread::pixels();
+    }
     let mut palette = crate::chroma::Palette::default();
     palette.add_rgba(&rgba);
     let pixels = egui::ColorImage::from_rgba_unmultiplied([size, size], &rgba);
@@ -607,6 +637,37 @@ fn builtin(ctx: &egui::Context, state: Option<&RenderState>, name: &str) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn footer_bread_renders_without_avatar_or_files_and_does_not_clear_other_effects() {
+        let ctx = egui::Context::default();
+        let mut effects = Effects::default();
+        let star = Design::default();
+        effects.prepare(&ctx, None, Path::new(""), &star).unwrap();
+        effects.simulation.trigger(&star).unwrap();
+        effects.throw_bread(&ctx, None);
+        assert!(effects.cache.contains_key(Path::new("builtin:star")));
+        assert!(effects.cache.contains_key(Path::new("builtin:bread")));
+        let library = Library::default();
+        effects.update(
+            &ctx,
+            None,
+            Path::new(""),
+            (&library, PoseMode::Live),
+            None,
+            0.016,
+        );
+        assert!(effects.draws.iter().any(|draw| match &draw.image {
+            ItemImage::Png(sprite) => sprite.model_key == "builtin:bread",
+            _ => false,
+        }));
+        assert!(
+            effects
+                .simulation
+                .particles
+                .iter()
+                .any(|p| p.asset == Path::new("builtin:star"))
+        );
+    }
     #[test]
     #[cfg(windows)]
     #[ignore = "requires a DX12 GPU; optional ARIA_TEST_MODEL and ARIA_CUBISM_CORE exercise an independent Live2D throw"]

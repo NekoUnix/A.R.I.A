@@ -111,3 +111,16 @@ iPhone capture or latency. An isolated profile protects saved app settings.
 The README's Cubism instructions were checked against the official Native SDK
 page/library list and the locally extracted SDK's Windows/Linux/macOS layout.
 No private avatar files, config exports or SDK binaries are included.
+
+## Frozen selector and bread development update
+
+`frozen-layer-editor.png` shows the separate native Windows selector on
+2026-09-14 with the owner's full Odette avatar and an isolated profile. Plain
+mouse clicks and two boxes selected 312 meshes without keyboard modifiers.
+The picture was captured through the desktop because eframe's immediate wgpu
+viewport does not handle its Screenshot command. The live stage continued
+demo tracking while this preview stayed frozen. No avatar sources are included.
+
+`bread-footer.png` shows the built-in bread action in the native Windows app.
+The isolated screenshot run pauses the transient burst after 0.8 seconds to
+make it visible in the capture; normal playback crosses the screen and expires.

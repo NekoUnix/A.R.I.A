@@ -117,6 +117,9 @@ impl Avatar {
     pub fn image(&self) -> ModelImage {
         self.renderer.image
     }
+    pub fn frozen_preview_renderer(&self) -> ModelRenderer {
+        self.renderer.fork_preview()
+    }
     pub fn layer_opacity(&self, mesh: usize) -> f32 {
         self.model
             .drawables

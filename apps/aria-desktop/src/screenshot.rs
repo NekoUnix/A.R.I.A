@@ -2,6 +2,62 @@
 use eframe::egui;
 use std::time::{Duration, Instant};
 
+/// Immediate native viewports bypass eframe's app input hook. Exercise their
+/// actual pointer processing through egui's pre-input plugin instead.
+pub struct FrozenLayerInput;
+impl egui::plugin::Plugin for FrozenLayerInput {
+    fn debug_name(&self) -> &'static str {
+        "ARIA frozen layer smoke input"
+    }
+    fn input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
+        if input.viewport_id != crate::layer_editor::viewport_id()
+            || std::env::var("ARIA_SMOKE_SCENARIO").as_deref() != Ok("frozen-layer-editor")
+        {
+            return;
+        }
+        let Some(rect) =
+            ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::new("frozen-layer-smoke-area")))
+        else {
+            return;
+        };
+        let key = egui::Id::new("frozen-layer-smoke-phase");
+        let phase = ctx.data(|d| d.get_temp::<u8>(key).unwrap_or(0));
+        if phase > 10 {
+            return;
+        }
+        input.events.retain(|e| {
+            !matches!(
+                e,
+                egui::Event::PointerMoved(_)
+                    | egui::Event::PointerButton { .. }
+                    | egui::Event::PointerGone
+            )
+        });
+        let point = |x, y| rect.min + rect.size() * egui::vec2(x, y);
+        let (position, press) = match phase {
+            1 => (point(0.5, 0.4), Some(true)),
+            2 => (point(0.5, 0.4), Some(false)),
+            4 => (point(0.25, 0.15), Some(true)),
+            5 => (point(0.52, 0.55), None),
+            6 => (point(0.52, 0.55), Some(false)),
+            8 => (point(0.53, 0.25), Some(true)),
+            9 => (point(0.75, 0.75), None),
+            10 => (point(0.75, 0.75), Some(false)),
+            _ => (point(0.75, 0.75), None),
+        };
+        input.events.push(egui::Event::PointerMoved(position));
+        if let Some(pressed) = press {
+            input.events.push(egui::Event::PointerButton {
+                pos: position,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            });
+        }
+        ctx.data_mut(|d| d.insert_temp(key, phase.saturating_add(1)));
+    }
+}
+
 /// Feed real egui pointer events through the normal stage interaction in an
 /// isolated screenshot run. Normal packages do not compile this module.
 pub fn layer_input(ctx: &egui::Context, input: &mut egui::RawInput) {
@@ -49,6 +105,11 @@ pub fn delay() -> Duration {
 }
 
 pub fn capture(ctx: &egui::Context, started: Instant, output: bool) {
+    // eframe's immediate wgpu viewport path does not consume Screenshot actions.
+    // Inspect this scenario with native desktop capture; keep it open for QA.
+    if std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("frozen-layer-editor") {
+        return;
+    }
     let Some(path) = std::env::var_os("ARIA_SCREENSHOT_TO") else {
         return;
     };
@@ -81,6 +142,8 @@ pub fn capture(ctx: &egui::Context, started: Instant, output: bool) {
         crate::chat::viewport_id()
     } else if std::env::var("ARIA_SMOKE_SCENARIO").is_ok_and(|s| s.starts_with("help-")) {
         crate::help::viewport_id()
+    } else if std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("frozen-layer-editor") {
+        crate::layer_editor::viewport_id()
     } else if want_output {
         crate::output::viewport_id(output_index)
     } else {
@@ -114,7 +177,10 @@ pub fn capture(ctx: &egui::Context, started: Instant, output: bool) {
         })
     });
     if let Some(image) = image {
-        if std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("layer-selection") {
+        if matches!(
+            std::env::var("ARIA_SMOKE_SCENARIO").as_deref(),
+            Ok("layer-selection" | "frozen-layer-editor")
+        ) {
             let count = ctx
                 .data(|d| d.get_temp::<usize>(egui::Id::new("layer-smoke-selected")))
                 .unwrap_or(0);
