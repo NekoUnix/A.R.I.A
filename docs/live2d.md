@@ -1,10 +1,19 @@
 # Live2D avatar import and native runtime
 
-![Odette Live2D with the new layer controls](images/live2d-layers-upgrade.png)
+![Odette with the appearance workspace](images/customization-v30.png)
+
+## Customizable models
+
+Open **Inspector → Avatar → Customize** to choose the model's exported outfit,
+hair and accessory controls. ARIA reads their names, ranges and authored folders;
+you can also add any raw parameter manually. Lock values, create named choices
+and save appearance-only looks with shortcuts. Follow the [customization guide](live2d-customization.md).
 
 ## Layers and reusable looks
 
-Use **Inspector → Avatar → Layers** to hide or fade exported ArtMeshes, create
+Use **Select layers** above the stage to drag a rectangle over artwork, then
+hide or restore the selection. **Inspector → Avatar → Layers** can fade or tint
+exported ArtMeshes, create
 model-specific groups and assign visibility hotkeys. See the [layer guide](live2d-layers.md).
 
 ## Pinnable Live2D objects

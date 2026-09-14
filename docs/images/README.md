@@ -1,5 +1,16 @@
 # Documentation screenshots
 
+## v0.30 Live2D customization and drag selection
+
+`customization-v30.png` and `layer-selection-v30.png` are unedited native Windows
+captures of the v0.30.0-alpha.1 screenshot build, using the owner's full Odette
+export and isolated profiles. The appearance workspace holds exported hair/outfit
+switches; the layer image uses injected pointer events through normal egui stage
+interaction and asserts a multi-layer selection before capture. The automatic
+import-preview window is closed so the editing surface is visible and interactive.
+Tracking is visibly labeled Demo. Debug counters are not performance benchmarks.
+Only the UI images are distributed; no model sources, SDKs or profiles are bundled.
+
 ## v0.29 Experimental import and diagnostic reports
 
 `workspace-v29.png`, `vts-import-v29.png`, `vts-repair-v29.png` and `diagnostics-v29.png` are unedited

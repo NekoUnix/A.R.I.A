@@ -333,6 +333,27 @@ shutdown joins the worker after unregistering only its own shortcuts. The messag
 thread requests an egui repaint when a shortcut arrives, including with another app
 focused. It does not use keyboard hooks or record arbitrary key input.
 
+## Live2D appearance and stage selection
+
+`aria-model::DisplayInfo` reads bounded CDI names and nested parameter folders,
+guarding missing parents and cycles. The model supplies IDs/ranges; user-curated
+appearance controls persist in `RigConfig::customization` with serde defaults
+for old profiles. Locked values are applied before physics and again after final
+holds, and overlay frozen poses. Releasing a lock preserves the original binding.
+
+`PresetKind::Appearance` stores values and `layers::Config`; applying it merges
+only those fields into the current rig. Control labels/catalog, mapping, physics,
+pose state and other subsystems remain current. Shared preset identity checks
+and shortcut conflict validation still apply.
+
+`layer_selection` projects current native ArtMesh triangles using the same view
+canvas, placement, rotation and impact deformation as the stage. SAT rectangle
+intersection supports marquee selection; click picking respects render order.
+Pointer gestures snapshot the original selection for modifiers and cancellation.
+Picking only runs in explicit selection mode; layer lists use visible-row
+virtualization. Overlays use the editor painter, outside shared avatar textures.
+Imported masks are retained when hiding visible artwork.
+
 ## Avatar layer and motion state
 
 `aria-core::layers::Config` stores ArtMesh opacity and named visibility groups in

@@ -20,6 +20,7 @@ pub enum Tab {
     Images,
     Vrm,
     Layers,
+    Customize,
     Microphone,
     Controller,
 }
@@ -28,6 +29,7 @@ pub struct InputMonitor {
     pub vbridger: crate::vbridger_panel::Panel,
     pub vbridger_runtime: aria_core::vbridger::Runtime,
     pub layers_panel: crate::layers_panel::Panel,
+    pub customization_panel: crate::customization_panel::Panel,
     pub setup_tracking_requested: bool,
     pub effect_requests: Vec<u64>,
     pub saved: SavedRig,
@@ -120,6 +122,7 @@ impl InputMonitor {
             model_key,
             tab: Tab::Inputs,
             layers_panel: Default::default(),
+            customization_panel: Default::default(),
             message,
             hotkey_status: None,
             save_requested: repaired > 0,
@@ -151,19 +154,31 @@ impl InputMonitor {
             return false;
         };
         let mut candidate = self.saved.clone();
-        candidate.config = preset.rig.clone();
+        if preset.kind == PresetKind::Appearance {
+            candidate
+                .config
+                .customization
+                .values
+                .clone_from(&preset.rig.customization.values);
+            candidate.config.layers.clone_from(&preset.rig.layers);
+        } else {
+            candidate.config = preset.rig.clone();
+        }
         if let Err(error) = candidate.validate_image_hotkeys() {
             self.message = Some(format!("Preset not applied: {error:#}"));
             return false;
         }
-        self.saved.config = preset.rig.clone();
-        self.vbridger_runtime.reset();
-        self.reset_item_rules = true;
-        self.saved.config.reset_filters();
-        *mapping = preset.mapping.clone();
-        self.reset_motion = true;
+        if preset.kind != PresetKind::Appearance {
+            self.vbridger_runtime.reset();
+            self.reset_item_rules = true;
+            candidate.config.reset_filters();
+            *mapping = preset.mapping.clone();
+            self.reset_motion = true;
+        }
+        self.saved.config = candidate.config;
         self.message = Some(format!("Applied {}", preset.name));
         self.selected = Some(index);
+        self.save_requested = true;
         true
     }
     pub fn hotkey(&mut self, key: u8, parameters: &[RigParameter], mapping: &mut MappingSettings) {
@@ -299,7 +314,9 @@ impl InputMonitor {
         })
     }
     pub fn navigation(&mut self, ui: &mut egui::Ui, kind: Option<crate::avatar_import::Kind>) {
-        if self.tab == Tab::Layers && kind != Some(crate::avatar_import::Kind::Live2d) {
+        if matches!(self.tab, Tab::Layers | Tab::Customize)
+            && kind != Some(crate::avatar_import::Kind::Live2d)
+        {
             self.tab = Tab::Inputs;
         }
         if kind == Some(crate::avatar_import::Kind::Live2d) && self.tab == Tab::Images {
@@ -318,7 +335,12 @@ impl InputMonitor {
         }
         let mut group = match self.tab {
             Tab::Inputs | Tab::Microphone | Tab::Controller | Tab::Raw => 0,
-            Tab::Physics | Tab::Expressions | Tab::Images | Tab::Vrm | Tab::Layers => 1,
+            Tab::Physics
+            | Tab::Expressions
+            | Tab::Images
+            | Tab::Vrm
+            | Tab::Layers
+            | Tab::Customize => 1,
             Tab::Items | Tab::Effects => 2,
             Tab::Pose | Tab::Presets => 3,
         };
@@ -338,6 +360,7 @@ impl InputMonitor {
             1 => match kind {
                 Some(crate::avatar_import::Kind::Images) => &[(Tab::Images, "Artwork & actions")],
                 Some(crate::avatar_import::Kind::Live2d) => &[
+                    (Tab::Customize, "Customize"),
                     (Tab::Physics, "Physics"),
                     (Tab::Expressions, "Expressions"),
                     (Tab::Layers, "Layers"),
@@ -398,6 +421,7 @@ impl InputMonitor {
                 }
                 Tab::Vrm => "vrm-view",
                 Tab::Layers => "live2d-layers",
+                Tab::Customize => "live2d-customization",
                 Tab::Expressions => {
                     if self.model_key.starts_with("vrm:") {
                         "vrm-expressions"
@@ -472,6 +496,7 @@ impl InputMonitor {
             | Tab::Controller
             | Tab::Vrm
             | Tab::Layers
+            | Tab::Customize
             | Tab::Physics => {}
         }
     }
@@ -494,6 +519,17 @@ impl InputMonitor {
         labels: &BTreeMap<String, String>,
         inputs: &Inputs,
     ) {
+        if !self.saved.config.customization.values.is_empty() {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(format!(
+                    "{} appearance overrides active",
+                    self.saved.config.customization.values.len()
+                ));
+                if ui.small_button("Edit appearance").clicked() {
+                    self.tab = Tab::Customize;
+                }
+            });
+        }
         ui.label(
             egui::RichText::new(
                 "Expand a control to edit its source, ranges and response. Saved with this model.",
@@ -791,7 +827,18 @@ impl InputMonitor {
         parameters: &[RigParameter],
         mapping: &MappingSettings,
     ) -> Preset {
-        let mut rig = self.saved.config.clone();
+        let mut rig = if kind == PresetKind::Appearance {
+            RigConfig {
+                customization: aria_core::customization::Config {
+                    values: self.saved.config.customization.values.clone(),
+                    ..Default::default()
+                },
+                layers: self.saved.config.layers.clone(),
+                ..Default::default()
+            }
+        } else {
+            self.saved.config.clone()
+        };
         if kind == PresetKind::Pose {
             rig.capture_pose(parameters);
         } else if rig.pose.mode == PoseMode::Frozen {
@@ -804,6 +851,15 @@ impl InputMonitor {
             mapping: mapping.clone(),
             hotkey: self.draft_hotkey,
         }
+    }
+    pub fn save_appearance(&mut self, name: String, parameters: &[RigParameter]) {
+        self.preset_name = name;
+        self.draft_hotkey = None;
+        self.save_new(
+            PresetKind::Appearance,
+            parameters,
+            &MappingSettings::default(),
+        );
     }
     fn save_new(
         &mut self,
@@ -854,7 +910,7 @@ impl InputMonitor {
         crate::theme::category(ui, "preset-create", "Create a preset", true, |ui| {
             crate::theme::caption(
                 ui,
-                "Movement stores your tuning and physics. Pose also freezes the entire model.",
+                "Movement stores tuning and physics. Pose also freezes the model. Appearance stores customization values, layer visibility and colors while keeping tracking live.",
             );
             crate::help::control(ui, "presets", |ui| {
                 ui.add(
@@ -871,6 +927,14 @@ impl InputMonitor {
                 }
                 if crate::help::control(ui, "presets", |ui| ui.button("Save pose")).clicked() {
                     self.save_new(PresetKind::Pose, parameters, mapping);
+                }
+                if self.model_key.starts_with("moc3:")
+                    && crate::help::control(ui, "live2d-customization", |ui| {
+                        ui.button("Save appearance")
+                    })
+                    .clicked()
+                {
+                    self.save_new(PresetKind::Appearance, parameters, mapping);
                 }
             });
         });
@@ -1225,6 +1289,89 @@ mod tests {
     }
     use super::*;
     #[test]
+    fn appearance_look_hotkey_changes_only_appearance_and_round_trips_for_this_avatar() {
+        let parameters = aria_core::movement::preview_parameters(aria_core::Parameters::default());
+        let mut monitor = InputMonitor::new(
+            "moc3:appearance-test".into(),
+            RigConfig::from_parameters(&parameters),
+            None,
+            &parameters,
+        );
+        monitor
+            .saved
+            .config
+            .customization
+            .values
+            .insert("ParamAngleX".into(), 12.);
+        monitor
+            .saved
+            .config
+            .layers
+            .opacity
+            .insert("Jacket".into(), 0.);
+        monitor.save_appearance("Jacket off".into(), &parameters);
+        assert_eq!(monitor.saved.presets.len(), 1);
+        monitor.saved.presets[0].hotkey = Some(3);
+        monitor.saved.config.customization.values.clear();
+        monitor.saved.config.customization.controls.insert(
+            "ParamAngleX".into(),
+            aria_core::customization::Control {
+                label: "Keep my editor label".into(),
+                ..Default::default()
+            },
+        );
+        monitor.saved.config.layers.opacity.clear();
+        monitor.saved.config.physics.strength = 0.37;
+        monitor
+            .saved
+            .config
+            .expressions
+            .insert("keep-expression".into());
+        monitor
+            .saved
+            .config
+            .bindings
+            .get_mut("ParamAngleX")
+            .unwrap()
+            .smoothing_ms = 123.;
+        monitor.saved.config.capture_pose(&parameters);
+        let mut expected = serde_json::to_value(&monitor.saved.config).unwrap();
+        expected["customization"]["values"] = serde_json::json!({"ParamAngleX":12.});
+        expected["layers"]["opacity"] = serde_json::json!({"Jacket":0.});
+        let mut mapping = MappingSettings {
+            head_gain: 2.3,
+            ..Default::default()
+        };
+        monitor.hotkey_action(crate::hotkeys::Action::Preset(3), &parameters, &mut mapping);
+        assert_eq!(
+            serde_json::to_value(&monitor.saved.config).unwrap(),
+            expected
+        );
+        assert_eq!(mapping.head_gain, 2.3);
+        assert!(monitor.save_requested);
+        let encoded = serde_json::to_vec(&PresetFile {
+            version: 1,
+            model_key: monitor.model_key.clone(),
+            preset: monitor.saved.presets[0].clone(),
+        })
+        .unwrap();
+        let decoded = PresetFile::decode(&encoded, &monitor.model_key, &parameters).unwrap();
+        assert_eq!(decoded.preset.kind, PresetKind::Appearance);
+        assert!(decoded.preset.hotkey.is_none());
+        assert!(PresetFile::decode(&encoded, "moc3:other-avatar", &parameters).is_err());
+        let saved = serde_json::from_slice(&serde_json::to_vec(&monitor.saved).unwrap()).unwrap();
+        let restored = InputMonitor::new(
+            monitor.model_key,
+            RigConfig::from_parameters(&parameters),
+            Some(saved),
+            &parameters,
+        );
+        assert_eq!(
+            restored.saved.config.customization.controls["ParamAngleX"].label,
+            "Keep my editor label"
+        );
+    }
+    #[test]
     fn imported_avatar_type_selects_only_relevant_controls() {
         use crate::avatar_import::Kind;
         let params = aria_core::movement::preview_parameters(aria_core::Parameters::default());
@@ -1240,6 +1387,9 @@ mod tests {
             (Kind::Images, Tab::Expressions, Tab::Images),
             (Kind::Live2d, Tab::Images, Tab::Physics),
             (Kind::Live2d, Tab::Items, Tab::Items),
+            (Kind::Images, Tab::Customize, Tab::Inputs),
+            (Kind::Vrm, Tab::Customize, Tab::Inputs),
+            (Kind::Live2d, Tab::Customize, Tab::Customize),
         ] {
             monitor.tab = initial;
             let _ = crate::run_test_ui(&ctx, Default::default(), |ctx| {

@@ -6,14 +6,82 @@ use std::collections::BTreeSet;
 
 #[derive(Default)]
 pub struct Panel {
+    pub stage_selection: crate::layer_selection::Selection,
     search: String,
     selected: BTreeSet<String>,
     name: String,
     editing: Option<u64>,
     draft: Shortcut,
     message: Option<String>,
+    range_anchor: Option<String>,
+    row_drag: Option<(String, BTreeSet<String>, bool)>,
+    tint: Option<[f32; 3]>,
 }
 impl Panel {
+    pub fn stage_tools(&mut self, ui: &mut egui::Ui, saved: &mut SavedRig) -> bool {
+        ui.toggle_value(&mut self.stage_selection.enabled, "Select layers").on_hover_text("Drag a rectangle over Your stage to select several Live2D layers. Object dragging is paused in this mode.");
+        if !self.stage_selection.enabled {
+            self.stage_selection.cancel(&mut self.selected);
+            return false;
+        }
+        let mut changed = false;
+        ui.small(format!("{} selected", self.selected.len()));
+        for (label, opacity) in [("Hide", 0.), ("Restore", 1.)] {
+            if ui
+                .add_enabled(!self.selected.is_empty(), egui::Button::new(label))
+                .clicked()
+            {
+                self.set_opacity(saved, opacity);
+                changed = true;
+            }
+        }
+        if ui.small_button("Clear").clicked() {
+            self.selected.clear();
+            self.editing = None;
+        }
+        changed
+    }
+    pub fn stage(
+        &mut self,
+        ui: &mut egui::Ui,
+        rect: egui::Rect,
+        scene: &crate::output::Scene,
+        zoom: f32,
+        avatar: &Avatar,
+        saved: &SavedRig,
+    ) {
+        let translated =
+            rect.translate(egui::vec2(scene.recoil[0], scene.recoil[1]) * rect.height() * zoom);
+        let projection = crate::layer_selection::Projection {
+            canvas: avatar.view_canvas(),
+            rect: scene.model_rect(translated, zoom),
+            angle: scene.placement.rotation.to_radians(),
+            fields: crate::deformation::avatar_fields(scene, translated, zoom),
+        };
+        self.stage_selection.stage(
+            ui,
+            rect,
+            &avatar.model.drawables,
+            &saved.config.layers,
+            &projection,
+            &mut self.selected,
+        );
+        #[cfg(feature = "screenshots")]
+        if crate::smoke_mode() {
+            ui.ctx().data_mut(|d| {
+                d.insert_temp(egui::Id::new("layer-smoke-selected"), self.selected.len())
+            });
+        }
+    }
+    fn set_opacity(&self, saved: &mut SavedRig, opacity: f32) {
+        for id in &self.selected {
+            if opacity == 1. {
+                saved.config.layers.opacity.remove(id);
+            } else {
+                saved.config.layers.opacity.insert(id.clone(), opacity);
+            }
+        }
+    }
     #[cfg(feature = "screenshots")]
     pub fn prepare_smoke(&mut self, avatar: &Avatar, saved: &mut SavedRig) {
         if let Some(part) = avatar
@@ -46,6 +114,19 @@ impl Panel {
         theme::caption(
             ui,
             "Select exported layers to hide or fade. Changes, named groups and shortcuts belong to this avatar. Your source files stay intact.",
+        );
+        ui.horizontal_wrapped(|ui| {
+            changed |= self.stage_tools(ui, saved);
+        });
+        help::control(ui, "live2d-layers", |ui| {
+            ui.checkbox(
+                &mut self.stage_selection.include_hidden,
+                "Include hidden layers in stage selection",
+            )
+        });
+        theme::caption(
+            ui,
+            "Drag on the model to select a rectangle. Shift adds, Alt removes, Ctrl/Cmd toggles. Click picks the frontmost layer; Esc cancels a drag. Shift-click or drag across list rows to select a range.",
         );
         theme::category(ui, "layer-selection", "Layers & transparency", true, |ui| {
             help::control(ui, "live2d-layers", |ui| {
@@ -85,21 +166,57 @@ impl Panel {
                     avatar.model.drawables.len()
                 ));
             });
+            let row_height = 44.;
+            let mut hovered_row = None;
             egui::ScrollArea::vertical()
                 .id_salt("layer-list")
                 .max_height(290.)
-                .show(ui, |ui| {
-                    for d in filtered {
+                .show_rows(ui, row_height, filtered.len(), |ui, range| {
+                    for index in range {
+                        let d = filtered[index];
                         ui.push_id(&d.id, |ui| {
                             ui.horizontal(|ui| {
-                                let mut selected = self.selected.contains(&d.id);
-                                if ui.checkbox(&mut selected, &d.id).changed() {
-                                    if selected {
-                                        self.selected.insert(d.id.clone());
-                                    } else {
+                                let selected = self.selected.contains(&d.id);
+                                let width = (ui.available_width() * 0.42).clamp(72., 170.);
+                                let response = ui
+                                    .add_sized(
+                                        [width, ui.spacing().interact_size.y],
+                                        egui::Button::selectable(selected, &d.id)
+                                            .truncate()
+                                            .sense(egui::Sense::click_and_drag()),
+                                    )
+                                    .on_hover_text(&d.id);
+                                if response.clicked() {
+                                    if ui.input(|i| i.modifiers.shift) {
+                                        let anchor = filtered
+                                            .iter()
+                                            .position(|d| Some(&d.id) == self.range_anchor.as_ref())
+                                            .unwrap_or(index);
+                                        self.selected.extend(
+                                            filtered[anchor.min(index)..=anchor.max(index)]
+                                                .iter()
+                                                .map(|d| d.id.clone()),
+                                        );
+                                    } else if selected {
                                         self.selected.remove(&d.id);
+                                    } else {
+                                        self.selected.insert(d.id.clone());
                                     }
+                                    self.range_anchor = Some(d.id.clone());
                                 }
+                                if response.drag_started_by(egui::PointerButton::Primary) {
+                                    self.row_drag =
+                                        Some((d.id.clone(), self.selected.clone(), !selected));
+                                }
+                                if let Some(pointer) = ui.input(|i| i.pointer.latest_pos())
+                                    && ui.clip_rect().contains(pointer)
+                                    && pointer.y >= response.rect.top()
+                                    && pointer.y < response.rect.top() + row_height
+                                {
+                                    hovered_row = Some(index);
+                                }
+                                ui.spacing_mut().slider_width =
+                                    (ui.available_width() - 45.).clamp(40., 100.);
                                 let mut opacity = saved
                                     .config
                                     .layers
@@ -129,12 +246,49 @@ impl Panel {
                                     100. * saved.config.layers.opacity(&d.id)
                                 ));
                             });
-                            if !d.part.is_empty() {
-                                ui.small(avatar.labels.get(&d.part).unwrap_or(&d.part));
-                            }
+                            let part = avatar.labels.get(&d.part).unwrap_or(&d.part);
+                            ui.add(egui::Label::new(egui::RichText::new(part).small()).truncate())
+                                .on_hover_text(part);
                         });
                     }
+                    // The anchor can scroll outside the virtualized rows while
+                    // held; keep scrolling from gesture state, not its response.
+                    if self.row_drag.is_some()
+                        && ui.input(|i| i.pointer.primary_down())
+                        && let Some(pointer) = ui.input(|i| i.pointer.latest_pos())
+                        && pointer.x >= ui.clip_rect().left()
+                        && pointer.x <= ui.clip_rect().right()
+                    {
+                        if pointer.y < ui.clip_rect().top() + 14. {
+                            ui.scroll_with_delta(egui::vec2(0., 8.));
+                        }
+                        if pointer.y > ui.clip_rect().bottom() - 14. {
+                            ui.scroll_with_delta(egui::vec2(0., -8.));
+                        }
+                    }
                 });
+            if let Some((anchor, original, add)) = &self.row_drag {
+                if let Some(index) = hovered_row {
+                    let anchor = filtered
+                        .iter()
+                        .position(|d| &d.id == anchor)
+                        .unwrap_or(index);
+                    self.selected.clone_from(original);
+                    for d in &filtered[anchor.min(index)..=anchor.max(index)] {
+                        if *add {
+                            self.selected.insert(d.id.clone());
+                        } else {
+                            self.selected.remove(&d.id);
+                        }
+                    }
+                }
+                if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    self.selected.clone_from(original);
+                    self.row_drag = None;
+                } else if !ui.input(|i| i.pointer.primary_down()) {
+                    self.row_drag = None;
+                }
+            }
             ui.horizontal_wrapped(|ui| {
                 for (label, value) in [
                     ("Hide selected", 0.),
@@ -145,13 +299,7 @@ impl Panel {
                         .add_enabled(!self.selected.is_empty(), egui::Button::new(label))
                         .clicked()
                     {
-                        for id in &self.selected {
-                            if value == 1. {
-                                saved.config.layers.opacity.remove(id);
-                            } else {
-                                saved.config.layers.opacity.insert(id.clone(), value);
-                            }
-                        }
+                        self.set_opacity(saved, value);
                         changed = true;
                     }
                 }
@@ -166,6 +314,49 @@ impl Panel {
             theme::caption(
                 ui,
                 "Percentages multiply the model's authored opacity. An active group can still hide a restored layer. Show all disables groups too; layers hidden by the model's own parameters remain hidden.",
+            );
+            if saved.config.layers.groups.iter().any(|g| g.active && !g.layers.is_disjoint(&self.selected))
+                && ui.button("Disable groups affecting selected layers").on_hover_text("Turns off each active group touching the selection. Other layers in those groups also return to their underlying opacity.").clicked()
+            {
+                for group in &mut saved.config.layers.groups { if !group.layers.is_disjoint(&self.selected) { group.active = false; } }
+                changed = true;
+            }
+        });
+        theme::category(ui, "layer-colors", "Selected layer colors", false, |ui| {
+            help::button(ui, "live2d-customization");
+            let tint = self.tint.get_or_insert([1.; 3]);
+            ui.horizontal(|ui| {
+                ui.color_edit_button_rgb(tint);
+                ui.label("Multiply tint");
+            });
+            ui.add_enabled_ui(!self.selected.is_empty(), |ui| {
+                if ui.button("Apply tint to selected layers").clicked() {
+                    for d in avatar
+                        .model
+                        .drawables
+                        .iter()
+                        .filter(|d| self.selected.contains(&d.id))
+                    {
+                        let colors = saved.config.layers.colors.entry(d.id.clone()).or_insert(
+                            aria_core::layers::Colors {
+                                multiply: d.multiply,
+                                screen: d.screen,
+                            },
+                        );
+                        colors.multiply[..3].copy_from_slice(tint);
+                    }
+                    changed = true;
+                }
+                if ui.button("Restore selected colors").clicked() {
+                    for id in &self.selected {
+                        saved.config.layers.colors.remove(id);
+                    }
+                    changed = true;
+                }
+            });
+            theme::caption(
+                ui,
+                "White keeps the original texture colors. Other tints multiply the artwork's colors; they cannot recover detail or recolor black pixels. Save an appearance look to recall colors with layer visibility.",
             );
         });
         theme::category(ui, "layer-groups", "Saved layer groups", true, |ui| {

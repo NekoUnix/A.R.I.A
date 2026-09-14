@@ -437,6 +437,16 @@ fn diagram(ui: &mut egui::Ui, kind: &str) {
             ],
             "Frozen poses pause input rules. Manual checkboxes and keyboard toggles remain available for screenshots.",
         ),
+        "appearance" => (
+            &[
+                "Model export: names + folders + ranges",
+                "Choose controls for your workspace",
+                "Lock outfit / hair values + edit layers",
+                "Save appearance look → assign shortcut",
+                "Apply look; other tracking stays live",
+            ],
+            "Uncheck a control to release its override. Looks belong to this avatar; missing artwork cannot be reconstructed.",
+        ),
         "pipeline" => (
             &[
                 "Tracker / demo",
@@ -817,7 +827,8 @@ mod tests {
                             "physics",
                             "capture",
                             "pin",
-                            "item-toggle"
+                            "item-toggle",
+                            "appearance"
                         ]
                         .contains(&block)
                     );

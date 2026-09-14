@@ -1,9 +1,43 @@
 # Validation
 
-![Native Windows v0.29 build](images/workspace-v29.png)
+![Native Windows v0.30 customization workspace](images/customization-v30.png)
 
 This file records checks for the development builds. The Windows CI workflow
 is the repeatable MSVC build/test path; its status belongs to a specific commit.
+
+## v0.30 Live2D selection and appearance — 2026-09-14
+
+- 219 standard Rust tests, workspace/all-target/all-feature strict Clippy,
+  formatting and offline repository checks. Older profiles load with empty
+  appearance settings; values and named choices validate against model ranges.
+- Real egui pointer press/move/release selects multiple meshes; Escape restores
+  the previous selection. Geometry checks cover overlapping render order, hidden
+  layers, rotated/scaled models, empty bounding-box corners and edge crossings.
+- Appearance preset hotkey dispatch and export/import preserve current mapping,
+  physics, frozen pose, expressions and curated control names. Foreign-avatar
+  imports are rejected and imported keyboard assignments are cleared.
+- Native Cubism/GPU checks on the owner's full Odette export (208 parameters,
+  1,174 meshes) and OilBun export (109 parameters, 284 meshes): stage rectangle
+  selection hid and restored 350 and 190 meshes respectively, with pixel-exact
+  restoration. Appearance switches `Param139` and `Param27` changed real rendered
+  artwork while head tracking continued; releasing them restored the original image.
+- Native Windows UI captures exercise the customization inspector and a real
+  pointer drag through the app. The capture fails if the drag selects fewer than
+  two meshes. Profiles are isolated; supplied artwork sources are never committed.
+
+Run native checks on Windows with a local GPU, the appropriate Cubism library in
+`ARIA_CUBISM_CORE`, a built `aria-cubism-host`, and `ARIA_TEST_MODEL` pointing to
+your complete model export. Set `ARIA_TEST_APPEARANCE_PARAMETER` to an exported
+appearance switch that changes artwork and has CDI folder metadata:
+
+```sh
+cargo test --locked -p aria-desktop --all-features native_appearance_override -- --ignored --nocapture
+cargo test --locked -p aria-desktop --all-features native_marquee_selection -- --ignored --nocapture
+```
+
+Screenshot scenarios are `customization` and `layer-selection`. Selection uses
+ArtMesh geometry, not per-pixel alpha/mask picking. Physical input latency and
+interactive macOS/Linux hardware behavior are not measured by these Windows tests.
 
 ## v0.29 Experimental VTube Studio import — 2026-09-13
 

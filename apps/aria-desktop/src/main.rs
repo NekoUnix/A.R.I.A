@@ -8,6 +8,7 @@ mod chat;
 mod chroma;
 mod controller;
 mod cubism_render;
+mod customization_panel;
 mod deformation;
 mod diagnostics;
 mod effect_api;
@@ -22,6 +23,7 @@ mod image_actions;
 mod input_monitor;
 mod items;
 mod items_panel;
+mod layer_selection;
 mod layers_panel;
 #[cfg(target_os = "linux")]
 mod linux_output;

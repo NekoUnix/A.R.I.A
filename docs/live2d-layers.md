@@ -1,6 +1,6 @@
 # Live2D layers, transparency and saved looks
 
-![Odette and the exported layer controls](images/live2d-layers-upgrade.png)
+![Dragging a selection over Odette in the native app](images/layer-selection-v30.png)
 
 Open **Inspector → Avatar → Layers** with a Live2D avatar loaded. The list comes
 from that avatar's exported ArtMeshes, with parent part names from its display
@@ -8,8 +8,12 @@ information file when available. It works with any supported export; it does not
 depend on Odette's parameter names or artwork. Original PSD layers that were
 merged or omitted during export cannot be recovered from a moc3.
 
-1. Search for a layer ID, part ID or part name. Check individual rows or use
-   **Select results** to select all matching layers.
+1. Turn on **Select layers** above Your stage and drag a rectangle over the
+   artwork. Shift adds, Alt removes, Ctrl/Cmd toggles; Escape cancels the drag.
+   A click selects the frontmost mesh. Alternatively, search the list, click
+   individual rows, Shift-click or drag across row buttons for a range, or use
+   **Select results** to select all matching rows. Turn selection mode off to
+   resume dragging pinned objects.
 2. Drag a row's opacity slider, or apply **Hide selected**, **Half opacity** or
    **Restore selected** to the selection. Zero removes that layer from the picture;
    it does not delete any model data. One retains its authored opacity.
@@ -21,7 +25,17 @@ merged or omitted during export cannot be recovered from a moc3.
    intended group. The shortcut toggles that group. Conflicts with poses,
    presets, expressions, objects, image actions or effects are rejected.
 
-Layer edits save in the avatar's content-based profile. Movement and pose presets
+Selection uses deformed mesh triangles, including their transparent texture
+areas. Hidden meshes are excluded unless **Include hidden layers in stage selection**
+is enabled; collapsed zero-area layers can still be picked from the list. Stage
+selection outlines never enter OBS output or PNG exports.
+
+**Selected layer colors** applies or restores a multiply tint. White preserves
+texture colors; multiplication cannot recolor black artwork. See the
+[appearance guide](live2d-customization.md) for per-model controls and saved looks.
+
+Layer edits save in the avatar's content-based profile. Appearance-only looks
+recall layer settings and appearance values without replacing tracking or physics. Movement and pose presets
 include the individual opacities, group membership and active states. Shortcuts
 belong to the avatar, independent of the currently applied preset. Global hotkeys
 currently work on Windows; buttons are available on all platforms.
@@ -29,7 +43,8 @@ currently work on Windows; buttons are available on all platforms.
 The displayed percentage is the effective user opacity multiplier. Overlapping
 groups use the lowest opacity, so two half-opacity groups still give 50%, not 25%.
 The model's own animated opacity is multiplied by this value. An active group can
-keep a layer hidden even after **Restore selected**. **Show all layers** clears
+keep a layer hidden even after **Restore selected**. **Disable groups affecting
+selected layers** disables entire overlapping groups, including their other members. **Show all layers** clears
 individual overrides and disables all groups. Layers hidden by the model's own
 parameters or expressions remain hidden until those controls reveal them.
 

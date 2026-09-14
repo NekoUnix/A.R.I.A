@@ -3,6 +3,27 @@
 All downloads remain Alpha. See [Releases](https://github.com/NekoUnix/A.R.I.A/releases)
 for packages and checksums. Features labeled Experimental have compatibility limits.
 
+## 0.30.0-alpha.1 — Live2D drag selection and customizable avatars
+
+- Drag a rectangle over the stage to select several exported Live2D layers.
+  Shift adds, Alt removes, Ctrl/Cmd toggles and Escape cancels; click selects the
+  frontmost mesh. Shift-click and dragging across list buttons select ranges.
+  Bulk hiding/restoration, named visibility groups and their hotkeys share the selection.
+- Add a dedicated **Avatar → Customize** workspace using the loaded model's
+  exported parameter names, ranges and nested folders. Suggest appearance controls,
+  browse every parameter, organize categories and create sliders, toggles or named choices.
+- Hold appearance values without replacing tracking assignments. Release controls
+  to restore existing behavior, or change them during a frozen screenshot pose.
+- Save appearance-only looks with preset export/import and Windows shortcuts.
+  Recall parameter overrides, layer visibility/groups and colors while retaining
+  current tracking, physics, props, expressions and curated control names.
+- Tint selected layers and restore authored colors. Active-group restoration is
+  explicit; stage selection guides never appear in OBS or exported PNGs.
+- Include appearance settings, authored parameter folders and layer overrides in
+  diagnostic reports. Add illustrated user guides and contextual offline help.
+- VTube Studio and VBridger imports remain Experimental. Customization works with
+  exported artwork and controls; merged or absent source layers cannot be recovered.
+
 ## 0.29.0-alpha.1 — Experimental VTube Studio import and diagnostics
 
 - Experimental, model-owned `.vtube.json` import with category review, Cancel and Undo.

@@ -4,7 +4,7 @@ Bring your **Live2D, VRM or PNG/GIF avatar** to life, tune how it follows you, a
 send it to OBS. ARIA runs on Windows, Linux and macOS. You can start with the
 included Mica puppet before importing a model or connecting a camera.
 
-**[Download v0.29 Alpha](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.29.0-alpha.1)** ·
+**[Download v0.30 Alpha](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.30.0-alpha.1)** ·
 [What's new](#whats-new) · [First-time setup](#first-time-setup) ·
 [Help when something goes wrong](#help-when-something-goes-wrong)
 
@@ -12,11 +12,25 @@ ARIA is still **Alpha**, so some features and device combinations need more
 real-world testing. **VTube Studio import and VBridger import are Experimental.** Your avatar files and any
 required third-party tracking app or runtime are supplied separately.
 
-![Odette in ARIA v0.29 with the updated footer and avatar controls](docs/images/workspace-v29.png)
+![Odette in the customizable Live2D workspace](docs/images/customization-v30.png)
 
 ## What's new
 
-**v0.29.0-alpha.1** brings **Experimental VTube Studio customization import**.
+**v0.30.0-alpha.1** adds **drag selection and a dedicated Live2D appearance workspace**.
+Click **Select layers** above Your stage, drag a box around artwork, then use
+**Hide** or **Restore**. Shift adds to the selection; Alt removes from it. Save
+layer groups for later and assign their hotkeys.
+
+Open **Inspector → Avatar → Customize** to organize the model's exported outfit,
+hair and accessory controls. Choose sliders, on/off switches or named variants,
+then save appearance looks with shortcuts. Looks change appearance while your
+tracking, physics and props keep their current settings. Selected layers can also
+be tinted. All of these settings belong to the avatar you loaded.
+
+Follow the illustrated [customization and drag-selection guide](docs/live2d-customization.md)
+or open the circled **?** in ARIA for offline instructions.
+
+**v0.29.0-alpha.1** added **Experimental VTube Studio customization import**.
 Import a matching `.vtube.json`, review its settings, then transfer tracking,
 physics, expressions, hotkeys, animations, mesh colors and item scenes. Missing
 assets remain repairable inside ARIA through a three-step guide.
@@ -47,17 +61,17 @@ this and earlier releases.
 
 ### 1. Download the right file
 
-Open the [v0.29 Alpha release](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.29.0-alpha.1)
+Open the [v0.30 Alpha release](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.30.0-alpha.1)
 and expand **Assets** if the downloads are hidden. Choose the file for your computer:
 
 | Your computer | Download |
 | --- | --- |
-| Windows 10/11, 64-bit Intel or AMD | `aria-0.29.0-alpha.1-windows-x64.zip` |
-| Mac with an M-series chip | `aria-0.29.0-alpha.1-macos-arm64.zip` |
-| Mac with an Intel processor | `aria-0.29.0-alpha.1-macos-x64.zip` |
-| Ubuntu 24.04, 64-bit Intel or AMD | `aria-0.29.0-alpha.1-linux-x64.tar.gz` |
-| Fedora 44, 64-bit Intel or AMD | `aria-alpha-0.29.0.alpha.1-1.x86_64.rpm` |
-| Current Arch Linux, 64-bit Intel or AMD | `aria-alpha-0.29.0alpha.1-1-x86_64.pkg.tar.zst` |
+| Windows 10/11, 64-bit Intel or AMD | `aria-0.30.0-alpha.1-windows-x64.zip` |
+| Mac with an M-series chip | `aria-0.30.0-alpha.1-macos-arm64.zip` |
+| Mac with an Intel processor | `aria-0.30.0-alpha.1-macos-x64.zip` |
+| Ubuntu 24.04, 64-bit Intel or AMD | `aria-0.30.0-alpha.1-linux-x64.tar.gz` |
+| Fedora 44, 64-bit Intel or AMD | `aria-alpha-0.30.0.alpha.1-1.x86_64.rpm` |
+| Current Arch Linux, 64-bit Intel or AMD | `aria-alpha-0.30.0alpha.1-1-x86_64.pkg.tar.zst` |
 
 On a Mac, **Apple menu → About This Mac** tells you whether it has an Apple chip
 or an Intel processor. Linux ARM, Windows ARM, `.deb`, AppImage and Flatpak/Snap
@@ -268,7 +282,9 @@ click it for the complete offline help window.
 - **Tracking:** adjust each input's range, stepping and response, or set a value
   manually and hold it. Saved settings belong to the selected avatar.
 - **Avatar:** tune model physics, expressions and supported appearance controls.
-  Live2D layer groups can hide artwork or make it transparent without deleting it.
+  Use **Select layers** to drag-select Live2D artwork and hide, fade or tint it.
+  **Avatar → Customize** organizes exported outfit and hair controls; save appearance
+  looks without replacing tracking. See the [appearance guide](docs/live2d-customization.md).
 - **Stage:** add and pin images or independent Live2D accessories; create reusable
   throw and spray effects with assets, sound, direction and impact settings.
 - **Poses:** freeze the model for a screenshot, export an image, and save named
@@ -285,7 +301,7 @@ Export important configurations before experimenting with a new Alpha build.
 | Problem | First things to check |
 | --- | --- |
 | ARIA will not open | Extract the complete package, use the right CPU/OS download and update the graphics driver. Read the error dialog and your installation guide. |
-| Clicking an online link does nothing | Install this updated v0.29 Alpha build. Set a default browser in your operating system and check behind ARIA for a new tab or window. If it still fails, use **Diagnostics / export logs** and describe the link you clicked. |
+| Clicking an online link does nothing | Install this updated v0.30 Alpha build. Set a default browser in your operating system and check behind ARIA for a new tab or window. If it still fails, use **Diagnostics / export logs** and describe the link you clicked. |
 | A phone connects but no motion arrives | Check **Tracking live**, the current phone IP, matching ports, Local Network permission, firewall and same LAN. Demo motion does not confirm a phone connection. |
 | Cannot bind the tracking port | Close the other application receiving on that port, or configure matching custom ports on both sides. |
 | Mouth feels slow | Try **Quick** or **Instant** mouth response; check the tracking-rate and packet-age graphs. Phone sampling and network delay remain outside that setting. |
@@ -331,6 +347,7 @@ in the Linux guide. ARIA does not require building Rust code to use a release.
 | VBridger config import/editor | **Experimental**; exact third-party motion is not guaranteed |
 | NVIDIA RTX tracking | **Experimental** adapter; requires separate SDK and GPU validation |
 | Native OBS outputs | Alpha on Windows, Linux and macOS; plugin/GPU compatibility varies |
+| Live2D drag selection and customization | Available; authored appearance controls, tints, layer groups and appearance-only presets |
 | Physics, pins, expressions, effects and presets | Available; broader asset/device testing continues |
 | Twitch/YouTube chat | Available; live-account validation remains pending |
 | Developer-signed apps and macOS notarization | Planned; GitHub Verified source commits do not sign downloads |
