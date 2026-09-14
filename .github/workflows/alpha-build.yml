@@ -74,12 +74,9 @@ jobs:
       - name: Build OBS plugins against Fedora and Arch
         if: runner.os == 'Linux'
         run: sh scripts/build-linux-obs-packages.sh
-      - name: macOS Syphon framework
+      - name: macOS Syphon orientation and idle-frame regression
         if: runner.os == 'macOS'
-        run: |
-          sh scripts/build-syphon.sh
-          clang -fobjc-arc -framework Foundation -framework Metal apps/aria-desktop/native/syphon.m apps/aria-desktop/native/syphon-test.m -o target/syphon-test
-          target/syphon-test "$PWD/target/syphon-build/Build/Products/Release/Syphon.framework"
+        run: sh scripts/test-syphon.sh
       - name: Native lint and regression tests
         run: |
           cargo clippy --locked --workspace --all-targets --all-features -- -D warnings

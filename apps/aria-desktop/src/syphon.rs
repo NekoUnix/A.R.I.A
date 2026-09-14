@@ -12,7 +12,7 @@ unsafe extern "C" {
         device: *const c_void,
         queue: *const c_void,
     ) -> *mut c_void;
-    fn aria_syphon_send(sender: *mut c_void, texture: *const c_void) -> i32;
+    fn aria_syphon_send(sender: *mut c_void, texture: *const c_void, changed: i32) -> i32;
     fn aria_syphon_destroy(sender: *mut c_void);
 }
 pub struct Bridge {
@@ -61,13 +61,14 @@ impl Bridge {
             name,
         })
     }
-    pub fn send(&self, sender: &Sender) -> Result<bool> {
+    pub fn send(&self, sender: &Sender, changed: bool) -> Result<bool> {
         let texture = unsafe { sender.texture.as_hal::<wgpu::hal::api::Metal>() }
             .context("Missing Metal canvas")?;
         let result = unsafe {
             aria_syphon_send(
                 sender.handle.as_ptr(),
                 std::ptr::from_ref(texture.raw_handle()).cast(),
+                i32::from(changed),
             )
         };
         ensure!(result >= 0, "Metal command buffer creation failed");

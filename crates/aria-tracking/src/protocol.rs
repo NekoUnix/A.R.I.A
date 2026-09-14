@@ -60,12 +60,13 @@ pub fn decode(bytes: &[u8], protocol: Protocol) -> Result<TrackingFrame> {
                 timestamp: p.timestamp,
                 face_found: p.face_found,
                 // VTS sends horizontal/vertical/lean as X/Y/Z. ARIA's internal
-                // contract is pitch/yaw/roll. Phone vertical has the opposite
-                // sign to model pitch; convert both axes and sign at this boundary.
+                // contract is pitch/yaw/roll. Phone pitch and roll have the
+                // opposite sign to model parameters; correct them at the input
+                // boundary, before calibration, shared tracking and rig mapping.
                 rotation: Vec3 {
                     x: -p.rotation.y,
                     y: p.rotation.x,
-                    z: p.rotation.z,
+                    z: -p.rotation.z,
                 },
                 position: p.position,
                 eye_left: p.eye_left,
@@ -123,7 +124,7 @@ pub fn encode(frame: &TrackingFrame, protocol: Protocol) -> Result<Vec<u8>> {
             rotation: Vec3 {
                 x: frame.rotation.y,
                 y: -frame.rotation.x,
-                z: frame.rotation.z,
+                z: -frame.rotation.z,
             },
             position: frame.position,
             eye_left: frame.eye_left,
@@ -141,6 +142,56 @@ pub fn encode(frame: &TrackingFrame, protocol: Protocol) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn vts_roll_matches_model_direction_with_wrapping_mirror_and_authored_bindings() {
+        use aria_core::{MappingSettings, ParameterPipeline, rig};
+        for wire_roll in [-18., 18., 342., 378.] {
+            let bytes = serde_json::to_vec(&serde_json::json!({
+                "Timestamp":1, "FaceFound":true,
+                "Rotation":{"x":0,"y":0,"z":wire_roll},
+                "Position":{"x":0,"y":0,"z":0}, "BlendShapes":[]
+            }))
+            .unwrap();
+            let frame = decode(&bytes, Protocol::VTubeStudio).unwrap();
+            let expected = aria_core::signed_angle(-wire_roll);
+            for (mirror, invert, sign) in [
+                (false, false, 1.),
+                (true, false, -1.),
+                (false, true, -1.),
+                (true, true, 1.),
+            ] {
+                let settings = MappingSettings {
+                    mirror,
+                    invert_roll: invert,
+                    smoothing_ms: 0.,
+                    ..Default::default()
+                };
+                let mut pipeline = ParameterPipeline::default();
+                let params = pipeline.update(Some(&frame), &settings, 1. / 60.);
+                let inputs = rig::tracking_inputs(Some(&frame), params, mirror, 0.);
+                let mut output = [rig::RigParameter {
+                    id: "CustomHeadTilt".into(),
+                    min: -30.,
+                    max: 30.,
+                    default: 0.,
+                    value: 0.,
+                }];
+                let mut bindings = std::collections::BTreeMap::from([(
+                    "CustomHeadTilt".into(),
+                    rig::Binding::direct("FaceAngleZ", -30., 30.),
+                )]);
+                rig::apply_bindings(&mut bindings, &inputs, &mut output, 1. / 60.);
+                assert!((output[0].value - expected * sign).abs() < 1e-4);
+                assert_eq!(&params.0[..2], &[0., 0.]);
+                assert!(pipeline.calibrate(&frame));
+                assert_eq!(pipeline.update(Some(&frame), &settings, 1. / 60.).0[2], 0.);
+            }
+            for protocol in [Protocol::AriaJson, Protocol::VTubeStudio] {
+                let copy = decode(&encode(&frame, protocol).unwrap(), protocol).unwrap();
+                assert_eq!(copy.rotation.z, frame.rotation.z);
+            }
+        }
+    }
     #[test]
     fn external_parameters_roundtrip_and_validate_without_clamping_body_axes() {
         let mut f = aria_core::demo_frame(0.0);
@@ -177,7 +228,7 @@ mod tests {
         );
         assert_eq!(inputs["FaceAngleX"], 15.0);
         assert_eq!(inputs["FaceAngleY"], 8.0);
-        assert_eq!(inputs["FaceAngleZ"], 4.0);
+        assert_eq!(inputs["FaceAngleZ"], -4.0);
     }
     #[test]
     fn json_pitch_is_unchanged_and_phone_invert_remains_explicit() {
@@ -240,7 +291,8 @@ mod tests {
             ([12, 0, 0], [12.0, 0.0, 0.0]),
             ([0, 9, 0], [0.0, -9.0, 0.0]),
             ([0, -9, 0], [0.0, 9.0, 0.0]),
-            ([0, 0, -7], [0.0, 0.0, -7.0]),
+            ([0, 0, -7], [0.0, 0.0, 7.0]),
+            ([0, 0, 7], [0.0, 0.0, -7.0]),
         ] {
             let bytes = serde_json::to_vec(&serde_json::json!({
                 "Timestamp": 1, "FaceFound": true,

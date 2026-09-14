@@ -14,11 +14,14 @@ pub(super) struct Workspace {
 }
 impl Workspace {
     fn source(&self, id: u64) -> Option<u64> {
+        self.tracking_owner(id, true)
+    }
+    fn tracking_owner(&self, id: u64, require_enabled: bool) -> Option<u64> {
         let mut current = id;
         let mut visited = std::collections::BTreeSet::new();
         while visited.insert(current) {
             let entry = self.entries.iter().find(|e| e.id == current)?;
-            if !entry.enabled {
+            if require_enabled && !entry.enabled {
                 return None;
             }
             match entry.follow {
@@ -27,6 +30,28 @@ impl Workspace {
             }
         }
         None
+    }
+    pub(super) fn migrate_vts_roll(&mut self) {
+        // Disabled avatars and followers also need the new input coordinates
+        // when loaded later. Keep independent entries independent of model keys.
+        let affected: Vec<_> = self
+            .entries
+            .iter()
+            .filter_map(|entry| {
+                let owner = self.tracking_owner(entry.id, false)?;
+                self.entries
+                    .iter()
+                    .find(|e| e.id == owner)
+                    .filter(|e| e.preferences.source == Source::Vts)
+                    .map(|_| entry.id)
+            })
+            .collect();
+        for entry in &mut self.entries {
+            if affected.contains(&entry.id) {
+                entry.preferences.calibration.z = -entry.preferences.calibration.z;
+                migrate_roll_rig(&mut entry.rig);
+            }
+        }
     }
 }
 #[derive(Clone, Serialize, Deserialize)]
@@ -132,17 +157,8 @@ impl Default for AvatarState {
 }
 impl AvatarState {
     fn exchange(&mut self, app: &mut AriaApp) {
-        let mut preferences = ModelPreferences::capture(&app.settings);
-        preferences.calibration = app.pipeline.calibration();
-        // Outputs, frame pacing and native window policy belong to the workspace.
-        let outputs = app.settings.outputs.clone();
-        let fps = app.settings.fps;
-        let on_top = app.settings.always_on_top;
-        self.preferences.restore(&mut app.settings);
-        app.settings.outputs = outputs;
-        app.settings.fps = fps;
-        app.settings.always_on_top = on_top;
-        self.preferences = preferences;
+        self.preferences.exchange_live(&mut app.settings);
+        self.preferences.calibration = app.pipeline.calibration();
         std::mem::swap(&mut self.image_avatar, &mut app.settings.image_avatar);
         std::mem::swap(&mut self.vrm_avatar, &mut app.settings.vrm_avatar);
         std::mem::swap(&mut self.camera, &mut app.camera);
@@ -526,6 +542,16 @@ impl AriaApp {
             .chain(self.profiles.current)
             .collect();
         let mut frames = BTreeMap::new();
+        // Single avatars and independent trackers do not need a second owned
+        // snapshot/raw-frame copy (including every blendshape string/map).
+        let shared_sources: std::collections::BTreeSet<_> = self
+            .settings
+            .profiles
+            .entries
+            .iter()
+            .filter(|entry| entry.enabled && entry.follow.is_some() && ids.contains(&entry.id))
+            .filter_map(|entry| self.settings.profiles.source(entry.id))
+            .collect();
         if self.profiles.current.is_none() {
             self.sample_own_tracking();
         }
@@ -534,7 +560,9 @@ impl AriaApp {
                 .with_profile(*id, |app| {
                     if app.following_profile().is_none() {
                         app.sample_own_tracking();
-                        Some((app.snapshot.clone(), app.raw.clone()))
+                        shared_sources
+                            .contains(id)
+                            .then(|| (app.snapshot.clone(), app.raw.clone()))
                     } else {
                         None
                     }
@@ -737,7 +765,12 @@ impl AriaApp {
             let loaded = Some(entry.id) == self.profiles.current
                 || self.profiles.parked.contains_key(&entry.id);
             ui.push_id(entry.id, |ui| {
-                egui::Frame::group(ui.style()).show(ui, |ui| {
+                let editing = Some(entry.id) == self.profiles.current;
+                theme::glass_card().stroke(if editing {
+                    egui::Stroke::new(1.0, theme::mint())
+                } else {
+                    theme::surface_edge()
+                }).show(ui, |ui| {
                     ui.set_min_width(ui.available_width());
                     ui.horizontal(|ui| {
                         let mut enabled = entry.enabled;
@@ -839,6 +872,104 @@ mod tests {
     fn add(app: &mut AriaApp, ctx: &egui::Context, name: &str) -> u64 {
         app.apply_image(Path::new(name), false, sprite(ctx, name), 64);
         app.profiles.current.unwrap()
+    }
+    #[test]
+    fn vts_roll_upgrade_preserves_calibrated_presets_and_disabled_shared_profiles() {
+        let (ctx, mut app) = app();
+        let source = add(&mut app, &ctx, "phone.png");
+        let follower = add(&mut app, &ctx, "follower.png");
+        let other = add(&mut app, &ctx, "json.png");
+        app.settings.vts_roll_revision = 0;
+        for entry in &mut app.settings.profiles.entries {
+            entry.enabled = false;
+            entry.preferences.source = if entry.id == source {
+                Source::Vts
+            } else {
+                Source::Json
+            };
+            entry.follow = (entry.id == follower).then_some(source);
+            entry.preferences.calibration = aria_core::Vec3 {
+                x: 3.,
+                y: 5.,
+                z: 7.,
+            };
+            entry.preferences.mapping.invert_roll = true;
+            let config = &mut entry.rig.config;
+            config.tracking.origin = entry.preferences.calibration;
+            config.tracking.enabled = true;
+            for name in ["FaceAngleZ", "ParamAngleZ", "FaceAngleX"] {
+                config.tracking.ranges.insert(
+                    name.into(),
+                    aria_core::calibration::Range {
+                        low: -20.,
+                        neutral: 2.,
+                        high: 40.,
+                        enabled: true,
+                    },
+                );
+            }
+            config.pose.held.insert("HeldAccessory".into(), 0.75);
+            entry.rig.presets = vec![movement::Preset {
+                name: "Personal movement".into(),
+                kind: movement::PresetKind::Movement,
+                rig: config.clone(),
+                mapping: entry.preferences.mapping.clone(),
+                hotkey: Some(3),
+            }];
+        }
+        let legacy = app.settings.profiles.entries[0].clone();
+        app.settings
+            .model_preferences
+            .insert("legacy-phone".into(), legacy.preferences);
+        app.settings
+            .saved_rigs
+            .insert("legacy-phone".into(), legacy.rig);
+        // Load an actual pre-fix serialization with the new marker absent.
+        let mut encoded = serde_json::to_value(&app.settings).unwrap();
+        encoded.as_object_mut().unwrap().remove("vts_roll_revision");
+        let mut settings: Settings = serde_json::from_value(encoded).unwrap();
+        assert_eq!(settings.vts_roll_revision, 0);
+        settings.migrate_vts_roll();
+        let once = serde_json::to_value(&settings).unwrap();
+        settings.migrate_vts_roll();
+        assert_eq!(serde_json::to_value(&settings).unwrap(), once);
+        assert_eq!(
+            settings.model_preferences["legacy-phone"].calibration.z,
+            -7.
+        );
+        assert_eq!(
+            settings.saved_rigs["legacy-phone"].config.tracking.origin.z,
+            -7.
+        );
+        for entry in &settings.profiles.entries {
+            let corrected = entry.id != other;
+            assert_eq!(
+                entry.preferences.calibration.z,
+                if corrected { -7. } else { 7. }
+            );
+            assert_eq!(entry.preferences.calibration.x, 3.);
+            assert!(entry.preferences.mapping.invert_roll);
+            for config in
+                std::iter::once(&entry.rig.config).chain(entry.rig.presets.iter().map(|p| &p.rig))
+            {
+                assert_eq!(config.tracking.origin.z, if corrected { -7. } else { 7. });
+                let range = &config.tracking.ranges["FaceAngleZ"];
+                assert_eq!(
+                    (range.low, range.neutral, range.high),
+                    if corrected {
+                        (-40., -2., 20.)
+                    } else {
+                        (-20., 2., 40.)
+                    }
+                );
+                assert!(range.valid("FaceAngleZ"));
+                assert_eq!(config.tracking.ranges["FaceAngleX"].neutral, 2.);
+                assert_eq!(config.pose.held["HeldAccessory"], 0.75);
+            }
+            assert_eq!(entry.rig.presets[0].hotkey, Some(3));
+        }
+        assert_eq!(settings.vts_roll_revision, 1);
+        assert_eq!(Settings::default().vts_roll_revision, 1);
     }
     #[test]
     fn multi_avatar_lifecycle_keeps_settings_animation_and_outputs_independent() {

@@ -3,6 +3,41 @@
 All downloads remain Alpha. See [Releases](https://github.com/NekoUnix/A.R.I.A/releases)
 for packages and checksums. Features labeled Experimental have compatibility limits.
 
+## 0.33.0-alpha.1 — Glass workspace, tracking direction and engine efficiency
+
+- Correct VTube Studio UDP head roll before calibration and model mapping.
+  Keep pitch/yaw independent, preserve angle wrapping, and apply user Mirror and
+  Invert roll controls exactly once. Shared profiles and attached Live2D models
+  receive the same corrected tracking input; other protocols are unchanged.
+- Migrate saved VTS neutral lean, personal lean ranges and movement-preset
+  calibration once, including disabled and shared-tracker workspace profiles.
+  Retain authored bindings, explicit inversion, poses, hotkeys and unrelated axes.
+  Users who added their own inversion workaround should remove it after updating.
+- Refresh the workspace with Apple-inspired glass surfaces, rounded controls,
+  quieter category accents and a clear outline around the editing profile.
+  Add Glass Dark and Glass Light; preserve existing saved palettes and imports.
+  Offer solid surfaces and retain opaque High Contrast. Use static UI geometry
+  and blending without blur passes, extra render targets or animation.
+- Correct the macOS Syphon publisher's vertical texture-origin conversion so
+  OBS receives an upright, unmirrored canvas with preserved alpha and color order.
+  Remove old OBS rotation/flip workarounds after upgrading.
+- Avoid repeated allocation/copying of camera preferences and workspace output
+  maps during live multi-avatar settings handoffs. Leave output layout, target
+  frame rate and window policy owned by the workspace.
+- Copy tracking snapshots for cross-profile distribution only when a loaded
+  follower needs that source; avoid duplicate blendshape maps for unshared input.
+- Skip native Syphon GPU submissions for unchanged canvases. Retain pending
+  changes while no clients are present, including the latest frozen image for
+  late/reconnecting clients. GPU work remains bounded and never waits on OBS.
+- Add a reproducible optimized settings-handoff benchmark and native Syphon
+  client tests for orientation, left/right order, alpha, BGRA/RGBA, resize,
+  late clients and idle submissions. Run Syphon checks in macOS pull requests
+  and both Mac release builds.
+- Confirm current stable graphics/UI dependencies (wgpu 30.0.1, egui/eframe
+  0.36.2); improve ARIA's own runtime without an unnecessary library change.
+  Update setup, troubleshooting, performance, dependency and platform guides.
+  VTube Studio import and VBridger import remain **Experimental**.
+
 ## 0.32.0-alpha.1 — Multiple avatars and Profiles
 
 - Load several Live2D, PNG/GIF and VRM avatars together using Workspace → Profiles.

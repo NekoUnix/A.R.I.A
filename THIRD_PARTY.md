@@ -5,7 +5,28 @@ the repository LICENSE. Third-party components retain their own terms.
 The packaging script copies available dependency license/notice files and a
 resolved dependency index into `dependency-licenses/` in the portable bundle.
 
-Primary dependencies (exact versions are recorded in Cargo.lock):
+## Find every package and version
+
+- [Cargo.lock](Cargo.lock) records the complete resolved Rust dependency graph,
+  including transitive and platform-specific packages.
+- Each Windows download includes `dependency-licenses/INDEX.md`, listing resolved
+  package names, exact versions, license identifiers and upstream repositories.
+- Linux downloads include `dependency-licenses/INDEX.txt`. On macOS this lives in
+  `ARIA Alpha.app/Contents/Resources/dependency-licenses/INDEX.txt` (Finder → Show
+  Package Contents). These indexes describe that platform's resolved Rust packages.
+- Optional webcam Python dependencies have their own exact
+  [requirements lock](tracking/requirements-lock.txt). Native frameworks and
+  external SDK terms are described below; they are not all Rust packages.
+
+Graphics/UI dependency review for v0.33 (2026-09-14): wgpu **30.0.1** and
+egui/eframe **0.36.2** already match the current stable releases. The pinned Syphon
+framework revision is unchanged. Runtime performance changes are documented in
+[the performance guide](docs/performance.md); no dependency speedup is claimed.
+
+## Primary libraries
+
+Exact Rust versions are recorded in Cargo.lock:
+
 
 | Project | Purpose | Upstream |
 | --- | --- | --- |

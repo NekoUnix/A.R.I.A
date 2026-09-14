@@ -8,7 +8,7 @@ independent transparency and background colors. It is a separate native window;
 chat does not change the avatar Spout canvas. Add the companion as a separate
 Window Capture source if it should appear on stream.
 
-ARIA v0.32 Alpha provides three independent outputs. The visible windows are compact
+ARIA v0.33 Alpha provides three independent outputs. The visible windows are compact
 previews; OBS receives a separate full-resolution GPU texture through the platform-specific native output.
 
 | Output | OBS sender | Default canvas | Preview pixels |
@@ -223,3 +223,30 @@ The packaged plugin targets distribution-native OBS. **Flatpak/Snap OBS is not
 supported by this installer** because its plugin ABI and filesystem sandbox need
 a matching extension. Window/Screen Capture remains the fallback. The full
 [plugin source and protocol](../native/linux-canvas/README.md) are included.
+
+## macOS: correcting an upside-down Syphon capture
+
+Use v0.33.0-alpha.1 or later. ARIA now converts its top-left texture orientation
+to the bottom-left image convention consumed by OBS's Syphon source. The entire
+combined canvas is corrected, so it applies to every avatar type and to landscape,
+portrait and Freeform without changing the arrangement shown in ARIA.
+
+1. Update the complete **ARIA Alpha.app** bundle for your Mac's chip type.
+2. In OBS, select the ARIA Syphon Client source. Remove any rotation or vertical/
+   horizontal flip that you added to compensate for the older upside-down image.
+   In **Transform → Edit Transform**, a workaround rotation should be **0°**.
+   Keep intentional crop, position and layout settings. Reset Transform is also
+   available if you want to discard all source placement changes.
+3. In ARIA, reopen the output or use **Retry OBS output** if the old sender remains.
+   Select the matching ARIA canvas in the OBS Syphon Client properties.
+4. Check an asymmetric part of your model or a pinned image with readable text:
+   the top should be up and left/right should match ARIA's preview.
+
+No OBS rotation is needed for normal capture. Intentional camera/model mirroring
+is a separate setting. Native publication stays on the GPU; unchanged frames
+reuse the last shared image and reconnecting clients receive pending changes.
+The native regression uses a real Syphon Metal client and checks OBS's published
+row convention with asymmetric pixels; it is not a physical OBS desktop test.
+
+Technical references: [OBS Syphon source](https://github.com/obsproject/obs-studio/blob/master/plugins/mac-syphon/syphon.m)
+and [Syphon Metal publisher](https://github.com/Syphon/Syphon-Framework/blob/71351d4b484cd2d1917867f7846a5cdca724552d/SyphonMetalServer.h).

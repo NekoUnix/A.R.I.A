@@ -108,6 +108,25 @@ The simulator applies the inverse conversion when sending VTS packets. ARIA JSON
 v1 retains **X = pitch/up-down, Y = yaw/left-right, Z = roll/lean**. Axis tests use
 independent single-axis VTS packets and also verify neutral calibration.
 
+### VTS head tilt after upgrading to v0.33
+
+VTS wire `Rotation.z` is converted to negative canonical roll at the protocol
+boundary, alongside the existing pitch correction. This makes lean follow the
+model's expected direction without changing yaw, iFacialMocap, webcam or ARIA JSON
+coordinates. The simulator applies the inverse when encoding VTS packets.
+
+Saved VTS neutral Z offsets, personal `FaceAngleZ`/`ParamAngleZ` ranges and their
+movement-preset origins migrate once. Workspace followers use the effective
+tracking source, including when they are currently unchecked. Explicit Mirror,
+Invert roll, custom bindings and frozen poses are preserved.
+
+If you manually inverted lean to compensate for an older build, turn off that
+workaround under **Tracking → Axis correction → Invert roll (tilt)**. Test each
+direction, then calibrate neutral or rerun the guide if necessary. Independently
+exported old movement-preset files and custom VBridger formulas have no reliable
+source-protocol history; after importing one, review its lean calibration and any
+manual sign reversal. Do not reset the entire avatar just to correct lean.
+
 ### Model-specific inputs
 
 Adjacent `.vtube.json` assignments override standard bindings for their output IDs.

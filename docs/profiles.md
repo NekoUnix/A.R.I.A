@@ -4,7 +4,7 @@ Use **Workspace → Profiles** to put Live2D, PNG/GIF and VRM avatars together i
 OBS. Each avatar has its own editing stage and saved settings. The three output
 windows combine all the profiles you have checked.
 
-![Profiles and the editing stage](images/profiles-v32.png)
+![Profiles and the editing stage](images/profiles-v33.png)
 
 ## Add your first avatar
 
@@ -149,3 +149,15 @@ and tracking relationships. [API reference](api.md).
 The mixed renderer was exercised on Windows with two supplied Live2D models,
 the supplied animated GIF and the supplied VRM together. Cross-platform builds
 and automated tests do not substitute for testing your own devices and models.
+
+## v0.33 engine and tracking update
+
+The engine now exchanges each live profile's settings without cloning camera
+preferences or all OBS layouts on every handoff. It keeps the same independent
+stage behavior and workspace-owned output layouts, frame-rate target and window
+policy. [Performance measurements and scope](performance.md).
+
+The VTS head-tilt correction reaches every profile following that source. Saved
+neutral poses, lean ranges and movement presets migrate independently, including
+unchecked avatars. Remove any manual lean inversion you previously added to
+compensate for the old behavior; [upgrade instructions](tracking.md#vts-head-tilt-after-upgrading-to-v033).

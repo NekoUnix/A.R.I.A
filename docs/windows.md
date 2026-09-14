@@ -390,3 +390,11 @@ Close the app before replacing binaries. Download a new successful artifact, or
 update your checkout and rebuild. Preserve any uncommitted work before pulling.
 Settings are separate from the executable. To uninstall the portable app, remove
 its extracted folder and any helper-created firewall rule you added.
+
+## v0.33 tracking update
+
+VTube Studio head lean now follows the corrected direction. Remove any manual
+Invert roll workaround from older versions and review your neutral pose. See
+[tracking upgrade instructions](tracking.md#vts-head-tilt-after-upgrading-to-v033).
+The multi-avatar engine also avoids repeated settings/layout copies; see
+[performance validation](performance.md). Windows native output remains Spout2.

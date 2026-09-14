@@ -1,5 +1,14 @@
 # Documentation screenshots
 
+## v0.33 glass workspace
+
+`profiles-v33.png` and `glass-light-v33.png` are direct renders of the real v0.33
+application UI through egui/wgpu, using Glass Dark and Glass Light respectively.
+They use the owner's full Odette, OilBun, Odette GIF and NekoUnity2 VRM together,
+isolated test state and synthetic Demo tracking. Resource readings are not
+performance benchmarks. Only these unretouched UI renders are distributed, not
+model sources, Core binaries or private settings.
+
 ## v0.32 multiple avatars and Profiles
 
 `profiles-v32.png` renders the real application workspace UI through egui/wgpu.

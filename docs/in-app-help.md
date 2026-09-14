@@ -28,9 +28,9 @@ After Start camera reports Tracking live, click Guided tracking setup. Capture a
 
 ## themes | Themes & custom colors | Pick a palette or make a reusable theme for the entire interface.
 
-Open Settings > Appearance & themes. Choose Sonoma Dark, Sonoma Light, Sakura, Ocean, Forest or High Contrast. The palette changes panels, cards, controls, headings, help windows and category accents immediately. It applies globally across avatars. These are solid colors with no blur, animation or extra render textures. The Studio background follows the palette; transparent and chroma-key outputs retain their chosen backgrounds.
+Open Settings > Appearance & themes. Choose Glass Dark, Glass Light, Sonoma Dark, Sonoma Light, Sakura, Ocean, Forest or High Contrast. The palette changes panels, cards, controls, headings, help windows and category accents immediately. It applies globally across avatars. Glass surfaces adds translucent cards, a subtle static color wash, rounded controls and fine edges. Turn Glass surfaces off for solid panels; High Contrast always stays solid. This Apple-inspired style uses ordinary UI geometry, with no blur passes, animation or extra render textures. Popups stay nearly opaque for readability. The Studio background follows the palette; transparent and chroma-key outputs retain their chosen backgrounds.
 
-Expand Make your own theme, give it a name, and edit each color with its swatch. The color picker includes numeric values; the hex value beside it helps match branding. Light controls selects light or dark built-in icons. Text, secondary text and borders should remain readable against cards and panels; a low-contrast notice appears when the main text is difficult to distinguish. Save custom theme stores a reusable palette (up to 32). Editing the active theme applies immediately and persists on normal app exit. Delete removes the named saved copy; Reset returns to Sonoma Dark. Export and Import exchange a small JSON palette containing only a name and RGB colors; it cannot contain scripts or assets.
+Expand Make your own theme, give it a name, and edit each color with its swatch. The color picker includes numeric values; the hex value beside it helps match branding. Light controls selects light or dark built-in icons. Text, secondary text and borders should remain readable against cards and panels; a low-contrast notice appears when the main text is difficult to distinguish. Save custom theme stores a reusable palette (up to 32). Editing the active theme applies immediately and persists on normal app exit. Delete removes the named saved copy; Reset returns to Glass Dark. Existing installations keep their saved colors. Export and Import exchange a small JSON palette containing only a name, RGB colors and light/glass options; it cannot contain scripts or assets.
 
 ## api | Developer control API | Let scripts control the current avatar through authenticated local HTTP.
 
@@ -636,6 +636,14 @@ Mirror movement reverses horizontal head, gaze and mouth motion and swaps paired
 ### When looking up moves the model sideways
 
 Open Inputs, find the affected head parameter and inspect its Source. Verify the avatar's authored behavior with a manual or held value. Map its sideways deformation to a sideways signal and its vertical deformation to a vertical signal. Inversion alone cannot repair a wrong source assignment. Custom avatars can use arbitrary parameter IDs; use the actual model's behavior rather than guessing from the name.
+
+In v0.33, VTube Studio lean direction is corrected before model mapping. Saved
+VTS neutral poses and personal lean ranges migrate once, including movement
+presets and profiles following another VTS tracker. If you enabled Invert roll
+or reversed a binding as an older-build workaround, turn off that workaround
+and test both shoulders. Existing intentional inversion is not silently changed.
+Other tracking sources retain their coordinates. Rerun Guided tracking setup
+after importing an old external movement preset or changing custom equations.
 
 ## avatar | Loading avatars & PNG puppets | Open a Live2D model3 manifest or moc3 export, or use an image puppet. Controls and physics are discovered from the loaded avatar's data.
 
@@ -1527,3 +1535,17 @@ Hold last face after signal loss keeps the last valid face for a configurable ex
 Click the small bread slice beside the bottom-right social icons to send five slices across Your stage and all outputs. The artwork is built into ARIA: no PNG download, phone, account or custom effect setup is needed. Bursts expire automatically and a short cooldown limits repeated clicks. This does not change your saved model settings. Effects pause while the screenshot pose is frozen; return to Live to resume. Clear active effects in the throwing controls removes active bread along with other effects.
 
 For your own bread throws, add Bread in the throw designer's built-in asset list, then configure directions, quantities, size, timing, sounds and physics like any other throw. The footer button always uses its simple built-in fly-by.
+
+## syphon-orientation | Upright Syphon capture | Update ARIA and remove an old OBS rotation/flip workaround if macOS capture is upside down.
+
+v0.33 corrects the texture orientation sent to OBS's Syphon Client. It applies
+to all three canvases and every avatar in the composition. In OBS, select the
+ARIA source, open Transform > Edit Transform, and remove any compensation you
+previously added: normally rotation is 0 degrees and no flip is required.
+Keep intentional positioning/cropping. Reopen the output or use Retry OBS output,
+then select the matching sender again if needed. Check readable text or another
+asymmetric image to confirm both top/bottom and left/right match ARIA.
+
+Syphon skips GPU publication when a canvas is unchanged and retains the latest
+pending image while OBS is disconnected. This saves output work for stationary
+canvases; it does not stop avatar tracking or guarantee a particular FPS gain.
