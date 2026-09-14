@@ -10,7 +10,7 @@ kiwisolver==1.5.1
 matplotlib==3.11.2
 mediapipe==1.0.1
 numpy==1.26.4
-opencv-contrib-python==4.11.0.86
+opencv-contrib-python==5.0.0.93
 packaging==26.3
 pillow==12.3.0
 pycparser==3.0
