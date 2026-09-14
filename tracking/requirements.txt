@@ -1,4 +1,4 @@
 mediapipe==1.0.1
 opencv-contrib-python==4.11.0.86
-numpy==1.26.4
+numpy==2.5.3
 cv2-enumerate-cameras==1.3.3

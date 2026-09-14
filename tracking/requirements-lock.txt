@@ -9,7 +9,7 @@ fonttools==4.65.0
 kiwisolver==1.5.1
 matplotlib==3.11.2
 mediapipe==1.0.1
-numpy==1.26.4
+numpy==2.5.3
 opencv-contrib-python==4.11.0.86
 packaging==26.3
 pillow==12.3.0
