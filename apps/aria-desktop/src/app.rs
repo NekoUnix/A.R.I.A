@@ -735,6 +735,10 @@ impl AriaApp {
                             app.detect_key_color(0);
                         }
                     }
+                    Ok("frozen-layer-editor") => {
+                        app.input_monitor.tab = Tab::Layers;
+                        app.input_monitor.layers_panel.editor.requested = true;
+                    }
                     Ok("layers") | Ok("layer-selection") => {
                         app.input_monitor.tab = Tab::Layers;
                         if std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("layers")
@@ -3015,7 +3019,9 @@ impl eframe::App for AriaApp {
             .frame(Frame::new().fill(bg()).inner_margin(10.0))
             .show(root_ui, |ui| {
                 ui.horizontal(|ui| {
-                    let width = (ui.available_width() - crate::socials::WIDTH - 8.0).max(400.0);
+                    let width =
+                        (ui.available_width() - crate::socials::WIDTH - crate::bread::WIDTH - 8.0)
+                            .max(400.0);
                     ui.allocate_ui_with_layout(
                         egui::vec2(width, 40.0),
                         egui::Layout::left_to_right(egui::Align::Center),
@@ -3024,10 +3030,12 @@ impl eframe::App for AriaApp {
                             self.metrics.footer(ui, &self.gpu);
                         },
                     );
-                    ui.with_layout(
-                        egui::Layout::left_to_right(egui::Align::Center),
-                        crate::socials::show,
-                    );
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        if crate::bread::button(ui) {
+                            self.effects.throw_bread(ctx, self.render_state.as_ref());
+                        }
+                        crate::socials::show(ui);
+                    });
                 });
             });
         egui::Panel::left("controls")
@@ -3355,7 +3363,11 @@ impl eframe::App for AriaApp {
         if crate::smoke_mode()
             && matches!(
                 std::env::var("ARIA_SMOKE_SCENARIO").as_deref(),
-                Ok("workspace-v29" | "customization" | "layer-selection")
+                Ok("workspace-v29"
+                    | "customization"
+                    | "layer-selection"
+                    | "frozen-layer-editor"
+                    | "bread")
             )
         {
             self.input_monitor.vts.open = false;
@@ -3399,6 +3411,16 @@ impl eframe::App for AriaApp {
             }
         }
         if let Some(avatar) = &mut self.live2d {
+            self.input_monitor.save_requested |= self.input_monitor.layers_panel.window(
+                ctx,
+                avatar,
+                &mut self.input_monitor.saved,
+                self.started,
+            );
+            if std::mem::take(&mut self.input_monitor.layers_panel.editor.manage_groups) {
+                self.input_monitor.tab = Tab::Layers;
+                ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Focus);
+            }
             self.input_monitor
                 .vts
                 .show(ctx, avatar, &mut self.input_monitor.saved);
@@ -3585,6 +3607,32 @@ impl eframe::App for AriaApp {
                     &parameters,
                     self.started.elapsed().as_secs_f32(),
                 );
+            }
+            if crate::smoke_mode() && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("bread")
+            {
+                let key = egui::Id::new("bread-smoke-triggered");
+                if !ctx.data(|d| d.get_temp::<bool>(key).unwrap_or(false)) {
+                    self.effects.throw_bread(ctx, self.render_state.as_ref());
+                    ctx.data_mut(|d| d.insert_temp(key, true));
+                }
+                if !self.effects.paused
+                    && self
+                        .effects
+                        .simulation
+                        .particles
+                        .iter()
+                        .any(|p| p.asset == Path::new("builtin:bread") && p.age > 0.8)
+                {
+                    assert!(
+                        self.effects.draws.len() >= 3,
+                        "Bread burst must render in the scene"
+                    );
+                    self.effects.paused = true;
+                    eprintln!(
+                        "Bread footer action rendered {} transient items",
+                        self.effects.draws.len()
+                    );
+                }
             }
             if std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("odette-gifs") {
                 if self.pending_image.is_none()

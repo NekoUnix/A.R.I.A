@@ -62,7 +62,7 @@ pub struct Design {
     pub id: u64,
     pub name: String,
     pub kind: Kind,
-    /// Paths may use builtin:star, builtin:ball, builtin:cube, builtin:drop.
+    /// Paths may use builtin:star, builtin:ball, builtin:cube, builtin:drop, builtin:bread.
     pub assets: Vec<PathBuf>,
     pub selection: Selection,
     pub count: u32,

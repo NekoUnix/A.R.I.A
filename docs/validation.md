@@ -5,6 +5,31 @@
 This file records checks for the development builds. The Windows CI workflow
 is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
+## Frozen selector and bread — development update, 2026-09-14
+
+- Mouse-only egui pointer tests cover repeated clicks, repeated boxes and the
+  explicit Remove mode. Undo protects edits made outside the selector, and
+  revealing hidden artwork changes only the preview configuration.
+- Native Cubism/GPU checks passed on both supplied exports: full Odette with
+  1,174 meshes and OilBun with 284. Live head values continue updating while
+  visible appearance changes leave the frozen texture unchanged. Refresh
+  captures the new pose; hide and restore update outputs; closing previews
+  preserves the original renderer and shared atlases.
+- The actual separate Windows window received ordinary pointer clicks and
+  two boxes, selecting 312 meshes. See the [capture](images/frozen-layer-editor.png).
+- Bread uses the shared transient-effect rendering path. Tests cover a bounded
+  burst crossing the canvas, expiry, and preserving other active effect assets.
+  Native capture checks the footer and rendered bread items together.
+
+```sh
+cargo test --locked -p aria-desktop --all-features native_frozen_preview -- --ignored --nocapture
+```
+
+Use the same native test environment described below, including
+`ARIA_TEST_APPEARANCE_PARAMETER`. The `frozen-layer-editor` screenshot scenario
+stays open for native desktop capture; `bread` uses the normal screenshot hook.
+These checks do not establish interactive macOS/Linux hardware acceptance.
+
 ## v0.30 Live2D selection and appearance — 2026-09-14
 
 - 219 standard Rust tests, workspace/all-target/all-feature strict Clippy,

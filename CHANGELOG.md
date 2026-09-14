@@ -3,6 +3,25 @@
 All downloads remain Alpha. See [Releases](https://github.com/NekoUnix/A.R.I.A/releases)
 for packages and checksums. Features labeled Experimental have compatibility limits.
 
+## Unreleased — Frozen Live2D layer selector
+
+- Open **Select layers…** in a separate resizable window with a frozen model.
+  Plain clicks and repeated boxes accumulate selections in default Add mode,
+  with explicit Remove, Replace and Toggle buttons; no Shift key is needed.
+- Hide/restore selections, undo up to 24 local edits, zoom, pan, refresh the pose,
+  reveal ARIA-hidden artwork in the preview, and save groups for existing hotkeys.
+  Visibility saves per avatar and reaches all outputs while live tracking continues.
+- Share uploaded atlases and immutable renderer resources; isolate preview
+  geometry, writable buffers, masks and output. Render the frozen pose only when
+  its layer settings change, virtualize the selection list and release the
+  preview when closed or the model changes.
+- Update the mouse guide, contextual help and native screenshot. VTube Studio
+  import and VBridger import remain Experimental.
+- Add a bread button beside the footer social icons: click to send a small
+  bread burst across the stage and outputs. Built-in artwork needs no downloads;
+  bursts expire automatically, are rate limited, and do not change avatar settings.
+  Bread is also available in the throw designer's built-in asset choices.
+
 ## 0.30.0-alpha.1 — Live2D drag selection and customizable avatars
 
 - Drag a rectangle over the stage to select several exported Live2D layers.

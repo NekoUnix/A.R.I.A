@@ -467,6 +467,7 @@ impl Editor {
             for (label, p) in [
                 ("Star", "star"),
                 ("Ball", "ball"),
+                ("Bread", "bread"),
                 ("Cube", "cube"),
                 ("Anime water", "drop"),
             ] {

@@ -16,6 +16,15 @@ required third-party tracking app or runtime are supplied separately.
 
 ## What's new
 
+**In the next build:** **Select layers…** opens a separate, resizable window
+with a frozen model. Click artwork or draw several boxes to accumulate a
+selection, then choose **Hide selected**. No Shift key is required. The live
+stage keeps tracking. Undo, zoom, pan, reveal-hidden preview and saved groups
+are included. This update is in the source build; the download above remains v0.30.
+
+Click the little **bread icon** beside the bottom-right social links to send
+bread across your stage and outputs. It works without importing an asset.
+
 **v0.30.0-alpha.1** adds **drag selection and a dedicated Live2D appearance workspace**.
 Click **Select layers** above Your stage, drag a box around artwork, then use
 **Hide** or **Restore**. Shift adds to the selection; Alt removes from it. Save
@@ -282,7 +291,8 @@ click it for the complete offline help window.
 - **Tracking:** adjust each input's range, stepping and response, or set a value
   manually and hold it. Saved settings belong to the selected avatar.
 - **Avatar:** tune model physics, expressions and supported appearance controls.
-  Use **Select layers** to drag-select Live2D artwork and hide, fade or tint it.
+  Use **Select layers…** to open the frozen Live2D picker; click or draw boxes
+  to select artwork, then hide or restore it. The Layers inspector also offers fading and tints.
   **Avatar → Customize** organizes exported outfit and hair controls; save appearance
   looks without replacing tracking. See the [appearance guide](docs/live2d-customization.md).
 - **Stage:** add and pin images or independent Live2D accessories; create reusable

@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 #[derive(Default)]
 pub struct Panel {
     pub stage_selection: crate::layer_selection::Selection,
+    pub editor: crate::layer_editor::Editor,
     search: String,
     selected: BTreeSet<String>,
     name: String,
@@ -19,7 +20,15 @@ pub struct Panel {
 }
 impl Panel {
     pub fn stage_tools(&mut self, ui: &mut egui::Ui, saved: &mut SavedRig) -> bool {
-        ui.toggle_value(&mut self.stage_selection.enabled, "Select layers").on_hover_text("Drag a rectangle over Your stage to select several Live2D layers. Object dragging is paused in this mode.");
+        if ui.button("Select layers…").on_hover_text("Open a separate frozen model window. Click multiple layers or draw boxes with your mouse, then hide or restore the selection. No modifier keys needed.").clicked() {
+            self.stage_selection.cancel(&mut self.selected);
+            self.stage_selection.enabled = false;
+            self.editor.requested = true;
+        }
+        ui.toggle_value(&mut self.stage_selection.enabled, "On stage")
+            .on_hover_text(
+                "Optional: select on the moving main stage instead of opening the frozen preview.",
+            );
         if !self.stage_selection.enabled {
             self.stage_selection.cancel(&mut self.selected);
             return false;
@@ -40,6 +49,32 @@ impl Panel {
             self.editing = None;
         }
         changed
+    }
+    pub fn window(
+        &mut self,
+        ctx: &egui::Context,
+        avatar: &Avatar,
+        saved: &mut SavedRig,
+        started: std::time::Instant,
+    ) -> bool {
+        let next_id = saved
+            .config
+            .layers
+            .groups
+            .iter()
+            .map(|g| g.id)
+            .chain(saved.layer_hotkeys.keys().copied())
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        self.editor.show(
+            ctx,
+            avatar,
+            &mut saved.config.layers,
+            &mut self.selected,
+            next_id,
+            started,
+        )
     }
     pub fn stage(
         &mut self,
@@ -126,7 +161,7 @@ impl Panel {
         });
         theme::caption(
             ui,
-            "Drag on the model to select a rectangle. Shift adds, Alt removes, Ctrl/Cmd toggles. Click picks the frontmost layer; Esc cancels a drag. Shift-click or drag across list rows to select a range.",
+            "Select layers… opens a frozen model window: click layers or draw boxes with your mouse, without holding keys. On stage enables the optional moving-stage picker. List rows also support range selection.",
         );
         theme::category(ui, "layer-selection", "Layers & transparency", true, |ui| {
             help::control(ui, "live2d-layers", |ui| {
@@ -498,6 +533,9 @@ impl Panel {
             );
         });
         if let Some(message) = &self.message {
+            ui.label(message);
+        }
+        if let Some(message) = &self.editor.message {
             ui.label(message);
         }
         changed

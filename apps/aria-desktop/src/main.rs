@@ -3,6 +3,7 @@
 mod app;
 mod avatar;
 mod avatar_import;
+mod bread;
 mod broadcast;
 mod chat;
 mod chroma;
@@ -23,6 +24,7 @@ mod image_actions;
 mod input_monitor;
 mod items;
 mod items_panel;
+mod layer_editor;
 mod layer_selection;
 mod layers_panel;
 #[cfg(target_os = "linux")]

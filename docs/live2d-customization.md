@@ -14,36 +14,63 @@ See [Live2D setup](live2d.md) if you have not imported the avatar yet.
 
 ## Select several layers with your mouse
 
-![A rectangle selecting multiple meshes on the stage](images/layer-selection-v30.png)
+The frozen selector described here is in the next source build after v0.30.0-alpha.1.
+The published v0.30 package has the earlier on-stage selection tools.
 
-1. Click **Select layers** above **Your stage**. The Layers inspector opens.
-2. Press the left mouse button and drag a box over the artwork you want to edit.
-   Release to keep the selection. The highlighted outlines identify the selected
-   meshes; the count appears beside the stage tools.
-3. Click **Hide** to turn off the selected artwork, or **Restore** to remove its
-   individual visibility override. **Half opacity** is available in the inspector.
-4. Click **Select layers** again when you want to drag pinned objects normally.
+![The separate frozen model layer selector](images/frozen-layer-editor.png)
 
-| Action | Mouse / keyboard |
+1. Load your Live2D avatar, then click **Select layers…** above **Your stage**
+   or in **Inspector → Avatar → Layers**. A separate window opens with a frozen
+   copy of its current pose. You can move and resize this window.
+2. Leave **Mouse selection: Add** selected. Click artwork to select its frontmost
+   mesh, or hold the left mouse button and draw a box over several layers.
+   Release the button to keep the selection. Repeat as often as you like:
+   **plain clicks and boxes keep earlier selections, without Shift**.
+3. Check the selection count and the list on the left. Uncheck any unwanted row,
+   or click **Remove** and click/draw over layers to subtract them.
+4. Click **Hide selected**. The artwork disappears from the preview, your live
+   stage and all outputs. **Restore selected** removes individual opacity
+   overrides. Edits save automatically to this avatar; **Done** keeps them.
+5. Use **Undo** to reverse the last visibility/group edit made in this window.
+   It remembers up to 24 edits while open and skips undo if layer settings have
+   since changed elsewhere, so it cannot overwrite another change silently.
+
+| Control | What it does |
 | --- | --- |
-| Replace the selection | Drag a box |
-| Add layers | Shift + drag |
-| Remove layers | Alt + drag |
-| Toggle layers in the box | Ctrl + drag; Cmd + drag on Mac |
-| Pick one layer | Click; the frontmost mesh wins |
-| Cancel a drag | Escape; the previous selection returns |
-| Select a list range | Shift-click a row, or drag across selection buttons |
+| Add | Plain clicks and boxes accumulate layers. This is the default. |
+| Remove | Plain clicks and boxes subtract layers. |
+| Replace | Starts a fresh selection for each click or box. |
+| Toggle | Flips membership of the clicked layer or boxed layers. |
+| Clear selection | Deselects everything; visibility stays as it is. |
+| Wheel / Zoom slider | Enlarges or reduces the frozen preview only. |
+| Right or middle mouse drag | Pans around the preview. |
+| Fit model | Resets preview zoom and pan. |
+| Refresh frozen pose | Takes a fresh snapshot of the live model's current pose. |
+| Reveal ARIA-hidden layers in this preview | Shows artwork hidden by ARIA opacity/groups, for selection and restoration. The live model stays unchanged until you edit it. |
+| Escape | Cancels the current box and restores the previous selection. |
 
-Search the layer list by ArtMesh ID, part ID or exported part name. **Select
-results** includes matching rows outside the visible part of the list. Dragging
-from an unselected row adds a range; dragging from a selected row removes a range.
+The live model keeps tracking while you work. Zooming, panning and refreshing
+this window do not reposition the model in OBS. Loading a different avatar
+closes the old preview. Closing the selector releases its extra render target;
+it shares the loaded textures and does not start another Cubism process.
 
-Turn on **Include hidden layers in stage selection** to include hidden meshes
-that still have geometry. A layer collapsed to zero area must be selected from
-the list. Selection uses exported mesh triangles: transparent texture holes,
-clipping masks and overlapping artwork can make a box include more layers than
-the visible pixels suggest. Check the selected names before hiding a large area.
-Selection guides appear only in the editor, never in OBS or exported images.
+Enter a group name on the left, then click **Save selection as group** to reuse
+these layers later. **Manage groups & hotkeys…** brings the main Layers
+inspector forward so you can assign its shortcut.
+
+The optional **On stage** switch retains the earlier moving-stage picker. In
+that mode a box replaces the selection; Shift adds, Alt removes and Ctrl/Cmd
+toggles. Turn it off to resume dragging pinned objects on the live stage.
+Search the layer list by ArtMesh ID, part ID or exported part name. List ranges
+and **Select results** also work, including matches outside the visible rows.
+
+Selection uses exported mesh triangles. Transparent texture holes, clipping
+masks and overlapping artwork can make a box include more layers than the
+visible pixels suggest. Review the selected names before hiding a large area.
+The preview's Reveal checkbox cannot reveal artwork hidden by the frozen
+pose's own outfit/expression parameters. Change those controls, then refresh
+the pose. Completely collapsed layers can be selected from the main list.
+Selection guides never appear in OBS or exported images.
 
 ## Save layer groups and restore visibility
 

@@ -1408,7 +1408,9 @@ All takes are temporary scalar tracking values, not camera images or video. Canc
 
 ## live2d-layers | Live2D layers and saved looks | Hide or fade exported ArtMeshes, save groups and toggle them with your own shortcuts.
 
-Turn on Select layers above Your stage or in the Layers inspector. Drag a rectangle over the model to select all exported mesh triangles touching the box; a click selects the frontmost layer. Shift adds to the selection, Alt removes, and Ctrl (Cmd on Mac) toggles membership. Escape cancels the current drag and restores the previous selection. Selection outlines are editor guides and never appear in OBS or PNG exports. While Select layers is on, stage dragging edits the layer selection instead of moving pinned objects. Turn it off to move objects again.
+Click Select layers… above Your stage or in the Layers inspector to open a separate frozen-model window. Add is selected by default: click artwork or drag several boxes to accumulate layers without holding Shift. Choose Remove, Replace or Toggle for different mouse behavior, then Hide selected or Restore selected. The live model keeps tracking. Undo, zoom, pan, Refresh frozen pose and preview-only Reveal hidden layers help you refine the result. Open the question mark in that window for the full guide.
+
+The optional On stage switch keeps the moving-stage picker: a box replaces the selection, Shift adds, Alt removes and Ctrl/Cmd toggles. Escape cancels a box. Turn On stage off to drag pinned objects again. Selection outlines are editor guides and never appear in OBS or PNG exports.
 
 Shift-click rows to add a continuous range. Drag from a selected list row to remove a range, or from an unselected row to add one. The list renders visible rows only. Select results adds all search matches, including rows outside the visible scroll area. Include hidden layers allows stage picking of hidden meshes that still have triangle geometry; a completely collapsed mesh must be selected from the list. Picking uses mesh geometry, not texture alpha, clipping masks or pixel occlusion. A selection box can include overlapping layers behind the frontmost artwork; inspect the selected names before hiding them.
 
@@ -1424,6 +1426,20 @@ Effective opacity = authored animated opacity × lowest of the individual overri
 
 Mask geometry remains available to dependent artwork when a layer is hidden. Core still evaluates hidden meshes and retains their texture memory. All outputs and PNG exports share the result. Layer changes also work on frozen poses; unchanged frozen frames skip rendering.
 
+## frozen-layer-editor | Frozen model layer selector | Open a separate frozen Live2D preview, then click layers or draw boxes with the mouse to hide or restore them together.
+
+Click Select layers… above Your stage or in Avatar → Layers. A resizable window shows a frozen copy of the current pose. Your main model keeps tracking. The preview shares artwork with the loaded model and renders only when layer settings change; it does not load another Core or decode the atlas again.
+
+Add is the default mouse mode. Click several visible layers or drag one box after another to accumulate selections without holding any keyboard key. Remove subtracts layers with clicks or boxes; Replace starts a fresh selection; Toggle switches membership. A click picks the frontmost exported mesh. Esc cancels the current drag. Large selections use a combined outline so the model stays readable.
+
+Hide selected applies zero individual opacity. Restore selected removes those overrides. Edits immediately affect the live model and every output, and save in this avatar's profile. Done and the window's close button keep those edits. Undo reverts up to 24 edits made here; if another control or hotkey changed layer settings since the edit, Undo is skipped to protect the newer settings.
+
+Turn on Reveal ARIA-hidden layers in this preview to see artwork hidden by individual opacity or groups, then select and restore it. This checkbox changes only the editor's view. An active group can still hide restored layers on the live stage. Disable overlapping groups turns off whole groups touching the selection, including their other members. Artwork hidden by the frozen pose's parameters stays hidden; refresh the preview after changing those parameters in Customize or Expressions.
+
+Use the mouse wheel or Zoom slider for fine layers, and right- or middle-drag to pan. Fit model resets zoom and pan. Refresh frozen pose captures a new pose without altering your tracking settings or saved visibility. Switching avatars discards the old preview and its undo history.
+
+Enter a group name and choose Save selection as group to reuse the selection. The new group starts inactive; Manage groups & hotkeys opens the Layers inspector where you can toggle it or assign a shortcut. Selection uses exported mesh triangles, which can include transparent texture regions or clipped areas; uncheck unwanted IDs in the selection list. Original PSD layers that were merged or omitted cannot be recovered. The window and its selection guides never enter OBS or PNG exports.
+
 ## live2d-customization | Customizable Live2D models | Build an appearance workspace for your avatar's outfits, hair, accessories, colors and other exported choices.
 
 @diagram appearance
@@ -1436,7 +1452,7 @@ Expand Control name, category & options to give a raw ID a friendly name, move i
 
 Saved appearance looks capture locked appearance values, layer visibility groups and mesh colors. Applying one preserves your tracking calibration, physics tuning, props, microphone and current expressions. It can change appearance while a pose is frozen without moving other parameters. Use Manage looks, shortcuts & exports to rename, replace, delete, export or import a look and assign an available Ctrl+Alt+F1–F11 preset shortcut on Windows. Imports are matched to the same avatar's content identity and do not import keyboard assignments. To save active expression toggles together with broader movement settings, use a Movement preset. Expression-based outfits opens the existing expression library.
 
-Select layers & edit colors opens Layers. A multiply tint affects the selected exported meshes: white preserves their original texture colors; darker colors tint and darken them. Black texture pixels cannot be recolored by multiplication. Restore selected colors restores the creator's multiply/screen settings. No texture files are rewritten. Appearance parameters and colors are shared by Your stage, all outputs, and exported PNG images; selection rectangles remain visible only in the stage editor.
+Select layers & edit colors opens Layers. A multiply tint affects the selected exported meshes: white preserves their original texture colors; darker colors tint and darken them. Black texture pixels cannot be recolored by multiplication. Restore selected colors restores the creator's multiply/screen settings. No texture files are rewritten. Appearance parameters and colors are shared by Your stage, all outputs, and exported PNG images; selection rectangles remain visible only in the editing views.
 
 ## pin-edit | Move the attachment anchor | Relocate a pin without changing the attached object's position, rotation or size.
 
@@ -1489,3 +1505,10 @@ VBridger normally saves input curves separately from .vbridger output files. ARI
 External / plugin inputs lets you declare a numeric channel and fallback value. Your tool sends the exact name through the parameters object of an ARIA JSON tracking packet. Standard ARKit, viseme, volume and supported VMC-style body-axis names are already recognized. These channels do not add tracking hardware or infer absent body/phoneme measurements. Missing shapes use zero; absent viseme_SIL_abs uses one for the ARKit fallback in the shipped viseme equations. Missing external channels use their declared defaults.
 
 Hold last face after signal loss keeps the last valid face for a configurable extra 0–5000 ms after ARIA reports loss. Outputs requiring a face then reset to their defaults and clear their modifier history. Procedural and microphone-only outputs can continue when Requires a tracked face is disabled. Changes remain a draft until Apply.
+
+
+## bread | Send bread | Launch built-in bread across the stage and outputs with one click.
+
+Click the small bread slice beside the bottom-right social icons to send five slices across Your stage and all outputs. The artwork is built into ARIA: no PNG download, phone, account or custom effect setup is needed. Bursts expire automatically and a short cooldown limits repeated clicks. This does not change your saved model settings. Effects pause while the screenshot pose is frozen; return to Live to resume. Clear active effects in the throwing controls removes active bread along with other effects.
+
+For your own bread throws, add Bread in the throw designer's built-in asset list, then configure directions, quantities, size, timing, sounds and physics like any other throw. The footer button always uses its simple built-in fly-by.

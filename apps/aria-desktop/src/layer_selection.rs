@@ -23,8 +23,8 @@ impl Projection {
     }
 }
 
-#[derive(Clone, Copy, Default)]
-enum Operation {
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub enum Operation {
     #[default]
     Replace,
     Add,
@@ -32,7 +32,7 @@ enum Operation {
     Toggle,
 }
 impl Operation {
-    fn from(modifiers: egui::Modifiers) -> Self {
+    fn from(modifiers: egui::Modifiers, fallback: Self) -> Self {
         if modifiers.alt {
             Self::Remove
         } else if modifiers.shift {
@@ -40,7 +40,7 @@ impl Operation {
         } else if modifiers.command || modifiers.ctrl {
             Self::Toggle
         } else {
-            Self::Replace
+            fallback
         }
     }
     fn apply(self, base: &BTreeSet<String>, hits: &BTreeSet<String>) -> BTreeSet<String> {
@@ -62,6 +62,7 @@ struct Drag {
 pub struct Selection {
     pub enabled: bool,
     pub include_hidden: bool,
+    pub operation: Operation,
     drag: Option<Drag>,
 }
 impl Selection {
@@ -78,10 +79,10 @@ impl Selection {
         layers: &aria_core::layers::Config,
         projection: &Projection,
         selected: &mut BTreeSet<String>,
-    ) {
+    ) -> Option<egui::Response> {
         if !self.enabled {
             self.cancel(selected);
-            return;
+            return None;
         }
         let response = ui.interact(
             stage,
@@ -103,7 +104,7 @@ impl Selection {
                     start,
                     end: start,
                     original: selected.clone(),
-                    operation: Operation::from(ui.input(|i| i.modifiers)),
+                    operation: Operation::from(ui.input(|i| i.modifiers), self.operation),
                 });
             }
             if let Some(drag) = &mut self.drag {
@@ -135,13 +136,19 @@ impl Selection {
                     self.include_hidden,
                     true,
                 );
-                *selected = Operation::from(ui.input(|i| i.modifiers)).apply(selected, &hits);
+                *selected = Operation::from(ui.input(|i| i.modifiers), self.operation)
+                    .apply(selected, &hits);
             }
         }
         let painter = ui.painter_at(stage);
+        let mut combined = Rect::NOTHING;
         for drawable in drawables.iter().filter(|d| selected.contains(&d.id)) {
             let bounds = Rect::from_points(&projection.vertices(drawable));
             if bounds.is_finite() && bounds.intersects(stage) {
+                combined = combined.union(bounds);
+                if selected.len() > 24 {
+                    continue;
+                }
                 painter.rect_stroke(
                     bounds,
                     2.,
@@ -149,6 +156,14 @@ impl Selection {
                     egui::StrokeKind::Inside,
                 );
             }
+        }
+        if selected.len() > 24 && combined.is_finite() {
+            painter.rect_stroke(
+                combined,
+                2.,
+                Stroke::new(1.5, crate::theme::mint()),
+                egui::StrokeKind::Inside,
+            );
         }
         if let Some(drag) = &self.drag {
             let rect = Rect::from_two_pos(drag.start, drag.end);
@@ -160,6 +175,7 @@ impl Selection {
                 egui::StrokeKind::Inside,
             );
         }
+        Some(response)
     }
 }
 
@@ -255,6 +271,89 @@ fn intersects(triangle: [Pos2; 3], rect: Rect) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn plain_mouse_clicks_and_repeated_boxes_accumulate_without_shift() {
+        let ctx = egui::Context::default();
+        let stage = projection().rect;
+        let mut left = mesh("Left", 0);
+        left.positions = vec![[-0.4, 0.4], [-0.1, 0.4], [-0.4, 0.1]];
+        let mut right = mesh("Right", 1);
+        right.positions = vec![[0.1, 0.4], [0.4, 0.4], [0.1, 0.1]];
+        let meshes = [left, right];
+        let mut selection = Selection {
+            enabled: true,
+            operation: Operation::Add,
+            ..Default::default()
+        };
+        let mut selected = BTreeSet::new();
+        let button = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let frame = |events, selection: &mut Selection, selected: &mut BTreeSet<String>| {
+            let _ = crate::run_test_ui(
+                &ctx,
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::splat(150.))),
+                    events,
+                    ..Default::default()
+                },
+                |root| {
+                    egui::CentralPanel::default().show(root, |ui| {
+                        selection.stage(
+                            ui,
+                            stage,
+                            &meshes,
+                            &Default::default(),
+                            &projection(),
+                            selected,
+                        );
+                    });
+                },
+            );
+        };
+        frame(vec![], &mut selection, &mut selected);
+        // Two independent clicks with no modifiers preserve the first layer.
+        for point in [egui::pos2(20., 20.), egui::pos2(70., 20.)] {
+            frame(
+                vec![egui::Event::PointerMoved(point), button(point, true)],
+                &mut selection,
+                &mut selected,
+            );
+            frame(vec![button(point, false)], &mut selection, &mut selected);
+        }
+        assert_eq!(selected, BTreeSet::from(["Left".into(), "Right".into()]));
+        selected.clear();
+        // Two separate mouse boxes have the same accumulation behavior.
+        for x in [10., 60.] {
+            let start = egui::pos2(x, 10.);
+            let end = egui::pos2(x + 28., 38.);
+            frame(
+                vec![egui::Event::PointerMoved(start), button(start, true)],
+                &mut selection,
+                &mut selected,
+            );
+            frame(
+                vec![egui::Event::PointerMoved(end)],
+                &mut selection,
+                &mut selected,
+            );
+            frame(vec![button(end, false)], &mut selection, &mut selected);
+        }
+        assert_eq!(selected.len(), 2);
+        // The Remove button is a mouse-only alternative to holding Alt.
+        selection.operation = Operation::Remove;
+        let point = egui::pos2(20., 20.);
+        frame(
+            vec![egui::Event::PointerMoved(point), button(point, true)],
+            &mut selection,
+            &mut selected,
+        );
+        frame(vec![button(point, false)], &mut selection, &mut selected);
+        assert_eq!(selected, BTreeSet::from(["Right".into()]));
+    }
     #[test]
     #[cfg(windows)]
     #[ignore = "requires ARIA_TEST_MODEL, Cubism Core and GPU"]
