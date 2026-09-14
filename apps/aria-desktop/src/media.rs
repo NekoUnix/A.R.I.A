@@ -10,6 +10,9 @@ use std::{
     sync::Arc,
 };
 
+pub fn diagnostic(sprite: &Sprite) -> serde_json::Value {
+    serde_json::json!({"content_identity":sprite.model_key,"canvas":[sprite.size.x,sprite.size.y],"texture_size":sprite.texture.size(),"playback_bytes":sprite.bytes(),"frames":sprite.animation.as_ref().map_or(1,|a|a.frames.len()),"duration_seconds":sprite.animation.as_ref().and_then(|a|a.ends.last()).copied().unwrap_or(0.)})
+}
 pub struct Animation {
     pub frames: Vec<egui::TextureHandle>,
     pub ends: Vec<f32>,
@@ -155,7 +158,11 @@ fn read_image(path: &Path, allow_jpeg: bool) -> Result<(Vec<u8>, image::ImageFor
     );
     Ok((bytes, format))
 }
+pub mod sequence;
 pub fn inspect(path: &Path) -> Result<Info> {
+    if path.is_dir() {
+        return sequence::inspect(path).map(|(_, info)| info);
+    }
     let (bytes, format) = read_image(path, true)?;
     inspect_bytes(&bytes, format)
 }
@@ -186,6 +193,9 @@ fn load_with_progress(
     progress: &dyn Fn(usize, usize) -> Result<()>,
 ) -> Result<Sprite> {
     progress(0, 0)?;
+    if path.is_dir() {
+        return sequence::load(ctx, state, path, used, playback_mib, progress);
+    }
     let (bytes, format) = read_image(path, allow_jpeg)?;
     let info = inspect_bytes(&bytes, format)?;
     let maximum = state.map_or_else(

@@ -24,6 +24,7 @@ pub enum Tab {
     Controller,
 }
 pub struct InputMonitor {
+    pub vts: crate::vts_panel::Panel,
     pub vbridger: crate::vbridger_panel::Panel,
     pub vbridger_runtime: aria_core::vbridger::Runtime,
     pub layers_panel: crate::layers_panel::Panel,
@@ -110,6 +111,7 @@ impl InputMonitor {
             ));
         }
         Self {
+            vts: Default::default(),
             vbridger: Default::default(),
             vbridger_runtime: Default::default(),
             setup_tracking_requested: false,
@@ -285,6 +287,13 @@ impl InputMonitor {
                         .states
                         .iter()
                         .filter_map(|s| s.hotkey.as_ref()),
+                )
+                .chain(
+                    self.saved
+                        .vts
+                        .actions
+                        .iter()
+                        .filter_map(|h| h.shortcut.as_ref()),
                 )
                 .any(|shortcut| *shortcut == aria_core::shortcuts::Shortcut::preset(key))
         })

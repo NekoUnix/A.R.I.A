@@ -201,6 +201,7 @@ struct PendingImage {
     job: crate::media::LoadJob,
 }
 pub struct AriaApp {
+    support: crate::diagnostics::Panel,
     camera: crate::webcam::Camera,
     api_snapshot_at: Instant,
     tracking_guide: crate::tracking_guide::Guide,
@@ -251,6 +252,13 @@ pub struct AriaApp {
 impl AriaApp {
     fn scene(&self) -> crate::output::Scene {
         crate::output::Scene {
+            placement: if self.live2d.is_some() {
+                self.input_monitor
+                    .vts
+                    .placement(&self.input_monitor.saved.vts)
+            } else {
+                Default::default()
+            },
             images: self.images.draws.clone(),
             dents: self.effects.dents.clone(),
             effects: self.effects.draws.clone(),
@@ -321,6 +329,7 @@ impl AriaApp {
             OutputSettings::from_legacy(settings.background, settings.zoom, settings.always_on_top)
         }));
         let app = Self {
+            support: Default::default(),
             camera: Default::default(),
             api_snapshot_at: Instant::now(),
             tracking_guide: Default::default(),
@@ -428,6 +437,16 @@ impl AriaApp {
                     app.begin_vrm(Path::new(&path));
                 }
                 let scenario = std::env::var("ARIA_SMOKE_SCENARIO").unwrap_or_default();
+                if ["vts-import", "vts-repair"].contains(&scenario.as_str())
+                    && let Some(avatar) = &mut app.live2d
+                {
+                    app.input_monitor.vts.prepare_smoke(
+                        avatar,
+                        &mut app.input_monitor.saved,
+                        scenario == "vts-repair",
+                    );
+                }
+
                 app.controls_page = if scenario.starts_with("chat") {
                     ControlsPage::Chat
                 } else if scenario.starts_with("output") || scenario == "capture-controls" {
@@ -777,6 +796,9 @@ impl AriaApp {
         let mut app = app;
         // Initial import/setup is not a model-update interval.
         app.frame_clock = crate::performance::FrameClock::new(Instant::now());
+        if crate::smoke_mode() {
+            app.started = Instant::now();
+        }
         #[cfg(feature = "screenshots")]
         if crate::smoke_mode()
             && std::env::var("ARIA_SMOKE_SCENARIO")
@@ -896,6 +918,28 @@ impl AriaApp {
                 self.settings.theme.active = t;
             }
             Action::SaveProfile => {
+                self.input_monitor.save_requested = true;
+            }
+            Action::Imported { id } => {
+                anyhow::ensure!(
+                    self.live2d.is_some()
+                        && self.input_monitor.saved.config.pose.mode != PoseMode::Frozen,
+                    "Resume a Live2D avatar before triggering an imported action"
+                );
+                anyhow::ensure!(
+                    self.input_monitor
+                        .saved
+                        .vts
+                        .actions
+                        .iter()
+                        .any(|h| h.id == id && h.enabled),
+                    "Imported action is missing or disabled"
+                );
+                self.input_monitor.vts.execute(
+                    &id,
+                    &mut self.input_monitor.saved,
+                    &mut self.input_monitor.expressions,
+                )?;
                 self.input_monitor.save_requested = true;
             }
         }
@@ -1474,6 +1518,9 @@ impl AriaApp {
                         if ui.button("Avatar physics").clicked() {
                             self.input_monitor.tab = Tab::Physics;
                         }
+                        if ui.button("Import VTube Studio · Experimental…").clicked() {
+                            self.input_monitor.vts.open = true;
+                        }
                         if ui.button("Expressions & hotkeys").clicked() {
                             self.input_monitor.tab = Tab::Expressions;
                         }
@@ -1868,7 +1915,7 @@ impl AriaApp {
             .render_state
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("GPU renderer is unavailable"))?;
-        let avatar =
+        let mut avatar =
             crate::live2d::Avatar::load(state, Path::new(self.settings.cubism_core.trim()), files)?;
         self.remember_current_rig();
         self.input_monitor = InputMonitor::new(
@@ -1888,6 +1935,19 @@ impl AriaApp {
             &self.input_monitor.saved,
             avatar.model.parameters(),
         );
+        self.input_monitor.expressions.motions.parts = avatar.model.parts.clone();
+        if self.input_monitor.saved.vts.physics_imported
+            && let Some(p) = &mut avatar.physics
+        {
+            p.set_multipliers(&BTreeMap::new());
+        }
+        if self.input_monitor.saved.vts.source_model.is_empty()
+            && let Some(path) = avatar.files.tracking_profile.clone()
+        {
+            self.input_monitor
+                .vts
+                .offer(&path, &avatar, &self.input_monitor.saved);
+        }
         self.restore_model_preferences(&avatar.model_key);
         self.hotkeys.configure(Vec::new());
         self.animation_time = 0.0;
@@ -2196,14 +2256,86 @@ impl AriaApp {
         }
     }
 
+    fn collect_diagnostics(&mut self) {
+        if !self.support.due() {
+            return;
+        }
+        let connection = self.connection_status().to_owned();
+        for (code, level, message) in [
+            ("HEALTH", "warning", self.status_message.as_deref()),
+            ("TRACKING", "info", Some(connection.as_str())),
+            ("WEBCAM", "warning", self.camera.message.as_deref()),
+            ("MICROPHONE", "error", self.microphone.error.as_deref()),
+            ("API", "error", self.effect_api.error.as_deref()),
+            ("IMPORT", "error", self.importer.error.as_deref()),
+            (
+                "TRACKING_ERROR",
+                "error",
+                self.snapshot.last_error.as_deref(),
+            ),
+            ("OUTPUT", "warning", self.outputs.message.as_deref()),
+            ("IMAGE", "warning", self.images.message.as_deref()),
+            (
+                "MOTION",
+                "error",
+                self.input_monitor.expressions.motions.error.as_deref(),
+            ),
+            (
+                "VTS_IMPORT",
+                "error",
+                self.input_monitor.vts.error.as_deref(),
+            ),
+            (
+                "VBRIDGER",
+                "warning",
+                self.input_monitor.vbridger.error.as_deref(),
+            ),
+            (
+                "HOTKEY",
+                "warning",
+                self.input_monitor.hotkey_status.as_deref(),
+            ),
+            ("EFFECT", "info", self.effects.message.as_deref()),
+            ("ITEM", "info", self.items.message.as_deref()),
+            ("CONTROLLER", "info", self.controller.error.as_deref()),
+        ] {
+            self.support.observe(code, level, message);
+        }
+        if self.support.open {
+            self.support.snapshot = self.support_snapshot();
+        }
+    }
+    fn support_snapshot(&self) -> serde_json::Value {
+        use serde_json::json;
+        let parameters = self.current_parameters();
+        let mut avatar = json!({"kind":"PNG/GIF or built-in puppet","states":self.input_monitor.saved.config.images.states.iter().map(|s|json!({"id":s.id,"trigger":s.trigger,"artwork":self.images.artwork(&s.path).map(crate::media::diagnostic),"load_error":self.images.error(&s.path)})).collect::<Vec<_>>(),"primary":self.idle.as_ref().map(crate::media::diagnostic)});
+        if let Some(a) = &self.live2d {
+            let textures:Vec<_>=a.files.textures.iter().enumerate().map(|(index,p)|json!({"index":index,"bytes":p.metadata().ok().map(|m|m.len()),"dimensions":image::ImageReader::open(p).ok().and_then(|r|r.with_guessed_format().ok()).and_then(|r|r.into_dimensions().ok())})).collect();
+            let meshes:Vec<_>=a.model.drawables.iter().map(|d|json!({"id":d.id,"part":d.part,"vertices":d.positions.len(),"indices":d.indices.len(),"texture":d.texture,"masks":d.masks,"inverted_mask":d.inverted,"visible":d.visible,"opacity":d.opacity,"blend":d.blend})).collect();
+            let physics:Vec<_>=a.physics.as_ref().map(|p|p.groups()).unwrap_or_default().iter().map(|g|json!({"id":g.id,"name":g.name,"inputs":g.inputs,"outputs":g.outputs,"particles":g.particles,"imported_multiplier":g.imported_multiplier})).collect();
+            avatar = json!({"kind":"Live2D","content_identity":a.model_key,"core_version":a.model.version,"moc_bytes":a.files.moc.metadata().ok().map(|m|m.len()),"canvas":a.model.canvas,"textures":textures,"meshes":meshes,"parts":a.model.parts,"physics_groups":physics,"physics_settings":self.input_monitor.saved.config.physics,"warnings":a.files.warnings,"import_notices":self.input_monitor.saved.vts.notes});
+        } else if let Some(a) = &self.vrm {
+            let a = &a.asset;
+            avatar = json!({"kind":"VRM","version":a.summary.version,"content_identity":a.key,"bones":a.bones,"springs":a.springs.len(),"materials":a.materials.len(),"nodes":a.nodes.len(),"skins":a.skins.len(),"geometry":a.geometry.iter().map(|g|json!({"vertices":g.vertices.len(),"morphs":g.morphs.len(),"skin":g.skin})).collect::<Vec<_>>(),"textures":a.images.iter().map(|i|i.as_ref().map(|i|i.dimensions())).collect::<Vec<_>>(),"warnings":a.warnings});
+        }
+        let expressions: Vec<_> = self
+            .input_monitor
+            .expressions
+            .entries
+            .iter()
+            .map(|e| e.diagnostic())
+            .collect();
+        json!({"gpu":self.gpu,"usage":self.metrics.usage,"tracking_source":self.settings.source,"tracking_status":self.connection_status(),"tracking_packets":self.snapshot.packets,"tracking_errors":self.snapshot.last_error,"target_fps":self.settings.fps,"render_fps":self.render_fps,"avatar":avatar,"parameters":parameters,"bindings":self.input_monitor.saved.config.bindings,"expressions":expressions,"expression_errors":self.input_monitor.expressions.errors(),"active_expressions":self.input_monitor.saved.config.expressions,"vts_import_experimental":true,"vbridger_experimental":true,"vts_actions":self.input_monitor.saved.vts.actions.iter().map(|h|json!({"id":h.id,"action":h.action,"enabled":h.enabled,"key":h.shortcut,"chord":h.chord})).collect::<Vec<_>>(),"motion_events":self.input_monitor.expressions.motions.events,"objects":self.input_monitor.saved.config.items.iter().map(|i|json!({"id":i.id,"kind":if aria_core::items::is_model(&i.path){"Live2D"}else{"PNG/GIF"},"pin":i.pin,"bytes":i.path.metadata().ok().map(|m|m.len()),"load_error":self.items.error(&i.path).or_else(||self.items.models.error(i.id))})).collect::<Vec<_>>()})
+    }
     fn diagnostics(&mut self, ui: &mut egui::Ui) {
         let parameters = self.current_parameters();
-        let labels = self
+        let mut labels = self
             .live2d
             .as_ref()
             .map(|a| a.labels.clone())
             .or_else(|| self.vrm.as_ref().map(|a| a.labels.clone()))
             .unwrap_or_default();
+        labels.extend(self.input_monitor.saved.vts.labels.clone());
         let monitor_key = self.input_monitor.model_key.clone();
         ui.push_id(&monitor_key, |ui| {
             self.input_monitor.ui(
@@ -2516,6 +2648,7 @@ impl eframe::App for AriaApp {
                 "outputs":(0..3).map(|i|serde_json::json!({"index":i,"name":crate::output::NAMES[i],"open":self.outputs.is_open(i),"settings":self.outputs.snapshot().canvas(i)})).collect::<Vec<_>>(),
                 "themes":theme::presets().into_iter().chain(self.settings.theme.custom.iter().cloned()).map(|t|t.name).collect::<Vec<_>>(),
                 "theme":self.settings.theme.active.name,
+                "imported_actions":self.input_monitor.saved.vts.actions.iter().map(|h|serde_json::json!({"id":h.id,"name":h.name,"enabled":h.enabled,"action":h.action,"experimental":true})).collect::<Vec<_>>(),
                 "usage":self.metrics.usage
             }));
         }
@@ -2682,6 +2815,15 @@ impl eframe::App for AriaApp {
                     .apply(mouth_response, &mut self.live_inputs, dt);
             }
             if let Some(avatar) = &mut self.live2d {
+                self.input_monitor.vts.advance(
+                    ctx,
+                    avatar,
+                    &mut self.input_monitor.saved,
+                    &mut self.input_monitor.expressions,
+                    &self.live_inputs,
+                    self.raw.as_ref(),
+                    dt,
+                );
                 if std::mem::take(&mut self.input_monitor.reset_motion) {
                     avatar.reset_motion();
                 }
@@ -2799,6 +2941,9 @@ impl eframe::App for AriaApp {
                     if ui.small_button("Help & documentation").clicked() {
                         crate::help::open(ctx, "welcome", String::new());
                     }
+                    if ui.small_button("Diagnostics / export logs").clicked() {
+                        self.support.open = true;
+                    }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
                             RichText::new(format!(
@@ -2821,8 +2966,20 @@ impl eframe::App for AriaApp {
         egui::Panel::bottom("status")
             .frame(Frame::new().fill(bg()).inner_margin(10.0))
             .show(root_ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    self.metrics.footer(ui, &self.gpu);
+                ui.horizontal(|ui| {
+                    let width = (ui.available_width() - crate::socials::WIDTH - 8.0).max(400.0);
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(width, 40.0),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            ui.set_min_width(width);
+                            self.metrics.footer(ui, &self.gpu);
+                        },
+                    );
+                    ui.with_layout(
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        crate::socials::show,
+                    );
                 });
             });
         egui::Panel::left("controls")
@@ -3101,6 +3258,43 @@ impl eframe::App for AriaApp {
             }
         }
         self.tracking_guide_window(ctx);
+        if std::mem::take(&mut self.input_monitor.vts.state_dirty) {
+            self.input_monitor.save_requested = true;
+        }
+        self.collect_diagnostics();
+        #[cfg(feature = "screenshots")]
+        if crate::smoke_mode()
+            && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("workspace-v29")
+        {
+            self.input_monitor.vts.open = false;
+        }
+        #[cfg(feature = "screenshots")]
+        if crate::smoke_mode()
+            && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("diagnostics")
+        {
+            self.input_monitor.vts.open = false;
+            self.support.open = true;
+            if let Some(path) = std::env::var_os("ARIA_TEST_REPORT")
+                && self.started.elapsed().as_secs_f32() > 2.0
+            {
+                let id = egui::Id::new("diagnostic-report-exported");
+                if !ctx.data(|d| d.get_temp::<bool>(id).unwrap_or(false)) {
+                    self.support.snapshot = self.support_snapshot();
+                    crate::diagnostics::record(
+                        "warning",
+                        "QA_IMPORT",
+                        "Synthetic diagnostic event for export verification; not a real avatar failure",
+                    );
+                    crate::diagnostics::export(Path::new(&path),self.support.snapshot.clone(),"Synthetic QA report from the supplied avatar. Testing export, not reporting an actual failure.").expect("diagnostic report export");
+                    self.support.exported = Some(PathBuf::from(path));
+                    ctx.data_mut(|d| d.insert_temp(id, true));
+                }
+            }
+        }
+        if self.support.open {
+            self.support.show(ctx);
+        }
+
         #[cfg(feature = "screenshots")]
         if crate::smoke_mode() && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("vbridger")
         {
@@ -3112,7 +3306,30 @@ impl eframe::App for AriaApp {
                 ctx.data_mut(|d| d.insert_temp(id, true));
             }
         }
+        if let Some(avatar) = &mut self.live2d {
+            self.input_monitor
+                .vts
+                .show(ctx, avatar, &mut self.input_monitor.saved);
+            if std::mem::take(&mut self.input_monitor.vts.dirty) {
+                self.input_monitor.expressions.load(
+                    &avatar.files.expressions,
+                    avatar.files.source.parent().unwrap_or(Path::new("")),
+                    &self.input_monitor.saved,
+                    avatar.model.parameters(),
+                );
+                self.input_monitor.expressions.motions.parts = avatar.model.parts.clone();
+                self.input_monitor.physics_groups = avatar
+                    .physics
+                    .as_ref()
+                    .map(|p| p.groups())
+                    .unwrap_or_default();
+                avatar.reset_motion();
+                self.items.reload();
+                self.input_monitor.save_requested = true;
+            }
+        }
         if self.input_monitor.vbridger.open {
+            // VBridger remains a separate experimental import.
             let parameters = self.current_parameters();
             self.input_monitor.vbridger.window(
                 ctx,
@@ -3124,6 +3341,9 @@ impl eframe::App for AriaApp {
                     .as_ref()
                     .and_then(|a| a.files.tracking_profile.as_deref()),
             );
+        }
+        if std::mem::take(&mut self.input_monitor.vts.repair_tracking) {
+            self.start_tracking_guide();
         }
         if std::mem::take(&mut self.input_monitor.vbridger.dirty) {
             self.input_monitor.vbridger_runtime.reset();

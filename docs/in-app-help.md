@@ -40,6 +40,19 @@ GET /v1/state returns a version, the current model generation, live input and pa
 
 SetParameters holds specified native parameters in partial override mode after checking their real limits. ReleaseParameters releases selected holds; an empty list releases all. Pose freezes the rendered values or resumes live movement. Preset applies a saved preset by its current index. Expression enables or disables a known expression ID. Output opens or closes one canvas and optionally adjusts zoom and position. Theme selects a built-in or saved custom palette. SaveProfile saves current per-avatar controls. Settings may also persist during normal application autosave. Full examples and schemas are in docs/api.md and templates/api. Existing /v1/effects and /v1/effects/trigger integrations remain supported.
 
+## vts-import | VTube Studio import (Experimental) | Review a matching .vtube.json before transferring expressions, tracking, physics, hotkeys, animations, mesh colors and item scenes to this avatar.
+
+VTube Studio import is experimental. Keep the original model export together. Open Avatar → Import VTube Studio · Experimental. Choose its .vtube.json or Read model's VTS config, review the actions and notices, choose categories, then Apply. Cancel changes nothing; Undo last import restores the pre-import ARIA settings. Original VTS files are read-only. Each avatar keeps its own imported controls.
+
+Imported action buttons work without global hotkeys. Enable imported keyboard hotkeys for local controls; Windows global shortcuts additionally need the global master switch. Mouse and multi-key chords such as W + CapsLock work on Windows. macOS/Linux use focused-window keys; use the repair guide to assign other local keys or inputs. Conflicting shortcuts remain buttons until reassigned. Hold and timed expressions, phone screen buttons, idle and lost-tracking motions, parameter and part-opacity animation tracks are supported. Pause a frozen pose before playing actions. Stop animation returns to idle.
+
+Item scenes need their .itemscene.json and referenced PNG/GIF/Live2D items. ARIA searches the matching VTS StreamingAssets/ItemScenes and Items folders; Choose VTS StreamingAssets folder repairs a moved collection. Missing files are listed instead of replaced with fake artwork. Imported pins use the original mesh/vertex identities and approximate the VTS offset. Fine tune under Objects. Stage framing and tracking sway are optional approximations because the two applications use different cameras and physics solvers.
+
+Repair stays inside ARIA. Every imported action has a Repair / guide button. Step through choosing the local action, locating replacement artwork or a motion/expression file, then applying and testing it. Missing references and unrecognized action types remain repairable entries. No actions are forwarded to VTube Studio. External account authorization is not copied. You may use ARIA's own authenticated API to trigger a repaired action from your code.
+
+
+If something differs from VTS, click Diagnostics / export logs in the top bar. The report includes model-specific mesh, parameter, physics and asset metadata without artwork. After exporting, attach it to a GitHub issue or a Discord support ticket. Both links appear in the confirmation. Include expected/actual results and steps to reproduce. VBridger import is also experimental.
+
 ## guided-import | Guided avatar import | Choose PNG/GIF or Live2D, prepare its files, review the import and follow the next steps. Once loaded, Avatar and Inspector controls match the primary avatar type.
 
 ### Choose and prepare

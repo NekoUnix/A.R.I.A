@@ -10,7 +10,7 @@ body:
     id: version
     attributes:
       label: ARIA version or commit
-      placeholder: "0.23.0 or a commit hash"
+      placeholder: "0.29.0-alpha.1 or a commit hash"
     validations:
       required: true
   - type: textarea
@@ -38,3 +38,9 @@ body:
     attributes:
       label: Logs, screenshots and workaround
       description: Include the smallest useful evidence and note whether the built-in Mica puppet also reproduces it.
+
+  - type: textarea
+    id: diagnostic_report
+    attributes:
+      label: ARIA diagnostic report
+      description: 'Reproduce the issue, click Diagnostics / export logs, describe it, and export the .txt report. Review it, then drag it here. It contains avatar metadata without model artwork. Do not attach private avatar files or SDK libraries.'

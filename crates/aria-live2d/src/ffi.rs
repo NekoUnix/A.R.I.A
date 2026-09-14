@@ -79,6 +79,7 @@ api! {
     drawable_ids: unsafe extern "system" fn(*const Model) -> *const *const c_char = "csmGetDrawableIds",
     part_count: unsafe extern "system" fn(*const Model) -> i32 = "csmGetPartCount",
     part_ids: unsafe extern "system" fn(*const Model) -> *const *const c_char = "csmGetPartIds",
+    part_opacities: unsafe extern "system" fn(*mut Model) -> *mut f32 = "csmGetPartOpacities",
     drawable_parts: unsafe extern "system" fn(*const Model) -> *const i32 = "csmGetDrawableParentPartIndices",
     drawable_count: unsafe extern "system" fn(*const Model) -> i32 = "csmGetDrawableCount",
     flags: unsafe extern "system" fn(*const Model) -> *const u8 = "csmGetDrawableConstantFlags",

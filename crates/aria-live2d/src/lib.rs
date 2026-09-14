@@ -52,6 +52,7 @@ pub struct CubismModel {
     api: Api,
     parameters: Vec<Parameter>,
     parameter_lookup: BTreeMap<String, usize>,
+    pub parts: Vec<Parameter>,
     pub canvas: Canvas,
     pub version: String,
     pub drawables: Vec<Drawable>,
@@ -147,9 +148,28 @@ impl CubismModel {
                 model,
                 _model_memory: model_memory,
                 _moc_memory: moc_memory,
-                api,
                 parameters,
                 parameter_lookup,
+                parts: {
+                    let n = count((api.part_count)(model), 8192)?;
+                    let ids = array((api.part_ids)(model), n)?;
+                    let opacities = array((api.part_opacities)(model), n)?;
+                    let mut parts = Vec::with_capacity(n);
+                    for (id, value) in ids.iter().zip(opacities) {
+                        ensure!(!id.is_null() && value.is_finite(), "Invalid part opacity");
+                        let id = CStr::from_ptr(*id).to_str()?;
+                        ensure!(!id.is_empty() && id.len() <= 256, "Invalid part ID");
+                        parts.push(Parameter {
+                            id: id.into(),
+                            min: 0.,
+                            max: 1.,
+                            default: value.clamp(0., 1.),
+                            value: value.clamp(0., 1.),
+                        });
+                    }
+                    parts
+                },
+                api,
                 canvas: Canvas {
                     size: [size.x, size.y],
                     origin: [origin.x, origin.y],
@@ -201,6 +221,15 @@ impl CubismModel {
             );
             for (i, p) in self.parameters.iter().enumerate() {
                 values.add(i).write(p.value);
+            }
+            let opacities = (self.api.part_opacities)(self.model);
+            ensure!(
+                self.parts.is_empty() || !opacities.is_null(),
+                "Null part opacities"
+            );
+            for (i, p) in self.parts.iter().enumerate() {
+                ensure!(p.value.is_finite(), "Invalid part opacity");
+                opacities.add(i).write(p.value.clamp(0., 1.));
             }
             (self.api.reset)(self.model);
             (self.api.update)(self.model);

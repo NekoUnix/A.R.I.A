@@ -53,6 +53,12 @@ impl Images {
     pub fn artwork(&self, path: &std::path::Path) -> Option<&Sprite> {
         self.cache.get(path)?.as_ref().ok()
     }
+    pub fn error(&self, path: &std::path::Path) -> Option<&str> {
+        self.cache
+            .get(path)
+            .and_then(|r| r.as_ref().err())
+            .map(String::as_str)
+    }
     pub fn primary(&self) -> Option<&Sprite> {
         self.draws.last().map(|d| &d.sprite)
     }

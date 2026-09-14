@@ -1,6 +1,6 @@
-# ARIA documentation — v0.28 Alpha
+# ARIA documentation — v0.29 Alpha
 
-![Odette in ARIA v0.28 with a clearly labeled simulated iFacialMocap source](images/ifacialmocap-v28.png)
+![Odette in ARIA v0.29 with the updated footer and avatar controls](images/workspace-v29.png)
 
 New to ARIA? Start with the [beginner setup walkthrough](../README.md#first-time-setup)
 and [changelog](../CHANGELOG.md). For system-specific steps use [Windows setup](windows.md), [Linux installation](linux.md) or
@@ -9,7 +9,10 @@ and [changelog](../CHANGELOG.md). For system-specific steps use [Windows setup](
 Tracking / Output / Chat / Settings**. Inspector tools stay grouped by tracking,
 avatar, stage and poses. Hover or click any circled **?** for offline explanations.
 
-v0.28 adds [iFacialMocap phone tracking](ifacialmocap.md), with direct live UDP,
+v0.29 adds [Experimental VTube Studio import and repair](vtube-studio-import.md)
+and [avatar-specific support reports](diagnostics.md).
+
+v0.28 added [iFacialMocap phone tracking](ifacialmocap.md), with direct live UDP,
 separate per-avatar connection settings and guided setup. The README puts user
 instructions first; [technical references](../README.md#technical-guides-and-development)
 are collected below them.
@@ -36,6 +39,8 @@ This is a release status grid, not a promise of universal model/device compatibi
 | PNG/GIF avatars | Working | Guided import, talking/blinking states, transitions and bounded GIF playback; large sources may be downscaled to the playback budget. |
 | VRM 0.x / 1.0 | Working with limits | Native GPU rendering, supported expressions/skinning/springs and pins; this is not a complete reference VRM/MToon renderer. |
 | iPhone VTube Studio / external JSON | Partial validation | Protocol, axes, loopback packets and calibration tested; physical phone/network acceptance remains. |
+| VTube Studio customization import | **Experimental in v0.29 Alpha** | Tracking, physics, expressions/hotkeys, motion/part opacity, mesh colors and local item scenes; missing or incompatible actions are repaired inside ARIA. No VTS execution fallback. |
+| Avatar-specific support report | Implemented in v0.29 Alpha | Bounded local errors and rig metadata, readable JSON/text export, prior-session recovery and GitHub/Discord ticket links; no automatic upload. |
 | VBridger import and editor | Experimental in v0.27 Alpha | Per-avatar equations, weighted curves, delays, smoothing, steps and exports; exact VBridger behavior is not guaranteed. |
 | Performance graphs | Working in v0.27 Alpha | Hover samples and session extrema with bounded history; OS counters depend on platform support. |
 | Responsive mouth input / resource details | Implemented in v0.26 Alpha | Single speech filter, preset persistence, owned-process counters and frame/packet timing; physical phone latency remains unmeasured. |

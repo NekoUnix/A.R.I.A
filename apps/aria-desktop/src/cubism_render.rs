@@ -81,14 +81,6 @@ impl ModelImage {
         let size = self.size * (rect.width() / self.size.x).min(rect.height() / self.size.y) * zoom;
         egui::Rect::from_center_size(rect.center(), size)
     }
-    pub fn draw(self, painter: &egui::Painter, rect: egui::Rect, zoom: f32) {
-        painter.image(
-            self.id,
-            self.rect(rect, zoom),
-            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
-            egui::Color32::WHITE,
-        );
-    }
 }
 
 pub struct ModelRenderer {
@@ -291,7 +283,7 @@ impl ModelRenderer {
                 "Texture dimensions changed during import; retry"
             );
             if source != (width, height) {
-                import_notes.push(format!("{}: {} × {} atlas fitted once to {width} × {height} for this GPU. The original file is unchanged.",
+                import_notes.push(format!("{}: {} Ã— {} atlas fitted once to {width} Ã— {height} for this GPU. The original file is unchanged.",
                     path.file_name().unwrap_or_default().to_string_lossy(), source.0, source.1));
             }
             let rgba = crate::media::fit_texture(rgba, maximum);
@@ -545,8 +537,8 @@ impl ModelRenderer {
                 }
             }
             let style = Style {
-                multiply: d.multiply,
-                screen: d.screen,
+                multiply: layers.colors.get(&d.id).map_or(d.multiply, |c| c.multiply),
+                screen: layers.colors.get(&d.id).map_or(d.screen, |c| c.screen),
                 control: [
                     opacity,
                     if !d.masked {

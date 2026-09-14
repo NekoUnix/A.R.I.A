@@ -4,19 +4,32 @@ Bring your **Live2D, VRM or PNG/GIF avatar** to life, tune how it follows you, a
 send it to OBS. ARIA runs on Windows, Linux and macOS. You can start with the
 included Mica puppet before importing a model or connecting a camera.
 
-**[Download v0.28 Alpha](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.28.0-alpha.1)** ·
+**[Download v0.29 Alpha](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.29.0-alpha.1)** ·
 [What's new](#whats-new) · [First-time setup](#first-time-setup) ·
 [Help when something goes wrong](#help-when-something-goes-wrong)
 
 ARIA is still **Alpha**, so some features and device combinations need more
-real-world testing. **VBridger import is Experimental.** Your avatar files and any
+real-world testing. **VTube Studio import and VBridger import are Experimental.** Your avatar files and any
 required third-party tracking app or runtime are supplied separately.
 
-![Odette in ARIA with colorful performance graphs](docs/images/performance-footer.png)
+![Odette in ARIA v0.29 with the updated footer and avatar controls](docs/images/workspace-v29.png)
 
 ## What's new
 
-**v0.28.0-alpha.1** adds direct **iFacialMocap input** from an iPhone. Its address
+**v0.29.0-alpha.1** brings **Experimental VTube Studio customization import**.
+Import a matching `.vtube.json`, review its settings, then transfer tracking,
+physics, expressions, hotkeys, animations, mesh colors and item scenes. Missing
+assets remain repairable inside ARIA through a three-step guide.
+
+The new **Diagnostics / export logs** button creates a readable support report
+with avatar-specific metadata, recent errors and system counters. After export,
+use its GitHub issue or Discord ticket links to ask for help. Small footer icons
+open NekoUnix’s social pages; following or subscribing is your choice.
+
+[Import and repair guide](docs/vtube-studio-import.md) ·
+[Diagnostic reports](docs/diagnostics.md)
+
+**v0.28.0-alpha.1** added direct **iFacialMocap input** from an iPhone. Its address
 and ports save separately from VTube Studio, per avatar. The setup page explains
 how to connect, calibrate and troubleshoot. This release also reorganizes the
 instructions below for people who have never built or configured an avatar app.
@@ -30,17 +43,17 @@ this and earlier releases.
 
 ### 1. Download the right file
 
-Open the [v0.28 Alpha release](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.28.0-alpha.1)
+Open the [v0.29 Alpha release](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.29.0-alpha.1)
 and expand **Assets** if the downloads are hidden. Choose the file for your computer:
 
 | Your computer | Download |
 | --- | --- |
-| Windows 10/11, 64-bit Intel or AMD | `aria-0.28.0-alpha.1-windows-x64.zip` |
-| Mac with an M-series chip | `aria-0.28.0-alpha.1-macos-arm64.zip` |
-| Mac with an Intel processor | `aria-0.28.0-alpha.1-macos-x64.zip` |
-| Ubuntu 24.04, 64-bit Intel or AMD | `aria-0.28.0-alpha.1-linux-x64.tar.gz` |
-| Fedora 44, 64-bit Intel or AMD | `aria-alpha-0.28.0.alpha.1-1.x86_64.rpm` |
-| Current Arch Linux, 64-bit Intel or AMD | `aria-alpha-0.28.0alpha.1-1-x86_64.pkg.tar.zst` |
+| Windows 10/11, 64-bit Intel or AMD | `aria-0.29.0-alpha.1-windows-x64.zip` |
+| Mac with an M-series chip | `aria-0.29.0-alpha.1-macos-arm64.zip` |
+| Mac with an Intel processor | `aria-0.29.0-alpha.1-macos-x64.zip` |
+| Ubuntu 24.04, 64-bit Intel or AMD | `aria-0.29.0-alpha.1-linux-x64.tar.gz` |
+| Fedora 44, 64-bit Intel or AMD | `aria-alpha-0.29.0.alpha.1-1.x86_64.rpm` |
+| Current Arch Linux, 64-bit Intel or AMD | `aria-alpha-0.29.0alpha.1-1-x86_64.pkg.tar.zst` |
 
 On a Mac, **Apple menu → About This Mac** tells you whether it has an Apple chip
 or an Intel processor. Linux ARM, Windows ARM, `.deb`, AppImage and Flatpak/Snap
@@ -92,7 +105,7 @@ controls relevant to that avatar.
 | Avatar type | What to select | What to expect |
 | --- | --- | --- |
 | PNG/GIF | Your image or animated GIF | Set up idle/talking states, transitions and movement. A static image does not need a 3D or Live2D runtime. |
-| Live2D | An exported `.model3.json`, or its `.moc3` with the matching export files nearby | Keep the model folder, textures and supporting files together. ARIA asks for the official Cubism Core library needed to run it. |
+| Live2D | An exported `.model3.json`, matching `.vtube.json`, model folder, or `.moc3` with its supporting files nearby | Keep the model folder, textures and supporting files together. ARIA asks for the official Cubism Core library needed to run it. |
 | VRM | A `.vrm` file | Load a VRM 0.x or 1.0 avatar, then tune supported expressions, natural movement and gestures. |
 
 For Live2D, **Cubism Core** is the separate library that evaluates the model. Use
@@ -275,11 +288,18 @@ Export important configurations before experimenting with a new Alpha build.
 | OBS cannot find the avatar | Enable the ARIA output, install the correct native OBS source plugin and select its displayed sender/server name. |
 | OBS background is green | Choose Transparent for a compatible native source, or add a Chroma Key filter using ARIA's chosen color. |
 | Low FPS or high memory use | Reduce canvas resolution, close unused outputs and check large avatar textures and competing apps. A small preview alone does not reduce the canvas workload. |
+| An imported VTS action needs repair | Open **Import VTube Studio → Repair / guide…**, choose the intended ARIA behavior, locate its files, then Apply and test. |
 | A saved effect cannot find its picture/model | Check that the asset file still exists in its original location and choose it again if it moved. |
 
 Hover the colorful bottom graphs to see the sample, latest value and this session's
 low/high. Click **Graphs** for more counters. **N/A** means that counter is unavailable,
 not zero. Some operating-system/GPU counters currently work only on Windows.
+
+Click **Diagnostics / export logs**, describe the problem and export a report.
+After export, use **Create GitHub issue** or **Discord · create a ticket** and
+attach the `.txt` file. Review it first: it includes useful rig IDs, ranges,
+mesh/physics metadata and recent errors, while excluding avatar artwork and
+credentials. Export does not upload it. [Report guide](docs/diagnostics.md).
 
 For more help, read the [user guide index](docs/README.md) or
 [report a bug](https://github.com/NekoUnix/A.R.I.A/issues/new/choose). Include the ARIA
@@ -301,6 +321,8 @@ in the Linux guide. ARIA does not require building Rust code to use a release.
 | Live2D, PNG/GIF and VRM avatars | Available; model-format and advanced shader limits apply |
 | iFacialMocap and VTube Studio phone inputs | Available; physical device/network acceptance varies |
 | Webcam, microphone and controllers | Available; camera runtime/device setup required |
+| VTube Studio customization import | **Experimental**; native actions and an in-app repair guide for missing/incompatible entries |
+| Avatar-aware diagnostic exports | Available; readable local report, recent errors and rig metadata with support-ticket links |
 | VBridger config import/editor | **Experimental**; exact third-party motion is not guaranteed |
 | NVIDIA RTX tracking | **Experimental** adapter; requires separate SDK and GPU validation |
 | Native OBS outputs | Alpha on Windows, Linux and macOS; plugin/GPU compatibility varies |
@@ -329,6 +351,7 @@ The ready-to-run packages above do not require a compiler.
 | [Architecture](docs/architecture.md) | Runtime, renderer, models and component boundaries |
 | [Tracking protocols](docs/tracking.md) / [iFacialMocap protocol](docs/ifacialmocap.md#developer-protocol-and-validation) | Packet formats, ports and CLI diagnostics |
 | [Control API](docs/api.md) / [examples](templates/api/README.md) | Authenticated local scripting and integrations |
+| [VTube Studio import and repair](docs/vtube-studio-import.md) / [support reports](docs/diagnostics.md) | Experimental native customization import, repair walkthrough and diagnostic contents |
 | [VBridger compatibility](docs/vbridger.md#compatibility-and-limits) | Experimental equations, modifiers, supported exports and bounds |
 | [Live2D](docs/live2d.md) / [VRM](docs/vrm.md) | Import requirements and rendering limitations |
 | [Native platform packages](docs/platforms.md) / [validation](docs/validation.md) | Build instructions, test evidence and hardware acceptance limits |

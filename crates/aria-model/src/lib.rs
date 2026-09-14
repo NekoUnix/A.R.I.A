@@ -77,6 +77,13 @@ impl ModelReport {
 }
 
 pub fn inspect(path: &Path) -> Result<ModelReport> {
+    if path.file_name().is_some_and(|n| {
+        n.to_string_lossy()
+            .to_ascii_lowercase()
+            .ends_with(".vtube.json")
+    }) {
+        return inspect(&load_files(path)?.source);
+    }
     let manifest_path = path.canonicalize().context("Cannot open model manifest")?;
     let mut bytes = Vec::new();
     fs::File::open(&manifest_path)?
@@ -150,7 +157,7 @@ fn asset_size(base: &Path, reference: &str) -> Result<u64> {
     Ok(resolve_asset(base, reference)?.metadata()?.len())
 }
 
-fn resolve_asset(base: &Path, reference: &str) -> Result<PathBuf> {
+pub fn resolve_asset(base: &Path, reference: &str) -> Result<PathBuf> {
     let normalized = reference.replace('\\', "/");
     let relative = Path::new(&normalized);
     ensure!(
@@ -356,6 +363,27 @@ pub fn discover_models(folder: &Path) -> Result<Vec<PathBuf>> {
 /// Never guess texture ordering from filenames. Bare moc3 files need explicit textures.
 pub fn load_files(path: &Path) -> Result<ModelFiles> {
     let source = path.canonicalize().context("Cannot open avatar")?;
+    if source.file_name().is_some_and(|n| {
+        n.to_string_lossy()
+            .to_ascii_lowercase()
+            .ends_with(".vtube.json")
+    }) {
+        let bytes = read_bounded(&source, aria_core::asset_limits::MODEL_JSON)?;
+        let document: serde_json::Value = serde_json::from_slice(&bytes)?;
+        let reference = document["FileReferences"]["Model"]
+            .as_str()
+            .context("VTube Studio config has no model reference")?;
+        ensure!(
+            reference.to_ascii_lowercase().ends_with(".model3.json"),
+            "VTube Studio config must reference a model3.json export"
+        );
+        let mut files = load_files(&resolve_asset(
+            source.parent().context("Config has no folder")?,
+            reference,
+        )?)?;
+        files.tracking_profile = Some(source);
+        return Ok(files);
+    }
     if source.is_dir() {
         let models = discover_models(&source)?;
         ensure!(
@@ -439,7 +467,7 @@ pub fn load_files(path: &Path) -> Result<ModelFiles> {
     let expressions = discover_expressions(base, f.expressions, &mut warnings);
     if !f.motions.is_empty() {
         warnings
-            .push("Motion playback is not implemented; parameter controls are available.".into());
+            .push("Import the VTube Studio config to use its motion hotkeys and idle animations. ARIA evaluates parameter, part-opacity and standard model tracks; missing assets can be repaired in ARIA.".into());
     }
     Ok(ModelFiles {
         source,

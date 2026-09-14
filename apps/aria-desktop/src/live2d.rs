@@ -161,24 +161,50 @@ impl Avatar {
             self.physics.as_mut(),
             |p, active| expressions.update(p, active, dt),
         );
+        let parts = &expressions.motions.parts;
+        let parts_changed = parts.len() == self.model.parts.len()
+            && parts
+                .iter()
+                .zip(&self.model.parts)
+                .any(|(a, b)| a.value != b.value);
+        let model_opacity = config.layers.model_opacity
+            * expressions
+                .motions
+                .model
+                .get("Opacity")
+                .copied()
+                .unwrap_or(1.)
+                .clamp(0., 1.);
+        // Most frames have no whole-model opacity motion. Borrow the layer maps
+        // rather than cloning thousands of mesh entries on every tracking frame.
+        let render_layers = if model_opacity == config.layers.model_opacity {
+            std::borrow::Cow::Borrowed(&config.layers)
+        } else {
+            let mut layers = config.layers.clone();
+            layers.model_opacity = model_opacity;
+            std::borrow::Cow::Owned(layers)
+        };
         let pose_changed = !self
             .values
             .iter()
             .zip(self.model.parameters())
             .all(|(a, b)| a.value == b.value);
-        if !pose_changed && self.last_layers == config.layers {
+        if !pose_changed && !parts_changed && self.last_layers == *render_layers {
             return Ok(false);
         }
-        if pose_changed {
+        if pose_changed || parts_changed {
+            if parts_changed {
+                self.model.parts.clone_from(parts);
+            }
             for p in &self.values {
                 self.model.set_parameter(&p.id, p.value);
             }
             self.model.update()?;
         }
         self.renderer
-            .render_layers(self.model.canvas, &self.model.drawables, &config.layers)?;
-        if self.last_layers != config.layers {
-            self.last_layers.clone_from(&config.layers);
+            .render_layers(self.model.canvas, &self.model.drawables, &render_layers)?;
+        if self.last_layers != *render_layers {
+            self.last_layers.clone_from(&render_layers);
         }
         Ok(true)
     }

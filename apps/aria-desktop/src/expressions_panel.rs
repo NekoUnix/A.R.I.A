@@ -17,6 +17,9 @@ pub struct Entry {
     missing: Vec<String>,
 }
 impl Entry {
+    pub fn diagnostic(&self) -> serde_json::Value {
+        serde_json::json!({"id":self.file.id,"missing_parameters":self.missing,"parameter_count":self.expression.parameters.len(),"fade_in":self.expression.fade_in_time,"fade_out":self.expression.fade_out_time})
+    }
     /// Suggestions only: imported expressions still require the user's toggle.
     pub fn is_controller_pose(&self) -> bool {
         let name = self.file.name.to_ascii_lowercase();
@@ -30,6 +33,7 @@ impl Entry {
 }
 #[derive(Default)]
 pub struct ExpressionsPanel {
+    pub motions: crate::vts_panel::Motions,
     pub entries: Vec<Entry>,
     embedded: bool,
     player: ExpressionPlayer,
@@ -46,6 +50,9 @@ pub struct Actions {
     pub message: Option<String>,
 }
 impl ExpressionsPanel {
+    pub fn errors(&self) -> &[String] {
+        &self.errors
+    }
     pub fn controller_poses_ui(&self, ui: &mut egui::Ui, saved: &mut SavedRig) -> Actions {
         let mut actions = Actions::default();
         if !self.entries.iter().any(Entry::is_controller_pose) {
@@ -88,6 +95,10 @@ impl ExpressionsPanel {
         self.files = files.to_vec();
         self.base = base.to_path_buf();
         self.reload(saved, parameters);
+        self.motions.load(base, &saved.vts);
+        for (id, fade) in &saved.vts.expression_fades {
+            self.set_fade(id, *fade);
+        }
     }
     pub fn load_embedded(
         &mut self,
@@ -183,7 +194,14 @@ impl ExpressionsPanel {
             });
         self.selected = id;
     }
+    pub fn set_fade(&mut self, id: &str, fade: f32) {
+        if let Some(e) = self.entries.iter_mut().find(|e| e.file.id == id) {
+            e.expression.fade_in_time = fade;
+            e.expression.fade_out_time = fade;
+        }
+    }
     pub fn update(&mut self, parameters: &mut [RigParameter], active: &BTreeSet<String>, dt: f32) {
+        self.motions.update(parameters, dt);
         self.player.update(
             self.entries
                 .iter()
@@ -212,6 +230,14 @@ impl ExpressionsPanel {
     }
     pub fn assign(saved: &mut SavedRig, id: &str, shortcut: Shortcut) -> anyhow::Result<()> {
         shortcut.validate()?;
+        anyhow::ensure!(
+            !saved
+                .vts
+                .actions
+                .iter()
+                .any(|h| h.shortcut == Some(shortcut)),
+            "Shortcut belongs to an imported VTS action"
+        );
         anyhow::ensure!(
             !saved.layer_hotkeys.values().any(|&k| k == shortcut),
             "That shortcut belongs to a Live2D layer group"

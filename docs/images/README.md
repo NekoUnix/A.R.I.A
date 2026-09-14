@@ -1,5 +1,15 @@
 # Documentation screenshots
 
+## v0.29 Experimental import and diagnostic reports
+
+`workspace-v29.png`, `vts-import-v29.png`, `vts-repair-v29.png` and `diagnostics-v29.png` are unedited
+native Windows captures with the owner's Odette export and an isolated profile.
+The repair screenshot demonstrates the local guide using an existing action.
+The diagnostic report exercise records a clearly labeled synthetic test event,
+not an actual model failure. Demo tracking and debug counters are not device
+acceptance tests or performance benchmarks. Only screenshots are distributed;
+private profiles, exported reports, model assets and SDK binaries remain local.
+
 ## Avatar customization source upgrade — 2026-09-13
 
 `live2d-layers-upgrade.png` shows the owner-provided Odette 90s outfit with the

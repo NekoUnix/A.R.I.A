@@ -567,6 +567,7 @@ impl OutputWindows {
 
 #[derive(Clone)]
 pub struct Scene {
+    pub placement: aria_core::vts::Placement,
     pub images: Arc<[crate::image_actions::Draw]>,
     pub dents: Arc<[crate::deformation::AvatarDent]>,
     pub effects: Arc<[crate::items::DrawItem]>,
@@ -579,16 +580,42 @@ pub struct Scene {
     pub params: Parameters,
 }
 impl Scene {
+    pub fn model_rect(&self, canvas: Rect, zoom: f32) -> Rect {
+        self.model
+            .map(|m| {
+                m.rect(canvas, zoom * self.placement.zoom).translate(
+                    egui::vec2(self.placement.position[0], self.placement.position[1])
+                        * canvas.height()
+                        * zoom,
+                )
+            })
+            .unwrap_or(canvas)
+    }
+
     fn canvas(&self, ui: &mut egui::Ui, config: &mut CanvasSettings, generation: u64) -> bool {
         let canvas = ui.max_rect();
         let translated =
             canvas.translate(egui::vec2(config.position[0], config.position[1]) * canvas.size());
-        let bounds = if let Some(model) = self.model {
-            let rect = model.rect(translated, config.zoom);
-            Rect::from_min_max(
+        let bounds = if self.model.is_some() {
+            let rect = self.model_rect(translated, config.zoom);
+            let visible = Rect::from_min_max(
                 rect.min + self.model_bounds.min.to_vec2() * rect.size(),
                 rect.min + self.model_bounds.max.to_vec2() * rect.size(),
-            )
+            );
+            let rotation = egui::emath::Rot2::from_angle(self.placement.rotation.to_radians());
+            [
+                visible.left_top(),
+                visible.right_top(),
+                visible.right_bottom(),
+                visible.left_bottom(),
+            ]
+            .into_iter()
+            .fold(Rect::NOTHING, |bounds, p| {
+                bounds.union(Rect::from_center_size(
+                    rect.center() + rotation * (p - rect.center()),
+                    egui::Vec2::ZERO,
+                ))
+            })
         } else {
             avatar::bounds(translated, self.params, self.sprite.as_ref(), config.zoom)
         };
@@ -670,20 +697,16 @@ impl Scene {
                 &fields,
             );
         } else if let Some(model) = self.model {
-            if fields.is_empty() {
-                model.draw(painter, translated, config.zoom);
-            } else {
-                let rect = model.rect(translated, zoom);
-                painter.add(egui::Shape::mesh(crate::deformation::textured_mesh(
-                    model.id,
-                    rect.center(),
-                    rect.size(),
-                    0.0,
-                    Color32::WHITE,
-                    None,
-                    &fields,
-                )));
-            }
+            let rect = self.model_rect(translated, zoom);
+            painter.add(egui::Shape::mesh(crate::deformation::textured_mesh(
+                model.id,
+                rect.center(),
+                rect.size(),
+                self.placement.rotation.to_radians(),
+                Color32::WHITE,
+                None,
+                &fields,
+            )));
         } else {
             avatar::draw(
                 painter,
@@ -774,6 +797,7 @@ mod tests {
         for size in [egui::vec2(960.0, 540.0), egui::vec2(540.0, 960.0)] {
             let ctx = egui::Context::default();
             let scene = Scene {
+                placement: Default::default(),
                 images: Default::default(),
                 dents: Default::default(),
                 effects: Arc::from([]),
@@ -914,6 +938,7 @@ mod tests {
         for size in [[480., 270.], [270., 480.], [480., 320.]] {
             let ctx = egui::Context::default();
             let scene = Scene {
+                placement: Default::default(),
                 images: Default::default(),
                 dents: Default::default(),
                 effects: Arc::from([]),
