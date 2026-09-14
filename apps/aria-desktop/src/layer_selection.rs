@@ -64,9 +64,12 @@ pub struct Selection {
     pub include_hidden: bool,
     pub operation: Operation,
     drag: Option<Drag>,
+    press: Option<Drag>,
+    processed_frame: Option<u64>,
 }
 impl Selection {
     pub fn cancel(&mut self, selected: &mut BTreeSet<String>) {
+        self.press = None;
         if let Some(drag) = self.drag.take() {
             *selected = drag.original;
         }
@@ -92,20 +95,45 @@ impl Selection {
         if response.hovered() || response.dragged() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
         }
-        if self.drag.is_some()
+        let frame = ui.ctx().cumulative_frame_nr();
+        let process = self.processed_frame != Some(frame);
+        self.processed_frame = Some(frame);
+        if process
+            && (self.drag.is_some() || self.press.is_some())
             && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
         {
             self.cancel(selected);
-        } else {
-            if response.drag_started_by(egui::PointerButton::Primary)
-                && let Some(start) = ui.input(|i| i.pointer.press_origin())
+        } else if process {
+            // Remember the press itself: native input can deliver the entire
+            // gesture between frames, after PointerState has cleared its origin.
+            let press = ui.input(|i| {
+                i.events.iter().find_map(|event| match event {
+                    egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers,
+                    } if stage.intersect(ui.clip_rect()).contains(*pos) => Some((*pos, *modifiers)),
+                    _ => None,
+                })
+            });
+            if let Some((start, modifiers)) = press
+                && ui.ctx().layer_id_at(start) == Some(ui.layer_id())
             {
-                self.drag = Some(Drag {
+                self.press = Some(Drag {
                     start,
                     end: start,
                     original: selected.clone(),
-                    operation: Operation::from(ui.input(|i| i.modifiers), self.operation),
+                    operation: Operation::from(modifiers, self.operation),
                 });
+            }
+            if self.drag.is_none()
+                && self.press.as_ref().is_some_and(|press| {
+                    ui.input(|i| i.pointer.latest_pos())
+                        .is_some_and(|point| point.distance(press.start) > 4.)
+                })
+            {
+                self.drag = self.press.take();
             }
             if let Some(drag) = &mut self.drag {
                 if let Some(point) = ui.input(|i| i.pointer.latest_pos()) {
@@ -138,6 +166,9 @@ impl Selection {
                 );
                 *selected = Operation::from(ui.input(|i| i.modifiers), self.operation)
                     .apply(selected, &hits);
+            }
+            if !ui.input(|i| i.pointer.primary_down()) {
+                self.press = None;
             }
         }
         let painter = ui.painter_at(stage);
@@ -353,6 +384,26 @@ mod tests {
         );
         frame(vec![button(point, false)], &mut selection, &mut selected);
         assert_eq!(selected, BTreeSet::from(["Right".into()]));
+        selected.clear();
+        selection.operation = Operation::Add;
+        let start = egui::pos2(10., 10.);
+        let end = egui::pos2(38., 38.);
+        frame(
+            vec![
+                egui::Event::PointerMoved(start),
+                button(start, true),
+                egui::Event::PointerMoved(end),
+                button(end, false),
+            ],
+            &mut selection,
+            &mut selected,
+        );
+        // Even a complete press/move/release delivered between render frames
+        // must form a box instead of dropping the drag.
+        assert!(
+            !selected.is_empty(),
+            "Fast native mouse gestures must not be lost"
+        );
     }
     #[test]
     #[cfg(windows)]

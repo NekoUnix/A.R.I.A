@@ -8,6 +8,8 @@ for packages and checksums. Features labeled Experimental have compatibility lim
 - Open **Select layers…** in a separate resizable window with a frozen model.
   Plain clicks and repeated boxes accumulate selections in default Add mode,
   with explicit Remove, Replace and Toggle buttons; no Shift key is needed.
+- Preserve fast mouse gestures when press, movement and release arrive between
+  rendered frames, and process a gesture once across repeated UI layout passes.
 - Hide/restore selections, undo up to 24 local edits, zoom, pan, refresh the pose,
   reveal ARIA-hidden artwork in the preview, and save groups for existing hotkeys.
   Visibility saves per avatar and reaches all outputs while live tracking continues.

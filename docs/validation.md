@@ -8,7 +8,8 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 ## Frozen selector and bread — development update, 2026-09-14
 
 - Mouse-only egui pointer tests cover repeated clicks, repeated boxes and the
-  explicit Remove mode. Undo protects edits made outside the selector, and
+  explicit Remove mode, including a complete drag delivered within one frame.
+  Undo protects edits made outside the selector, and
   revealing hidden artwork changes only the preview configuration.
 - Native Cubism/GPU checks passed on both supplied exports: full Odette with
   1,174 meshes and OilBun with 284. Live head values continue updating while
@@ -17,6 +18,8 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
   preserves the original renderer and shared atlases.
 - The actual separate Windows window received ordinary pointer clicks and
   two boxes, selecting 312 meshes. See the [capture](images/frozen-layer-editor.png).
+- A subsequent fast native desktop drag selected 207 meshes; clicking Hide
+  selected removed their artwork and Undo restored it in the same frozen pose.
 - Bread uses the shared transient-effect rendering path. Tests cover a bounded
   burst crossing the canvas, expiry, and preserving other active effect assets.
   Native capture checks the footer and rendered bread items together.
