@@ -16,6 +16,23 @@ pub fn capture(ctx: &egui::Context, started: Instant, output: bool) {
     let Some(path) = std::env::var_os("ARIA_SCREENSHOT_TO") else {
         return;
     };
+    // Exercise the same native OpenUrl command as hyperlinks, social icons and
+    // OAuth. The local test server must actually receive a browser request;
+    // merely observing the egui command would miss a disabled `links` feature.
+    if !output
+        && ctx.viewport_id() == egui::ViewportId::ROOT
+        && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("browser-link")
+        && started.elapsed() > Duration::from_secs(1)
+    {
+        let id = egui::Id::new("aria-browser-smoke-opened");
+        if !ctx.data(|d| d.get_temp::<bool>(id).unwrap_or(false)) {
+            let url = std::env::var("ARIA_SMOKE_BROWSER_URL").expect("Local test URL required");
+            let parsed = reqwest::Url::parse(&url).expect("Valid local test URL required");
+            assert!(parsed.scheme() == "http" && parsed.host_str() == Some("127.0.0.1"));
+            ctx.open_url(egui::OpenUrl::new_tab(url));
+            ctx.data_mut(|d| d.insert_temp(id, true));
+        }
+    }
     let want_output = std::env::var("ARIA_SMOKE_SCENARIO").is_ok_and(|s| s.starts_with("output"));
     let output_index = std::env::var("ARIA_SMOKE_OUTPUT")
         .ok()

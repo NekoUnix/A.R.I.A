@@ -18,7 +18,7 @@ arbitrary file loading, command execution, model import or remote network listen
 1. `GET /v1/capabilities` returns protocol/app version, actions and limits.
 2. `GET /v1/state` returns `version`, `generation` and `state`. State includes native
    parameter IDs, ranges and current values; live inputs; pose/source/status;
-   preset indices; expression IDs; output settings; available themes; and `usage` resource counters.
+   preset indices; expression IDs; output settings; available themes; `imported_actions` with IDs/names/enabled/native action details; and `usage` resource counters.
 3. `POST /v1/commands` with the returned generation and an action queues a command.
 4. A **202** response includes a `ticket`. Poll `GET /v1/commands/{ticket}` until
    status is `applied` or `rejected`. Queuing is not proof of execution.
@@ -43,6 +43,7 @@ while enabled. An initial **503** means the first state is not available yet.
 | `expression` | `id`: string, `enabled`: boolean | Enables/disables an expression belonging to the current avatar. Frozen mode must be resumed to see changes. |
 | `output` | `index`, `open`, optional `zoom`, `position` | Indices 0 landscape, 1 portrait, 2 freeform. Zoom 0.25–3; position `[x,y]` each −1 to 1. All fields validate before mutation. |
 | `theme` | `name`: string | Selects a built-in or saved custom theme by exact name. |
+| `imported_action` | `id`: string from `state.imported_actions` | Runs an enabled, reviewed VTS import action inside ARIA. Experimental. Missing assets, repair-required actions and frozen poses return a rejected ticket. |
 | `save_profile` | none | Requests the normal per-avatar profile save. |
 
 Requests reject unknown fields, unsupported action names and invalid values.
@@ -100,3 +101,18 @@ The UDP ARIA JSON tracking format now accepts an optional `parameters` map for
 external numeric signals consumed by [VBridger equations](vbridger.md#external-input-example).
 This is separate from the HTTP control API. Config import/editing is available
 in the desktop UI; existing movement preset actions also restore imported settings.
+
+## Experimental imported actions (v0.29)
+
+Import and repair the avatar's `.vtube.json` in the app first. Fetch `/v1/state`
+and choose an ID from `state.imported_actions`. Send:
+
+```json
+{"version":1,"generation":1,"action":{"type":"imported_action","id":"ID_FROM_STATE"}}
+```
+
+Use the current generation, then poll its result ticket. ARIA validates and applies
+the local action before marking it applied. For a scene, applied means the scene
+configuration was accepted; GPU/image loading may still report a later asset error
+in Objects and the diagnostic report. There is no remote VTube Studio executor.
+See the [repair guide](vtube-studio-import.md).

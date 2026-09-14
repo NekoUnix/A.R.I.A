@@ -1,9 +1,61 @@
 # Validation
 
-![ Current native Windows build under validation](images/workspace-v24.png)
+![Native Windows v0.29 build](images/workspace-v29.png)
 
 This file records checks for the development builds. The Windows CI workflow
 is the repeatable MSVC build/test path; its status belongs to a specific commit.
+
+## v0.29 Experimental VTube Studio import — 2026-09-13
+
+### Browser-link hotfix
+
+The desktop deliberately disables the UI framework's default features; its
+`links` feature must be explicitly enabled for native hyperlinks and OpenUrl
+commands. The repository contract now checks this feature. It covers the shared
+dispatch used by social icons, online help, Cubism downloads, support tickets and
+OAuth sign-in on Windows, Linux and macOS.
+
+To exercise the actual operating-system browser launcher on an interactive
+desktop with a default browser configured:
+
+```sh
+cargo build --locked -p aria-desktop --features screenshots
+python scripts/check-browser-links.py target/debug/aria-desktop.exe
+```
+
+On Linux/macOS, use `target/debug/aria-desktop` without `.exe`. The isolated demo
+issues the same OpenUrl command as the app's links; a temporary localhost server
+must receive a request from the browser. The app captures a frame and closes.
+Close the browser's local success tab afterward. This test sends no data to an
+external service and the smoke hook is absent from normal release builds.
+
+Passed on Windows with the actual native ARIA app and a browser request received
+by the local server. All 210 workspace tests and strict Clippy passed after the
+feature change. Interactive Linux/macOS browser acceptance remains unverified.
+
+### Import and diagnostics checks
+
+- 210 standard workspace tests passed locally. New checks cover sidecar validation,
+  shortcut conversion, motion curves and part opacity, frame-folder sorting,
+  transactional local repairs, scene toggling and readable/redacted report export.
+  Strict all-target/all-feature Clippy and formatting passed on Windows GNU.
+- The opt-in native collection check imported all 15 supplied model profiles,
+  validated persisted settings, executed available native actions, rendered frames
+  and restored the previous profile with Undo. Both Odette profiles resolved all
+  six item scenes. PNG/GIF, PNG frame folders and independent Live2D scene objects
+  loaded and updated through the actual GPU/Cubism worker path.
+- An isolated native screenshot/report exercise uses the owner's Odette export.
+  The report includes its parameter, mesh, texture and physics metadata; the injected
+  diagnostic test event is explicitly synthetic. No model files or reports are
+  committed. Report tests preserve error codes/rig IDs while removing tested private
+  paths and credential fields, including recovered previous-session data.
+- Import and repair execute only ARIA behaviors. Missing originals cannot be
+  reconstructed from a filename. VTS-specific camera, solver, gesture, service and
+  plugin behaviors are not guaranteed equivalent; use the repair/calibration controls.
+  VTube Studio import and VBridger import remain **Experimental**.
+- Physical phone/controller/network acceptance and arbitrary third-party avatars
+  remain outside these checks. Linux/macOS native builds and package tests run in
+  CI; that is distinct from interactive acceptance on those operating systems.
 
 ## Avatar customization upgrade — 2026-09-13 source build
 

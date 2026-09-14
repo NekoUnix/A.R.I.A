@@ -29,3 +29,9 @@ body:
     attributes:
       label: Comparison and minimal example
       description: Does Mica, a sample model or another device work? Link only redistributable samples.
+
+  - type: textarea
+    id: diagnostic_report
+    attributes:
+      label: ARIA diagnostic report
+      description: 'Reproduce the issue, click Diagnostics / export logs, describe it, and export the .txt report. Review it, then drag it here. It contains avatar metadata without model artwork. Do not attach private avatar files or SDK libraries.'

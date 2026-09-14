@@ -9,6 +9,7 @@ pub mod image_actions;
 pub mod items;
 pub mod layers;
 pub mod microphone;
+pub mod motion;
 pub mod movement;
 pub mod physics;
 pub mod rig;
@@ -16,6 +17,7 @@ pub mod shortcuts;
 pub mod speech;
 pub mod vbridger;
 pub mod vrm;
+pub mod vts;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 

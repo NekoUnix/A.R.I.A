@@ -14,7 +14,7 @@ use std::{
 };
 
 const MAGIC: &[u8; 8] = b"ARIACORE";
-const VERSION: u16 = 2;
+const VERSION: u16 = 3;
 const MAX_PACKET: usize = 128 * 1024 * 1024;
 
 #[derive(Serialize, Deserialize)]
@@ -24,7 +24,7 @@ enum Request {
         moc: PathBuf,
         textures: usize,
     },
-    Update(Vec<f32>),
+    Update(Vec<f32>, Vec<f32>),
 }
 #[derive(Serialize, Deserialize)]
 enum Response {
@@ -32,6 +32,7 @@ enum Response {
         canvas: Canvas,
         version: String,
         parameters: Vec<Parameter>,
+        parts: Vec<Parameter>,
         draws: Vec<Drawable>,
     },
     Frame(Vec<MovingDrawable>),
@@ -105,12 +106,13 @@ pub fn serve(reader: impl Read, writer: impl Write) -> Result<()> {
                         canvas: loaded.canvas,
                         version: loaded.version.clone(),
                         parameters: loaded.parameters().to_vec(),
+                        parts: loaded.parts.clone(),
                         draws: loaded.drawables.clone(),
                     };
                     model = Some(loaded);
                     Ok(response)
                 }
-                Request::Update(values) => {
+                Request::Update(values, parts) => {
                     let model = model.as_mut().context("Load a model before updating it")?;
                     ensure!(
                         values.len() == model.parameters.len()
@@ -119,6 +121,16 @@ pub fn serve(reader: impl Read, writer: impl Write) -> Result<()> {
                     );
                     for (parameter, value) in model.parameters.iter_mut().zip(values) {
                         parameter.value = value.clamp(parameter.min, parameter.max);
+                    }
+                    ensure!(
+                        parts.len() == model.parts.len()
+                            && parts
+                                .iter()
+                                .all(|v| v.is_finite() && (0.0..=1.0).contains(v)),
+                        "Invalid part opacity frame"
+                    );
+                    for (p, v) in model.parts.iter_mut().zip(parts) {
+                        p.value = v;
                     }
                     model.update()?;
                     Ok(Response::Frame(
@@ -253,6 +265,7 @@ impl Drop for Connection {
 pub struct HostedModel {
     connection: Connection,
     parameters: Vec<Parameter>,
+    pub parts: Vec<Parameter>,
     lookup: BTreeMap<String, usize>,
     pub canvas: Canvas,
     pub version: String,
@@ -282,6 +295,7 @@ impl HostedModel {
             canvas,
             version,
             parameters,
+            parts,
             draws,
         } = connection.request(
             Request::Load {
@@ -295,7 +309,7 @@ impl HostedModel {
             bail!("Cubism host returned an unexpected load response");
         };
         ensure!(
-            parameters.len() <= 8192 && draws.len() <= 8192,
+            parameters.len() <= 8192 && parts.len() <= 8192 && draws.len() <= 8192,
             "Invalid host model size"
         );
         let lookup = parameters
@@ -308,6 +322,7 @@ impl HostedModel {
             canvas,
             version,
             parameters,
+            parts,
             lookup,
             drawables: draws,
         })
@@ -330,7 +345,10 @@ impl HostedModel {
     }
     pub fn update(&mut self) -> Result<()> {
         let Response::Frame(frame) = self.connection.request(
-            Request::Update(self.parameters.iter().map(|p| p.value).collect()),
+            Request::Update(
+                self.parameters.iter().map(|p| p.value).collect(),
+                self.parts.iter().map(|p| p.value).collect(),
+            ),
             Duration::from_secs(2),
         )?
         else {
@@ -370,10 +388,10 @@ mod tests {
     #[test]
     fn protocol_rejects_bad_versions_sizes_truncation_and_trailing_data() {
         let mut packet = Vec::new();
-        write_packet(&mut packet, &Request::Update(vec![0.5, -1.0])).unwrap();
+        write_packet(&mut packet, &Request::Update(vec![0.5, -1.0], vec![])).unwrap();
         assert!(matches!(
             read_packet::<Request>(&mut packet.as_slice()).unwrap(),
-            Some(Request::Update(_))
+            Some(Request::Update(_, _))
         ));
         for index in [0, 8] {
             let mut corrupt = packet.clone();

@@ -718,6 +718,10 @@ pub fn validate_save(d: &Design, saved: &SavedRig) -> anyhow::Result<()> {
     }
     if let Some(key) = d.hotkey {
         anyhow::ensure!(
+            !saved.vts.actions.iter().any(|h| h.shortcut == Some(key)),
+            "Shortcut belongs to an imported VTS action"
+        );
+        anyhow::ensure!(
             key != Shortcut::pose()
                 && !saved
                     .config
@@ -903,6 +907,7 @@ mod tests {
         let ctx = egui::Context::default();
         let rect = Rect::from_min_size(Pos2::ZERO, vec2(600.0, 500.0));
         let scene = Scene {
+            placement: Default::default(),
             images: Default::default(),
             dents: Default::default(),
             effects: Default::default(),

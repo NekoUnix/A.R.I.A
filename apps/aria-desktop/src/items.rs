@@ -133,13 +133,13 @@ impl DrawItem {
         let base = frame(scene, canvas, zoom, false);
         let (origin, angle, scale, opacity) = match self.anchor {
             Anchor::Missing => return None,
-            Anchor::Free => (base.origin, 0.0, 1.0, 1.0),
+            Anchor::Free => (base.origin, base.angle, 1.0, 1.0),
             Anchor::Surface {
                 point,
                 angle,
                 scale,
                 opacity,
-            } => (base.to_screen(point), angle, scale, opacity),
+            } => (base.to_screen(point), angle + base.angle, scale, opacity),
             Anchor::Puppet(point) => {
                 let moving = frame(scene, canvas, zoom, true);
                 (
@@ -224,13 +224,13 @@ fn rotate(v: Vec2, angle: f32) -> Vec2 {
     egui::emath::Rot2::from_angle(angle) * v
 }
 fn frame(scene: &Scene, canvas: Rect, zoom: f32, moving: bool) -> Frame {
-    if let Some(model) = scene.model {
-        let rect = model.rect(canvas, zoom);
+    if scene.model.is_some() {
+        let rect = scene.model_rect(canvas, zoom);
         return Frame {
             stretch: Vec2::splat(1.0),
             origin: rect.center(),
             scale: rect.height(),
-            angle: 0.0,
+            angle: scene.placement.rotation.to_radians(),
         };
     }
     let p = scene.params.0;
@@ -350,7 +350,7 @@ pub fn paint_list(
         if pose.opacity <= 0.001 {
             continue;
         }
-        let mesh = crate::deformation::textured_mesh(
+        let mut mesh = crate::deformation::textured_mesh(
             draw.image.id(),
             pose.center,
             pose.size,
@@ -359,6 +359,11 @@ pub fn paint_list(
             draw.deformation.as_ref(),
             &[],
         );
+        if draw.item.flip {
+            for v in &mut mesh.vertices {
+                v.uv.x = 1. - v.uv.x;
+            }
+        }
         painter.add(egui::Shape::mesh(mesh));
     }
 }
@@ -609,13 +614,21 @@ impl Items {
                 let image = if aria_core::items::is_model(&item.path) {
                     self.models.image(item.id)?
                 } else {
-                    ItemImage::Png(
-                        self.assets
-                            .get(&item.path)?
-                            .as_ref()
-                            .ok()?
-                            .at(self.clock, 1.0, true),
-                    )
+                    ItemImage::Png(self.assets.get(&item.path)?.as_ref().ok()?.at(
+                        self.clock,
+                        item.animation_fps.map_or(1., |fps| {
+                            let a = self
+                                .assets
+                                .get(&item.path)
+                                .and_then(|r| r.as_ref().ok())
+                                .and_then(|s| s.animation.as_ref());
+                            a.map_or(1., |a| {
+                                fps * a.ends.last().copied().unwrap_or(1.)
+                                    / a.frames.len().max(1) as f32
+                            })
+                        }),
+                        true,
+                    ))
                 };
                 Some(DrawItem {
                     deformation: None,
@@ -941,8 +954,13 @@ fn degrees(angle: f32) -> f32 {
     (angle.to_degrees() + 180.0).rem_euclid(360.0) - 180.0
 }
 pub fn is_png(path: &Path) -> bool {
-    path.extension()
-        .is_some_and(|s| s.eq_ignore_ascii_case("png") || s.eq_ignore_ascii_case("gif"))
+    path.is_dir()
+        || path.extension().is_some_and(|s| {
+            s.eq_ignore_ascii_case("png")
+                || s.eq_ignore_ascii_case("gif")
+                || s.eq_ignore_ascii_case("jpg")
+                || s.eq_ignore_ascii_case("jpeg")
+        })
 }
 pub fn is_item(path: &Path) -> bool {
     is_png(path) || aria_core::items::is_model(path)
@@ -962,10 +980,10 @@ pub(crate) fn load_png(
     path: &Path,
     used: u64,
 ) -> Result<Sprite> {
-    crate::media::load(ctx, state, path, used, false)
+    crate::media::load(ctx, state, path, used, true)
 }
 
-fn model_point(canvas: aria_live2d::Canvas, point: [f32; 2]) -> Vec2 {
+pub(crate) fn model_point(canvas: aria_live2d::Canvas, point: [f32; 2]) -> Vec2 {
     vec2(
         (point[0] * canvas.pixels_per_unit + canvas.origin[0] - canvas.size[0] * 0.5)
             / canvas.size[1],
@@ -1136,6 +1154,7 @@ mod tests {
             visible: true,
         };
         let scene = Scene {
+            placement: Default::default(),
             images: Default::default(),
             dents: Default::default(),
             effects: Default::default(),
@@ -1223,6 +1242,7 @@ mod tests {
             opacity: 0.8,
         };
         let scene = Scene {
+            placement: Default::default(),
             images: vec![crate::image_actions::Draw {
                 sprite: artwork.clone(),
                 transform: motion,
@@ -1304,6 +1324,7 @@ mod tests {
                     egui::CentralPanel::default().show(ctx, |ui| {
                         manager.refresh(&config, None);
                         let scene = Scene {
+                            placement: Default::default(),
                             items: manager.draws.clone(),
                             ..scene.clone()
                         };
@@ -1398,6 +1419,7 @@ mod tests {
         let mut manager = Items::default();
         manager.assets.insert("test.png".into(), Ok(sprite));
         let scene_base = Scene {
+            placement: Default::default(),
             images: Default::default(),
             dents: Default::default(),
             effects: Arc::from([]),
@@ -1425,6 +1447,7 @@ mod tests {
                     egui::CentralPanel::default().show(ctx, |ui| {
                         manager.refresh(config, None);
                         let scene = Scene {
+                            placement: Default::default(),
                             items: manager.draws.clone(),
                             ..scene_base.clone()
                         };
@@ -1552,6 +1575,7 @@ mod tests {
             visible: true,
         };
         let scene = Scene {
+            placement: Default::default(),
             images: Default::default(),
             dents: Default::default(),
             effects: Arc::from([]),

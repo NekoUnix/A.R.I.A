@@ -376,3 +376,21 @@ or background telemetry service is introduced. Read-only process handles close
 after sampling; creation times and monotonic counters prevent reuse/reset spikes.
 Frame history holds at most 120 intervals. The footer builds extended details only
 while its popup is open; the optional authenticated API receives the same snapshot.
+
+## Experimental VTube Studio customization adapter
+
+`aria-core::vts` parses bounded local sidecars into model-owned settings;
+`vts_panel` previews and applies a validated candidate with Undo. The native action
+executor drives expressions, motion3 curves, framing, physics and `vts_items` scenes.
+`vts_repair` keeps unrecognized actions and missing assets editable through three
+local steps. PNG/JPG frame directories use the bounded media playback cache.
+
+Cubism workers use private protocol v3 to transfer part opacity alongside parameters.
+Motion model-opacity is transient rendering state; no motion script is executed.
+No VTS application bridge, account transfer or external executor is included.
+
+`diagnostics` holds a bounded event ring and an asynchronous local log queue.
+The app samples changing component health at 1 Hz; expensive avatar snapshots are
+collected only while the report panel is open. Export creates a human-readable
+text file with versioned JSON, recent/previous events and sanitized rig metadata.
+Report upload and ticket submission remain explicit user actions.

@@ -12,7 +12,7 @@ mod editor;
 pub struct Panel {
     pub open: bool,
     draft: Option<Config>,
-    error: Option<String>,
+    pub error: Option<String>,
     undo: Option<RigConfig>,
     pub dirty: bool,
     editor: editor::Editor,

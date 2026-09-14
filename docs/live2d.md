@@ -231,3 +231,10 @@ variants intentionally open the same official Native SDK page, which contains th
 license form and SDK download. After extraction, choose the SDK folder so ARIA
 resolves the native library; the official library-list link shows architecture paths.
 This is not a direct DLL download, and the Unity/Web SDK downloads are different products.
+
+## Bringing existing VTube Studio customizations
+
+The **Experimental** [VTube Studio importer](vtube-studio-import.md) reads a matching
+`.vtube.json` and local supporting files. Review categories before Apply. Missing
+files or actions appear as repairable entries in ARIA's guide. The source app does
+not need to run. Use [diagnostic reports](diagnostics.md) for avatar-specific issues.

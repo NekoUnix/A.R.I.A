@@ -103,6 +103,11 @@ pub enum Pin {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Item {
+    /// Import-owned scene membership prevents toggles from hiding unrelated objects.
+    pub vts_scene: Option<String>,
+    pub vts_slot: u16,
+    pub animation_fps: Option<f32>,
+    pub flip: bool,
     pub id: u64,
     pub name: String,
     pub path: PathBuf,
@@ -126,6 +131,10 @@ pub struct Item {
 impl Default for Item {
     fn default() -> Self {
         Self {
+            vts_scene: None,
+            vts_slot: 0,
+            animation_fps: None,
+            flip: false,
             id: 1,
             name: "Stage object".into(),
             path: PathBuf::new(),
@@ -157,6 +166,15 @@ pub fn validate(items: &[Item]) -> Result<()> {
     );
     let mut ids = std::collections::BTreeSet::new();
     for item in items {
+        ensure!(
+            item.animation_fps
+                .is_none_or(|fps| fps.is_finite() && (0.0..=240.).contains(&fps)),
+            "Invalid item frame rate"
+        );
+        ensure!(
+            item.vts_scene.as_ref().is_none_or(|s| s.len() <= 4096),
+            "Invalid item scene identity"
+        );
         ensure!(
             item.model.textures.len() <= 32
                 && item

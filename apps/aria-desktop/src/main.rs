@@ -9,6 +9,7 @@ mod chroma;
 mod controller;
 mod cubism_render;
 mod deformation;
+mod diagnostics;
 mod effect_api;
 mod effect_audio;
 mod effect_editor;
@@ -38,6 +39,7 @@ mod physics_panel;
 mod prop_render;
 #[cfg(feature = "screenshots")]
 mod screenshot;
+mod socials;
 #[cfg(windows)]
 mod spout;
 #[cfg(target_os = "macos")]
@@ -46,6 +48,10 @@ mod theme;
 mod tracking_guide;
 mod vbridger_panel;
 mod vrm;
+mod vts_items;
+mod vts_keys;
+mod vts_panel;
+mod vts_repair;
 mod webcam;
 
 /// Headless interaction tests inspect shapes and events without a GPU texture consumer.
@@ -74,6 +80,7 @@ fn main() -> eframe::Result {
         let result = aria_live2d::host::serve(std::io::stdin().lock(), std::io::stdout().lock());
         std::process::exit(if result.is_ok() { 0 } else { 1 });
     }
+    diagnostics::init();
     let mut wgpu_options = eframe::egui_wgpu::WgpuConfiguration::default();
     if cfg!(target_os = "windows")
         && let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &mut wgpu_options.wgpu_setup
@@ -113,6 +120,7 @@ fn main() -> eframe::Result {
         Box::new(|cc| Ok(Box::new(app::AriaApp::new(cc)))),
     );
     if let Err(error) = &result {
+        diagnostics::record("fatal", "STARTUP", &error.to_string());
         if smoke_mode() {
             return result;
         }
@@ -120,5 +128,9 @@ fn main() -> eframe::Result {
             .set_description(format!("{error}\n\nUpdate your graphics driver. See docs/windows.md for WGPU_BACKEND=vulkan fallback and build instructions."))
             .set_level(rfd::MessageLevel::Error).show();
     }
+    if result.is_ok() {
+        diagnostics::record("info", "SESSION_END", "ARIA closed normally");
+    }
+    diagnostics::flush();
     result
 }

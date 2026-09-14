@@ -256,6 +256,14 @@ impl Items {
     pub fn assign(saved: &mut SavedRig, id: u64, shortcut: Shortcut) -> anyhow::Result<()> {
         shortcut.validate()?;
         anyhow::ensure!(
+            !saved
+                .vts
+                .actions
+                .iter()
+                .any(|h| h.shortcut == Some(shortcut)),
+            "Shortcut belongs to an imported VTS action"
+        );
+        anyhow::ensure!(
             !saved.layer_hotkeys.values().any(|&k| k == shortcut),
             "That shortcut belongs to a Live2D layer group"
         );

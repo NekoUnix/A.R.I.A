@@ -3,6 +3,31 @@
 All downloads remain Alpha. See [Releases](https://github.com/NekoUnix/A.R.I.A/releases)
 for packages and checksums. Features labeled Experimental have compatibility limits.
 
+## 0.29.0-alpha.1 — Experimental VTube Studio import and diagnostics
+
+- Experimental, model-owned `.vtube.json` import with category review, Cancel and Undo.
+  Transfers tracking ranges, strength/wind and group multipliers, mesh colors,
+  expressions, hotkeys, phone buttons, idle/triggered motions and item scenes.
+- Native motion3 parameter/part-opacity/model tracks; folder-based Live2D items
+  and naturally ordered PNG/JPG frame animations. Approximate saved framing,
+  configurable tracking sway, timed toggles, hold expressions and Windows key chords.
+- Missing assets and unrecognized actions remain repairable inside ARIA. The
+  three-step guide assigns local expressions, motions, item scenes or model controls.
+  Tracking repair opens the existing one-step-at-a-time calibration guide.
+  No execution is forwarded to VTube Studio.
+- Readable diagnostic report export with structured JSON, recent error history,
+  bounded local logs and panic recovery, avatar topology/parameters/physics,
+  texture metadata and resource counters. Redacts personal paths and credentials.
+  Export confirmation links to GitHub issues and NekoUnix’s Discord for tickets.
+- Small local-vector social buttons in the footer. Opening links never follows,
+  subscribes, joins or modifies accounts automatically.
+- Fix browser links across the app: social icons, Cubism downloads, online help,
+  support tickets and streaming-service sign-in now open the default browser.
+  Restore the UI framework's native link support on Windows, Linux and macOS,
+  with a repository check to prevent it being disabled in future builds.
+- VTube Studio import and VBridger import are both explicitly Experimental.
+
+
 ## v0.28.0-alpha.1
 
 - Connect an iPhone running iFacialMocap directly over live UDP. Receive facial

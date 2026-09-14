@@ -271,6 +271,7 @@ impl Preset {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct SavedRig {
+    pub vts: crate::vts::Config,
     pub layer_hotkeys: BTreeMap<u64, crate::shortcuts::Shortcut>,
     pub controller: crate::controller::Settings,
     pub input_compat_revision: u32,
@@ -340,6 +341,7 @@ impl SavedRig {
         Ok(())
     }
     pub fn validate_image_hotkeys(&self) -> Result<()> {
+        self.validate_vts_hotkeys()?;
         self.validate_layer_hotkeys()?;
         for state in &self.config.images.states {
             if let Some(key) = state.hotkey {
@@ -357,6 +359,37 @@ impl SavedRig {
                             .filter_map(|p| p.hotkey)
                             .any(|n| crate::shortcuts::Shortcut::preset(n) == key),
                     "Image action shortcut conflicts with another action"
+                );
+            }
+        }
+        Ok(())
+    }
+
+    pub fn occupied_shortcuts(&self) -> BTreeSet<crate::shortcuts::Shortcut> {
+        self.expression_hotkeys
+            .values()
+            .chain(self.item_hotkeys.values())
+            .chain(self.layer_hotkeys.values())
+            .copied()
+            .chain(
+                self.presets
+                    .iter()
+                    .filter_map(|p| p.hotkey)
+                    .map(crate::shortcuts::Shortcut::preset),
+            )
+            .chain(self.effects.designs.iter().filter_map(|d| d.hotkey))
+            .chain(self.config.images.states.iter().filter_map(|s| s.hotkey))
+            .chain([crate::shortcuts::Shortcut::pose()])
+            .collect()
+    }
+    pub fn validate_vts_hotkeys(&self) -> Result<()> {
+        self.vts.validate()?;
+        let mut used = self.occupied_shortcuts();
+        for h in &self.vts.actions {
+            if let Some(key) = h.shortcut {
+                ensure!(
+                    used.insert(key),
+                    "VTube Studio action shortcut conflicts with another action"
                 );
             }
         }

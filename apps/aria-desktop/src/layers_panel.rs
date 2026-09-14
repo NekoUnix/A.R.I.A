@@ -281,7 +281,10 @@ impl Panel {
             });
             if let Some(id) = assign {
                 let old = saved.layer_hotkeys.insert(id, self.draft);
-                match saved.validate_layer_hotkeys() {
+                match saved
+                    .validate_layer_hotkeys()
+                    .and_then(|()| saved.validate_vts_hotkeys())
+                {
                     Ok(()) => {
                         saved.global_hotkeys = true;
                         changed = true;
