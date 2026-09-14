@@ -1,5 +1,16 @@
 # Documentation screenshots
 
+## v0.32 multiple avatars and Profiles
+
+`profiles-v32.png` renders the real application workspace UI through egui/wgpu.
+`multi-avatar-landscape.png` is the same full-resolution GPU composition used for
+native OBS output, saved as a transparent PNG. Both use isolated test state and
+the owner-provided full Odette, OilBun, Odette GIF and NekoUnity2 VRM assets.
+Face input is synthetic Demo input shared across the four independent runtimes;
+the UI counters are not performance benchmarks. These are direct renders without
+image retouching. Only the images are distributed, not model sources, SDKs or
+private configuration files.
+
 ## v0.30 Live2D customization and drag selection
 
 `customization-v30.png` and `layer-selection-v30.png` are unedited native Windows

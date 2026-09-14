@@ -39,7 +39,7 @@ impl Broadcasts {
         ctx: &egui::Context,
         state: &RenderState,
         configs: [Option<CanvasSettings>; 3],
-        scene: &Scene,
+        scene: &impl crate::output::PaintScene,
         revision: u64,
     ) {
         if ctx.current_pass_index() != 0 {
@@ -171,7 +171,7 @@ fn render_canvas(
     paint_context: &egui::Context,
     state: &RenderState,
     view: &wgpu::TextureView,
-    scene: &Scene,
+    scene: &impl crate::output::PaintScene,
     config: &CanvasSettings,
 ) {
     let size = [view.texture().width(), view.texture().height()];
@@ -242,10 +242,29 @@ pub fn save_png(
     scene: &Scene,
     path: &std::path::Path,
 ) -> anyhow::Result<()> {
-    use anyhow::Context;
     let size = scene
         .model
         .map_or([1200, 1400], |m| [m.size.x as u32, m.size.y as u32]);
+    let config = CanvasSettings {
+        background: crate::output::Background::Transparent,
+        ..Default::default()
+    };
+    save_canvas_png(ctx, state, scene, &config, size, path)
+}
+pub fn save_canvas_png(
+    ctx: &egui::Context,
+    state: &RenderState,
+    scene: &impl crate::output::PaintScene,
+    config: &CanvasSettings,
+    size: [u32; 2],
+    path: &std::path::Path,
+) -> anyhow::Result<()> {
+    use anyhow::Context;
+    anyhow::ensure!(
+        size.iter()
+            .all(|&n| n > 0 && n <= state.device.limits().max_texture_dimension_2d),
+        "Canvas exceeds GPU texture limits"
+    );
     let bgra = matches!(
         state.target_format,
         wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb
@@ -273,19 +292,13 @@ pub fn save_png(
             | wgpu::TextureUsages::TEXTURE_BINDING,
         view_formats: &[],
     });
-    let config = CanvasSettings {
-        background: crate::output::Background::Transparent,
-        zoom: 1.0,
-        position: [0.0; 2],
-        ..Default::default()
-    };
     render_canvas(
         ctx,
         &egui::Context::default(),
         state,
         &texture.create_view(&Default::default()),
         scene,
-        &config,
+        config,
     );
     let stride = (size[0] * 4).div_ceil(256) * 256;
     let buffer = state.device.create_buffer(&wgpu::BufferDescriptor {

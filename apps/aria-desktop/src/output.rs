@@ -1,5 +1,8 @@
-//! Independent OBS canvases. Shared layout state lets either native viewport drag
-//! without depending on the main window's repaint timing.
+mod composition;
+pub use composition::{Actor, Composition, PaintScene, Transform};
+
+// Independent OBS canvases. Shared layout state lets either native viewport drag
+// without depending on the main window's repaint timing.
 use crate::{
     avatar::{self, Sprite},
     chroma,
@@ -48,6 +51,8 @@ impl Background {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CanvasSettings {
+    pub avatars: std::collections::BTreeMap<u64, Transform>,
+    pub selected_avatar: Option<u64>,
     pub background: Background,
     pub key: [u8; 3],
     /// Relative to canvas center, in canvas widths/heights. Independent of DPI.
@@ -64,6 +69,8 @@ pub struct CanvasSettings {
 impl Default for CanvasSettings {
     fn default() -> Self {
         Self {
+            avatars: Default::default(),
+            selected_avatar: None,
             background: Background::Studio,
             key: [0, 255, 0],
             position: [0.0; 2],
@@ -94,6 +101,9 @@ impl CanvasSettings {
         if index == 0 { size } else { [size[1], size[0]] }
     }
     fn sanitize(&mut self) {
+        for transform in self.avatars.values_mut() {
+            transform.sanitize();
+        }
         if ![640, 960, 1280, 1920, 2560, 3840].contains(&self.long_edge) {
             self.long_edge = 960;
         }
@@ -436,9 +446,17 @@ impl OutputWindows {
         if let Some(message) = &self.message {
             ui.label(egui::RichText::new(message).small().color(theme::mint()));
         }
+        let legacy = (config.zoom, config.position);
+        let selected_avatar = config
+            .selected_avatar
+            .filter(|id| config.avatars.contains_key(id));
+        if let Some(transform) = selected_avatar.and_then(|id| config.avatars.get(&id)) {
+            config.zoom = transform.zoom;
+            config.position = transform.position;
+        }
         ui.collapsing("Framing & preview size", |ui| {
  crate::help::button(ui, "framing");
-            theme::caption(ui, "Drag the avatar to move it. Scroll the mouse wheel over the canvas to resize the avatar. Double-click the avatar to center it. Lock framing protects both position and scale.");
+            theme::caption(ui, "Drag the avatar to move it. Click an avatar to select it. Scroll over an avatar to resize it. Use the preview avatar menu when models overlap. Double-click the avatar to center it. Lock framing protects both position and scale.");
             let zoom = crate::help::control(ui, "framing", |ui| ui.add(egui::Slider::new(&mut config.zoom,0.25..=3.0).text("Model scale")));
             changed |= zoom.drag_stopped() || (zoom.changed() && !zoom.dragged());
             ui.horizontal(|ui| {
@@ -461,15 +479,33 @@ impl OutputWindows {
             }
             theme::caption(ui, "Preview window size does not change OBS resolution. Larger OBS canvases use more GPU memory and rendering time.");
         });
+        if let Some(id) = selected_avatar {
+            config.avatars.insert(
+                id,
+                Transform {
+                    zoom: config.zoom,
+                    position: config.position,
+                },
+            );
+            config.zoom = legacy.0;
+            config.position = legacy.1;
+        }
         if crate::help::control(ui, "profiles", |ui| ui.button("Save output layouts")).clicked() {
             changed = true;
-            self.message = Some("All output layouts saved for this avatar.".into());
+            self.message = Some("Shared OBS output layouts saved for this workspace.".into());
         }
         state.dirty |= changed;
         detect
     }
 
-    pub fn show(&self, ctx: &egui::Context, scene: Scene, fps: u32, _started: Instant) {
+    pub fn show(
+        &self,
+        ctx: &egui::Context,
+        scene: impl Into<Composition>,
+        fps: u32,
+        _started: Instant,
+    ) {
+        let scene = scene.into();
         for (index, title) in TITLES.iter().enumerate() {
             let state = self.state.lock().unwrap();
             if !state.open[index] {
@@ -592,11 +628,10 @@ impl Scene {
             .unwrap_or(canvas)
     }
 
-    fn canvas(&self, ui: &mut egui::Ui, config: &mut CanvasSettings, generation: u64) -> bool {
-        let canvas = ui.max_rect();
+    pub(super) fn bounds(&self, canvas: Rect, config: &CanvasSettings) -> Rect {
         let translated =
             canvas.translate(egui::vec2(config.position[0], config.position[1]) * canvas.size());
-        let bounds = if self.model.is_some() {
+        if self.model.is_some() {
             let rect = self.model_rect(translated, config.zoom);
             let visible = Rect::from_min_max(
                 rect.min + self.model_bounds.min.to_vec2() * rect.size(),
@@ -618,7 +653,12 @@ impl Scene {
             })
         } else {
             avatar::bounds(translated, self.params, self.sprite.as_ref(), config.zoom)
-        };
+        }
+    }
+    #[cfg(test)]
+    fn canvas(&self, ui: &mut egui::Ui, config: &mut CanvasSettings, generation: u64) -> bool {
+        let canvas = ui.max_rect();
+        let bounds = self.bounds(canvas, config);
         let mut dirty = if config.locked || !bounds.is_finite() || !bounds.intersects(canvas) {
             false
         } else {
@@ -748,12 +788,13 @@ fn fit_canvas(window: Rect, pixels: [u32; 2]) -> Rect {
         size * (window.width() / size.x).min(window.height() / size.y),
     )
 }
-fn moved_position(start: [f32; 2], delta: Vec2, size: Vec2) -> [f32; 2] {
+pub(super) fn moved_position(start: [f32; 2], delta: Vec2, size: Vec2) -> [f32; 2] {
     [
         (start[0] + delta.x / size.x.max(1.0)).clamp(-1.0, 1.0),
         (start[1] + delta.y / size.y.max(1.0)).clamp(-1.0, 1.0),
     ]
 }
+#[cfg(test)]
 fn drag_model(
     ui: &mut egui::Ui,
     canvas: Rect,

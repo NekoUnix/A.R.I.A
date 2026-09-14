@@ -319,7 +319,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\allow-tracking-fir
    **Composite mode → Premultiplied Alpha**. Keep OBS and ARIA on the same GPU.
 5. For color-key output, add **Filters → Effect Filters → Chroma Key**, choose
    **Custom**, and paste that canvas's hex. Begin with low similarity and inspect
-   hair, eyes and clothing. Framing and colors save per window, per avatar.
+   hair, eyes and clothing. Framing and colors save per output in the workspace; each avatar has its own placement. Switch Profiles to edit one avatar without changing the shared outputs.
 
 See the [complete OBS output guide](obs-output.md) for automatic-color limitations,
 matching filters, saved layouts and canvas sizes.
