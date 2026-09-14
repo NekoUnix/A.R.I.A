@@ -735,12 +735,27 @@ impl AriaApp {
                             app.detect_key_color(0);
                         }
                     }
-                    Ok("layers") => {
+                    Ok("layers") | Ok("layer-selection") => {
                         app.input_monitor.tab = Tab::Layers;
-                        if let Some(avatar) = &app.live2d {
+                        if std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("layers")
+                            && let Some(avatar) = &app.live2d
+                        {
                             app.input_monitor
                                 .layers_panel
                                 .prepare_smoke(avatar, &mut app.input_monitor.saved);
+                        }
+                        app.input_monitor.layers_panel.stage_selection.enabled = true;
+                    }
+                    Ok("customization") => {
+                        app.input_monitor.tab = Tab::Customize;
+                        if let Some(avatar) = &app.live2d {
+                            app.input_monitor
+                                .customization_panel
+                                .prepare_smoke(avatar, &mut app.input_monitor.saved);
+                            app.input_monitor.save_appearance(
+                                "Streaming outfit".into(),
+                                avatar.model.parameters(),
+                            );
                         }
                     }
                     Ok("physics") | Ok("physics-group") => {
@@ -2313,7 +2328,7 @@ impl AriaApp {
             let textures:Vec<_>=a.files.textures.iter().enumerate().map(|(index,p)|json!({"index":index,"bytes":p.metadata().ok().map(|m|m.len()),"dimensions":image::ImageReader::open(p).ok().and_then(|r|r.with_guessed_format().ok()).and_then(|r|r.into_dimensions().ok())})).collect();
             let meshes:Vec<_>=a.model.drawables.iter().map(|d|json!({"id":d.id,"part":d.part,"vertices":d.positions.len(),"indices":d.indices.len(),"texture":d.texture,"masks":d.masks,"inverted_mask":d.inverted,"visible":d.visible,"opacity":d.opacity,"blend":d.blend})).collect();
             let physics:Vec<_>=a.physics.as_ref().map(|p|p.groups()).unwrap_or_default().iter().map(|g|json!({"id":g.id,"name":g.name,"inputs":g.inputs,"outputs":g.outputs,"particles":g.particles,"imported_multiplier":g.imported_multiplier})).collect();
-            avatar = json!({"kind":"Live2D","content_identity":a.model_key,"core_version":a.model.version,"moc_bytes":a.files.moc.metadata().ok().map(|m|m.len()),"canvas":a.model.canvas,"textures":textures,"meshes":meshes,"parts":a.model.parts,"physics_groups":physics,"physics_settings":self.input_monitor.saved.config.physics,"warnings":a.files.warnings,"import_notices":self.input_monitor.saved.vts.notes});
+            avatar = json!({"kind":"Live2D","content_identity":a.model_key,"core_version":a.model.version,"moc_bytes":a.files.moc.metadata().ok().map(|m|m.len()),"canvas":a.model.canvas,"textures":textures,"meshes":meshes,"parts":a.model.parts,"physics_groups":physics,"physics_settings":self.input_monitor.saved.config.physics,"appearance":self.input_monitor.saved.config.customization,"parameter_folders":a.parameter_groups,"layer_settings":self.input_monitor.saved.config.layers,"warnings":a.files.warnings,"import_notices":self.input_monitor.saved.vts.notes});
         } else if let Some(a) = &self.vrm {
             let a = &a.asset;
             avatar = json!({"kind":"VRM","version":a.summary.version,"content_identity":a.key,"bones":a.bones,"springs":a.springs.len(),"materials":a.materials.len(),"nodes":a.nodes.len(),"skins":a.skins.len(),"geometry":a.geometry.iter().map(|g|json!({"vertices":g.vertices.len(),"morphs":g.morphs.len(),"skin":g.skin})).collect::<Vec<_>>(),"textures":a.images.iter().map(|i|i.as_ref().map(|i|i.dimensions())).collect::<Vec<_>>(),"warnings":a.warnings});
@@ -2361,6 +2376,33 @@ impl AriaApp {
                     self.input_monitor
                         .layers_panel
                         .show(ui, avatar, &mut self.input_monitor.saved);
+            }
+            if self.input_monitor.tab == Tab::Customize
+                && let Some(avatar) = &self.live2d
+            {
+                let actions = self.input_monitor.customization_panel.show(
+                    ui,
+                    avatar,
+                    &labels,
+                    &mut self.input_monitor.saved,
+                );
+                self.input_monitor.save_requested |= actions.changed;
+                if let Some(name) = actions.save_look {
+                    self.input_monitor.save_appearance(name, &parameters);
+                }
+                if let Some(index) = actions.apply_look {
+                    self.input_monitor
+                        .apply_preset(index, &mut self.settings.mapping);
+                }
+                if actions.manage_looks {
+                    self.input_monitor.tab = Tab::Presets;
+                }
+                if actions.layers {
+                    self.input_monitor.tab = Tab::Layers;
+                }
+                if actions.expressions {
+                    self.input_monitor.tab = Tab::Expressions;
+                }
             }
             if self.input_monitor.tab == Tab::Items {
                 if self.items.panel(
@@ -2540,6 +2582,12 @@ impl AriaApp {
 }
 
 impl eframe::App for AriaApp {
+    #[cfg(feature = "screenshots")]
+    fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
+        if crate::smoke_mode() {
+            crate::screenshot::layer_input(ctx, input);
+        }
+    }
     fn ui(&mut self, root_ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = &root_ui.ctx().clone();
         theme::sync(ctx, self.settings.theme.active.colors);
@@ -3045,7 +3093,35 @@ impl eframe::App for AriaApp {
                         self.input_monitor.tab = Tab::Items;
                     }
                 });
+                if self.live2d.is_some() {
+                    ui.horizontal_wrapped(|ui| {
+                        let was_selecting = self.input_monitor.layers_panel.stage_selection.enabled;
+                        self.input_monitor.save_requested |= self
+                            .input_monitor
+                            .layers_panel
+                            .stage_tools(ui, &mut self.input_monitor.saved);
+                        if !was_selecting && self.input_monitor.layers_panel.stage_selection.enabled
+                        {
+                            self.input_monitor.tab = Tab::Layers;
+                        }
+                        crate::help::button(ui, "live2d-layers");
+                        if ui.small_button("Customize appearance").clicked() {
+                            self.input_monitor.tab = Tab::Customize;
+                        }
+                    });
+                }
+                let selecting_layers = self.live2d.is_some()
+                    && self.input_monitor.layers_panel.stage_selection.enabled;
+                if selecting_layers {
+                    ui.small("Drag a box · Shift add · Alt remove · Ctrl/Cmd toggle · Esc cancel");
+                }
                 let (rect, _) = ui.allocate_exact_size(ui.available_size(), egui::Sense::hover());
+                #[cfg(feature = "screenshots")]
+                if crate::smoke_mode()
+                    && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("layer-selection")
+                {
+                    ctx.data_mut(|d| d.insert_temp(egui::Id::new("layer-smoke-stage"), rect));
+                }
                 let old_revision = self.items.revision;
                 if !dropped_items.is_empty() {
                     let pointer = ctx.input(|i| i.pointer.latest_pos());
@@ -3110,14 +3186,16 @@ impl eframe::App for AriaApp {
                         ctx.data_mut(|d| d.insert_temp(key, true));
                     }
                 }
-                if self.items.stage(
-                    ui,
-                    rect,
-                    &scene,
-                    &mut self.input_monitor.saved.config,
-                    (self.live2d.as_ref(), self.vrm.as_ref()),
-                    self.settings.zoom,
-                ) {
+                if !selecting_layers
+                    && self.items.stage(
+                        ui,
+                        rect,
+                        &scene,
+                        &mut self.input_monitor.saved.config,
+                        (self.live2d.as_ref(), self.vrm.as_ref()),
+                        self.settings.zoom,
+                    )
+                {
                     self.items.edited();
                 }
                 if self.items.selected.is_some() && self.items.selected != previous_selection {
@@ -3171,8 +3249,19 @@ impl eframe::App for AriaApp {
                     );
                 }
                 scene.paint_subject(&painter, rect, self.settings.zoom);
-                self.items
-                    .selection(&painter, &scene, rect, self.settings.zoom);
+                if selecting_layers && let Some(avatar) = &self.live2d {
+                    self.input_monitor.layers_panel.stage(
+                        ui,
+                        rect,
+                        &scene,
+                        self.settings.zoom,
+                        avatar,
+                        &self.input_monitor.saved,
+                    );
+                } else {
+                    self.items
+                        .selection(&painter, &scene, rect, self.settings.zoom);
+                }
                 painter.text(
                     rect.left_bottom() + egui::vec2(16.0, -18.0),
                     egui::Align2::LEFT_BOTTOM,
@@ -3264,7 +3353,10 @@ impl eframe::App for AriaApp {
         self.collect_diagnostics();
         #[cfg(feature = "screenshots")]
         if crate::smoke_mode()
-            && std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("workspace-v29")
+            && matches!(
+                std::env::var("ARIA_SMOKE_SCENARIO").as_deref(),
+                Ok("workspace-v29" | "customization" | "layer-selection")
+            )
         {
             self.input_monitor.vts.open = false;
         }

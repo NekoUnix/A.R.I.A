@@ -90,14 +90,19 @@ Under **Presets**, enter a name and optionally select a shortcut, then choose:
 - **Save pose:** saves the above settings plus every final parameter value as a
   complete frozen pose. Applying it holds the exact saved pose.
 
-Both preset types include Live2D layer opacity/groups, stage anchors and object
+- **Save appearance** (Live2D): saves locked customization values plus layer
+  opacity, groups and colors. Applying it preserves current tracking, physics,
+  expressions, props, frozen pose and the curated appearance control catalog.
+  Create these looks in **Avatar → Customize** or the preset library.
+
+Movement and pose presets include Live2D layer opacity/groups, stage anchors and object
 settings, and VRM motion tuning. A VRM pose also stores sampled idle/gesture angles
 and spring motion. Layer-group shortcuts stay with the avatar independently of
 presets. See [layers](live2d-layers.md), [anchor editing](model-folders-and-pins.md)
 and [VRM gestures](vrm.md#natural-movement-and-gesture-animations).
 
 Select a saved item and use **Apply selected**. **Replace selected** updates its
-contents using the current settings while keeping its movement/pose type.
+contents using the current settings while keeping its movement/pose/appearance type.
 **Rename / assign key** changes its name and shortcut without replacing the pose.
 **Delete selected** removes it. Names and shortcuts cannot duplicate another item
 in the same model's list. Up to 128 presets are supported per model.

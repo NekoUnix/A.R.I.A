@@ -56,3 +56,7 @@ diagnostics underneath that profile. No network logging service is involved.
 
 If the app cannot start, retain the launcher error and newest local log for your
 ticket. If it can start after the failure, export a report to include earlier logs.
+
+Live2D reports also include appearance locks and control definitions, authored
+parameter-folder paths and layer opacity/color/group overrides. These help identify
+model-specific outfit and visibility conflicts; avatar artwork is not attached.

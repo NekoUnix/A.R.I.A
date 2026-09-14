@@ -2,6 +2,42 @@
 use eframe::egui;
 use std::time::{Duration, Instant};
 
+/// Feed real egui pointer events through the normal stage interaction in an
+/// isolated screenshot run. Normal packages do not compile this module.
+pub fn layer_input(ctx: &egui::Context, input: &mut egui::RawInput) {
+    if std::env::var("ARIA_SMOKE_SCENARIO").as_deref() != Ok("layer-selection") {
+        return;
+    }
+    let Some(rect) = ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::new("layer-smoke-stage")))
+    else {
+        return;
+    };
+    input.events.retain(|e| {
+        !matches!(
+            e,
+            egui::Event::PointerMoved(_)
+                | egui::Event::PointerButton { .. }
+                | egui::Event::PointerGone
+        )
+    });
+    let key = egui::Id::new("layer-smoke-phase");
+    let phase = ctx.data(|d| d.get_temp::<u8>(key).unwrap_or(0));
+    let start = rect.min + rect.size() * egui::vec2(0.20, 0.13);
+    let end = rect.min + rect.size() * egui::vec2(0.72, 0.69);
+    if phase == 1 {
+        input.events.push(egui::Event::PointerMoved(start));
+        input.events.push(egui::Event::PointerButton {
+            pos: start,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        });
+    } else if phase >= 2 {
+        input.events.push(egui::Event::PointerMoved(end));
+    }
+    ctx.data_mut(|d| d.insert_temp(key, phase.saturating_add(1)));
+}
+
 pub fn delay() -> Duration {
     Duration::from_secs(
         std::env::var("ARIA_SMOKE_DELAY_SECONDS")
@@ -78,6 +114,16 @@ pub fn capture(ctx: &egui::Context, started: Instant, output: bool) {
         })
     });
     if let Some(image) = image {
+        if std::env::var("ARIA_SMOKE_SCENARIO").as_deref() == Ok("layer-selection") {
+            let count = ctx
+                .data(|d| d.get_temp::<usize>(egui::Id::new("layer-smoke-selected")))
+                .unwrap_or(0);
+            assert!(
+                count > 1,
+                "Native pointer drag must select more than one layer before capture"
+            );
+            eprintln!("Native pointer drag selected {count} layers");
+        }
         let rgba: Vec<u8> = image
             .pixels
             .iter()

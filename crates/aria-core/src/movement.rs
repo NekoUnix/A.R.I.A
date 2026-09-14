@@ -28,6 +28,7 @@ pub struct Pose {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RigConfig {
+    pub customization: crate::customization::Config,
     pub vbridger: crate::vbridger::Config,
     pub mouth_response: crate::speech::Response,
     pub layers: crate::layers::Config,
@@ -89,6 +90,9 @@ impl RigConfig {
                     .copied()
                     .unwrap_or(p.default)
                     .clamp(p.min, p.max);
+                if let Some(&value) = self.customization.values.get(&p.id) {
+                    p.value = value.clamp(p.min, p.max);
+                }
             }
             return;
         }
@@ -109,6 +113,7 @@ impl RigConfig {
         );
         expressions(parameters, &self.expressions);
         self.apply_holds_and_steps(parameters);
+        self.customization.apply(parameters);
         if let Some(physics) = physics {
             physics.configure(&self.physics);
             physics.update(parameters, dt);
@@ -116,6 +121,7 @@ impl RigConfig {
         // A held physics output must stay held, while a held driver still
         // pushes the unheld secondary-motion chains in partial override mode.
         self.apply_holds_and_steps(parameters);
+        self.customization.apply(parameters);
     }
     fn apply_holds_and_steps(&self, parameters: &mut [RigParameter]) {
         for p in parameters {
@@ -133,6 +139,7 @@ impl RigConfig {
         }
     }
     pub fn validate(&self, parameters: &[RigParameter]) -> Result<()> {
+        self.customization.validate(parameters)?;
         self.vbridger.validate()?;
         self.mouth_response.validate()?;
         self.tracking.validate()?;
@@ -231,6 +238,7 @@ pub fn snap(value: f32, min: f32, max: f32, step: f32) -> f32 {
 pub enum PresetKind {
     Movement,
     Pose,
+    Appearance,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Preset {

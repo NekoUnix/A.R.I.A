@@ -2,6 +2,7 @@
 pub mod asset_limits;
 pub mod calibration;
 pub mod controller;
+pub mod customization;
 pub mod deformation;
 pub mod effects;
 pub mod expressions;

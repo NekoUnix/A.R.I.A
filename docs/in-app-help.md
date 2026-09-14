@@ -1408,6 +1408,12 @@ All takes are temporary scalar tracking values, not camera images or video. Canc
 
 ## live2d-layers | Live2D layers and saved looks | Hide or fade exported ArtMeshes, save groups and toggle them with your own shortcuts.
 
+Turn on Select layers above Your stage or in the Layers inspector. Drag a rectangle over the model to select all exported mesh triangles touching the box; a click selects the frontmost layer. Shift adds to the selection, Alt removes, and Ctrl (Cmd on Mac) toggles membership. Escape cancels the current drag and restores the previous selection. Selection outlines are editor guides and never appear in OBS or PNG exports. While Select layers is on, stage dragging edits the layer selection instead of moving pinned objects. Turn it off to move objects again.
+
+Shift-click rows to add a continuous range. Drag from a selected list row to remove a range, or from an unselected row to add one. The list renders visible rows only. Select results adds all search matches, including rows outside the visible scroll area. Include hidden layers allows stage picking of hidden meshes that still have triangle geometry; a completely collapsed mesh must be selected from the list. Picking uses mesh geometry, not texture alpha, clipping masks or pixel occlusion. A selection box can include overlapping layers behind the frontmost artwork; inspect the selected names before hiding them.
+
+Hide selected and Restore selected apply in bulk. If active groups still hide restored artwork, Disable groups affecting selected layers turns off those whole groups, including their other members. Select the intended group instead if only its visibility should change. Selected layer colors offers a multiply tint and restoration of authored colors; save an Appearance look to recall colors with visibility.
+
 Open Inspector → Avatar → Layers. Search the exported ArtMesh IDs or their parent part names, select rows, then Hide selected, Half opacity or Restore selected. A row's slider changes its individual opacity from zero (hidden) to one (authored opacity). The displayed percentage includes active groups. Original PSD layers merged or omitted during export cannot be recovered. Your avatar's files are never modified.
 
 To save a reusable look, select layers, enter a group name and Create group from selection. A new group starts inactive with zero opacity. Check its name to apply it. Expand Group settings & shortcut to change its opacity, delete it, or Edit selected layers; the name field and Save group selection update that group. Select results adds every search result; Clear selection only clears the editing selection.
@@ -1417,6 +1423,20 @@ Choose Ctrl, Alt, Shift or Win plus a main key, then Assign chosen shortcut in t
 Effective opacity = authored animated opacity × lowest of the individual override and all active group opacities. Overlapping half-opacity groups stay at 50%. Restore selected removes individual overrides, but active groups can still hide those layers. Show all layers clears overrides and turns every group off. A layer hidden by the model's own parameters stays hidden until those controls reveal it.
 
 Mask geometry remains available to dependent artwork when a layer is hidden. Core still evaluates hidden meshes and retains their texture memory. All outputs and PNG exports share the result. Layer changes also work on frozen poses; unchanged frozen frames skip rendering.
+
+## live2d-customization | Customizable Live2D models | Build an appearance workspace for your avatar's outfits, hair, accessories, colors and other exported choices.
+
+@diagram appearance
+
+Open Inspector → Avatar → Customize. Add this model's suggested controls reads the creator's parameter names and folders from its .cdi3.json export. Known physics outputs are excluded from suggestions. Adding controls does not apply values. If no suggestions appear, or a control is missing, expand Browse all exported parameters, search by name, folder or ID, and check the controls you want. Every loaded Live2D avatar can use this workspace; only options actually included in its export are available. It cannot create missing artwork, edit a source PSD, or recover editor-only layers.
+
+Check an appearance control to hold that parameter at the displayed value. Adjust its slider or numeric value, or choose Authored default. Other face and body parameters keep following tracking. Uncheck the control or use Release all appearance values to resume its existing tracking, expression, physics or default behavior. Appearance overrides take priority over those systems and pose holds, including when a screenshot pose is frozen. A chosen appearance driver still feeds the physics simulation, and an overridden physics output remains held. Changes save to the loaded avatar's content-based profile.
+
+Expand Control name, category & options to give a raw ID a friendly name, move it to your own category, and choose a continuous Slider, a min/max Toggle, or a list of named Choices with explicit numeric values. Step zero is continuous; step one suits integer outfit variants. All values stay within the exported parameter's range. Toggle On uses the maximum and Off uses the minimum; use named choices for reversed or multi-state artwork. The creator decides how intermediate values blend. Remove a control through Browse all to release its override and remove it from your workspace.
+
+Saved appearance looks capture locked appearance values, layer visibility groups and mesh colors. Applying one preserves your tracking calibration, physics tuning, props, microphone and current expressions. It can change appearance while a pose is frozen without moving other parameters. Use Manage looks, shortcuts & exports to rename, replace, delete, export or import a look and assign an available Ctrl+Alt+F1–F11 preset shortcut on Windows. Imports are matched to the same avatar's content identity and do not import keyboard assignments. To save active expression toggles together with broader movement settings, use a Movement preset. Expression-based outfits opens the existing expression library.
+
+Select layers & edit colors opens Layers. A multiply tint affects the selected exported meshes: white preserves their original texture colors; darker colors tint and darken them. Black texture pixels cannot be recolored by multiplication. Restore selected colors restores the creator's multiply/screen settings. No texture files are rewritten. Appearance parameters and colors are shared by Your stage, all outputs, and exported PNG images; selection rectangles remain visible only in the stage editor.
 
 ## pin-edit | Move the attachment anchor | Relocate a pin without changing the attached object's position, rotation or size.
 

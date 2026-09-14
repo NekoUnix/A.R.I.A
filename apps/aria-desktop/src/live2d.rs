@@ -10,7 +10,6 @@ use aria_live2d::CubismModel;
 use aria_live2d::host::HostedModel;
 use aria_model::ModelFiles;
 use eframe::egui_wgpu::RenderState;
-use serde::Deserialize;
 use std::{collections::BTreeMap, path::Path};
 
 pub struct Avatar {
@@ -20,6 +19,7 @@ pub struct Avatar {
     pub model: HostedModel,
     pub initial_config: RigConfig,
     pub labels: BTreeMap<String, String>,
+    pub parameter_groups: BTreeMap<String, String>,
     pub physics: Option<Physics>,
     pub imported_count: usize,
     renderer: ModelRenderer,
@@ -74,16 +74,20 @@ impl Avatar {
                     .push(format!("Tracking profile could not load: {error:#}")),
             }
         }
-        let labels = files
+        let display = files
             .display_info
             .as_ref()
-            .and_then(|path| match read_labels(path) {
-                Ok(labels) => Some(labels),
-                Err(error) => {
-                    files
-                        .warnings
-                        .push(format!("Parameter names could not load: {error:#}"));
-                    None
+            .and_then(|path| {
+                match aria_model::read_bounded(path, aria_core::asset_limits::MODEL_JSON)
+                    .and_then(|bytes| aria_model::DisplayInfo::decode(&bytes))
+                {
+                    Ok(display) => Some(display),
+                    Err(error) => {
+                        files
+                            .warnings
+                            .push(format!("Parameter names could not load: {error:#}"));
+                        None
+                    }
                 }
             })
             .unwrap_or_default();
@@ -100,7 +104,8 @@ impl Avatar {
             files,
             model,
             initial_config,
-            labels,
+            labels: display.labels,
+            parameter_groups: display.parameter_groups,
             physics,
             imported_count,
             renderer,
@@ -211,33 +216,6 @@ impl Avatar {
     pub fn save_png(&self, path: &Path) -> Result<()> {
         self.renderer.save_png(path)
     }
-}
-fn read_labels(path: &Path) -> Result<BTreeMap<String, String>> {
-    #[derive(Deserialize)]
-    struct Info {
-        #[serde(rename = "Parameters")]
-        #[serde(default)]
-        parameters: Vec<Label>,
-        #[serde(default, rename = "Parts")]
-        parts: Vec<Label>,
-    }
-    #[derive(Deserialize)]
-    struct Label {
-        #[serde(rename = "Id")]
-        id: String,
-        #[serde(rename = "Name")]
-        name: String,
-    }
-    let info: Info = serde_json::from_slice(&aria_model::read_bounded(
-        path,
-        aria_core::asset_limits::MODEL_JSON,
-    )?)?;
-    Ok(info
-        .parameters
-        .into_iter()
-        .chain(info.parts)
-        .map(|v| (v.id, v.name))
-        .collect())
 }
 
 #[cfg(test)]

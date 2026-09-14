@@ -1,6 +1,6 @@
-# ARIA documentation — v0.29 Alpha
+# ARIA documentation — v0.30 Alpha
 
-![Odette in ARIA v0.29 with the updated footer and avatar controls](images/workspace-v29.png)
+![Odette in the Live2D appearance workspace](images/customization-v30.png)
 
 New to ARIA? Start with the [beginner setup walkthrough](../README.md#first-time-setup)
 and [changelog](../CHANGELOG.md). For system-specific steps use [Windows setup](windows.md), [Linux installation](linux.md) or
@@ -9,7 +9,10 @@ and [changelog](../CHANGELOG.md). For system-specific steps use [Windows setup](
 Tracking / Output / Chat / Settings**. Inspector tools stay grouped by tracking,
 avatar, stage and poses. Hover or click any circled **?** for offline explanations.
 
-v0.29 adds [Experimental VTube Studio import and repair](vtube-studio-import.md)
+v0.30 adds [drag layer selection and customizable Live2D controls](live2d-customization.md),
+with model-owned appearance looks, tinting and shortcuts.
+
+v0.29 added [Experimental VTube Studio import and repair](vtube-studio-import.md)
 and [avatar-specific support reports](diagnostics.md).
 
 v0.28 added [iFacialMocap phone tracking](ifacialmocap.md), with direct live UDP,
@@ -50,7 +53,8 @@ This is a release status grid, not a promise of universal model/device compatibi
 | Xbox / PlayStation / Switch controller inputs | Partial validation | SDL mappings and virtual-controller tests; physical controllers/adapters still need coverage. |
 | Per-avatar mapping, ranges, poses and presets | Working | Individual guided exercises, illustrated tracking face, selectable takes, calibration, inversion, holds/freeze, profiles and Windows hotkeys. |
 | Live2D expressions and physics groups | Working with limits | exp3 blending and per-model/group settings; only the documented Cubism subset is supported. |
-| Live2D layer visibility groups | Implemented in v0.26 Alpha | Exported ArtMesh opacity, reversible hiding, named groups, presets and Windows hotkeys. |
+| Live2D layer selection and visibility groups | Updated in v0.30 Alpha | Stage marquee, list ranges, reversible hiding/tinting, named groups, presets and Windows hotkeys; picks mesh geometry rather than texture pixels. |
+| Customizable Live2D workspace | Implemented in v0.30 Alpha | Exported parameter folders, curated sliders/toggles/choices, appearance locks and looks; only artwork exported by the creator is available. |
 | VRM idle motion and gestures | Implemented in v0.26 Alpha | Configurable sway, breathing and arms; six procedural gestures, blending and frozen poses. |
 | Pinned PNG/GIF and Live2D objects | Working | Independent anchor editing, tracking enabled on new Live2D objects; limited simultaneous Live2D object instances. |
 | Custom throw assets | Updated | Replace/add controls, exact quantities, background PNG/GIF loading, file-specific errors and save validation; large 3D/Live2D props still have cold-load costs. |
@@ -85,6 +89,7 @@ and [compatibility reports](https://github.com/NekoUnix/A.R.I.A/issues/new/choos
 | Use a gamepad with my avatar | [Controllers](controllers.md) |
 | Tune ranges, hold parameters, create presets | [Input controls](input-controls.md) |
 | Load exported Live2D files | [Live2D](live2d.md) |
+| Configure outfits, hair and appearance looks | [Customizable Live2D models](live2d-customization.md) |
 | Hide Live2D layers and save groups with hotkeys | [Layer visibility](live2d-layers.md) |
 | Import and tune a 3D VRM | [VRM](vrm.md) |
 | Choose from nested model folders or pin items | [Folders and pins](model-folders-and-pins.md) |
@@ -108,6 +113,7 @@ camera connection. [Artwork provenance and reproduction notes](images/README.md)
 
 ## Avatar customization included in v0.26 Alpha
 
+- [Live2D customization](live2d-customization.md): authored controls, categories, locks and appearance-only looks.
 - [Live2D layers](live2d-layers.md): reversible hiding/transparency, model-owned groups and user-defined hotkeys.
 - [Stage anchors](model-folders-and-pins.md): move a pin independently of its object; new Live2D attachments receive tracking automatically.
 - [VRM motion](vrm.md#natural-movement-and-gesture-animations): configurable sway, breathing and arms, plus six clickable gestures and screenshot freezing.

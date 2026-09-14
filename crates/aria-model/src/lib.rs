@@ -1,5 +1,7 @@
 //! Bounded Cubism asset discovery. Native execution lives in aria-live2d.
+mod display_info;
 use anyhow::{Context, Result, ensure};
+pub use display_info::DisplayInfo;
 use serde::Deserialize;
 use std::{
     collections::{BTreeMap, BTreeSet},
