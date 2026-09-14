@@ -23,6 +23,9 @@ pub struct Group {
     pub layers: BTreeSet<String>,
     pub opacity: f32,
     pub active: bool,
+    /// Picking protection is independent of the group's visibility/hotkey state.
+    #[serde(default)]
+    pub protect_selection: bool,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -35,6 +38,17 @@ impl Default for Config {
     }
 }
 impl Config {
+    pub fn selectable(&self, id: &str, include_protected: bool) -> bool {
+        include_protected
+            || !self
+                .groups
+                .iter()
+                .any(|g| g.protect_selection && g.layers.contains(id))
+    }
+
+    pub fn retain_selectable(&self, selected: &mut BTreeSet<String>, include_protected: bool) {
+        selected.retain(|id| self.selectable(id, include_protected));
+    }
     /// Overlaps use the most transparent setting, never multiply unexpectedly.
     pub fn opacity(&self, id: &str) -> f32 {
         self.model_opacity
@@ -99,6 +113,39 @@ impl Config {
 mod tests {
     use super::*;
     #[test]
+    fn protected_groups_round_trip_ignore_visibility_and_migrate_old_profiles() {
+        let old = r#"{"id":1,"name":"Keep eyes","layers":["Eye"],"opacity":0.0,"active":false}"#;
+        let mut group: Group = serde_json::from_str(old).unwrap();
+        assert!(!group.protect_selection);
+        group.protect_selection = true;
+        let mut config = Config {
+            groups: vec![group.clone()],
+            ..Default::default()
+        };
+        assert!(!config.selectable("Eye", false));
+        assert!(config.selectable("Eye", true));
+        assert_eq!(config.opacity("Eye"), 1.);
+        config.toggle(1);
+        assert!(!config.selectable("Eye", false));
+        assert_eq!(config.opacity("Eye"), 0.);
+        group.id = 2;
+        config.groups.push(group);
+        config.groups[0].protect_selection = false;
+        assert!(
+            !config.selectable("Eye", false),
+            "Any protected overlap is enough"
+        );
+        let mut selected = BTreeSet::from(["Eye".into(), "Hair".into()]);
+        config.retain_selectable(&mut selected, false);
+        assert_eq!(selected, BTreeSet::from(["Hair".into()]));
+        config.validate().unwrap();
+        let restored: Config =
+            serde_json::from_slice(&serde_json::to_vec(&config).unwrap()).unwrap();
+        assert_eq!(restored, config);
+        config.groups.clear();
+        assert!(config.selectable("Eye", false));
+    }
+    #[test]
     fn overlapping_groups_toggle_restore_and_round_trip() {
         let mut config = Config::default();
         config.opacity.insert("Hair".into(), 0.8);
@@ -109,6 +156,7 @@ mod tests {
                 layers: BTreeSet::from(["Hair".into()]),
                 opacity,
                 active: true,
+                protect_selection: false,
             });
         }
         config.validate().unwrap();

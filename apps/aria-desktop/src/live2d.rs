@@ -319,6 +319,7 @@ mod tests {
         config.layers.groups.push(aria_core::layers::Group {
             id: 1,
             name: "All hidden".into(),
+            protect_selection: false,
             opacity: 0.,
             active: true,
             layers: avatar

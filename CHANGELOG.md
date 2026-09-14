@@ -3,11 +3,20 @@
 All downloads remain Alpha. See [Releases](https://github.com/NekoUnix/A.R.I.A/releases)
 for packages and checksums. Features labeled Experimental have compatibility limits.
 
-## Unreleased — Frozen Live2D layer selector
+## 0.31.0-alpha.1 — Highlighted selections and protected Live2D groups
 
 - Open **Select layers…** in a separate resizable window with a frozen model.
-  Plain clicks and repeated boxes accumulate selections in default Add mode,
+  Default Select mode toggles a layer with each click and adds repeated boxes,
   with explicit Remove, Replace and Toggle buttons; no Shift key is needed.
+- Tint selected artwork blue using its actual atlas transparency and clipping;
+  outline the hovered mesh in gold. Click selected artwork again to deselect it,
+  then use the remaining selection for visibility edits or reusable hotkey groups.
+  Highlights are preview-only, never saved as avatar colors or sent to outputs.
+- Save protected layer groups per avatar. Clicks, boxes, list ranges and search
+  selection skip their members unless Include protected layers is enabled.
+  Switching the override off removes protected members from the selection.
+  Protection is independent of visibility/hotkeys; existing profiles default
+  to unprotected groups. Manage it in the frozen window or group settings.
 - Preserve fast mouse gestures when press, movement and release arrive between
   rendered frames, and process a gesture once across repeated UI layout passes.
 - Hide/restore selections, undo up to 24 local edits, zoom, pan, refresh the pose,
@@ -15,7 +24,7 @@ for packages and checksums. Features labeled Experimental have compatibility lim
   Visibility saves per avatar and reaches all outputs while live tracking continues.
 - Share uploaded atlases and immutable renderer resources; isolate preview
   geometry, writable buffers, masks and output. Render the frozen pose only when
-  its layer settings change, virtualize the selection list and release the
+  its layer settings or selection change, virtualize the selection list and release the
   preview when closed or the model changes.
 - Update the mouse guide, contextual help and native screenshot. VTube Studio
   import and VBridger import remain Experimental.

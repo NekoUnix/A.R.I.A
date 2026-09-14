@@ -14,19 +14,21 @@ See [Live2D setup](live2d.md) if you have not imported the avatar yet.
 
 ## Select several layers with your mouse
 
-The frozen selector described here is in the next source build after v0.30.0-alpha.1.
-The published v0.30 package has the earlier on-stage selection tools.
+The frozen selector and protected groups are included in v0.31.0-alpha.1.
 
 ![The separate frozen model layer selector](images/frozen-layer-editor.png)
 
 1. Load your Live2D avatar, then click **Select layers…** above **Your stage**
    or in **Inspector → Avatar → Layers**. A separate window opens with a frozen
    copy of its current pose. You can move and resize this window.
-2. Leave **Mouse selection: Add** selected. Click artwork to select its frontmost
-   mesh, or hold the left mouse button and draw a box over several layers.
+2. Leave **Mouse selection: Select** selected. Click artwork to select its frontmost
+   mesh; click it again to deselect it. Or hold the left mouse button and draw a box over several layers.
    Release the button to keep the selection. Repeat as often as you like:
-   **plain clicks and boxes keep earlier selections, without Shift**.
-3. Check the selection count and the list on the left. Uncheck any unwanted row,
+   **boxes add layers without Shift; clicks toggle just the picked layer**.
+3. Selected artwork turns **blue**, with its texture transparency and clipping
+   preserved. The **gold outline** shows the mesh under the pointer; hover for
+   its ID, selection status and click action. Check the count and list on the
+   left. Click selected artwork again or uncheck any unwanted row,
    or click **Remove** and click/draw over layers to subtract them.
 4. Click **Hide selected**. The artwork disappears from the preview, your live
    stage and all outputs. **Restore selected** removes individual opacity
@@ -37,10 +39,11 @@ The published v0.30 package has the earlier on-stage selection tools.
 
 | Control | What it does |
 | --- | --- |
-| Add | Plain clicks and boxes accumulate layers. This is the default. |
+| Select | Default: clicks select/deselect one layer; boxes add layers. Shift-click explicitly adds. |
 | Remove | Plain clicks and boxes subtract layers. |
 | Replace | Starts a fresh selection for each click or box. |
 | Toggle | Flips membership of the clicked layer or boxed layers. |
+| Include protected layers | Allows picking protected group members. Turning it off removes them from the selection. |
 | Clear selection | Deselects everything; visibility stays as it is. |
 | Wheel / Zoom slider | Enlarges or reduces the frozen preview only. |
 | Right or middle mouse drag | Pans around the preview. |
@@ -70,7 +73,35 @@ visible pixels suggest. Review the selected names before hiding a large area.
 The preview's Reveal checkbox cannot reveal artwork hidden by the frozen
 pose's own outfit/expression parameters. Change those controls, then refresh
 the pose. Completely collapsed layers can be selected from the main list.
-Selection guides never appear in OBS or exported images.
+Blue highlights show selected artwork that is currently visible in the preview.
+Hidden or fully covered selected layers remain in the list; use Reveal, a new
+pose, or the list to inspect them. The gold hover outline follows exported mesh
+edges and can include transparent regions. Selection guides and blue colors
+never appear in OBS or exported images and do not replace your saved tints.
+
+## Protect layers from selection
+
+1. In the frozen selector, select the artwork you want to keep out of accidental
+   selections (for example, eyes or a permanent accessory).
+2. Enter a **Group name**, check **Protect this new group**, then click
+   **Save selection as group**. The group does not hide the artwork. Its members
+   leave the current selection unless the protection override is enabled.
+3. Open **Selection protection** in the same window to check or uncheck saved
+   groups. You can also use **Avatar → Layers → Saved layer groups → Group
+   settings & shortcut → Protect from selection**.
+4. Continue clicking or drawing boxes. Protected members are skipped, including
+   by list ranges and **Select results**. Clicks may pick an unprotected mesh
+   underneath protected artwork. Any protected overlapping group is sufficient.
+5. To edit those layers deliberately, enable **Include protected layers**, make
+   your selection and use it normally. Turn this option off to exclude them again.
+   **Edit selected layers** in a group's settings selects its full membership
+   and enables this override so you can revise the group safely.
+
+Protection saves with each avatar and its layer groups in appearance/movement
+presets. It stays enabled when a group's visibility hotkey is off. This protects
+selection, not every possible change: direct opacity sliders, Show all layers,
+saved looks and visibility hotkeys still work. Unprotect or delete the group to
+remove its protection; neither action deletes model artwork.
 
 ## Save layer groups and restore visibility
 

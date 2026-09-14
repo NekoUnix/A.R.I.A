@@ -4,7 +4,7 @@ Bring your **Live2D, VRM or PNG/GIF avatar** to life, tune how it follows you, a
 send it to OBS. ARIA runs on Windows, Linux and macOS. You can start with the
 included Mica puppet before importing a model or connecting a camera.
 
-**[Download v0.30 Alpha](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.30.0-alpha.1)** ·
+**[Download v0.31 Alpha](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.31.0-alpha.1)** ·
 [What's new](#whats-new) · [First-time setup](#first-time-setup) ·
 [Help when something goes wrong](#help-when-something-goes-wrong)
 
@@ -16,19 +16,25 @@ required third-party tracking app or runtime are supplied separately.
 
 ## What's new
 
-**In the next build:** **Select layers…** opens a separate, resizable window
-with a frozen model. Click artwork or draw several boxes to accumulate a
-selection, then choose **Hide selected**. No Shift key is required. The live
-stage keeps tracking. Undo, zoom, pan, reveal-hidden preview and saved groups
-are included. This update is in the source build; the download above remains v0.30.
+**v0.31.0-alpha.1** adds a **frozen Live2D layer selector with visible selection
+highlights and protected groups**. Click **Select layers…** to open the resizable
+preview. In the default **Select** tool, click artwork to select it, click again
+to deselect it, or draw several boxes to add layers without Shift. Selected
+artwork turns blue; a gold outline identifies the mesh under your mouse.
+
+Use the selection to hide or restore artwork, or save a group and assign its
+hotkey. Check **Protect this new group** to keep its members out of future
+selections. **Include protected layers** allows deliberate edits. Protection
+saves per avatar, separately from a group's visibility shortcut.
+
+Your live stage keeps tracking while you work. Undo, zoom, pan, refreshed poses
+and a reveal-hidden preview help with fine adjustments. Selection colors appear
+only in this window, never in OBS or exported images.
+
+![Blue selected artwork in the frozen layer window](docs/images/frozen-layer-editor.png)
 
 Click the little **bread icon** beside the bottom-right social links to send
 bread across your stage and outputs. It works without importing an asset.
-
-**v0.30.0-alpha.1** adds **drag selection and a dedicated Live2D appearance workspace**.
-Click **Select layers** above Your stage, drag a box around artwork, then use
-**Hide** or **Restore**. Shift adds to the selection; Alt removes from it. Save
-layer groups for later and assign their hotkeys.
 
 Open **Inspector → Avatar → Customize** to organize the model's exported outfit,
 hair and accessory controls. Choose sliders, on/off switches or named variants,
@@ -70,17 +76,17 @@ this and earlier releases.
 
 ### 1. Download the right file
 
-Open the [v0.30 Alpha release](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.30.0-alpha.1)
+Open the [v0.31 Alpha release](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.31.0-alpha.1)
 and expand **Assets** if the downloads are hidden. Choose the file for your computer:
 
 | Your computer | Download |
 | --- | --- |
-| Windows 10/11, 64-bit Intel or AMD | `aria-0.30.0-alpha.1-windows-x64.zip` |
-| Mac with an M-series chip | `aria-0.30.0-alpha.1-macos-arm64.zip` |
-| Mac with an Intel processor | `aria-0.30.0-alpha.1-macos-x64.zip` |
-| Ubuntu 24.04, 64-bit Intel or AMD | `aria-0.30.0-alpha.1-linux-x64.tar.gz` |
-| Fedora 44, 64-bit Intel or AMD | `aria-alpha-0.30.0.alpha.1-1.x86_64.rpm` |
-| Current Arch Linux, 64-bit Intel or AMD | `aria-alpha-0.30.0alpha.1-1-x86_64.pkg.tar.zst` |
+| Windows 10/11, 64-bit Intel or AMD | `aria-0.31.0-alpha.1-windows-x64.zip` |
+| Mac with an M-series chip | `aria-0.31.0-alpha.1-macos-arm64.zip` |
+| Mac with an Intel processor | `aria-0.31.0-alpha.1-macos-x64.zip` |
+| Ubuntu 24.04, 64-bit Intel or AMD | `aria-0.31.0-alpha.1-linux-x64.tar.gz` |
+| Fedora 44, 64-bit Intel or AMD | `aria-alpha-0.31.0.alpha.1-1.x86_64.rpm` |
+| Current Arch Linux, 64-bit Intel or AMD | `aria-alpha-0.31.0alpha.1-1-x86_64.pkg.tar.zst` |
 
 On a Mac, **Apple menu → About This Mac** tells you whether it has an Apple chip
 or an Intel processor. Linux ARM, Windows ARM, `.deb`, AppImage and Flatpak/Snap
@@ -311,7 +317,7 @@ Export important configurations before experimenting with a new Alpha build.
 | Problem | First things to check |
 | --- | --- |
 | ARIA will not open | Extract the complete package, use the right CPU/OS download and update the graphics driver. Read the error dialog and your installation guide. |
-| Clicking an online link does nothing | Install this updated v0.30 Alpha build. Set a default browser in your operating system and check behind ARIA for a new tab or window. If it still fails, use **Diagnostics / export logs** and describe the link you clicked. |
+| Clicking an online link does nothing | Install this updated v0.31 Alpha build. Set a default browser in your operating system and check behind ARIA for a new tab or window. If it still fails, use **Diagnostics / export logs** and describe the link you clicked. |
 | A phone connects but no motion arrives | Check **Tracking live**, the current phone IP, matching ports, Local Network permission, firewall and same LAN. Demo motion does not confirm a phone connection. |
 | Cannot bind the tracking port | Close the other application receiving on that port, or configure matching custom ports on both sides. |
 | Mouth feels slow | Try **Quick** or **Instant** mouth response; check the tracking-rate and packet-age graphs. Phone sampling and network delay remain outside that setting. |

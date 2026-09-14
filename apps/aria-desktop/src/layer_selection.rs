@@ -32,6 +32,16 @@ pub enum Operation {
     Toggle,
 }
 impl Operation {
+    fn click(modifiers: egui::Modifiers, fallback: Self) -> Self {
+        // The default mouse tool adds boxes but lets a second click undo a pick.
+        // Explicit Shift/Add and the other tools keep their exact semantics.
+        let fallback = if fallback == Self::Add {
+            Self::Toggle
+        } else {
+            fallback
+        };
+        Self::from(modifiers, fallback)
+    }
     fn from(modifiers: egui::Modifiers, fallback: Self) -> Self {
         if modifiers.alt {
             Self::Remove
@@ -62,7 +72,10 @@ struct Drag {
 pub struct Selection {
     pub enabled: bool,
     pub include_hidden: bool,
+    pub include_protected: bool,
     pub operation: Operation,
+    /// The frozen renderer tints selected artwork, so only outline the hover hit.
+    pub tinted_preview: bool,
     drag: Option<Drag>,
     press: Option<Drag>,
     processed_frame: Option<u64>,
@@ -83,8 +96,10 @@ impl Selection {
         projection: &Projection,
         selected: &mut BTreeSet<String>,
     ) -> Option<egui::Response> {
+        layers.retain_selectable(selected, self.include_protected);
         if !self.enabled {
             self.cancel(selected);
+            layers.retain_selectable(selected, self.include_protected);
             return None;
         }
         let response = ui.interact(
@@ -145,6 +160,7 @@ impl Selection {
                     projection,
                     Rect::from_two_pos(drag.start, drag.end),
                     self.include_hidden,
+                    self.include_protected,
                     false,
                 );
                 *selected = drag.operation.apply(&drag.original, &hits);
@@ -162,18 +178,23 @@ impl Selection {
                     projection,
                     Rect::from_center_size(point, Vec2::ZERO),
                     self.include_hidden,
+                    self.include_protected,
                     true,
                 );
-                *selected = Operation::from(ui.input(|i| i.modifiers), self.operation)
+                *selected = Operation::click(ui.input(|i| i.modifiers), self.operation)
                     .apply(selected, &hits);
             }
             if !ui.input(|i| i.pointer.primary_down()) {
                 self.press = None;
             }
         }
+        layers.retain_selectable(selected, self.include_protected);
         let painter = ui.painter_at(stage);
         let mut combined = Rect::NOTHING;
-        for drawable in drawables.iter().filter(|d| selected.contains(&d.id)) {
+        for drawable in drawables
+            .iter()
+            .filter(|d| !self.tinted_preview && selected.contains(&d.id))
+        {
             let bounds = Rect::from_points(&projection.vertices(drawable));
             if bounds.is_finite() && bounds.intersects(stage) {
                 combined = combined.union(bounds);
@@ -196,6 +217,45 @@ impl Selection {
                 egui::StrokeKind::Inside,
             );
         }
+        if self.tinted_preview
+            && response.hovered()
+            && self.drag.is_none()
+            && let Some(point) = response.hover_pos()
+        {
+            let hits = pick(
+                drawables,
+                layers,
+                projection,
+                Rect::from_center_size(point, Vec2::ZERO),
+                self.include_hidden,
+                self.include_protected,
+                true,
+            );
+            if let Some(drawable) = drawables.iter().find(|d| hits.contains(&d.id)) {
+                let points = projection.vertices(drawable);
+                for [a, b] in boundary_edges(drawable) {
+                    painter.line_segment(
+                        [points[a], points[b]],
+                        Stroke::new(1.5, egui::Color32::from_rgb(255, 209, 102)),
+                    );
+                }
+                let action = match Operation::click(ui.input(|i| i.modifiers), self.operation) {
+                    Operation::Remove => "Click to deselect",
+                    Operation::Toggle if selected.contains(&drawable.id) => "Click to deselect",
+                    Operation::Replace => "Click to select only this layer",
+                    _ => "Click to select",
+                };
+                response.clone().on_hover_text(format!(
+                    "{} · {}\n{action}. Drag to select several layers.",
+                    drawable.id,
+                    if selected.contains(&drawable.id) {
+                        "Selected"
+                    } else {
+                        "Not selected"
+                    }
+                ));
+            }
+        }
         if let Some(drag) = &self.drag {
             let rect = Rect::from_two_pos(drag.start, drag.end);
             painter.rect_filled(rect, 2., crate::theme::mint().gamma_multiply(0.12));
@@ -210,17 +270,50 @@ impl Selection {
     }
 }
 
+// Draw the mesh perimeter, not its internal triangulation or bounding box.
+fn boundary_edges(drawable: &Drawable) -> Vec<[usize; 2]> {
+    let mut edges = std::collections::BTreeMap::<[usize; 2], usize>::new();
+    for triangle in drawable.indices.as_chunks::<3>().0 {
+        let indices = triangle.map(usize::from);
+        if indices.iter().any(|&i| {
+            drawable
+                .positions
+                .get(i)
+                .is_none_or(|p| !p.iter().all(|v| v.is_finite()))
+        }) {
+            continue;
+        }
+        for [a, b] in [
+            [indices[0], indices[1]],
+            [indices[1], indices[2]],
+            [indices[2], indices[0]],
+        ] {
+            if a != b {
+                *edges.entry([a.min(b), a.max(b)]).or_default() += 1;
+            }
+        }
+    }
+    edges
+        .into_iter()
+        .filter_map(|(edge, count)| (count == 1).then_some(edge))
+        .collect()
+}
+
 fn pick(
     drawables: &[Drawable],
     layers: &aria_core::layers::Config,
     projection: &Projection,
     area: Rect,
     include_hidden: bool,
+    include_protected: bool,
     topmost: bool,
 ) -> BTreeSet<String> {
     let mut hits = BTreeSet::new();
     let mut best = None;
     for (index, drawable) in drawables.iter().enumerate() {
+        if !layers.selectable(&drawable.id, include_protected) {
+            continue;
+        }
         if !include_hidden
             && (!drawable.visible || drawable.opacity * layers.opacity(&drawable.id) <= 0.)
         {
@@ -303,6 +396,68 @@ fn intersects(triangle: [Pos2; 3], rect: Rect) -> bool {
 mod tests {
     use super::*;
     #[test]
+    fn protection_filters_clicks_boxes_and_hidden_hits_with_explicit_override() {
+        let meshes = [mesh("Back", 0), mesh("Front", 1)];
+        let mut layers = aria_core::layers::Config::default();
+        layers.groups.push(aria_core::layers::Group {
+            id: 1,
+            name: "Keep face".into(),
+            layers: BTreeSet::from(["Front".into()]),
+            opacity: 0.,
+            active: false,
+            protect_selection: true,
+        });
+        let area = Rect::from_center_size(egui::pos2(25., 25.), Vec2::splat(2.));
+        for topmost in [false, true] {
+            assert_eq!(
+                pick(&meshes, &layers, &projection(), area, true, false, topmost),
+                BTreeSet::from(["Back".into()])
+            );
+        }
+        assert_eq!(
+            pick(&meshes, &layers, &projection(), area, false, true, true),
+            BTreeSet::from(["Front".into()])
+        );
+        assert_eq!(
+            pick(&meshes, &layers, &projection(), area, false, true, false).len(),
+            2
+        );
+        layers.opacity.insert("Front".into(), 0.);
+        assert_eq!(
+            pick(&meshes, &layers, &projection(), area, true, false, false).len(),
+            1
+        );
+    }
+    #[test]
+    fn hover_outline_uses_perimeter_and_rejects_invalid_indices() {
+        let mut drawable = mesh("Quad", 0);
+        drawable.positions = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
+        drawable.indices = vec![0, 1, 2, 0, 2, 3, 0, 1, 99];
+        assert_eq!(
+            boundary_edges(&drawable),
+            vec![[0, 1], [0, 3], [1, 2], [2, 3]]
+        );
+    }
+    #[test]
+    fn explicit_selection_modifiers_keep_their_meaning() {
+        assert_eq!(
+            Operation::click(egui::Modifiers::NONE, Operation::Add),
+            Operation::Toggle
+        );
+        assert_eq!(
+            Operation::click(egui::Modifiers::SHIFT, Operation::Add),
+            Operation::Add
+        );
+        assert_eq!(
+            Operation::click(egui::Modifiers::ALT, Operation::Add),
+            Operation::Remove
+        );
+        assert_eq!(
+            Operation::click(egui::Modifiers::NONE, Operation::Replace),
+            Operation::Replace
+        );
+    }
+    #[test]
     fn plain_mouse_clicks_and_repeated_boxes_accumulate_without_shift() {
         let ctx = egui::Context::default();
         let stage = projection().rect;
@@ -356,6 +511,24 @@ mod tests {
             frame(vec![button(point, false)], &mut selection, &mut selected);
         }
         assert_eq!(selected, BTreeSet::from(["Left".into(), "Right".into()]));
+        // The same unmodified click deselects and reselects the visible hit,
+        // preserving the other selected layer (including between-frame clicks).
+        let point = egui::pos2(20., 20.);
+        for expected in [
+            BTreeSet::from(["Right".into()]),
+            BTreeSet::from(["Left".into(), "Right".into()]),
+        ] {
+            frame(
+                vec![
+                    egui::Event::PointerMoved(point),
+                    button(point, true),
+                    button(point, false),
+                ],
+                &mut selection,
+                &mut selected,
+            );
+            assert_eq!(selected, expected);
+        }
         selected.clear();
         // Two separate mouse boxes have the same accumulation behavior.
         for x in [10., 60.] {
@@ -437,6 +610,7 @@ mod tests {
             &config.layers,
             &projection,
             area,
+            false,
             false,
             false,
         );
@@ -588,22 +762,22 @@ mod tests {
         let area = Rect::from_min_size(egui::pos2(20., 20.), Vec2::splat(2.));
         let mut layers = aria_core::layers::Config::default();
         assert_eq!(
-            pick(&meshes, &layers, &projection(), area, false, false).len(),
+            pick(&meshes, &layers, &projection(), area, false, false, false).len(),
             2
         );
         assert_eq!(
-            pick(&meshes, &layers, &projection(), area, false, true),
+            pick(&meshes, &layers, &projection(), area, false, false, true),
             BTreeSet::from(["Front".into()])
         );
         let gap = Rect::from_min_size(egui::pos2(75., 75.), Vec2::splat(2.));
-        assert!(pick(&meshes, &layers, &projection(), gap, false, false).is_empty());
+        assert!(pick(&meshes, &layers, &projection(), gap, false, false, false).is_empty());
         layers.opacity.insert("Front".into(), 0.);
         assert_eq!(
-            pick(&meshes, &layers, &projection(), area, false, true),
+            pick(&meshes, &layers, &projection(), area, false, false, true),
             BTreeSet::from(["Back".into()])
         );
         assert_eq!(
-            pick(&meshes, &layers, &projection(), area, true, false).len(),
+            pick(&meshes, &layers, &projection(), area, true, false, false).len(),
             2
         );
     }
@@ -645,6 +819,7 @@ mod tests {
                 &Default::default(),
                 &p,
                 Rect::from_center_size(inside, Vec2::splat(2.)),
+                false,
                 false,
                 false
             )

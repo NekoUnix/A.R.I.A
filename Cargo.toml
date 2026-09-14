@@ -3,7 +3,7 @@ members = ["crates/aria-core", "crates/aria-tracking", "crates/aria-model", "cra
 resolver = "2"
 
 [workspace.package]
-version = "0.30.0-alpha.1"
+version = "0.31.0-alpha.1"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT"

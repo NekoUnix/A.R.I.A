@@ -7,6 +7,24 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## Frozen selector and bread — development update, 2026-09-14
 
+### v0.31 highlights and selection protection
+
+- 229 standard workspace Rust tests passed, with strict all-target/all-feature
+  Clippy, formatting and repository checks. Regression tests cover repeated
+  same-point clicks, rapid gestures, protected click/box filtering, overlap,
+  older-profile migration and saved protection independent of visibility state.
+- Native Cubism/GPU checks passed on full Odette (1,174 meshes) and OilBun (284).
+  Highlighting changes rendered colors while preserving alpha/clipping; clearing
+  the selection restores exact pixels. Live PNG exports remain unhighlighted.
+- Actual Windows mouse interaction selected and deselected the same layer.
+  Saving 178 picked layers as a protected group removed them from the selection.
+  A full-model box selected 200 other layers; enabling the override and repeating
+  it selected 378. Disabling the override returned to 200. The current
+  [frozen-window capture](images/frozen-layer-editor.png) shows this protection
+  alongside blue selected artwork. The profile was isolated from user settings.
+
+### Earlier frozen-selector checks
+
 - Mouse-only egui pointer tests cover repeated clicks, repeated boxes and the
   explicit Remove mode, including a complete drag delivered within one frame.
   Undo protects edits made outside the selector, and

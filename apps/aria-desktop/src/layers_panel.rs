@@ -17,9 +17,15 @@ pub struct Panel {
     range_anchor: Option<String>,
     row_drag: Option<(String, BTreeSet<String>, bool)>,
     tint: Option<[f32; 3]>,
+    include_protected: bool,
 }
 impl Panel {
     pub fn stage_tools(&mut self, ui: &mut egui::Ui, saved: &mut SavedRig) -> bool {
+        saved
+            .config
+            .layers
+            .retain_selectable(&mut self.selected, self.include_protected);
+        self.stage_selection.include_protected = self.include_protected;
         if ui.button("Select layers…").on_hover_text("Open a separate frozen model window. Click multiple layers or draw boxes with your mouse, then hide or restore the selection. No modifier keys needed.").clicked() {
             self.stage_selection.cancel(&mut self.selected);
             self.stage_selection.enabled = false;
@@ -67,14 +73,17 @@ impl Panel {
             .max()
             .unwrap_or(0)
             .saturating_add(1);
-        self.editor.show(
+        self.editor.include_protected = self.include_protected;
+        let changed = self.editor.show(
             ctx,
             avatar,
             &mut saved.config.layers,
             &mut self.selected,
             next_id,
             started,
-        )
+        );
+        self.include_protected = self.editor.include_protected;
+        changed
     }
     pub fn stage(
         &mut self,
@@ -140,6 +149,7 @@ impl Panel {
                 layers: self.selected.clone(),
                 opacity: 0.,
                 active: false,
+                protect_selection: false,
             });
         }
     }
@@ -159,6 +169,12 @@ impl Panel {
                 "Include hidden layers in stage selection",
             )
         });
+        if help::control(ui, "live2d-layers", |ui| ui.checkbox(&mut self.include_protected, "Include protected layers"))
+            .on_hover_text("Selection tools skip protected groups by default. Enable this to select and edit their members deliberately. Direct opacity controls and saved visibility hotkeys still work.").changed() {
+            self.row_drag = None;
+            self.stage_selection.cancel(&mut self.selected);
+            saved.config.layers.retain_selectable(&mut self.selected, self.include_protected);
+        }
         theme::caption(
             ui,
             "Select layers… opens a frozen model window: click layers or draw boxes with your mouse, without holding keys. On stage enables the optional moving-stage picker. List rows also support range selection.",
@@ -189,7 +205,17 @@ impl Panel {
                 .collect();
             ui.horizontal_wrapped(|ui| {
                 if ui.button("Select results").clicked() {
-                    self.selected.extend(filtered.iter().map(|d| d.id.clone()));
+                    self.selected.extend(
+                        filtered
+                            .iter()
+                            .filter(|d| {
+                                saved
+                                    .config
+                                    .layers
+                                    .selectable(&d.id, self.include_protected)
+                            })
+                            .map(|d| d.id.clone()),
+                    );
                 }
                 if ui.button("Clear selection").clicked() {
                     self.selected.clear();
@@ -220,8 +246,8 @@ impl Panel {
                                             .truncate()
                                             .sense(egui::Sense::click_and_drag()),
                                     )
-                                    .on_hover_text(&d.id);
-                                if response.clicked() {
+                                    .on_hover_text(if saved.config.layers.selectable(&d.id, self.include_protected) { d.id.clone() } else { format!("{} · Protected from selection. Enable Include protected layers to select it.", d.id) });
+                                if response.clicked() && saved.config.layers.selectable(&d.id, self.include_protected) {
                                     if ui.input(|i| i.modifiers.shift) {
                                         let anchor = filtered
                                             .iter()
@@ -239,7 +265,7 @@ impl Panel {
                                     }
                                     self.range_anchor = Some(d.id.clone());
                                 }
-                                if response.drag_started_by(egui::PointerButton::Primary) {
+                                if response.drag_started_by(egui::PointerButton::Primary) && saved.config.layers.selectable(&d.id, self.include_protected) {
                                     self.row_drag =
                                         Some((d.id.clone(), self.selected.clone(), !selected));
                                 }
@@ -324,6 +350,10 @@ impl Panel {
                     self.row_drag = None;
                 }
             }
+            saved
+                .config
+                .layers
+                .retain_selectable(&mut self.selected, self.include_protected);
             ui.horizontal_wrapped(|ui| {
                 for (label, value) in [
                     ("Hide selected", 0.),
@@ -443,6 +473,7 @@ impl Panel {
                         layers: self.selected.clone(),
                         opacity: 0.,
                         active: false,
+                        protect_selection: false,
                     });
                 }
                 self.editing = None;
@@ -458,9 +489,11 @@ impl Panel {
                         ui.small(format!("{} layers", group.layers.len()));
                     });
                     ui.collapsing("Group settings & shortcut", |ui| {
+                        changed |= ui.checkbox(&mut group.protect_selection, "Protect from selection")
+                            .on_hover_text("Clicks, boxes and list selection skip these layers unless Include protected layers is on. This is independent of the group's visibility/hotkey state and saves with this avatar.").changed();
                         changed |= help::control(ui, "live2d-layers", |ui| ui.add(egui::Slider::new(&mut group.opacity, 0.0..=1.0).text("Group opacity"))).changed();
                         ui.horizontal_wrapped(|ui| {
-                            if ui.button("Edit selected layers").clicked() { self.selected.clone_from(&group.layers); self.name.clone_from(&group.name); self.editing = Some(group.id); }
+                            if ui.button("Edit selected layers").on_hover_text("Selects the group's full membership for editing, including protected layers. This enables Include protected layers.").clicked() { self.include_protected = true; self.selected.clone_from(&group.layers); self.name.clone_from(&group.name); self.editing = Some(group.id); }
                             if ui.button("Delete group").clicked() { remove = Some(group.id); }
                         });
                         if let Some(key) = saved.layer_hotkeys.get(&group.id) { ui.label(format!("Shortcut: {}", key.label())); }
@@ -535,6 +568,10 @@ impl Panel {
         if let Some(message) = &self.message {
             ui.label(message);
         }
+        saved
+            .config
+            .layers
+            .retain_selectable(&mut self.selected, self.include_protected);
         if let Some(message) = &self.editor.message {
             ui.label(message);
         }

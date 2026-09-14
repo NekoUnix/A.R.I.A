@@ -2,7 +2,7 @@
 
 ![Selecting artwork in a separate frozen model window](images/frozen-layer-editor.png)
 
-The frozen selector is available in the next source build after v0.30.0-alpha.1.
+The frozen selector, blue highlights and protected groups are included in v0.31.0-alpha.1.
 
 Open **Inspector → Avatar → Layers** with a Live2D avatar loaded. The list comes
 from that avatar's exported ArtMeshes, with parent part names from its display
@@ -11,7 +11,7 @@ depend on Odette's parameter names or artwork. Original PSD layers that were
 merged or omitted during export cannot be recovered from a moc3.
 
 1. Click **Select layers…** above Your stage or in this inspector. In the
-   separate window, **Add** mode lets you click artwork or draw multiple boxes
+   separate window, **Select** mode lets you click artwork to select/deselect it or draw multiple boxes
    with the left mouse button, without holding Shift. Your live model keeps
    tracking while this preview stays frozen. **Remove**, **Replace** and
    **Toggle** offer explicit mouse-only alternatives. Use **Hide selected**,
@@ -35,7 +35,18 @@ opacity or groups without changing its visibility on the live model. Artwork
 hidden by authored parameters stays hidden until you change those parameters
 and refresh the pose. Collapsed layers can be picked from the main list.
 The optional **On stage** picker has its own **Include hidden layers** option.
-Selection outlines never enter OBS output or PNG exports.
+Selected visible artwork is blue in the frozen preview. The hovered mesh has a
+gold outline, with its ID and selection state in the tooltip. Click again to
+deselect it, or use the selection for hide/restore and saved hotkey groups.
+Highlights never enter OBS output, PNG exports or your saved layer colors.
+
+Save a group with **Protect this new group** to exclude its members from future
+clicks, boxes and list selections. Manage saved protection through **Selection
+protection** in the frozen window or **Protect from selection** in group settings.
+**Include protected layers** explicitly allows picking those members; switching
+it off removes them from the current selection. Protection is independent of
+group visibility and saves per avatar. See the [step-by-step protection
+guide](live2d-customization.md#protect-layers-from-selection).
 
 **Selected layer colors** applies or restores a multiply tint. White preserves
 texture colors; multiplication cannot recolor black artwork. See the
