@@ -25,7 +25,7 @@ anyhow.workspace = true
 # Native OpenUrl/hyperlink dispatch needs `links` when default features are disabled.
 eframe = { version = "=0.36.2", default-features = false, features = ["default_fonts", "wgpu", "persistence", "links", "x11", "wayland"] }
 wgpu = { version = "30.0.1", default-features = false, features = ["std", "dx12", "vulkan", "metal", "wgsl"] }
-rfd = "0.15"
+rfd = "0.17"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif"] }
 gif = "0.14.2"
 cpal = "=0.17.3"
