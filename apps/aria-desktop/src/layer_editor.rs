@@ -85,6 +85,8 @@ pub struct Editor {
     refresh: bool,
     history: History,
     group_name: String,
+    protect_new_group: bool,
+    pub include_protected: bool,
     pub message: Option<String>,
     pub manage_groups: bool,
 }
@@ -93,6 +95,7 @@ impl Default for Editor {
         let mut selection = Selection::default();
         selection.enabled = true;
         selection.operation = Operation::Add;
+        selection.tinted_preview = true;
         Self {
             requested: false,
             open: false,
@@ -105,6 +108,8 @@ impl Default for Editor {
             refresh: false,
             history: History::default(),
             group_name: String::new(),
+            protect_new_group: false,
+            include_protected: false,
             message: None,
             manage_groups: false,
         }
@@ -223,6 +228,7 @@ impl Editor {
         selected: &mut BTreeSet<String>,
         next_group_id: u64,
     ) -> bool {
+        layers.retain_selectable(selected, self.include_protected);
         let before = layers.clone();
         let mut undo = false;
         egui::Panel::top("frozen-layer-tools").show(root, |ui| {
@@ -234,12 +240,12 @@ impl Editor {
             ui.label(format!("{} · Frozen preview · Your live stage keeps tracking", avatar.name));
             ui.horizontal_wrapped(|ui| {
                 ui.label("Mouse selection:");
-                for (mode, label) in [(Operation::Add,"Add"),(Operation::Remove,"Remove"),(Operation::Replace,"Replace"),(Operation::Toggle,"Toggle")] {
+                for (mode, label) in [(Operation::Add,"Select"),(Operation::Remove,"Remove"),(Operation::Replace,"Replace"),(Operation::Toggle,"Toggle")] {
                     if ui.selectable_value(&mut self.selection.operation, mode, label).clicked() { self.selection.cancel(selected); }
                 }
                 if ui.button("Clear selection").clicked() { self.selection.cancel(selected); selected.clear(); }
             });
-            ui.small("Click layers or drag boxes directly on the frozen model. Add keeps earlier selections. No keyboard keys needed.");
+            ui.small("Select: click to select / deselect · Drag boxes to add layers · Blue artwork is selected · Gold outline shows the layer under your mouse.");
             ui.horizontal_wrapped(|ui| {
                 if ui.add_enabled(!selected.is_empty(), egui::Button::new("Hide selected")).clicked() {
                     for id in selected.iter() { layers.opacity.insert(id.clone(), 0.); }
@@ -254,6 +260,11 @@ impl Editor {
             });
             ui.checkbox(&mut self.reveal, "Reveal ARIA-hidden layers in this preview")
                 .on_hover_text("Temporarily show layers hidden by ARIA opacity/groups, so you can select and restore them. This checkbox does not change the live model. Artwork hidden by the frozen pose's parameters stays hidden.");
+            if ui.checkbox(&mut self.include_protected, "Include protected layers")
+                .on_hover_text("Temporarily allow selecting protected group members. Turn off to remove them from the current selection. Protection stays saved per avatar and is independent of visibility hotkeys.").changed() {
+                self.selection.cancel(selected);
+                layers.retain_selectable(selected, self.include_protected);
+            }
         });
         egui::Panel::bottom("frozen-layer-status").show(root, |ui| {
             ui.small("Wheel: zoom · Right/middle drag: pan · Esc: cancel box · Visibility changes save to this avatar and apply to every output.");
@@ -263,7 +274,7 @@ impl Editor {
             ui.heading(format!("{} selected", selected.len()));
             ui.small("Uncheck a row to remove it from the selection.");
             let ids: Vec<_> = selected.iter().cloned().collect();
-            egui::ScrollArea::vertical().id_salt("frozen-picked-list").max_height((ui.available_height() - 190.).max(100.))
+            egui::ScrollArea::vertical().id_salt("frozen-picked-list").max_height((ui.available_height() - 290.).max(70.))
                 .show_rows(ui, ui.spacing().interact_size.y, ids.len(), |ui, rows| {
                     for id in &ids[rows] {
                         let mut keep = true;
@@ -286,12 +297,22 @@ impl Editor {
                 }
             }
             ui.add(egui::TextEdit::singleline(&mut self.group_name).hint_text("Group name").char_limit(60));
+            ui.checkbox(&mut self.protect_new_group, "Protect this new group")
+                .on_hover_text("Save these layers as a group that selection tools skip by default. This does not hide them.");
             if ui.add_enabled(!selected.is_empty() && !self.group_name.trim().is_empty() && self.group_name.len() <= 120 && layers.groups.len() < 128,
                 egui::Button::new("Save selection as group")).clicked() {
-                layers.groups.push(Group { id:next_group_id, name:self.group_name.trim().into(), layers:selected.clone(), opacity:0., active:false });
-                self.message = Some("Group saved. Manage groups & hotkeys opens its shortcut settings.".into());
+                layers.groups.push(Group { id:next_group_id, name:self.group_name.trim().into(), layers:selected.clone(), opacity:0., active:false, protect_selection:self.protect_new_group });
+                self.message = Some(if self.protect_new_group { "Protected group saved. Its layers are skipped unless Include protected layers is on." } else { "Group saved. Manage groups & hotkeys opens its shortcut settings." }.into());
                 self.group_name.clear();
+                self.protect_new_group = false;
             }
+            ui.collapsing("Selection protection", |ui| {
+                ui.small("Checked groups are skipped, even when their visibility shortcut is off.");
+                egui::ScrollArea::vertical().id_salt("frozen-protected-groups").max_height(100.).show(ui, |ui| {
+                    for group in &mut layers.groups { ui.checkbox(&mut group.protect_selection, &group.name); }
+                });
+                if layers.groups.is_empty() { ui.small("Save a group first, then protect it here."); }
+            });
             if ui.button("Manage groups & hotkeys…").clicked() { self.manage_groups = true; }
             ui.small("Saved groups appear in this model's Layers inspector. Closing this window keeps visibility edits.");
         });
@@ -304,16 +325,14 @@ impl Editor {
             self.history.remember(before.clone(), layers);
         }
         let preview_layers = preview_config(layers, self.reveal);
+        self.selection.include_protected = self.include_protected;
+        layers.retain_selectable(selected, self.include_protected);
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(theme::bg()).inner_margin(10.))
             .show(root, |ui| {
                 let Some(snapshot) = &mut self.snapshot else {
                     return;
                 };
-                if let Err(error) = snapshot.sync(&preview_layers) {
-                    self.message = Some(format!("Preview could not update: {error:#}"));
-                    return;
-                }
                 let (area, _) = ui.allocate_exact_size(
                     ui.available_size().max(Vec2::splat(1.)),
                     egui::Sense::hover(),
@@ -366,6 +385,12 @@ impl Editor {
                 {
                     self.pan += ui.input(|i| i.pointer.delta());
                 }
+                // The image command above refers to this texture. Update it after
+                // picking so even a single-frame click shows the new selection.
+                let highlighted = highlight_config(&preview_layers, &snapshot.drawables, selected);
+                if let Err(error) = snapshot.sync(&highlighted) {
+                    self.message = Some(format!("Preview could not update: {error:#}"));
+                }
                 #[cfg(feature = "screenshots")]
                 if crate::smoke_mode() {
                     ui.ctx().data_mut(|d| {
@@ -375,6 +400,31 @@ impl Editor {
             });
         before != *layers
     }
+}
+
+/// Temporary colors use the existing masked renderer and shared atlas. Never
+/// write these colors into the avatar profile, undo history or live output.
+fn highlight_config(
+    layers: &Config,
+    drawables: &[aria_live2d::Drawable],
+    selected: &BTreeSet<String>,
+) -> Config {
+    let mut config = layers.clone();
+    for drawable in drawables.iter().filter(|d| selected.contains(&d.id)) {
+        let colors =
+            config
+                .colors
+                .entry(drawable.id.clone())
+                .or_insert(aria_core::layers::Colors {
+                    multiply: drawable.multiply,
+                    screen: drawable.screen,
+                });
+        for (channel, accent) in [0.08, 0.62, 0.95].into_iter().enumerate() {
+            colors.multiply[channel] *= 0.35;
+            colors.screen[channel] = accent + (1. - accent) * colors.screen[channel] * 0.35;
+        }
+    }
+    config
 }
 
 fn preview_config(layers: &Config, reveal: bool) -> Config {
@@ -392,6 +442,44 @@ fn preview_config(layers: &Config, reveal: bool) -> Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn selection_colors_are_temporary_and_keep_authored_alpha_and_other_layers() {
+        let drawables: Vec<_> = (0..40)
+            .map(|i| aria_live2d::Drawable {
+                id: format!("Mesh{i}"),
+                multiply: [0.8, 0.6, 0.4, 0.7],
+                screen: [0.1, 0.2, 0.3, 0.9],
+                ..Default::default()
+            })
+            .collect();
+        let selected = drawables[..39].iter().map(|d| d.id.clone()).collect();
+        let mut layers = Config::default();
+        layers.colors.insert(
+            "Mesh0".into(),
+            aria_core::layers::Colors {
+                multiply: [0.5; 4],
+                screen: [0.2; 4],
+            },
+        );
+        let original = layers.clone();
+        let highlighted = highlight_config(&layers, &drawables, &selected);
+        assert_eq!(
+            highlighted.colors.len(),
+            39,
+            "Large selections highlight every member"
+        );
+        assert!(!highlighted.colors.contains_key("Mesh39"));
+        assert_eq!(highlighted.colors["Mesh0"].multiply[3], 0.5);
+        assert_eq!(highlighted.colors["Mesh0"].screen[3], 0.2);
+        assert_eq!(highlighted.colors["Mesh1"].multiply[3], 0.7);
+        assert_eq!(highlighted.colors["Mesh1"].screen[3], 0.9);
+        highlighted.validate().unwrap();
+        assert_eq!(layers, original);
+        assert_eq!(
+            highlight_config(&layers, &drawables, &BTreeSet::new()),
+            original
+        );
+    }
     #[test]
     fn undo_restores_visibility_and_preserves_external_changes() {
         let mut layers = Config::default();
@@ -421,6 +509,7 @@ mod tests {
             layers: BTreeSet::from(["Clothes".into()]),
             opacity: 0.,
             active: true,
+            protect_selection: false,
         });
         layers.colors.insert(
             "Hair".into(),
@@ -470,6 +559,42 @@ mod tests {
         assert_eq!(
             frozen.renderer.atlas_mib, 0.,
             "Frozen previews share uploaded atlases"
+        );
+        let all = frozen.drawables.iter().map(|d| d.id.clone()).collect();
+        let original = config.layers.clone();
+        let highlighted = highlight_config(&config.layers, &frozen.drawables, &all);
+        frozen.sync(&highlighted).unwrap();
+        let tinted = frozen.renderer.read_rgba_for_test().unwrap();
+        assert!(
+            tinted != pixels,
+            "Selected artwork must visibly change color"
+        );
+        assert!(
+            tinted
+                .0
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .zip(pixels.0.as_chunks::<4>().0)
+                .all(|(a, b)| a[3] == b[3]),
+            "Highlight colors must preserve atlas alpha and clipping"
+        );
+        assert_eq!(
+            config.layers, original,
+            "Highlights never enter saved settings"
+        );
+        let highlight_folder = tempfile::tempdir().unwrap();
+        let live_unmodified = highlight_folder.path().join("live.png");
+        avatar.save_png(&live_unmodified).unwrap();
+        let live_pixels = image::open(&live_unmodified).unwrap().into_rgba8();
+        assert!(
+            live_pixels.as_raw() == &pixels.0,
+            "Highlight rendering must not enter the live PNG output"
+        );
+        frozen.sync(&config.layers).unwrap();
+        assert!(
+            pixels == frozen.renderer.read_rgba_for_test().unwrap(),
+            "Deselect restores exact authored colors"
         );
         let before_head = avatar
             .model

@@ -114,9 +114,12 @@ No private avatar files, config exports or SDK binaries are included.
 
 ## Frozen selector and bread development update
 
-`frozen-layer-editor.png` shows the separate native Windows selector on
-2026-09-14 with the owner's full Odette avatar and an isolated profile. Plain
-mouse clicks and two boxes selected 312 meshes without keyboard modifiers.
+`frozen-layer-editor.png` was refreshed for v0.31.0-alpha.1 on 2026-09-14 with
+the owner's full Odette avatar and an isolated profile. Actual mouse interaction
+created a protected group of 178 head-area meshes; a full-model box then selected
+200 other meshes, shown blue. Turning the protection override on, reselecting,
+and turning it off verified counts of 378 then 200. The image is an unedited
+native Windows capture; blue is the editor's selection highlight, not a model tint.
 The picture was captured through the desktop because eframe's immediate wgpu
 viewport does not handle its Screenshot command. The live stage continued
 demo tracking while this preview stayed frozen. No avatar sources are included.

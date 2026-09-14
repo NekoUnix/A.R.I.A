@@ -1243,6 +1243,7 @@ mod tests {
         monitor.saved.config.layers.groups.push(Group {
             id: 1,
             name: "Jacket".into(),
+            protect_selection: false,
             layers: ["ArtMeshJacket".into()].into(),
             opacity: 0.,
             active: false,
