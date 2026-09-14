@@ -5,6 +5,33 @@
 This file records checks for the development builds. The Windows CI workflow
 is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
+## v0.32 multiple avatars — 2026-09-14
+
+- 239 standard workspace Rust tests passed, along with strict all-target/all-feature
+  Clippy and formatting. Repository documentation and package contracts are checked
+  separately before publishing the release.
+- The workspace regression tests cover independent settings and animation clocks,
+  preserving render resources when switching editor tabs, save/load migration,
+  missing-file recovery, queued profile choices, duplicate-content profiles,
+  shared-tracker chains/cycles and hotkeys targeting multiple loaded profiles.
+- Mouse-event tests drag one avatar without moving another in landscape, portrait
+  and Freeform, including repeated layout passes. They exercise scale, framing
+  locks, overlap order, independent canvas placement and a single shared background.
+- The opt-in Windows native GPU test loads full Odette (1,174 Live2D meshes),
+  OilBun (284 Live2D meshes), the supplied Odette animated GIF and NekoUnity2 VRM
+  simultaneously. It advances each runtime, verifies finite parameters and tracking
+  input, renders all four to each output format, and checks pixels in every avatar's
+  area. Switching stages preserves the two distinct Cubism process IDs; unloading
+  the GIF preserves the other three avatars.
+- [Workspace UI](images/profiles-v32.png) and [mixed composition](images/multi-avatar-landscape.png)
+  images are rendered directly through the real application UI and GPU composition
+  path, with isolated test state. The inputs are synthetic Demo frames. Counters
+  in these development renders are not performance benchmarks.
+- Cross-platform build checks do not establish physical camera/gamepad acceptance
+  or native multi-avatar OBS behavior on every Linux/macOS desktop. Those still
+  need hardware testing. Ordinary Window Capture includes the preview's UI;
+  the separate native output excludes selection controls and outlines.
+
 ## Frozen selector and bread — development update, 2026-09-14
 
 ### v0.31 highlights and selection protection

@@ -81,7 +81,7 @@ Choose 64, 128, 256, 512 or 1024 MiB per GIF in Avatar & appearance or PNG/GIF a
 
 Changing the budget reloads the action library in the background. Only one image import worker decodes at a time; cancellation stops at a frame boundary. Playback, fading, pinning and throws reuse immutable fitted frame textures. They do not decode or resize the original GIF every frame. An invalid file reports its error beside the action. Save profile and image-action presets retain this avatar's chosen playback budget.
 
-## workspace | Finding controls in the workspace | Left: Avatar, Tracking, Output and Chat setup. Right: Tracking, Avatar, Stage and Poses tools. Category buttons remain visible while their settings scroll.
+## workspace | Finding controls in the workspace | Left: Profiles, Avatar, Tracking, Output and Chat setup. Right: Tracking, Avatar, Stage and Poses tools. Category buttons remain visible while their settings scroll.
 
 ### Studio setup on the left
 
@@ -117,7 +117,7 @@ Normal-size images bypass resizing. Uploaded textures and animation frames are r
 
 ### Start a PNG or GIF avatar
 
-Use Avatar & appearance → Import PNG / GIF avatar to select your base artwork. ARIA creates an Idle action for a new image and restores that image's saved profile when reopened. The last image avatar reopens on startup unless you launch a different model explicitly. PNG/GIF image actions belong to the base avatar's content identity, so switching avatars restores separate settings. Live2D keeps its own rendered avatar; microphone and stage-object inputs also work there.
+Use Avatar & appearance → Import PNG / GIF avatar to select your base artwork. ARIA creates an Idle action for a new image and restores that image's saved profile when reopened. Checked profiles reopen on startup unless you launch a different model explicitly. PNG/GIF image actions belong to the base avatar's content identity, so switching avatars restores separate settings. Live2D keeps its own rendered avatar; microphone and stage-object inputs also work there.
 
 Choose PNG / GIF actions in the Inspector. Add images accepts several PNG/GIF files; each becomes a named action. Talking image and Blink image create useful trigger defaults. Select an action in the library to configure its artwork, trigger, transition, movement and GIF playback. Replace a missing file with Choose PNG / GIF. Reload artwork rereads changed or previously missing files. A broken file is reported and skipped, allowing another valid action to show.
 
@@ -167,7 +167,7 @@ Images may be up to 40960×40960 source edges with a 512 MiB file limit. GIFs ar
 
 ### Connect a microphone
 
-Choose Microphone / manual · no tracker for a stationary puppet without phone tracking. Enabling the microphone while Demo is selected switches to this local mode. Open the Microphone tab and enable microphone input. Choose Windows default input or a named device. Refresh devices updates the list; Retry input reopens a disconnected or failed device. A missing explicitly selected device produces an error instead of silently choosing another microphone. If Windows blocks access, enable microphone access and access for desktop apps in Windows Settings → Privacy & security → Microphone, then Retry. Device selection and sensitivity settings save with this avatar. Disabling input or switching avatars closes the current audio stream.
+Choose Microphone / manual · no tracker for a stationary puppet without phone tracking. Enabling the microphone while Demo is selected switches to this local mode. Open the Microphone tab and enable microphone input. Choose Windows default input or a named device. Refresh devices updates the list; Retry input reopens a disconnected or failed device. A missing explicitly selected device produces an error instead of silently choosing another microphone. If Windows blocks access, enable microphone access and access for desktop apps in Windows Settings → Privacy & security → Microphone, then Retry. Device selection and sensitivity settings save with this avatar. Disabling input or unloading its profile closes that audio stream. Switching editor tabs keeps loaded profiles running.
 
 The meter shows a normalized 0–1 level and TALKING/QUIET state. Raw dBFS is the measured RMS volume before gain: values closer to 0 are louder. Gain adds sensitivity in decibels. Noise floor maps quiet sound to zero, and Full mouth maps a louder level to one. The full-mouth value must remain above the floor. Set noise floor from current level samples the current meter plus 6 dB; remain quiet when pressing it, then test normal speech. This is an amplitude detector and can respond to music or room noise; it is not speech recognition.
 
@@ -488,21 +488,34 @@ The left Workspace contains Avatar, Tracking, Output and Chat setup. The center 
 
 Every question mark opens a topic here. Search matches words in the full guide, not just titles. Back returns to the previous topic and any context captured with it. Close this window to return to the studio; tracking and output windows keep running. Use Tab to focus a question mark, then Enter or Space to open it. Diagrams are illustrations, not controls.
 
-## profiles | Saving & per-avatar profiles | Save profile stores this avatar's current studio settings and rig. Presets store named movement or pose variants; machine runtime settings are shared.
+## profiles | Multiple avatars and saved profiles | Check any combination of Live2D, PNG/GIF and VRM profiles to load them together. Edit one stage at a time; OBS combines all loaded avatars.
 
-### What is saved
+### Load, choose and arrange
 
-Save profile stores the active avatar's tracking source, IP and ports, mapping and calibration, FPS target, studio zoom, input bindings, manual values, steps, pose, physics groups, expression state, shortcuts, presets and output layouts locally. Output layouts include each canvas's resolution, background, framing and preview size. Opening or closing an output is session state; previews start closed on launch.
+Open Workspace → Profiles → + Add avatar… and follow the guided import for Live2D, PNG/GIF or VRM. Repeat to add another avatar. Successful imports keep the other loaded avatars on their own stages. Each checkbox loads or unloads that profile; unchecking releases its renderer, model worker and owned input devices without deleting files or saved settings. Missing assets show a retryable error while other stages keep running.
 
-The Core DLL path and Windows process priority belong to this PC rather than an individual avatar. Saving a profile does not copy model assets, textures, expression files or the Core DLL into a portable project. Keep referenced files available. Live2D identity is based on moc3 content and image-puppet identity on decoded image content, so moving unchanged artwork preserves its identity. Replacing that content may create a different profile identity; external expression references still need usable paths.
+Click Edit or an Edit stage tab to choose which avatar the workspace and inspector change. Its name is displayed above the settings and stage. Switching tabs preserves each avatar's animation, input filters, physics, expression state and props. The avatar name can be changed under Name, tracking & order.
 
-### When to save
+All checked profiles are combined in landscape, portrait and Freeform outputs. Click an avatar in a preview and drag to move only that avatar. Wheel scrolling resizes it. If avatars overlap, choose a name from the preview's avatar menu before dragging. Send back and Bring forward change drawing order. Model scale and Center model refer to the selected output avatar. Lock model framing protects the entire canvas. Native OBS output excludes the preview's targeting menu and selection outline; ordinary Window Capture records the preview UI.
 
-Edits take effect immediately unless a control says Apply or Assign. Explicit Save buttons write the profile; presets, expression assignments and output changes also request saves. Output dragging is debounced so it does not write to disk every frame. Normal shutdown and periodic application persistence also save settings, but use Save profile before experimenting or force-closing the app. A crash can lose changes not yet written.
+### Save and share tracking
 
-### Profiles versus presets
+Save profile and normal autosaves store each avatar's rig settings and the workspace list. Layouts are now shared workspace settings, with independent placement per avatar per canvas. Changing the editing avatar does not replace the OBS layout. Enabled profiles reopen sequentially at startup; output windows start closed. Legacy per-model settings are reused when importing those avatars into Profiles.
 
-A profile is the current workspace for one avatar. A movement preset saves rig tuning, mapping, physics and active expressions; a pose preset also captures the final parameter values. Presets do not include connection settings, output layouts, SDK paths or the complete model asset folder. Export a preset to share a compatible configuration, not an avatar.
+A newly added avatar follows the previous avatar's face tracker by default. Its ranges, mapping, smoothing, expressions, physics and microphone configuration remain independent. The source profile must stay loaded and connected. Choose Own connection to connect a different camera or phone; separate phone receivers need distinct PC receive ports. Following does not open a second camera or duplicate phone listener. Missing or cyclic tracking links fall back to no face input. Tracking connections are not automatically started after reopening ARIA.
+
+Where global hotkeys are supported, shortcuts on loaded profiles stay registered when changing editor tabs. If the same shortcut belongs to several profiles, it triggers each matching action; assign different keys for independent control. The local API addresses the editing profile and reports the roster in its workspace field. Input-triggered image actions and effects continue on their owning avatars.
+
+### Resource use and removal
+
+Every loaded avatar requires its own assets and runtime. More models increase CPU/GPU work and memory. Reduce output resolution or the workspace FPS target if needed, and uncheck unused profiles. Additional preview formats reuse each avatar's model texture. Remove from list removes only ARIA's roster entry and canvas placements; source assets and legacy per-model settings remain on disk.
+
+```text
+Profiles       Editing stages             Shared OBS canvases
+[x] Live2D A →  A: pins / rig / physics ─┐  Landscape: A + B + C
+[x] GIF B    →  B: images / microphone  ├→ Portrait:  A + B + C
+[x] VRM C    →  C: motion / expressions ┘  Freeform:  A + B + C
+```
 
 ## tracking | Tracking sources & connection | Choose webcam, optional NVIDIA RTX, iPhone VTube Studio or iFacialMocap, external ARIA JSON, or local microphone/manual controls.
 
@@ -1051,7 +1064,7 @@ Detection scans nontransparent atlas colors, including hidden artwork, and the c
 
 In OBS, add a Chroma Key filter, select Custom, paste the same hex color and begin with low similarity. Increase carefully while checking hair, eyes and clothing. Color separation is a best-fit suggestion, not a guarantee: translucency, antialiasing, later color effects and high filter similarity can still remove model detail. Recheck after changing artwork or expressions. A warning means no clearly separated candidate was found; consider Transparent with Spout instead.
 
-## framing | Moving, scaling & locking an output | Drag the avatar to move it, scroll over the canvas to scale it, and double-click the avatar to center it. Each output keeps independent framing.
+## framing | Moving, scaling & locking an output | Drag the avatar to move it, scroll over an avatar to scale it, and double-click the avatar to center it. Each output keeps independent framing.
 
 ### Mouse controls
 
@@ -1063,7 +1076,7 @@ Model scale sets the same scale as the wheel. Center model resets position while
 
 ### Recovery and persistence
 
-If the model is out of view, use Center model or Reset framing from the studio controls. It is possible to move part of the avatar off the canvas intentionally. Output framing is independent from Avatar & appearance's studio Zoom. Edits are saved per avatar with a short debounce; Save output layouts requests an explicit save. Output windows contain no help icons or control overlays, keeping capture artwork clean.
+If the model is out of view, use Center model or Reset framing from the studio controls. It is possible to move part of the avatar off the canvas intentionally. Output framing is independent from Avatar & appearance's studio Zoom. Per-avatar placements save in the workspace with a short debounce; Save output layouts requests an explicit save. The avatar selection menu and outlines appear only in previews, not native OBS output. Choose an overlapping avatar in the menu before dragging it.
 
 ## preview | Compact preview & Freeform window size | Preview dimensions determine how much desktop space an output uses. They do not lower the full canvas resolution that Spout sends to OBS.
 

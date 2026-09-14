@@ -200,6 +200,7 @@ impl InputMonitor {
         mapping: &mut MappingSettings,
     ) {
         match action {
+            crate::hotkeys::Action::Profiles(_) => unreachable!("Workspace routes profile hotkeys"),
             crate::hotkeys::Action::Preset(key) => self.hotkey(key, parameters, mapping),
             crate::hotkeys::Action::TogglePose => self.toggle_pose(parameters),
             crate::hotkeys::Action::Expression(id) => {

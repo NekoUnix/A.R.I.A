@@ -33,6 +33,10 @@ developers and coding assistants. The schema is `aria-support-report/v1`.
   information, physics groups and tuning. VRM reports include bone, skin, geometry,
   morph, texture and spring counts. Attached item failures and pin metadata help
   diagnose differences between models.
+- With multiple profiles loaded, the workspace roster identifies the editing
+  avatar, loaded profiles and tracking links. The report includes metadata and
+  errors for the other loaded avatars too. Mention the profile name and output
+  format when describing a problem.
 
 The report excludes artwork, `.moc3`/VRM binaries, SDK libraries, full account/app
 settings, camera/audio recordings and account credentials. Personal absolute paths

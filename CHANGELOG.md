@@ -3,6 +3,32 @@
 All downloads remain Alpha. See [Releases](https://github.com/NekoUnix/A.R.I.A/releases)
 for packages and checksums. Features labeled Experimental have compatibility limits.
 
+## 0.32.0-alpha.1 — Multiple avatars and Profiles
+
+- Load several Live2D, PNG/GIF and VRM avatars together using Workspace → Profiles.
+  Check profiles to load them, uncheck to release their resources, and use Edit or
+  stage tabs to choose the avatar being configured. Clearly label the editor,
+  inspector and stage with that avatar's name.
+- Keep independent live model workers, animation clocks, poses, tracking filters,
+  physics, expressions, layers, appearance, image actions, pins and throw effects.
+  Changing the editing tab does not reload or freeze the other avatars.
+- Combine loaded avatars in all three OBS canvases. Drag and scale them separately,
+  choose overlapping avatars by name, change their front/back order, and save an
+  independent arrangement for landscape, portrait and Freeform. Native output
+  omits preview targeting controls and renders at the configured full resolution.
+- Save the profile list, enabled avatars and layouts across restarts. Existing
+  per-model rig settings remain usable on import. Loading failures retain the
+  catalog entry and leave other avatars running.
+- Share one profile's face tracking with other avatars while preserving their
+  individual response and calibration. Separate connections remain available;
+  connecting a device is still explicit. Matching global shortcuts target all
+  loaded profiles that use that shortcut.
+- Include all loaded avatar workers in resource counters, all active artwork in
+  key-color detection, and each loaded avatar in exported diagnostic reports.
+  The existing API acts on the editing profile and reports the workspace roster.
+- Update illustrated user instructions, offline help and platform download links.
+  VTube Studio import and VBridger import remain **Experimental**.
+
 ## 0.31.0-alpha.1 — Highlighted selections and protected Live2D groups
 
 - Open **Select layers…** in a separate resizable window with a frozen model.

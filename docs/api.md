@@ -116,3 +116,13 @@ the local action before marking it applied. For a scene, applied means the scene
 configuration was accepted; GPU/image loading may still report a later asset error
 in Objects and the diagnostic report. There is no remote VTube Studio executor.
 See the [repair guide](vtube-studio-import.md).
+
+## Multi-avatar workspaces
+
+Since v0.32 Alpha, `state.workspace` includes `editing_profile` and a `profiles`
+array with IDs, names, loaded state, tracking followers and load errors. Existing
+commands continue to act on the avatar being edited. Output position/zoom commands
+move that avatar within the selected shared canvas. Selecting another stage
+invalidates the previous model generation; fetch state again before submitting
+commands. The roster is read-only in this API version; use Profiles in the app to
+load, unload and choose editing stages.

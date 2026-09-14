@@ -8,28 +8,28 @@ independent transparency and background colors. It is a separate native window;
 chat does not change the avatar Spout canvas. Add the companion as a separate
 Window Capture source if it should appear on stream.
 
-ARIA v0.25 Alpha provides three independent outputs. The visible windows are compact
+ARIA v0.32 Alpha provides three independent outputs. The visible windows are compact
 previews; OBS receives a separate full-resolution GPU texture through the platform-specific native output.
 
-| Output | OBS sender | New-profile canvas | Preview pixels |
+| Output | OBS sender | Default canvas | Preview pixels |
 | --- | --- | --- | --- |
 | Landscape · 16:9 | ARIA Landscape | 1920×1080 | 480×270 |
 | Portrait · 9:16 | ARIA Portrait | 1080×1920 | 270×480 |
 | Freeform | ARIA Freeform | 1280×720 | 480×360, resizable |
 
 All three can run together, with separate positions, scales, backgrounds, keys,
-resolutions and framing locks. They share the same Live2D model render and atlases;
+resolutions and framing locks. They share each loaded avatar's render and atlases;
 additional outputs allocate canvas textures, not another copy of the avatar.
-PNG puppets and Mica also support all three outputs.
+Live2D, VRM, PNG/GIF puppets and Mica can appear together in all three outputs. Use [Profiles](profiles.md) to load and edit them separately.
 
 ## Open and frame the windows
 
-1. Expand **Studio Controls → Capture & performance** and enable any combination of
+1. Expand **Output → Capture & performance** and enable any combination of
    output toggles.
 2. Choose **Edit Landscape · 16:9**, **Portrait · 9:16**, or **Freeform**.
 3. Click the model inside its output window and drag to position it. The other
    output keeps its own framing.
-4. Scroll the mouse wheel over the canvas to scale the avatar, or expand
+4. Scroll the mouse wheel over an avatar to scale it, or expand
    **Framing & preview size** and use **Model scale**. Double-click the
    model or choose **Center model** to recenter. **Reset framing** also restores
    scale to 1.0. **Lock model framing** prevents dragging and wheel scaling.
@@ -48,16 +48,20 @@ The UI explains this alongside the resolution controls. **Keep this output on to
 is optional. Preview dimensions are client pixels and exclude the title bar.
 
 Dragging the native title bar moves the window on your desktop. Dragging the model
-moves the artwork within the capture. No controls or selection outlines are painted
-into the output. Closing one window leaves the others running and unregisters its
+moves the artwork within the capture. The preview avatar menu selects an overlapping model for dragging or scaling. Preview targeting controls and outlines are excluded from native OBS output; Window Capture can include them. Closing one window leaves the others running and unregisters its
 native sender. Minimize previews when desired; leave ARIA running for tracking.
 
-All layouts save with the current avatar. Drag release and applied settings save
-automatically after a short quiet period; **Save output layouts** and **Save profile** also
-save them. Switching avatars restores that avatar's layouts. Existing v0.6 profiles
-seed the layouts from their previous background, zoom and on-top settings. v0.7
-profiles retain their existing two canvas resolutions and framing, gaining a new
-Freeform layout and compact previews. Outputs start closed when ARIA starts.
+Layouts save with the workspace, including a separate transform for every avatar in
+each canvas. Dragging and applied settings save automatically after a short quiet
+period; **Save output layouts** and **Save profile** also save them. Switching
+editing stages does not change the composition. Re-enabling a profile restores
+its placement. Outputs start closed when ARIA starts. Older single-avatar
+framing initializes the first profile's layout.
+
+Drawing order follows the profile list: later entries appear in front. Under
+**Profiles → Name, tracking & order**, use **Send back** or **Bring forward**.
+Dragging inside an OBS preview changes only that canvas's placement; use the
+editing stage to adjust pins and attached objects.
 
 ## Choose a background
 
@@ -81,7 +85,7 @@ as needed; Smoothness and Spill Reduction also affect edges. See the
 ### Automatic color detection
 
 **Detect safer color** analyzes the avatar and applies a suggested key to the
-selected canvas. It checks the current rendered model and all loaded atlas colors,
+selected canvas. It checks all loaded avatars and their atlas colors,
 including hidden artwork. PNG avatars include idle and talking images. Transparent
 padding and pixels with alpha below 16/255 are ignored.
 

@@ -11,6 +11,7 @@ use std::{
 pub const TOGGLE_POSE: u8 = 100;
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Action {
+    Profiles(Vec<(u64, Action)>),
     Preset(u8),
     TogglePose,
     Expression(String),

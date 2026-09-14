@@ -1,10 +1,10 @@
 # A.R.I.A. — Avatar Studio (Alpha)
 
-Bring your **Live2D, VRM or PNG/GIF avatar** to life, tune how it follows you, and
-send it to OBS. ARIA runs on Windows, Linux and macOS. You can start with the
+Bring your **Live2D, VRM and PNG/GIF avatars** to life, tune how it follows you, and
+arrange them together in OBS. ARIA runs on Windows, Linux and macOS. You can start with the
 included Mica puppet before importing a model or connecting a camera.
 
-**[Download v0.31 Alpha](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.31.0-alpha.1)** ·
+**[Download v0.32 Alpha](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.32.0-alpha.1)** ·
 [What's new](#whats-new) · [First-time setup](#first-time-setup) ·
 [Help when something goes wrong](#help-when-something-goes-wrong)
 
@@ -16,77 +16,51 @@ required third-party tracking app or runtime are supplied separately.
 
 ## What's new
 
-**v0.31.0-alpha.1** adds a **frozen Live2D layer selector with visible selection
-highlights and protected groups**. Click **Select layers…** to open the resizable
-preview. In the default **Select** tool, click artwork to select it, click again
-to deselect it, or draw several boxes to add layers without Shift. Selected
-artwork turns blue; a gold outline identifies the mesh under your mouse.
+**v0.32.0-alpha.1** lets you put **multiple Live2D, PNG/GIF and VRM avatars in
+the same OBS scene**. Open **Workspace → Profiles → + Add avatar…**, finish its
+guided import, and repeat for your other avatars. Check any combination to load
+them together. Uncheck one to free its resources while keeping its settings.
 
-Use the selection to hide or restore artwork, or save a group and assign its
-hotkey. Check **Protect this new group** to keep its members out of future
-selections. **Include protected layers** allows deliberate edits. Protection
-saves per avatar, separately from a group's visibility shortcut.
+**Edit** and the stage tabs choose the avatar you are working on. Its name appears
+in the workspace, above the stage and in the inspector. Each avatar keeps its own
+tracking mappings, pose, expressions, physics, appearance, image actions and pins.
+The other loaded avatars keep moving while you edit.
 
-Your live stage keeps tracking while you work. Undo, zoom, pan, refreshed poses
-and a reveal-hidden preview help with fine adjustments. Selection colors appear
-only in this window, never in OBS or exported images.
+![Multiple profiles in the avatar workspace](docs/images/profiles-v32.png)
 
-![Blue selected artwork in the frozen layer window](docs/images/frozen-layer-editor.png)
+Open an OBS preview to arrange the whole group: click an avatar and drag it, or
+scroll over it to change its size. For overlapping avatars, choose a name from
+the preview's avatar menu first. Landscape, portrait and Freeform each keep their
+own layout. Native OBS output contains the avatars and effects without the
+preview's targeting menu or outlines.
 
-Click the little **bread icon** beside the bottom-right social links to send
-bread across your stage and outputs. It works without importing an asset.
+New profiles can **follow an already loaded profile's face tracker**, with their
+own calibration and response settings. Choose **Own connection** for a separate
+camera or sender. Shared shortcuts trigger matching actions on every loaded
+profile using that key; use different shortcuts for individual control.
 
-Open **Inspector → Avatar → Customize** to organize the model's exported outfit,
-hair and accessory controls. Choose sliders, on/off switches or named variants,
-then save appearance looks with shortcuts. Looks change appearance while your
-tracking, physics and props keep their current settings. Selected layers can also
-be tinted. All of these settings belong to the avatar you loaded.
+[Step-by-step profiles guide](docs/profiles.md) ·
+[OBS arrangement guide](docs/obs-output.md) · [Complete changelog](CHANGELOG.md)
 
-Follow the illustrated [customization and drag-selection guide](docs/live2d-customization.md)
-or open the circled **?** in ARIA for offline instructions.
-
-**v0.29.0-alpha.1** added **Experimental VTube Studio customization import**.
-Import a matching `.vtube.json`, review its settings, then transfer tracking,
-physics, expressions, hotkeys, animations, mesh colors and item scenes. Missing
-assets remain repairable inside ARIA through a three-step guide.
-
-The new **Diagnostics / export logs** button creates a readable support report
-with avatar-specific metadata, recent errors and system counters. After export,
-use its GitHub issue or Discord ticket links to ask for help. Small footer icons
-open NekoUnix’s social pages; following or subscribing is your choice.
-
-This build also fixes links that did nothing when clicked. Social, download,
-online help, support-ticket and sign-in links now open your computer's default
-browser. The browser decides whether to use a new tab or window.
-
-[Import and repair guide](docs/vtube-studio-import.md) ·
-[Diagnostic reports](docs/diagnostics.md)
-
-**v0.28.0-alpha.1** added direct **iFacialMocap input** from an iPhone. Its address
-and ports save separately from VTube Studio, per avatar. The setup page explains
-how to connect, calibrate and troubleshoot. This release also reorganizes the
-instructions below for people who have never built or configured an avatar app.
-
-**v0.27.0-alpha.1** introduced Experimental VBridger configuration import and
-editing, plus colorful performance graphs with hover values and session highs/lows.
-These features remain included. Read the [complete changelog](CHANGELOG.md) for
-this and earlier releases.
+Frozen layer selection, blue selection highlights, protected groups,
+customization, bread, performance graphs, diagnostics, iFacialMocap and the
+Experimental VTube Studio/VBridger imports remain included.
 
 ## First-time setup
 
 ### 1. Download the right file
 
-Open the [v0.31 Alpha release](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.31.0-alpha.1)
+Open the [v0.32 Alpha release](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.32.0-alpha.1)
 and expand **Assets** if the downloads are hidden. Choose the file for your computer:
 
 | Your computer | Download |
 | --- | --- |
-| Windows 10/11, 64-bit Intel or AMD | `aria-0.31.0-alpha.1-windows-x64.zip` |
-| Mac with an M-series chip | `aria-0.31.0-alpha.1-macos-arm64.zip` |
-| Mac with an Intel processor | `aria-0.31.0-alpha.1-macos-x64.zip` |
-| Ubuntu 24.04, 64-bit Intel or AMD | `aria-0.31.0-alpha.1-linux-x64.tar.gz` |
-| Fedora 44, 64-bit Intel or AMD | `aria-alpha-0.31.0.alpha.1-1.x86_64.rpm` |
-| Current Arch Linux, 64-bit Intel or AMD | `aria-alpha-0.31.0alpha.1-1-x86_64.pkg.tar.zst` |
+| Windows 10/11, 64-bit Intel or AMD | `aria-0.32.0-alpha.1-windows-x64.zip` |
+| Mac with an M-series chip | `aria-0.32.0-alpha.1-macos-arm64.zip` |
+| Mac with an Intel processor | `aria-0.32.0-alpha.1-macos-x64.zip` |
+| Ubuntu 24.04, 64-bit Intel or AMD | `aria-0.32.0-alpha.1-linux-x64.tar.gz` |
+| Fedora 44, 64-bit Intel or AMD | `aria-alpha-0.32.0.alpha.1-1.x86_64.rpm` |
+| Current Arch Linux, 64-bit Intel or AMD | `aria-alpha-0.32.0alpha.1-1-x86_64.pkg.tar.zst` |
 
 On a Mac, **Apple menu → About This Mac** tells you whether it has an Apple chip
 or an Intel processor. Linux ARM, Windows ARM, `.deb`, AppImage and Flatpak/Snap
@@ -131,7 +105,7 @@ driver are needed. Run ARIA as your normal desktop user.
 
 ### 3. Choose your avatar
 
-Click **Avatar** on the left, then **Avatar & appearance → Import avatar**. Choose
+Click **Profiles → + Add avatar…** on the left. Choose
 the type you want to use; ARIA walks you through the files it needs and shows the
 controls relevant to that avatar.
 
@@ -140,6 +114,11 @@ controls relevant to that avatar.
 | PNG/GIF | Your image or animated GIF | Set up idle/talking states, transitions and movement. A static image does not need a 3D or Live2D runtime. |
 | Live2D | An exported `.model3.json`, matching `.vtube.json`, model folder, or `.moc3` with its supporting files nearby | Keep the model folder, textures and supporting files together. ARIA asks for the official Cubism Core library needed to run it. |
 | VRM | A `.vrm` file | Load a VRM 0.x or 1.0 avatar, then tune supported expressions, natural movement and gestures. |
+
+Repeat the import to add more avatars. Each successful import is added to your
+profile list with its saved settings. Click **Edit** or a stage tab to work on one;
+all checked profiles appear together in OBS. To use just one avatar, uncheck the
+others. Read [Profiles](docs/profiles.md) for tracking sharing and saved layouts.
 
 For Live2D, **Cubism Core** is the separate library that evaluates the model. Use
 its Windows DLL on Windows, its macOS library on Mac, or its Linux library on Linux;
@@ -270,7 +249,7 @@ editor, or disable the imported config to use the normal guided range wizard.
 3. Keep the preview window small on your desktop. The native OBS source receives
    the configured full-resolution canvas; the preview does not need to fill your screen.
 4. Drag the avatar in that output to position it. Use the mouse wheel over the
-   output to change the avatar's size.
+   avatar to change its size. Choose its name in the preview menu if avatars overlap.
 5. Choose **Transparent**, **Studio**, or **Green screen / color key**. For a color
    key you may enter a hex color or use **Detect safer color**, then match that
    color in OBS's Chroma Key filter.
@@ -317,7 +296,7 @@ Export important configurations before experimenting with a new Alpha build.
 | Problem | First things to check |
 | --- | --- |
 | ARIA will not open | Extract the complete package, use the right CPU/OS download and update the graphics driver. Read the error dialog and your installation guide. |
-| Clicking an online link does nothing | Install this updated v0.31 Alpha build. Set a default browser in your operating system and check behind ARIA for a new tab or window. If it still fails, use **Diagnostics / export logs** and describe the link you clicked. |
+| Clicking an online link does nothing | Install this updated v0.32 Alpha build. Set a default browser in your operating system and check behind ARIA for a new tab or window. If it still fails, use **Diagnostics / export logs** and describe the link you clicked. |
 | A phone connects but no motion arrives | Check **Tracking live**, the current phone IP, matching ports, Local Network permission, firewall and same LAN. Demo motion does not confirm a phone connection. |
 | Cannot bind the tracking port | Close the other application receiving on that port, or configure matching custom ports on both sides. |
 | Mouth feels slow | Try **Quick** or **Instant** mouth response; check the tracking-rate and packet-age graphs. Phone sampling and network delay remain outside that setting. |
@@ -356,6 +335,7 @@ in the Linux guide. ARIA does not require building Rust code to use a release.
 | Area | Current status |
 | --- | --- |
 | Live2D, PNG/GIF and VRM avatars | Available; model-format and advanced shader limits apply |
+| Multiple avatars and Profiles | Available in Alpha; mix avatar types, edit separate stages and save independent shared OBS layouts |
 | iFacialMocap and VTube Studio phone inputs | Available; physical device/network acceptance varies |
 | Webcam, microphone and controllers | Available; camera runtime/device setup required |
 | VTube Studio customization import | **Experimental**; native actions and an in-app repair guide for missing/incompatible entries |

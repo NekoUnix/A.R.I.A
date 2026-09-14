@@ -1,3 +1,5 @@
+mod profiles;
+
 use crate::avatar::{self, Sprite};
 use crate::input_monitor::{InputMonitor, Tab};
 use crate::output::{Background, OutputSettings, OutputWindows};
@@ -51,6 +53,7 @@ impl Default for IFacialSettings {
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 struct Settings {
+    profiles: profiles::Workspace,
     ifacial: IFacialSettings,
     chat_accounts: crate::chat::Accounts,
     image_avatar: Option<PathBuf>,
@@ -80,6 +83,7 @@ struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            profiles: Default::default(),
             ifacial: IFacialSettings::default(),
             chat_accounts: Default::default(),
             image_avatar: None,
@@ -185,6 +189,7 @@ impl ModelPreferences {
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Hash, Debug)]
 enum ControlsPage {
+    Profiles,
     #[default]
     Avatar,
     Tracking,
@@ -201,6 +206,8 @@ struct PendingImage {
     job: crate::media::LoadJob,
 }
 pub struct AriaApp {
+    profiles: profiles::Sessions,
+    support_refresh: Instant,
     support: crate::diagnostics::Panel,
     camera: crate::webcam::Camera,
     api_snapshot_at: Instant,
@@ -298,7 +305,9 @@ impl AriaApp {
         };
         theme::apply(&cc.egui_ctx, settings.theme.active.colors);
         settings.migrate_vts_pitch();
-        if let Some(preferences) = settings.model_preferences.get("preview-v1").cloned() {
+        if settings.profiles.entries.is_empty()
+            && let Some(preferences) = settings.model_preferences.get("preview-v1").cloned()
+        {
             preferences.restore(&mut settings);
         }
         settings.fps = settings.fps.clamp(15, 120);
@@ -329,6 +338,8 @@ impl AriaApp {
             OutputSettings::from_legacy(settings.background, settings.zoom, settings.always_on_top)
         }));
         let app = Self {
+            profiles: Default::default(),
+            support_refresh: Instant::now(),
             support: Default::default(),
             camera: Default::default(),
             api_snapshot_at: Instant::now(),
@@ -403,16 +414,19 @@ impl AriaApp {
         }
         if !crate::smoke_mode()
             && std::env::args_os().nth(1).is_none()
+            && app.settings.profiles.entries.is_empty()
             && let Some(path) = app.settings.image_avatar.clone()
         {
             app.open_image(&cc.egui_ctx, &path, false);
         }
         if !crate::smoke_mode()
             && std::env::args_os().nth(1).is_none()
+            && app.settings.profiles.entries.is_empty()
             && let Some(path) = app.settings.vrm_avatar.clone()
         {
             app.begin_vrm(&path);
         }
+        app.queue_profile_restore();
         #[cfg(feature = "screenshots")]
         let app = {
             let mut app = app;
@@ -919,11 +933,21 @@ impl AriaApp {
                     "Position coordinates must be -1 to 1"
                 );
                 self.outputs.edit_canvas(index, |c| {
-                    if let Some(v) = zoom {
-                        c.zoom = v;
-                    }
-                    if let Some(v) = position {
-                        c.position = v;
+                    if let Some(id) = self.profiles.current {
+                        let transform = c.avatars.entry(id).or_default();
+                        if let Some(v) = zoom {
+                            transform.zoom = v;
+                        }
+                        if let Some(v) = position {
+                            transform.position = v;
+                        }
+                    } else {
+                        if let Some(v) = zoom {
+                            c.zoom = v;
+                        }
+                        if let Some(v) = position {
+                            c.position = v;
+                        }
                     }
                 });
                 self.outputs.set_open(index, open);
@@ -965,6 +989,13 @@ impl AriaApp {
         Ok(())
     }
     fn connection_status(&self) -> &str {
+        if self.following_profile().is_some() {
+            return if self.raw.is_some() {
+                "Shared face tracking · independent avatar settings"
+            } else {
+                "Shared tracker unavailable · load and connect its source profile"
+            };
+        }
         if self.settings.source == Source::Demo {
             "Demo input"
         } else if self.settings.source == Source::Local {
@@ -1031,17 +1062,12 @@ impl AriaApp {
 
     fn controls_header(&mut self, ui: &mut egui::Ui) {
         section(ui, "WORKSPACE");
+        ui.label(RichText::new("EDITING AVATAR").small().color(mint()));
         ui.horizontal(|ui| {
-            let name = self
-                .live2d
-                .as_ref()
-                .map(|a| a.name.as_str())
-                .or_else(|| self.vrm.as_ref().map(|a| a.asset.summary.name.as_str()))
-                .or_else(|| self.idle.as_ref().map(|s| s.name.as_str()))
-                .unwrap_or("Mica");
+            let name = self.profile_name();
             ui.add_sized(
                 [(ui.available_width() - 112.0).max(60.0), 26.0],
-                egui::Label::new(RichText::new(name).strong()).truncate(),
+                egui::Label::new(RichText::new(&name).strong()).truncate(),
             )
             .on_hover_text(name);
             if crate::help::control(ui, "profiles", |ui| ui.small_button("Save profile")).clicked()
@@ -1053,12 +1079,30 @@ impl AriaApp {
         });
         theme::caption(
             ui,
-            if self.controls_page == ControlsPage::Settings {
-                "Appearance and API settings apply to this PC."
+            if matches!(
+                self.controls_page,
+                ControlsPage::Profiles
+                    | ControlsPage::Output
+                    | ControlsPage::Chat
+                    | ControlsPage::Settings
+            ) {
+                "Shared workspace settings."
             } else {
-                "Settings belong to this avatar."
+                "Avatar & tracking controls edit this stage only."
             },
         );
+        let loaded = self.profiles.parked.len() + usize::from(self.profiles.current.is_some());
+        if ui
+            .add_sized(
+                [ui.available_width(), 30.],
+                egui::Button::new(format!("Profiles · {loaded} loaded"))
+                    .selected(self.controls_page == ControlsPage::Profiles),
+            )
+            .clicked()
+        {
+            self.controls_page = ControlsPage::Profiles;
+        }
+        ui.add_space(5.);
         theme::segments(
             ui,
             &mut self.controls_page,
@@ -1073,6 +1117,14 @@ impl AriaApp {
         ui.add_space(4.0);
     }
     fn controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if self.controls_page == ControlsPage::Profiles {
+            self.profiles_ui(ui);
+            return;
+        }
+        if self.controls_page == ControlsPage::Tracking && self.following_profile().is_some() {
+            self.shared_tracking_ui(ui);
+            return;
+        }
         if self.controls_page == ControlsPage::Settings {
             theme::category(
                 ui,
@@ -1613,10 +1665,9 @@ impl AriaApp {
                         self.pending_image = None;
                         self.pending_vrm = None;
                         self.importer.open = false;
-                        self.idle = None;
-                        self.talking = None;
-                        self.settings.image_avatar = None;
+                        self.prepare_profile_import();
                         self.use_preview_rig();
+                        self.register_profile(PathBuf::from("builtin:mica"));
                     }
                 }
                 crate::help::label(ui, "Import guide & size limits", "guided-import");
@@ -1698,23 +1749,32 @@ impl AriaApp {
         }
     }
 
+    fn avatar_palette(&self) -> anyhow::Result<crate::chroma::Palette> {
+        let mut palette = if let Some(a) = &self.live2d {
+            a.key_palette()?
+        } else if let Some(a) = &self.vrm {
+            a.key_palette()?
+        } else if let Some(a) = &self.idle {
+            (*a.palette).clone()
+        } else {
+            avatar::mica_palette()
+        };
+        if let Some(a) = &self.talking {
+            palette.merge(&a.palette);
+        }
+        self.items.merge_palette(&mut palette);
+        self.images.merge_palette(&mut palette);
+        Ok(palette)
+    }
     fn detect_key_color(&mut self, index: usize) {
         let result = (|| -> anyhow::Result<crate::chroma::Suggestion> {
-            let mut palette = if let Some(avatar) = &self.live2d {
-                avatar.key_palette()?
-            } else if let Some(avatar) = &self.vrm {
-                avatar.key_palette()?
-            } else if let Some(idle) = &self.idle {
-                let mut palette = (*idle.palette).clone();
-                if let Some(talking) = &self.talking {
-                    palette.merge(&talking.palette);
+            let mut palette = self.avatar_palette()?;
+            let ids: Vec<_> = self.profiles.parked.keys().copied().collect();
+            for id in ids {
+                if let Some(colors) = self.with_profile(id, |app| app.avatar_palette()) {
+                    palette.merge(&colors?);
                 }
-                palette
-            } else {
-                avatar::mica_palette()
-            };
-            self.items.merge_palette(&mut palette);
-            self.images.merge_palette(&mut palette);
+            }
             palette.suggest()
         })();
         self.outputs.apply_suggestion(index, result);
@@ -1778,6 +1838,9 @@ impl AriaApp {
         }
     }
     fn apply_image(&mut self, path: &Path, talking: bool, sprite: Sprite, budget: u32) {
+        if !talking {
+            self.prepare_profile_import();
+        }
         if !talking || self.live2d.is_some() || self.vrm.is_some() {
             self.use_puppet_rig(&sprite.model_key);
         }
@@ -1801,6 +1864,9 @@ impl AriaApp {
             self.talking = None;
         }
         self.images.seed(path.to_owned(), sprite, budget);
+        if !talking {
+            self.register_profile(path.to_owned());
+        }
         self.input_monitor.tab = Tab::Images;
         self.input_monitor.save_requested = true;
         self.status_message = None;
@@ -1912,6 +1978,235 @@ impl AriaApp {
         }
     }
 
+    fn advance_avatar(&mut self, ctx: &egui::Context, dt: f32) {
+        if dt > 0.0 {
+            let mouth_response = self.input_monitor.saved.config.mouth_response;
+            self.params = self.pipeline.update_with_response(
+                self.raw.as_ref(),
+                &self.settings.mapping,
+                dt,
+                mouth_response.enabled,
+            );
+            if self.input_monitor.saved.config.pose.mode != PoseMode::Frozen {
+                self.animation_time += dt.min(0.25);
+            }
+            self.live_inputs = rig::tracking_inputs(
+                self.raw.as_ref(),
+                self.params,
+                self.settings.mapping.mirror,
+                self.animation_time,
+            );
+            if self.tracking_guide.open {
+                self.tracking_guide.check_context(&self.tracking_context());
+                if let Some(message) = self.tracking_guide.message.take() {
+                    self.input_monitor.message = Some(message);
+                }
+            }
+            if self.tracking_guide.open || self.input_monitor.saved.config.tracking.enabled {
+                let measured = if self.tracking_guide.open {
+                    self.tracking_guide.measure(
+                        self.raw.as_ref(),
+                        &self.settings.mapping,
+                        self.animation_time,
+                    )
+                } else {
+                    self.input_monitor.saved.config.tracking.measure(
+                        self.raw.as_ref(),
+                        &self.settings.mapping,
+                        self.animation_time,
+                    )
+                };
+                let face_found = self
+                    .raw
+                    .as_ref()
+                    .is_some_and(|f| f.face_found && f.is_finite());
+                self.tracking_guide.observe(
+                    self.snapshot.packets,
+                    self.started.elapsed().as_secs_f64(),
+                    face_found
+                        && (self.receiver.is_some()
+                            || self.camera.running()
+                            || (self.following_profile().is_some()
+                                && self.snapshot.fresh_frame().is_some()))
+                        && (self.following_profile().is_some()
+                            || matches!(
+                                self.settings.source,
+                                Source::Vts
+                                    | Source::IFacial
+                                    | Source::Json
+                                    | Source::Webcam
+                                    | Source::Rtx
+                            )),
+                    &measured,
+                );
+                let preview = self.tracking_guide.profile();
+                let profile = preview
+                    .as_ref()
+                    .unwrap_or(&self.input_monitor.saved.config.tracking);
+                self.tracking_filter.apply(
+                    profile,
+                    &measured,
+                    &mut self.live_inputs,
+                    face_found,
+                    aria_core::calibration::Smoothing {
+                        milliseconds: self.settings.mapping.smoothing_ms,
+                        responsive_mouth: mouth_response.enabled,
+                    },
+                    dt,
+                );
+            } else {
+                self.tracking_filter.reset();
+            }
+            if !self.input_monitor.saved.config.vbridger.enabled {
+                self.speech_filter
+                    .apply(mouth_response, &mut self.live_inputs, dt);
+            }
+            self.microphone
+                .update(&self.input_monitor.saved.microphone, dt);
+            self.microphone
+                .inject(&self.input_monitor.saved.microphone, &mut self.live_inputs);
+            self.controller.update(
+                &self.input_monitor.saved.controller,
+                &self.input_monitor.model_key,
+                dt,
+                &mut self.live_inputs,
+            );
+            self.input_monitor.saved.config.vbridger.apply(
+                self.raw.as_ref(),
+                self.pipeline.calibration(),
+                &mut self.live_inputs,
+                &mut self.input_monitor.vbridger_runtime,
+                dt,
+            );
+            if self.input_monitor.saved.config.vbridger.enabled {
+                self.speech_filter
+                    .apply(mouth_response, &mut self.live_inputs, dt);
+            }
+            if let Some(avatar) = &mut self.live2d {
+                self.input_monitor.vts.advance(
+                    ctx,
+                    avatar,
+                    &mut self.input_monitor.saved,
+                    &mut self.input_monitor.expressions,
+                    &self.live_inputs,
+                    self.raw.as_ref(),
+                    dt,
+                );
+                if std::mem::take(&mut self.input_monitor.reset_motion) {
+                    avatar.reset_motion();
+                }
+                match avatar.update(
+                    &self.live_inputs,
+                    &mut self.input_monitor.saved.config,
+                    &mut self.input_monitor.expressions,
+                    dt,
+                ) {
+                    Ok(true) => self.scene_revision = self.scene_revision.wrapping_add(1),
+                    Ok(false) => {}
+                    Err(error) => {
+                        self.status_message = Some(format!("Live2D update stopped: {error:#}"));
+                    }
+                }
+            } else if let Some(avatar) = &mut self.vrm {
+                if std::mem::take(&mut self.input_monitor.reset_motion)
+                    && self.input_monitor.saved.config.pose.mode != PoseMode::Frozen
+                {
+                    avatar.reset_motion();
+                }
+                match avatar.update(
+                    &self.live_inputs,
+                    &mut self.input_monitor.saved.config,
+                    &mut self.input_monitor.expressions,
+                    dt,
+                ) {
+                    Ok(true) => self.scene_revision = self.scene_revision.wrapping_add(1),
+                    Ok(false) => {}
+                    Err(error) => {
+                        self.status_message = Some(format!("VRM update stopped: {error:#}"))
+                    }
+                }
+            } else {
+                self.scene_revision = self.scene_revision.wrapping_add(1);
+                let mut parameters = movement::preview_parameters(self.params);
+                self.input_monitor.saved.config.evaluate(
+                    &self.live_inputs,
+                    &mut parameters,
+                    dt,
+                    None,
+                );
+                for (value, p) in self.params.0.iter_mut().zip(parameters) {
+                    *value = p.value;
+                }
+            }
+            let parameters = self.current_parameters();
+            if self.live2d.is_none() && self.vrm.is_none() {
+                self.images.update(
+                    ctx,
+                    self.render_state.as_ref(),
+                    &self.input_monitor.saved.config.images,
+                    &self.live_inputs,
+                    &parameters,
+                    (dt, self.input_monitor.saved.config.pose.mode),
+                );
+                // Release an old fallback after changing the playback budget.
+                if let Some(path) = &self.settings.image_avatar
+                    && let Some(sprite) = self.images.artwork(path)
+                    && self
+                        .idle
+                        .as_ref()
+                        .is_none_or(|s| s.texture.id() != sprite.texture.id())
+                {
+                    self.idle = Some(sprite.clone());
+                }
+            }
+            if self.input_monitor.saved.config.pose.mode != PoseMode::Frozen {
+                self.items.clock += dt.min(0.25);
+            }
+            if self.items.evaluate(
+                &mut self.input_monitor.saved.config,
+                &self.live_inputs,
+                &parameters,
+            ) {
+                self.items.edited();
+            }
+        }
+        self.items.sync_assets(
+            ctx,
+            self.render_state.as_ref(),
+            &self.input_monitor.saved.config,
+        );
+        self.items.models.sync(
+            self.render_state.as_ref(),
+            Path::new(self.settings.cubism_core.trim()),
+            &self.input_monitor.saved.config,
+        );
+
+        if ctx.current_pass_index() == 0 {
+            self.items
+                .models
+                .update(&mut self.input_monitor.saved.config, &self.live_inputs, dt);
+        }
+        self.items.refresh(
+            &self.input_monitor.saved.config,
+            (self.live2d.as_ref(), self.vrm.as_ref()),
+        );
+        if ctx.current_pass_index() == 0
+            && self.effects.update(
+                ctx,
+                self.render_state.as_ref(),
+                Path::new(self.settings.cubism_core.trim()),
+                (
+                    &self.input_monitor.saved.effects,
+                    self.input_monitor.saved.config.pose.mode,
+                ),
+                self.live2d.as_ref(),
+                dt,
+            )
+        {
+            self.scene_revision = self.scene_revision.wrapping_add(1);
+        }
+    }
+
     fn active_sprite(&self) -> Option<&Sprite> {
         if let Some(sprite) = self.images.primary() {
             return Some(sprite);
@@ -1936,6 +2231,7 @@ impl AriaApp {
             .ok_or_else(|| anyhow::anyhow!("GPU renderer is unavailable"))?;
         let mut avatar =
             crate::live2d::Avatar::load(state, Path::new(self.settings.cubism_core.trim()), files)?;
+        self.prepare_profile_import();
         self.remember_current_rig();
         self.input_monitor = InputMonitor::new(
             avatar.model_key.clone(),
@@ -1970,6 +2266,7 @@ impl AriaApp {
         self.restore_model_preferences(&avatar.model_key);
         self.hotkeys.configure(Vec::new());
         self.animation_time = 0.0;
+        let profile_path = avatar.files.source.clone();
         self.live2d = Some(avatar);
         self.vrm = None;
         self.settings.vrm_avatar = None;
@@ -1977,6 +2274,7 @@ impl AriaApp {
         self.idle = None;
         self.talking = None;
         self.status_message = None;
+        self.register_profile(profile_path);
         Ok(())
     }
     fn begin_vrm(&mut self, path: &Path) {
@@ -2005,6 +2303,7 @@ impl AriaApp {
             });
         match result {
             Ok((avatar, expressions)) => {
+                self.prepare_profile_import();
                 self.remember_current_rig();
                 self.input_monitor = InputMonitor::new(
                     avatar.asset.key.clone(),
@@ -2026,7 +2325,9 @@ impl AriaApp {
                 self.live2d = None;
                 self.idle = None;
                 self.talking = None;
+                let profile_path = avatar.asset.path.clone();
                 self.vrm = Some(avatar);
+                self.register_profile(profile_path);
                 self.input_monitor.save_requested = true;
                 self.status_message = None;
                 self.importer.finished();
@@ -2174,6 +2475,7 @@ impl AriaApp {
         }
     }
     fn remember_current_rig(&mut self) {
+        self.remember_profiles();
         self.settings.outputs = Some(self.outputs.snapshot());
         self.settings.saved_rigs.insert(
             self.input_monitor.model_key.clone(),
@@ -2201,15 +2503,25 @@ impl AriaApp {
             .get(key)
             .cloned()
             .unwrap_or_default();
+        let workspace_outputs = self.settings.outputs.clone();
+        let fps = self.settings.fps;
+        let on_top = self.settings.always_on_top;
         preferences.restore(&mut self.settings);
-        self.outputs
-            .reset(self.settings.outputs.clone().unwrap_or_else(|| {
-                OutputSettings::from_legacy(
-                    self.settings.background,
-                    self.settings.zoom,
-                    self.settings.always_on_top,
-                )
-            }));
+        if !self.settings.profiles.entries.is_empty() {
+            self.settings.outputs = workspace_outputs;
+            self.settings.fps = fps;
+            self.settings.always_on_top = on_top;
+        }
+        if self.settings.profiles.entries.is_empty() {
+            self.outputs
+                .reset(self.settings.outputs.clone().unwrap_or_else(|| {
+                    OutputSettings::from_legacy(
+                        self.settings.background,
+                        self.settings.zoom,
+                        self.settings.always_on_top,
+                    )
+                }));
+        }
         // A model switch never silently connects to a different saved sender.
         self.receiver = None;
         self.snapshot = Snapshot::default();
@@ -2320,11 +2632,32 @@ impl AriaApp {
         ] {
             self.support.observe(code, level, message);
         }
-        if self.support.open {
+        if self.support.open
+            && (self.support.snapshot.is_null()
+                || self.support_refresh.elapsed() >= Duration::from_secs(1))
+        {
+            self.support_refresh = Instant::now();
             self.support.snapshot = self.support_snapshot();
         }
     }
-    fn support_snapshot(&self) -> serde_json::Value {
+    fn support_snapshot(&mut self) -> serde_json::Value {
+        let mut snapshot = self.current_support_snapshot();
+        snapshot["workspace"] = self.workspace_summary();
+        let ids: Vec<_> = self.profiles.parked.keys().copied().collect();
+        snapshot["other_loaded_avatars"] = serde_json::Value::Array(
+            ids.into_iter()
+                .filter_map(|id| {
+                    self.with_profile(id, |app| {
+                        let mut state = app.current_support_snapshot();
+                        state["profile"] = serde_json::json!({"id":id,"name":app.profile_name()});
+                        state
+                    })
+                })
+                .collect(),
+        );
+        snapshot
+    }
+    fn current_support_snapshot(&self) -> serde_json::Value {
         use serde_json::json;
         let parameters = self.current_parameters();
         let mut avatar = json!({"kind":"PNG/GIF or built-in puppet","states":self.input_monitor.saved.config.images.states.iter().map(|s|json!({"id":s.id,"trigger":s.trigger,"artwork":self.images.artwork(&s.path).map(crate::media::diagnostic),"load_error":self.images.error(&s.path)})).collect::<Vec<_>>(),"primary":self.idle.as_ref().map(crate::media::diagnostic)});
@@ -2595,8 +2928,10 @@ impl eframe::App for AriaApp {
     fn ui(&mut self, root_ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = &root_ui.ctx().clone();
         theme::sync(ctx, self.settings.theme.active.colors);
+        self.process_profile_actions(ctx);
         self.poll_image_import();
         self.poll_vrm_import();
+        self.finish_profile_load();
         self.input_monitor.save_requested |=
             self.chats.update(&mut self.settings.chat_accounts, ctx);
         #[cfg(feature = "screenshots")]
@@ -2674,25 +3009,14 @@ impl eframe::App for AriaApp {
                 self.render_fps * 0.92 + measured * 0.08
             };
         }
-        if dt > 0.0 {
-            if self.settings.source == Source::Demo {
-                self.raw = Some(demo_frame(self.started.elapsed().as_secs_f32()));
-            } else if matches!(self.settings.source, Source::Webcam | Source::Rtx) {
-                self.snapshot = self.camera.snapshot();
-                self.raw = self.snapshot.fresh_frame().cloned();
-            } else if let Some(receiver) = &self.receiver {
-                self.snapshot = receiver.snapshot();
-                self.raw = self.snapshot.fresh_frame().cloned();
-            } else {
-                self.raw = None;
-            }
-        }
+        self.sample_profile_tracking(dt);
         if self.settings.effect_api.enabled
             && self.api_snapshot_at.elapsed() >= Duration::from_millis(100)
         {
             self.api_snapshot_at = Instant::now();
             let parameters:Vec<_>=self.current_parameters().iter().map(|p|serde_json::json!({"id":p.id,"min":p.min,"max":p.max,"default":p.default,"value":p.value})).collect();
             self.effect_api.publish(serde_json::json!({
+                "workspace":self.workspace_summary(),
                 "tracking_status":self.connection_status(),"source":self.settings.source,
                 "parameters":parameters,"inputs":self.live_inputs,"pose":self.input_monitor.saved.config.pose.mode,
                 "presets":self.input_monitor.saved.presets.iter().enumerate().map(|(index,p)|serde_json::json!({"index":index,"name":p.name})).collect::<Vec<_>>(),
@@ -2707,15 +3031,9 @@ impl eframe::App for AriaApp {
         for event in self.hotkeys.events() {
             match event {
                 crate::hotkeys::Event::Pressed { generation, action }
-                    if generation == self.hotkeys.generation
-                        && self.input_monitor.saved.global_hotkeys =>
+                    if generation == self.hotkeys.generation =>
                 {
-                    let parameters = self.current_parameters();
-                    self.input_monitor.hotkey_action(
-                        action,
-                        &parameters,
-                        &mut self.settings.mapping,
-                    );
+                    self.dispatch_hotkey(action);
                 }
                 crate::hotkeys::Event::Registered {
                     generation,
@@ -2767,204 +3085,7 @@ impl eframe::App for AriaApp {
                 self.effect_api.complete(command.ticket, result);
             }
         }
-        if dt > 0.0 {
-            let mouth_response = self.input_monitor.saved.config.mouth_response;
-            self.params = self.pipeline.update_with_response(
-                self.raw.as_ref(),
-                &self.settings.mapping,
-                dt,
-                mouth_response.enabled,
-            );
-            if self.input_monitor.saved.config.pose.mode != PoseMode::Frozen {
-                self.animation_time += dt.min(0.25);
-            }
-            self.live_inputs = rig::tracking_inputs(
-                self.raw.as_ref(),
-                self.params,
-                self.settings.mapping.mirror,
-                self.animation_time,
-            );
-            if self.tracking_guide.open {
-                self.tracking_guide.check_context(&self.tracking_context());
-                if let Some(message) = self.tracking_guide.message.take() {
-                    self.input_monitor.message = Some(message);
-                }
-            }
-            if self.tracking_guide.open || self.input_monitor.saved.config.tracking.enabled {
-                let measured = if self.tracking_guide.open {
-                    self.tracking_guide.measure(
-                        self.raw.as_ref(),
-                        &self.settings.mapping,
-                        self.animation_time,
-                    )
-                } else {
-                    self.input_monitor.saved.config.tracking.measure(
-                        self.raw.as_ref(),
-                        &self.settings.mapping,
-                        self.animation_time,
-                    )
-                };
-                let face_found = self
-                    .raw
-                    .as_ref()
-                    .is_some_and(|f| f.face_found && f.is_finite());
-                self.tracking_guide.observe(
-                    self.snapshot.packets,
-                    self.started.elapsed().as_secs_f64(),
-                    face_found
-                        && (self.receiver.is_some() || self.camera.running())
-                        && matches!(
-                            self.settings.source,
-                            Source::Vts
-                                | Source::IFacial
-                                | Source::Json
-                                | Source::Webcam
-                                | Source::Rtx
-                        ),
-                    &measured,
-                );
-                let preview = self.tracking_guide.profile();
-                let profile = preview
-                    .as_ref()
-                    .unwrap_or(&self.input_monitor.saved.config.tracking);
-                self.tracking_filter.apply(
-                    profile,
-                    &measured,
-                    &mut self.live_inputs,
-                    face_found,
-                    aria_core::calibration::Smoothing {
-                        milliseconds: self.settings.mapping.smoothing_ms,
-                        responsive_mouth: mouth_response.enabled,
-                    },
-                    dt,
-                );
-            } else {
-                self.tracking_filter.reset();
-            }
-            if !self.input_monitor.saved.config.vbridger.enabled {
-                self.speech_filter
-                    .apply(mouth_response, &mut self.live_inputs, dt);
-            }
-            self.microphone
-                .update(&self.input_monitor.saved.microphone, dt);
-            self.microphone
-                .inject(&self.input_monitor.saved.microphone, &mut self.live_inputs);
-            self.controller.update(
-                &self.input_monitor.saved.controller,
-                &self.input_monitor.model_key,
-                dt,
-                &mut self.live_inputs,
-            );
-            self.input_monitor.saved.config.vbridger.apply(
-                self.raw.as_ref(),
-                self.pipeline.calibration(),
-                &mut self.live_inputs,
-                &mut self.input_monitor.vbridger_runtime,
-                dt,
-            );
-            if self.input_monitor.saved.config.vbridger.enabled {
-                self.speech_filter
-                    .apply(mouth_response, &mut self.live_inputs, dt);
-            }
-            if let Some(avatar) = &mut self.live2d {
-                self.input_monitor.vts.advance(
-                    ctx,
-                    avatar,
-                    &mut self.input_monitor.saved,
-                    &mut self.input_monitor.expressions,
-                    &self.live_inputs,
-                    self.raw.as_ref(),
-                    dt,
-                );
-                if std::mem::take(&mut self.input_monitor.reset_motion) {
-                    avatar.reset_motion();
-                }
-                match avatar.update(
-                    &self.live_inputs,
-                    &mut self.input_monitor.saved.config,
-                    &mut self.input_monitor.expressions,
-                    dt,
-                ) {
-                    Ok(true) => self.scene_revision = self.scene_revision.wrapping_add(1),
-                    Ok(false) => {}
-                    Err(error) => {
-                        self.status_message = Some(format!("Live2D update stopped: {error:#}"));
-                        self.use_preview_rig();
-                    }
-                }
-            } else if let Some(avatar) = &mut self.vrm {
-                if std::mem::take(&mut self.input_monitor.reset_motion)
-                    && self.input_monitor.saved.config.pose.mode != PoseMode::Frozen
-                {
-                    avatar.reset_motion();
-                }
-                match avatar.update(
-                    &self.live_inputs,
-                    &mut self.input_monitor.saved.config,
-                    &mut self.input_monitor.expressions,
-                    dt,
-                ) {
-                    Ok(true) => self.scene_revision = self.scene_revision.wrapping_add(1),
-                    Ok(false) => {}
-                    Err(error) => {
-                        self.status_message = Some(format!("VRM update stopped: {error:#}"))
-                    }
-                }
-            } else {
-                self.scene_revision = self.scene_revision.wrapping_add(1);
-                let mut parameters = movement::preview_parameters(self.params);
-                self.input_monitor.saved.config.evaluate(
-                    &self.live_inputs,
-                    &mut parameters,
-                    dt,
-                    None,
-                );
-                for (value, p) in self.params.0.iter_mut().zip(parameters) {
-                    *value = p.value;
-                }
-            }
-            let parameters = self.current_parameters();
-            if self.live2d.is_none() && self.vrm.is_none() {
-                self.images.update(
-                    ctx,
-                    self.render_state.as_ref(),
-                    &self.input_monitor.saved.config.images,
-                    &self.live_inputs,
-                    &parameters,
-                    (dt, self.input_monitor.saved.config.pose.mode),
-                );
-                // Release an old fallback after changing the playback budget.
-                if let Some(path) = &self.settings.image_avatar
-                    && let Some(sprite) = self.images.artwork(path)
-                    && self
-                        .idle
-                        .as_ref()
-                        .is_none_or(|s| s.texture.id() != sprite.texture.id())
-                {
-                    self.idle = Some(sprite.clone());
-                }
-            }
-            if self.input_monitor.saved.config.pose.mode != PoseMode::Frozen {
-                self.items.clock += dt.min(0.25);
-            }
-            if self.items.evaluate(
-                &mut self.input_monitor.saved.config,
-                &self.live_inputs,
-                &parameters,
-            ) {
-                self.items.edited();
-            }
-        }
-        self.items.sync_assets(
-            ctx,
-            self.render_state.as_ref(),
-            &self.input_monitor.saved.config,
-        );
-        self.items.models.sync(
-            self.render_state.as_ref(),
-            Path::new(self.settings.cubism_core.trim()),
-            &self.input_monitor.saved.config,
-        );
+        self.advance_profiles(ctx, dt);
 
         if self.metrics.update(
             self.render_state.as_ref(),
@@ -2973,7 +3094,8 @@ impl eframe::App for AriaApp {
                 .map(|a| a.model.process_id())
                 .chain(self.items.models.process_ids())
                 .chain(self.effects.process_ids())
-                .chain(self.camera.process_ids()),
+                .chain(self.camera.process_ids())
+                .chain(self.profiles.parked.values().flat_map(|a| a.process_ids())),
         ) {
             self.metrics
                 .record_graphs(&self.snapshot, self.render_fps, frame.info().cpu_usage);
@@ -3055,6 +3177,7 @@ impl eframe::App for AriaApp {
             .frame(Frame::new().fill(panel()).inner_margin(12.0))
             .show(root_ui, |ui| {
                 section(ui, "INSPECTOR");
+                ui.label(RichText::new(self.profile_name()).strong().color(mint()));
                 let kind = self.avatar_kind();
                 self.input_monitor.navigation(ui, kind);
                 let area = egui::ScrollArea::vertical()
@@ -3074,8 +3197,13 @@ impl eframe::App for AriaApp {
         egui::CentralPanel::default()
             .frame(Frame::new().fill(bg()).inner_margin(14.0))
             .show(root_ui, |ui| {
+                self.profile_tabs(ui);
+                if self.profiles.current.is_none() && !self.settings.profiles.entries.is_empty() {
+                    ui.centered_and_justified(|ui| { ui.label("No avatars loaded. Open Profiles and check an avatar, or choose + Add avatar."); });
+                    return;
+                }
                 ui.horizontal(|ui| {
-                    ui.heading("Your stage");
+                    ui.heading(format!("Stage · {}", self.profile_name()));
                     crate::help::button(ui, "stage");
                     ui.label(
                         RichText::new(if self.live2d.is_some() {
@@ -3167,13 +3295,6 @@ impl eframe::App for AriaApp {
                     Path::new(self.settings.cubism_core.trim()),
                     &self.input_monitor.saved.config,
                 );
-                if ctx.current_pass_index() == 0 {
-                    self.items.models.update(
-                        &mut self.input_monitor.saved.config,
-                        &self.live_inputs,
-                        dt,
-                    );
-                }
                 self.items.refresh(
                     &self.input_monitor.saved.config,
                     (self.live2d.as_ref(), self.vrm.as_ref()),
@@ -3214,21 +3335,6 @@ impl eframe::App for AriaApp {
                     (self.live2d.as_ref(), self.vrm.as_ref()),
                 );
                 if self.items.revision != old_revision {
-                    self.scene_revision = self.scene_revision.wrapping_add(1);
-                }
-                if ctx.current_pass_index() == 0
-                    && self.effects.update(
-                        ctx,
-                        self.render_state.as_ref(),
-                        Path::new(self.settings.cubism_core.trim()),
-                        (
-                            &self.input_monitor.saved.effects,
-                            self.input_monitor.saved.config.pose.mode,
-                        ),
-                        self.live2d.as_ref(),
-                        dt,
-                    )
-                {
                     self.scene_revision = self.scene_revision.wrapping_add(1);
                 }
                 let scene = self.scene();
@@ -3273,7 +3379,9 @@ impl eframe::App for AriaApp {
                 painter.text(
                     rect.left_bottom() + egui::vec2(16.0, -18.0),
                     egui::Align2::LEFT_BOTTOM,
-                    if self.settings.source == Source::Demo {
+                    if self.following_profile().is_some() {
+                        "SHARED FACE INPUT  /  Independent avatar response"
+                    } else if self.settings.source == Source::Demo {
                         "DEMO INPUT  /  Choose webcam, phone or microphone"
                     } else if self.settings.source == Source::Local {
                         "LOCAL INPUT  /  Microphone, image actions and hotkeys"
@@ -3470,7 +3578,7 @@ impl eframe::App for AriaApp {
             self.input_monitor.hotkey_status =
                 Some("Hotkey worker could not start. Preset buttons remain available.".into());
         }
-        self.hotkeys.configure(self.input_monitor.hotkey_keys());
+        self.hotkeys.configure(self.workspace_hotkeys());
         if let Some(mut editor) = self.effects.editor.take() {
             let reply = editor.show(
                 ctx,
@@ -3649,7 +3757,7 @@ impl eframe::App for AriaApp {
             }
         }
         if self.outputs.any_open() {
-            let scene = self.scene();
+            let scene = self.composition();
             if let Some(state) = &self.render_state {
                 self.broadcasts.update(
                     ctx,

@@ -4,7 +4,7 @@ use aria_core::image_actions::Trigger;
 use eframe::egui;
 use std::path::{Path, PathBuf};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Kind {
     Images,
     Live2d,
