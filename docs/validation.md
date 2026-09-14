@@ -7,6 +7,34 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## v0.29 Experimental VTube Studio import — 2026-09-13
 
+### Browser-link hotfix
+
+The desktop deliberately disables the UI framework's default features; its
+`links` feature must be explicitly enabled for native hyperlinks and OpenUrl
+commands. The repository contract now checks this feature. It covers the shared
+dispatch used by social icons, online help, Cubism downloads, support tickets and
+OAuth sign-in on Windows, Linux and macOS.
+
+To exercise the actual operating-system browser launcher on an interactive
+desktop with a default browser configured:
+
+```sh
+cargo build --locked -p aria-desktop --features screenshots
+python scripts/check-browser-links.py target/debug/aria-desktop.exe
+```
+
+On Linux/macOS, use `target/debug/aria-desktop` without `.exe`. The isolated demo
+issues the same OpenUrl command as the app's links; a temporary localhost server
+must receive a request from the browser. The app captures a frame and closes.
+Close the browser's local success tab afterward. This test sends no data to an
+external service and the smoke hook is absent from normal release builds.
+
+Passed on Windows with the actual native ARIA app and a browser request received
+by the local server. All 210 workspace tests and strict Clippy passed after the
+feature change. Interactive Linux/macOS browser acceptance remains unverified.
+
+### Import and diagnostics checks
+
 - 210 standard workspace tests passed locally. New checks cover sidecar validation,
   shortcut conversion, motion curves and part opacity, frame-folder sorting,
   transactional local repairs, scene toggling and readable/redacted report export.

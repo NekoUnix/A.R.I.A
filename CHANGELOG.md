@@ -21,6 +21,10 @@ for packages and checksums. Features labeled Experimental have compatibility lim
   Export confirmation links to GitHub issues and NekoUnix’s Discord for tickets.
 - Small local-vector social buttons in the footer. Opening links never follows,
   subscribes, joins or modifies accounts automatically.
+- Fix browser links across the app: social icons, Cubism downloads, online help,
+  support tickets and streaming-service sign-in now open the default browser.
+  Restore the UI framework's native link support on Windows, Linux and macOS,
+  with a repository check to prevent it being disabled in future builds.
 - VTube Studio import and VBridger import are both explicitly Experimental.
 
 

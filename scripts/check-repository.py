@@ -78,6 +78,9 @@ def check():
 
     cargo = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
     version = cargo["workspace"]["package"]["version"]
+    desktop = tomllib.loads((ROOT / "apps/aria-desktop/Cargo.toml").read_text(encoding="utf-8"))
+    if "links" not in desktop["dependencies"]["eframe"].get("features", []):
+        errors.append("Desktop eframe must enable links for native browser navigation")
     package = (ROOT / "scripts/build-windows.ps1").read_text(encoding="utf-8-sig")
     workflow = (ROOT / ".github/workflows/windows.yml").read_text(encoding="utf-8")
     if f"$ariaVersion = '{version}'" not in package:

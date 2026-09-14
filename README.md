@@ -26,6 +26,10 @@ with avatar-specific metadata, recent errors and system counters. After export,
 use its GitHub issue or Discord ticket links to ask for help. Small footer icons
 open NekoUnix’s social pages; following or subscribing is your choice.
 
+This build also fixes links that did nothing when clicked. Social, download,
+online help, support-ticket and sign-in links now open your computer's default
+browser. The browser decides whether to use a new tab or window.
+
 [Import and repair guide](docs/vtube-studio-import.md) ·
 [Diagnostic reports](docs/diagnostics.md)
 
@@ -281,6 +285,7 @@ Export important configurations before experimenting with a new Alpha build.
 | Problem | First things to check |
 | --- | --- |
 | ARIA will not open | Extract the complete package, use the right CPU/OS download and update the graphics driver. Read the error dialog and your installation guide. |
+| Clicking an online link does nothing | Install this updated v0.29 Alpha build. Set a default browser in your operating system and check behind ARIA for a new tab or window. If it still fails, use **Diagnostics / export logs** and describe the link you clicked. |
 | A phone connects but no motion arrives | Check **Tracking live**, the current phone IP, matching ports, Local Network permission, firewall and same LAN. Demo motion does not confirm a phone connection. |
 | Cannot bind the tracking port | Close the other application receiving on that port, or configure matching custom ports on both sides. |
 | Mouth feels slow | Try **Quick** or **Instant** mouth response; check the tracking-rate and packet-age graphs. Phone sampling and network delay remain outside that setting. |
