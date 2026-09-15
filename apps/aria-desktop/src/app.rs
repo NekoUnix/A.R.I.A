@@ -3727,11 +3727,16 @@ impl eframe::App for AriaApp {
         self.input_monitor.save_requested |= self.outputs.take_dirty();
         self.input_monitor.save_requested |= self.items.take_save();
         self.input_monitor.save_requested |= self.effects.take_save();
-        if std::mem::take(&mut self.input_monitor.save_requested) && !crate::smoke_mode() {
-            self.remember_current_rig();
-            if let Some(storage) = frame.storage_mut() {
-                eframe::set_value(storage, "aria-settings-v1", &self.settings);
-                storage.flush();
+        if std::mem::take(&mut self.input_monitor.save_requested) {
+            // Compositor-only edits (such as lighting on frozen Live2D artwork)
+            // need a native OBS redraw even when the model texture did not change.
+            self.scene_revision = self.scene_revision.wrapping_add(1);
+            if !crate::smoke_mode() {
+                self.remember_current_rig();
+                if let Some(storage) = frame.storage_mut() {
+                    eframe::set_value(storage, "aria-settings-v1", &self.settings);
+                    storage.flush();
+                }
             }
         }
         #[cfg(feature = "screenshots")]
