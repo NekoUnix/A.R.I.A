@@ -311,10 +311,13 @@ pub fn chrome(margin: f32) -> egui::Frame {
 
 /// A static four-vertex wash behind UI panels; no texture, blur or extra render target.
 pub fn workspace_backdrop(ui: &egui::Ui) {
+    let rect = ui.max_rect();
     if !glass_enabled() {
+        // The root window is transparent for native outputs. Solid mode must
+        // paint its own opaque background instead of exposing the clear color.
+        ui.painter().rect_filled(rect, 0., bg());
         return;
     }
-    let rect = ui.max_rect();
     let tint = |color: Color32| bg().lerp_to_gamma(color, 0.10);
     let mut mesh = egui::Mesh::default();
     for (pos, color) in [
@@ -357,7 +360,7 @@ pub fn accent(title: &str) -> Color32 {
         mint()
     }
 }
-fn wash(color: Color32) -> Color32 {
+pub fn wash(color: Color32) -> Color32 {
     Color32::from_rgb(
         ((u16::from(card_color().r()) * 4 + u16::from(color.r())) / 5) as u8,
         ((u16::from(card_color().g()) * 4 + u16::from(color.g())) / 5) as u8,
@@ -593,6 +596,35 @@ pub fn segments<T: Copy + PartialEq>(ui: &mut egui::Ui, selected: &mut T, option
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn disabling_glass_paints_an_opaque_workspace_in_every_theme() {
+        for t in presets() {
+            let ctx = egui::Context::default();
+            for glass in [false, true, false] {
+                let colors = Palette { glass, ..t.colors };
+                apply(&ctx, colors);
+                let mut bounds = egui::Rect::NOTHING;
+                let output = crate::run_test_ui(
+                    &ctx,
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(900., 600.),
+                        )),
+                        ..Default::default()
+                    },
+                    |ui| {
+                        bounds = ui.max_rect();
+                        workspace_backdrop(ui);
+                    },
+                );
+                if !glass {
+                    assert!(output.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Rect(r) if r.rect == bounds && r.fill == bg() && r.fill.a() == 255)),"{} solid workspace was left transparent", t.name);
+                }
+            }
+        }
+        apply(&egui::Context::default(), Palette::DARK);
+    }
     #[test]
     fn builtin_text_is_readable_and_custom_themes_round_trip() {
         for t in presets() {

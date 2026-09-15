@@ -17,8 +17,12 @@ impl Keys {
         let focused = ctx.input(|i| i.focused);
         let typing = ctx.egui_wants_keyboard_input();
         let mut next = BTreeSet::new();
+        let paused = ctx
+            .data(|d| d.get_temp::<bool>(egui::Id::new("aria-shortcuts-paused")))
+            .unwrap_or(false);
         for h in &config.actions {
-            if !h.enabled
+            if paused
+                || !h.enabled
                 || !config.keyboard_enabled
                 || (!focused && !(h.global && global))
                 || (focused && typing)

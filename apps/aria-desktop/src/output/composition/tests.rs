@@ -1,6 +1,7 @@
 use super::*;
 fn scene() -> Scene {
     Scene {
+        lighting: Default::default(),
         placement: Default::default(),
         images: Default::default(),
         dents: Default::default(),
@@ -148,6 +149,7 @@ fn transforms_survive_unload_reload_and_remain_independent_between_canvases() {
     output.ensure_avatar(20, 1);
     output.edit_canvas(0, |c| {
         c.avatars.get_mut(&10).unwrap().position = [0.4, 0.2];
+        c.locked_avatars.insert(10);
     });
     output.edit_canvas(1, |c| {
         c.avatars.get_mut(&20).unwrap().zoom = 1.8;
@@ -158,8 +160,111 @@ fn transforms_survive_unload_reload_and_remain_independent_between_canvases() {
     assert_eq!(s.canvas(1).avatars[&10].position, [0., 0.]);
     assert_eq!(s.canvas(1).avatars[&20].zoom, 1.8);
     assert_eq!(s.canvas(2).avatars[&20].zoom, 0.7);
+    assert!(s.canvas(0).locked_avatars.contains(&10));
+    assert!(!s.canvas(1).locked_avatars.contains(&10));
+    let copy: OutputSettings = serde_json::from_slice(&serde_json::to_vec(&s).unwrap()).unwrap();
+    assert_eq!(copy.canvas(0).locked_avatars, s.canvas(0).locked_avatars);
     output.forget_avatar(10);
     for index in 0..3 {
         assert!(!output.snapshot().canvas(index).avatars.contains_key(&10));
+        assert!(!output.snapshot().canvas(index).locked_avatars.contains(&10));
     }
+}
+
+#[test]
+fn modifier_click_locks_only_hit_avatar_and_unlock_does_not_drag_or_center() {
+    let ctx = egui::Context::default();
+    let c = composition();
+    let size = egui::vec2(960., 540.);
+    let mut config = CanvasSettings::default();
+    config.avatars.insert(
+        1,
+        Transform {
+            position: [-0.25, 0.],
+            zoom: 0.6,
+        },
+    );
+    config.avatars.insert(
+        2,
+        Transform {
+            position: [0.25, 0.],
+            zoom: 0.6,
+        },
+    );
+    let original = config.avatars.clone();
+    let mods = egui::Modifiers {
+        ctrl: true,
+        command: true,
+        shift: true,
+        ..Default::default()
+    };
+    let press = |p, down, m| egui::Event::PointerButton {
+        pos: p,
+        button: egui::PointerButton::Primary,
+        pressed: down,
+        modifiers: m,
+    };
+    let mut time = 0.;
+    let mut run = |events, config: &mut CanvasSettings| {
+        time += 0.05;
+        crate::run_test_ui(
+            &ctx,
+            egui::RawInput {
+                events,
+                time: Some(time),
+                screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, size)),
+                ..Default::default()
+            },
+            |root| {
+                egui::CentralPanel::default()
+                    .frame(egui::Frame::NONE)
+                    .show(root, |ui| {
+                        c.canvas(ui, config, 0);
+                    });
+                if root.current_pass_index() == 0 {
+                    root.request_discard("Exercise repeated layout");
+                }
+            },
+        );
+    };
+    let p = egui::pos2(720., 285.);
+    run(vec![egui::Event::PointerMoved(p)], &mut config);
+    run(vec![press(p, true, mods)], &mut config);
+    run(vec![press(p, false, mods)], &mut config);
+    assert_eq!(config.locked_avatars, std::collections::BTreeSet::from([2]));
+    run(
+        vec![
+            press(p, true, egui::Modifiers::NONE),
+            egui::Event::PointerMoved(p + egui::vec2(30., 20.)),
+            press(p, false, egui::Modifiers::NONE),
+            egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                delta: egui::vec2(0., 100.),
+                modifiers: egui::Modifiers::NONE,
+                phase: egui::TouchPhase::Move,
+            },
+        ],
+        &mut config,
+    );
+    assert_eq!(config.avatars, original);
+    run(
+        vec![egui::Event::PointerMoved(p), press(p, true, mods)],
+        &mut config,
+    );
+    run(
+        vec![
+            egui::Event::PointerMoved(p + egui::vec2(50., 10.)),
+            press(p, false, mods),
+        ],
+        &mut config,
+    );
+    assert!(config.locked_avatars.is_empty());
+    assert_eq!(config.avatars, original);
+    config.locked = true;
+    run(vec![], &mut config);
+    assert!(!config.locked);
+    assert_eq!(
+        config.locked_avatars,
+        std::collections::BTreeSet::from([1, 2])
+    );
 }

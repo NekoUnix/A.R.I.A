@@ -1,9 +1,10 @@
 use crate::{help, items::Items, theme};
+#[cfg(test)]
+use aria_core::shortcuts::Shortcut;
 use aria_core::{
     items::{Pin, RuleMode, SignalKind},
     movement::SavedRig,
     rig::{Inputs, RigParameter},
-    shortcuts::Shortcut,
 };
 use eframe::egui;
 
@@ -85,15 +86,6 @@ impl Items {
             return save || before != saved.config.items;
         };
         let id = saved.config.items[index].id;
-        let draft_id = ui.id().with("png-shortcut-draft");
-        if ui.data(|d| d.get_temp::<u64>(draft_id)) != Some(id) {
-            self.draft = saved.item_hotkeys.get(&id).copied().unwrap_or(Shortcut {
-                ctrl: true,
-                alt: true,
-                ..Default::default()
-            });
-            ui.data_mut(|d| d.insert_temp(draft_id, id));
-        }
         let mut remove = false;
         let mut reorder = 0_i32;
         let model_count = saved
@@ -135,7 +127,7 @@ impl Items {
             });
             self.models.panel(ui,item);
             theme::category(ui,"png-pin","Pin to avatar",true,|ui| {
-                help::label(ui,match &item.pin { None => "Free on canvas".into(), Some(Pin::Puppet {..}) => "Pinned to PNG / GIF movement".into(), Some(Pin::VrmSurface {geometry,..}) => format!("Pinned to VRM surface #{}",geometry+1), Some(Pin::Surface { mesh,..}) => format!("Pinned to ArtMesh #{}",mesh+1) },"png-pins");
+                help::label(ui,match &item.pin { None => "Free on canvas".into(), Some(Pin::Puppet {..}) => "Pinned to PNG / GIF movement".into(), Some(Pin::VrmSurface {geometry,..}) => format!("Pinned to 3D surface #{}",geometry+1), Some(Pin::Surface { mesh,..}) => format!("Pinned to ArtMesh #{}",mesh+1) },"png-pins");
                 if self.draws.iter().any(|d| d.item.id == id && d.anchor == crate::items::Anchor::Missing) {
                     ui.colored_label(egui::Color32::LIGHT_RED,"Pin surface unavailable. Choose a new pin point.");
                 }
@@ -145,7 +137,7 @@ impl Items {
                     if help::control(ui,"png-pins",|ui| ui.button("Pin here")).clicked() { self.pin_here = true; self.edit_pin = false; }
                     if help::control(ui,"png-pins",|ui| ui.add_enabled(item.pin.is_some(),egui::Button::new("Unpin"))).clicked() { self.unpin = true; self.edit_pin = false; }
                 });
-                theme::caption(ui,"Choose pin point, then click the avatar. Live2D and VRM pins follow mesh motion; PNG/GIF pins follow the artwork, tracking and action animations. Pin here uses the object's center. Drag a pinned object to fine-tune its offset. Unlock stage dragging if it will not move.");
+                theme::caption(ui,"Choose pin point, then click the avatar. Live2D, VRM and GLB pins follow mesh motion; PNG/GIF pins follow the artwork, tracking and action animations. Pin here uses the object's center. Drag a pinned object to fine-tune its offset. Unlock stage dragging if it will not move.");
                 theme::caption(ui,"Move anchor only shows a circle on the stage. Drag it or click a new point to relocate the attachment without moving, rotating or resizing the object. Click Finish moving anchor or press Esc when done.");
                 help::control(ui,"png-pins",|ui| ui.checkbox(&mut item.follow_rotation,"Follow pin rotation"));
                 help::control(ui,"png-pins",|ui| ui.checkbox(&mut item.follow_scale,"Follow surface stretch"));
@@ -179,57 +171,7 @@ impl Items {
                 }
             });
         });
-        theme::category(ui, "png-hotkey", "Keyboard toggle", false, |ui| {
-            help::control(ui, "hotkeys", |ui| {
-                ui.checkbox(
-                    &mut saved.global_hotkeys,
-                    "Enable global hotkeys for this avatar",
-                )
-            });
-            ui.horizontal_wrapped(|ui| {
-                help::control(ui, "hotkeys", |ui| {
-                    ui.checkbox(&mut self.draft.ctrl, "Ctrl")
-                });
-                help::control(ui, "hotkeys", |ui| ui.checkbox(&mut self.draft.alt, "Alt"));
-                help::control(ui, "hotkeys", |ui| {
-                    ui.checkbox(&mut self.draft.shift, "Shift")
-                });
-                help::control(ui, "hotkeys", |ui| ui.checkbox(&mut self.draft.win, "Win"));
-            });
-            help::label(ui, "Main key", "hotkeys");
-            egui::ComboBox::from_id_salt("png-shortcut-key")
-                .selected_text(if self.draft.key == 0 {
-                    "Choose key".into()
-                } else {
-                    self.draft.label()
-                })
-                .show_ui(ui, |ui| {
-                    for (key, name) in Shortcut::keys() {
-                        ui.selectable_value(&mut self.draft.key, key, name);
-                    }
-                });
-            ui.horizontal_wrapped(|ui| {
-                if help::control(ui, "png-toggles", |ui| ui.button("Assign shortcut")).clicked() {
-                    self.message = Some(match Self::assign(saved, id, self.draft) {
-                        Ok(()) => format!(
-                            "{} toggles this object's master visibility.",
-                            self.draft.label()
-                        ),
-                        Err(e) => e.to_string(),
-                    });
-                }
-                if help::control(ui, "hotkeys", |ui| ui.button("Clear shortcut")).clicked() {
-                    saved.item_hotkeys.remove(&id);
-                }
-            });
-            if let Some(key) = saved.item_hotkeys.get(&id) {
-                ui.small(format!("Assigned: {}", key.label()));
-            }
-            theme::caption(
-                ui,
-                "Shortcuts work while ARIA is unfocused. A key without modifiers also intercepts typing. In range mode, a shortcut controls master visibility; the range must still match.",
-            );
-        });
+        crate::actions::hotkey_button(ui);
         if remove {
             saved.config.items.remove(index);
             saved.item_hotkeys.remove(&id);
@@ -253,6 +195,7 @@ impl Items {
             || global != saved.global_hotkeys;
         save
     }
+    #[cfg(test)]
     pub fn assign(saved: &mut SavedRig, id: u64, shortcut: Shortcut) -> anyhow::Result<()> {
         shortcut.validate()?;
         anyhow::ensure!(

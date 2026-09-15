@@ -1,6 +1,6 @@
 struct Frame {
     vp: mat4x4<f32>, front: mat4x4<f32>, view: mat4x4<f32>,
-    settings: vec4<f32>,
+    settings: vec4<f32>, light_direction: vec4<f32>, light_color: vec4<f32>,
 };
 struct Material {
     color:vec4<f32>, shade:vec4<f32>, emission:vec4<f32>, rim:vec4<f32>,
@@ -62,7 +62,12 @@ fn alpha(value:f32)->f32 {
     let toon=clamp((brightness-material.params.x)/max(0.01,1.0-material.params.y),0.0,1.0);
     let lit=mix(dark,c.rgb,toon)*frame.settings.x;
     let rim=pow(clamp(1.0-abs(vn.z)+material.extra.z,0.0,1.0),max(0.01,material.extra.y))*material.rim.rgb;
-    let rgb=mix(lit,c.rgb,material.params.w)+emit+cap*material.extra.w+rim;
+    var rgb=mix(lit,c.rgb,material.params.w)+emit+cap*material.extra.w+rim;
+    if (frame.settings.y > 0.5) {
+        let directional=clamp(dot(n,frame.light_direction.xyz),0.0,1.0);
+        let amount=select(1.0,frame.settings.w+(1.0-frame.settings.w)*directional,frame.settings.z>0.5);
+        rgb=c.rgb*frame.light_color.rgb*frame.settings.x*amount+emit+cap*material.extra.w+rim;
+    }
     let a=alpha(c.a);
     return vec4(rgb*a,a);
 }

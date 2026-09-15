@@ -1,0 +1,12 @@
+{
+  "id": 1,
+  "name": "Screenshot pose template",
+  "nodes": [
+    {"id": 1, "position": [30, 40], "step": "Start"},
+    {"id": 2, "position": [300, 40], "step": {"Action": {"target": null, "mode": "On"}}},
+    {"id": 3, "position": [570, 40], "step": {"Delay": {"seconds": 3}}},
+    {"id": 4, "position": [840, 40], "step": {"Action": {"target": null, "mode": "Off"}}},
+    {"id": 5, "position": [1110, 40], "step": "End"}
+  ],
+  "edges": [[1, 2], [2, 3], [3, 4], [4, 5]]
+}

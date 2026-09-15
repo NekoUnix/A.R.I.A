@@ -382,7 +382,6 @@ pub struct Items {
     pub edit_pin: bool,
     anchor_drag: Option<Placement>,
     pub message: Option<String>,
-    pub draft: aria_core::shortcuts::Shortcut,
     pub draws: Arc<[DrawItem]>,
     pub revision: u64,
     pub pin_here: bool,
@@ -1154,6 +1153,7 @@ mod tests {
             visible: true,
         };
         let scene = Scene {
+            lighting: Default::default(),
             placement: Default::default(),
             images: Default::default(),
             dents: Default::default(),
@@ -1242,6 +1242,7 @@ mod tests {
             opacity: 0.8,
         };
         let scene = Scene {
+            lighting: Default::default(),
             placement: Default::default(),
             images: vec![crate::image_actions::Draw {
                 sprite: artwork.clone(),
@@ -1276,6 +1277,7 @@ mod tests {
                         0.9,
                         &scene.images,
                         &[],
+                        &scene.lighting,
                     );
                 },
             );
@@ -1324,6 +1326,7 @@ mod tests {
                     egui::CentralPanel::default().show(ctx, |ui| {
                         manager.refresh(&config, None);
                         let scene = Scene {
+                            lighting: Default::default(),
                             placement: Default::default(),
                             items: manager.draws.clone(),
                             ..scene.clone()
@@ -1419,6 +1422,7 @@ mod tests {
         let mut manager = Items::default();
         manager.assets.insert("test.png".into(), Ok(sprite));
         let scene_base = Scene {
+            lighting: Default::default(),
             placement: Default::default(),
             images: Default::default(),
             dents: Default::default(),
@@ -1447,6 +1451,7 @@ mod tests {
                     egui::CentralPanel::default().show(ctx, |ui| {
                         manager.refresh(config, None);
                         let scene = Scene {
+                            lighting: Default::default(),
                             placement: Default::default(),
                             items: manager.draws.clone(),
                             ..scene_base.clone()
@@ -1575,6 +1580,7 @@ mod tests {
             visible: true,
         };
         let scene = Scene {
+            lighting: Default::default(),
             placement: Default::default(),
             images: Default::default(),
             dents: Default::default(),

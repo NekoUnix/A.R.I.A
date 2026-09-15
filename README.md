@@ -1,73 +1,61 @@
 # A.R.I.A. — Avatar Studio (Alpha)
 
-Bring your **Live2D, VRM and PNG/GIF avatars** to life, tune how it follows you, and
+Bring your **Live2D, VRM, GLB and PNG/GIF avatars** to life, tune how it follows you, and
 arrange them together in OBS. ARIA runs on Windows, Linux and macOS. You can start with the
 included Mica puppet before importing a model or connecting a camera.
 
-**[Download v0.33 Alpha](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.33.0-alpha.1)** ·
+**[Download v0.34 Alpha](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.34.0-alpha.1)** ·
 [What's new](#whats-new) · [First-time setup](#first-time-setup) ·
 [Help when something goes wrong](#help-when-something-goes-wrong)
 
 ARIA is still **Alpha**, so some features and device combinations need more
-real-world testing. **VTube Studio import and VBridger import are Experimental.** Your avatar files and any
+real-world testing. **VTube Studio import, VBridger import, VRC/GLB import and generated spring chains are Experimental.** Your avatar files and any
 required third-party tracking app or runtime are supplied separately.
 
 ![Glass workspace with multiple avatars](docs/images/profiles-v33.png)
 
 ## What's new
 
-**v0.33.0-alpha.1 fixes head tilt from iPhone VTube Studio and upside-down
-Syphon capture on macOS**, adds a glass-inspired workspace, and reduces repeated
-work in the multi-avatar engine.
+**v0.34 Alpha adds flexible hair and accessories, customizable lighting, GLB
+avatars and visual action graphs.**
 
-- **Head tilt follows you:** the VTS input adapter now corrects the lean direction
-  before it reaches your avatar, attached models or profiles sharing that tracker.
-  Existing VTS neutral calibration and personal lean ranges are updated once,
-  including saved movement presets. Other tracking sources keep their directions.
-- **Upright Syphon output:** macOS native output now uses the image orientation
-  expected by OBS. Landscape, portrait and Freeform keep their left/right order,
-  colors and transparency. If you previously rotated or flipped this source in OBS
-  as a workaround, remove that adjustment after updating.
-- **Less repeated work:** live avatar switching exchanges settings without copying
-  camera settings and every OBS layout. Syphon skips GPU publication of unchanged
-  canvases, remembers changes made while OBS is disconnected, and sends the current
-  image when a client connects. [Performance checks and limits](docs/performance.md).
-- **Glass workspace:** softer translucent cards, rounded controls and a clear
-  editing-profile outline. Choose **Settings → Appearance & themes → Glass Dark
-  or Glass Light**, customize the colors, or turn off **Glass surfaces** for solid
-  panels. High Contrast stays solid. [Theme guide](docs/themes.md).
+- **Hair and tails move:** VRM/GLB starts with Medium spring physics. Tune the
+  whole avatar or individual chains, then save it. [Physics setup](docs/secondary-motion.md).
+- **Choose your lighting:** set direction/color or even all-over light for any
+  avatar. Live2D/PNG/GIF use a soft artwork gradient; 3D uses surface shading.
+  [Lighting controls](docs/lighting.md).
+- **Import VRC / GLB:** the guided importer accepts skinned GLB avatars and hooks
+  them into your existing webcam, RTX, phone and microphone tracking.
+  Bone and face mappings are editable. [Experimental GLB guide](docs/glb-avatars.md).
+- **Record hotkeys and combine actions:** open **Hotkeys & actions** to record
+  shortcuts or connect expressions, toggles, gestures, presets, effects and
+  profile changes with nodes. [Step-by-step guide](docs/actions.md).
+- **Clearer workspace:** visible stage tabs, shared stage/profile renaming,
+  collapsible stage tools, numbers under resource graphs and a solid-surface fix.
+  Ctrl+Shift+click an avatar in an output to lock its framing (Cmd+Shift on Mac).
 
-If you previously enabled **Tracking → Axis correction → Invert roll (tilt)**
-to fix the old VTS behavior, turn that workaround off and test a gentle lean each
-way. Intentional inversion and Mirror settings remain yours to control. Use
-**Calibrate neutral pose** and **Guided tracking setup** if you need to retune.
-Custom input ranges and Experimental VBridger equations may need the same review.
+Existing Live2D, PNG/GIF and VRM profiles stay available. Use **Profiles →
++ Add avatar** to load more, then click the stage tab for the avatar you want to
+configure. All checked profiles appear together in OBS.
 
-All existing multi-avatar features remain: **Workspace → Profiles → + Add avatar…**
-loads Live2D, PNG/GIF and VRM avatars together. Check profiles to load them, use
-**Edit** or named stage tabs to choose what you are configuring, and drag/scale
-avatars independently inside each OBS preview.
-
-![Glass Light theme in the avatar workspace](docs/images/glass-light-v33.png)
-
-[Profiles guide](docs/profiles.md) · [Tracking setup](docs/tracking-setup.md) ·
+[Profiles](docs/profiles.md) · [Tracking setup](docs/tracking-setup.md) ·
 [OBS guide](docs/obs-output.md) · [Complete changelog](CHANGELOG.md)
 
 ## First-time setup
 
 ### 1. Download the right file
 
-Open the [v0.33 Alpha release](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.33.0-alpha.1)
+Open the [v0.34 Alpha release](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.34.0-alpha.1)
 and expand **Assets** if the downloads are hidden. Choose the file for your computer:
 
 | Your computer | Download |
 | --- | --- |
-| Windows 10/11, 64-bit Intel or AMD | `aria-0.33.0-alpha.1-windows-x64.zip` |
-| Mac with an M-series chip | `aria-0.33.0-alpha.1-macos-arm64.zip` |
-| Mac with an Intel processor | `aria-0.33.0-alpha.1-macos-x64.zip` |
-| Ubuntu 24.04, 64-bit Intel or AMD | `aria-0.33.0-alpha.1-linux-x64.tar.gz` |
-| Fedora 44, 64-bit Intel or AMD | `aria-alpha-0.33.0.alpha.1-1.x86_64.rpm` |
-| Current Arch Linux, 64-bit Intel or AMD | `aria-alpha-0.33.0alpha.1-1-x86_64.pkg.tar.zst` |
+| Windows 10/11, 64-bit Intel or AMD | `aria-0.34.0-alpha.1-windows-x64.zip` |
+| Mac with an M-series chip | `aria-0.34.0-alpha.1-macos-arm64.zip` |
+| Mac with an Intel processor | `aria-0.34.0-alpha.1-macos-x64.zip` |
+| Ubuntu 24.04, 64-bit Intel or AMD | `aria-0.34.0-alpha.1-linux-x64.tar.gz` |
+| Fedora 44, 64-bit Intel or AMD | `aria-alpha-0.34.0.alpha.1-1.x86_64.rpm` |
+| Current Arch Linux, 64-bit Intel or AMD | `aria-alpha-0.34.0alpha.1-1-x86_64.pkg.tar.zst` |
 
 On a Mac, **Apple menu → About This Mac** tells you whether it has an Apple chip
 or an Intel processor. Linux ARM, Windows ARM, `.deb`, AppImage and Flatpak/Snap
@@ -120,7 +108,8 @@ controls relevant to that avatar.
 | --- | --- | --- |
 | PNG/GIF | Your image or animated GIF | Set up idle/talking states, transitions and movement. A static image does not need a 3D or Live2D runtime. |
 | Live2D | An exported `.model3.json`, matching `.vtube.json`, model folder, or `.moc3` with its supporting files nearby | Keep the model folder, textures and supporting files together. ARIA asks for the official Cubism Core library needed to run it. |
-| VRM | A `.vrm` file | Load a VRM 0.x or 1.0 avatar, then tune supported expressions, natural movement and gestures. |
+| VRM | A `.vrm` file | Load a VRM 0.x or 1.0 avatar with expressions, Medium spring physics and gestures. |
+| VRC / GLB · Experimental | A skinned `.glb` export | Import bones and facial shapes, review tracking assignments and tune flexible hair/accessories. No Unity or Cubism runtime is needed. |
 
 Repeat the import to add more avatars. Each successful import is added to your
 profile list with its saved settings. Click **Edit** or a stage tab to work on one;
@@ -303,7 +292,7 @@ Export important configurations before experimenting with a new Alpha build.
 | Problem | First things to check |
 | --- | --- |
 | ARIA will not open | Extract the complete package, use the right CPU/OS download and update the graphics driver. Read the error dialog and your installation guide. |
-| Clicking an online link does nothing | Install this updated v0.33 Alpha build. Set a default browser in your operating system and check behind ARIA for a new tab or window. If it still fails, use **Diagnostics / export logs** and describe the link you clicked. |
+| Clicking an online link does nothing | Install this updated v0.34 Alpha build. Set a default browser in your operating system and check behind ARIA for a new tab or window. If it still fails, use **Diagnostics / export logs** and describe the link you clicked. |
 | A phone connects but no motion arrives | Check **Tracking live**, the current phone IP, matching ports, Local Network permission, firewall and same LAN. Demo motion does not confirm a phone connection. |
 | Cannot bind the tracking port | Close the other application receiving on that port, or configure matching custom ports on both sides. |
 | Mouth feels slow | Try **Quick** or **Instant** mouth response; check the tracking-rate and packet-age graphs. Phone sampling and network delay remain outside that setting. |

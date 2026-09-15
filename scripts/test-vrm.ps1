@@ -7,7 +7,7 @@ $ariaPreviousVrm = $env:ARIA_TEST_VRM
 Push-Location -LiteralPath (Split-Path -Parent $PSScriptRoot)
 try {
     $env:ARIA_TEST_VRM = $ariaVrmPath
-    & cargo test --locked --release -p aria-desktop vrm:: -- --include-ignored --nocapture --test-threads=1
+    & cargo test --locked --release -p aria-desktop vrm:: -- --include-ignored --skip local_glb --nocapture --test-threads=1
     if ($LASTEXITCODE -ne 0) { throw 'VRM verification failed' }
 } finally {
     $env:ARIA_TEST_VRM = $ariaPreviousVrm

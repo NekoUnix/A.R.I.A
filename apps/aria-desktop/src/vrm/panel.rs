@@ -1,4 +1,4 @@
-use super::{Avatar, spring::Group};
+use super::Avatar;
 use crate::{
     help,
     input_monitor::{InputMonitor, Tab},
@@ -74,7 +74,14 @@ fn motion(ui: &mut egui::Ui, avatar: &mut Avatar, monitor: &mut InputMonitor) {
 
 pub fn details(ui: &mut egui::Ui, avatar: &Avatar) {
     ui.collapsing("Model details", |ui| {
-        help::button(ui, "vrm-import");
+        help::button(
+            ui,
+            if avatar.asset.summary.is_glb() {
+                "glb-import"
+            } else {
+                "vrm-import"
+            },
+        );
         let s = &avatar.asset.summary;
         ui.label(format!("Author: {}", s.author));
         ui.label(format!("License declared in file: {}", s.license));
@@ -96,6 +103,9 @@ pub fn details(ui: &mut egui::Ui, avatar: &Avatar) {
     });
 }
 pub fn view(ui: &mut egui::Ui, avatar: &mut Avatar, monitor: &mut InputMonitor) {
+    if avatar.asset.summary.is_glb() {
+        glb_rig(ui, avatar, monitor);
+    }
     motion(ui, avatar, monitor);
     let before = monitor.saved.config.vrm.clone();
     let settings = &mut monitor.saved.config.vrm;
@@ -160,26 +170,114 @@ pub fn view(ui: &mut egui::Ui, avatar: &mut Avatar, monitor: &mut InputMonitor) 
     });
     details(ui, avatar);
 }
-pub fn physics(ui: &mut egui::Ui, groups: &[Group], monitor: &mut InputMonitor) {
+
+fn glb_rig(ui: &mut egui::Ui, avatar: &Avatar, monitor: &mut InputMonitor) {
+    theme::category(
+        ui,
+        "glb-rig",
+        "GLB rig & tracking · experimental",
+        true,
+        |ui| {
+            help::button(ui, "glb-import");
+            monitor.save_requested |= help::control(ui, "glb-import", |ui| {
+                ui.checkbox(
+                    &mut monitor.saved.config.vrm.reverse_forward,
+                    "Reverse avatar forward direction",
+                )
+            })
+            .changed();
+            ui.label("Uses your current tracking source and calibration. Review head turns, nods, blinks and speech, then save the profile. No second tracker is needed.");
+            ui.horizontal_wrapped(|ui| {
+                if ui.button("Set up personal tracking…").clicked() {
+                    monitor.setup_tracking_requested = true;
+                }
+                if ui.button("Edit all shape inputs…").clicked() {
+                    monitor.tab = Tab::Inputs;
+                }
+            });
+            ui.collapsing("Humanoid bone assignments", |ui| {
+            ui.small("Auto matches common Unity, Blender and Mixamo bone names. Choose another node or disable a motion here. These choices belong only to this avatar.");
+            let before = monitor.saved.config.vrm.bone_map.clone();
+            for &(bone, _) in super::glb::BONES {
+                let auto = avatar.detected_bones.get(bone).copied();
+                let selected = monitor.saved.config.vrm.bone_map.get(bone).copied();
+                let mut value = selected;
+                let label = |node: usize| avatar.asset.nodes.get(node).map_or_else(|| format!("Missing node {node}"), |n| format!("{} · #{node}", n.name));
+                ui.horizontal(|ui| {
+                    ui.label(bone);
+                    egui::ComboBox::from_id_salt(("glb-bone", bone)).width(210.)
+                        .selected_text(match selected { None => format!("Auto: {}", auto.map_or_else(|| "not found".into(), label)), Some(None) => "Disabled".into(), Some(Some(n)) => label(n) })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut value, None, "Auto detect");
+                            ui.selectable_value(&mut value, Some(None), "Disabled");
+                            for (n, _) in avatar.asset.nodes.iter().enumerate() { ui.selectable_value(&mut value, Some(Some(n)), label(n)); }
+                        });
+                });
+                if value != selected { match value { None => { monitor.saved.config.vrm.bone_map.remove(bone); }, Some(n) => { monitor.saved.config.vrm.bone_map.insert(bone.into(), n); } } }
+            }
+            if ui.button("Restore detected bones").clicked() { monitor.saved.config.vrm.bone_map.clear(); }
+            monitor.save_requested |= before != monitor.saved.config.vrm.bone_map;
+        });
+            ui.collapsing("Face input assignments", |ui| {
+            ui.small("Choose a shape for each common input. Eyes use 1 − eye opening to close the eyelid. Inputs offers additional ARKit/controller channels, ranges, smoothing and multiple shapes per input.");
+            for (title, input, inverted) in [("Mouth open", "ParamMouthOpenY", false), ("Left eyelid", "ParamEyeLOpen", true), ("Right eyelid", "ParamEyeROpen", true), ("Smile", "MouthSmile", false), ("Brows", "Brows", false)] {
+                let selected = avatar.asset.expressions.iter().enumerate().find(|(i, _)| monitor.saved.config.bindings.get(&super::expression_id(*i)).is_some_and(|b| b.input == input)).map(|(i, _)| i);
+                let mut value = selected;
+                ui.horizontal(|ui| {
+                    ui.label(title);
+                    egui::ComboBox::from_id_salt(("glb-face", input)).width(210.)
+                        .selected_text(selected.map_or("Unassigned", |i| avatar.asset.expressions[i].name.as_str()))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut value, None, "Unassigned");
+                            for (i, shape) in avatar.asset.expressions.iter().enumerate() { ui.selectable_value(&mut value, Some(i), &shape.name); }
+                        });
+                });
+                if value != selected {
+                    monitor.saved.config.bindings.retain(|id, b| !(id.starts_with("VRMExpression:") && b.input == input));
+                    if let Some(i) = value {
+                        let mut b = aria_core::rig::Binding::direct(input, 0., 1.);
+                        if inverted { b.output_min = 1.; b.output_max = 0.; }
+                        monitor.saved.config.bindings.insert(super::expression_id(i), b);
+                    }
+                    monitor.save_requested = true;
+                }
+            }
+            if ui.button("Restore detected face inputs").clicked() {
+                monitor.saved.config.bindings.retain(|id, _| !id.starts_with("VRMExpression:"));
+                monitor.saved.config.bindings.extend(super::glb::bindings(&avatar.asset.expressions));
+                monitor.save_requested = true;
+            }
+            if avatar.asset.expressions.is_empty() { ui.label("No exported morph targets. Head and body tracking still work; export facial shape keys to enable mouth and eyelid control."); }
+        });
+        },
+    );
+}
+pub fn physics(ui: &mut egui::Ui, avatar: &Avatar, monitor: &mut InputMonitor) {
     let before = monitor.saved.config.physics.clone();
+    let before_secondary = monitor.saved.config.vrm.secondary.clone();
     let settings = &mut monitor.saved.config.physics;
+    let secondary = &mut monitor.saved.config.vrm.secondary;
     theme::caption(
         ui,
-        "The groups below come from the current VRM. Global and group values multiply the avatar's authored settings. Save profile and movement presets include all spring settings.",
+        "Medium is the starting setting for every VRM / GLB avatar. Hair, tails, ears and clothing follow tracking and idle motion. Changes save automatically with this avatar; Save profile and movement presets keep them too.",
     );
-    if groups.is_empty() {
-        ui.label("This VRM does not export any spring-bone groups.");
-        return;
-    }
     theme::category(
         ui,
         "vrm-spring-overall",
         "Overall secondary motion",
         true,
         |ui| {
-            help::control(ui, "vrm-physics", |ui| {
-                ui.checkbox(&mut settings.enabled, "Enable spring bones")
-            });
+            help::button(ui, "vrm-physics");
+            ui.checkbox(&mut settings.enabled, "Enable spring bones");
+            ui.horizontal_wrapped(|ui| {
+            for (name, damping, swing, response) in [("Soft", 0.08, 65., 0.65), ("Medium", 0.15, 45., 1.), ("Firm", 0.35, 25., 1.5)] {
+                if ui.button(name).on_hover_text("Apply this preset to overall physics and all groups. Detection and manual roots are kept.").clicked() {
+                    *settings = Default::default(); settings.response = response;
+                    secondary.tuning = aria_core::vrm::SpringTuning { damping, swing, collisions: true };
+                    secondary.groups.clear(); monitor.reset_motion = true;
+                }
+            }
+        });
             sliders(
                 ui,
                 &mut settings.strength,
@@ -188,37 +286,92 @@ pub fn physics(ui: &mut egui::Ui, groups: &[Group], monitor: &mut InputMonitor) 
                 &mut settings.gravity,
                 &mut settings.wind,
             );
-            ui.horizontal_wrapped(|ui| {
-                if ui.button("Settle motion").clicked() {
-                    monitor.reset_motion = true;
-                }
-                if ui.button("Restore authored physics").clicked() {
-                    *settings = Default::default();
-                    monitor.reset_motion = true;
+            spring_tuning(ui, &mut secondary.tuning);
+            if ui
+                .button("Settle motion")
+                .on_hover_text("Return springs to rest without changing your saved settings.")
+                .clicked()
+            {
+                monitor.reset_motion = true;
+            }
+            ui.collapsing("Find secondary bones", |ui| {
+            ui.checkbox(&mut secondary.auto_detect, "Automatically detect hair, tails, ears and clothing");
+            ui.small("Keeps exported VRM springs. Adds suitable named chains on the active skeleton, protecting humanoid tracking bones. Generated groups use ARIA physics, not Unity PhysBones. Disable an unwanted group below.");
+            let candidates = super::secondary::candidates(&avatar.asset);
+            let mut selected = None;
+            egui::ComboBox::from_id_salt("spring-add-root").selected_text("Add a bone chain…").show_ui(ui, |ui| {
+                for &n in &candidates {
+                    if !avatar.asset.nodes[n].children.is_empty() && !secondary.manual_roots.contains(&n) {
+                        ui.selectable_value(&mut selected, Some(n), format!("{} · #{}", avatar.asset.nodes[n].name, n));
+                    }
                 }
             });
+            if let Some(n) = selected { secondary.manual_roots.insert(n); }
+            let mut remove = None;
+            for &n in &secondary.manual_roots {
+                ui.horizontal(|ui| {
+                    ui.label(avatar.asset.nodes.get(n).map_or("Missing bone", |node| node.name.as_str()));
+                    if ui.small_button("Remove manual chain").clicked() { remove = Some(n); }
+                });
+            }
+            if let Some(n) = remove { secondary.manual_roots.remove(&n); }
+            ui.small("Choose the top of a flexible chain if its names were not recognized. A chain needs at least two bones. Unrigged hair cannot bend until it has bones and skin weights.");
+        });
         },
     );
+    let groups = &avatar.spring_groups;
+    let generated = groups.iter().filter(|g| g.id.starts_with("aria:")).count();
+    ui.label(format!(
+        "{} exported · {} automatically / manually added groups",
+        groups.len() - generated,
+        generated
+    ));
+    if groups.is_empty() {
+        ui.label("No flexible chains found. Add a bone chain above, or export a skinned rig with hair / accessory bones.");
+    }
     theme::category(
         ui,
         "vrm-spring-groups",
         &format!("Spring groups · {}", groups.len()),
-        true,
+        false,
         |ui| {
             for group in groups {
-                ui.push_id(&group.id,|ui|ui.collapsing(&group.name,|ui|{
-                let mut tuning=settings.groups.get(&group.id).copied().unwrap_or_default();let previous=tuning;
-                help::context_button(ui,"vrm-physics",||format!("Group: {}\n{} simulated joints · {} sphere/capsule colliders\nStable profile ID: {}\nCenter node: {:?}\n\nAuthored per-joint values:\n{}",group.name,group.joints.len(),group.colliders.len(),group.id,group.center,group.joints.iter().map(|j|format!("Node {}: stiffness {}, drag {}, gravity {}, radius {} m",j.node,j.stiffness,j.drag,j.power,j.radius)).collect::<Vec<_>>().join("\n")));
-                ui.small(format!("{} joints · {} colliders",group.joints.len(),group.colliders.len()));
-                help::control(ui,"vrm-physics",|ui|ui.checkbox(&mut tuning.enabled,"Enable this group"));
-                sliders(ui,&mut tuning.strength,&mut tuning.inertia,&mut tuning.response,&mut tuning.gravity,&mut tuning.wind);
-                if ui.button("Reset this group").clicked(){tuning=Default::default();monitor.reset_motion=true;}
-                if tuning!=previous {settings.groups.insert(group.id.clone(),tuning);}
+                ui.push_id(&group.id, |ui| ui.collapsing(&group.name, |ui| {
+                help::context_button(ui, "vrm-physics", || format!("{}\n{} joints · {} exported colliders\nProfile ID: {}\nExported center: {:?}", group.name, group.joints.len(), group.colliders.len(), group.id, group.center));
+                let mut tuning = settings.groups.get(&group.id).copied().unwrap_or_default();
+                let previous = tuning;
+                ui.small(if group.id.starts_with("aria:") { "ARIA generated chain · Medium defaults" } else { "Exported VRM chain · retains authored stiffness and colliders" });
+                ui.checkbox(&mut tuning.enabled, "Enable this group");
+                sliders(ui, &mut tuning.strength, &mut tuning.inertia, &mut tuning.response, &mut tuning.gravity, &mut tuning.wind);
+                let mut override_tuning = secondary.groups.contains_key(&group.id);
+                if ui.checkbox(&mut override_tuning, "Custom damping, swing and collisions").changed() {
+                    if override_tuning { secondary.groups.insert(group.id.clone(), secondary.tuning); }
+                    else { secondary.groups.remove(&group.id); }
+                }
+                if let Some(advanced) = secondary.groups.get_mut(&group.id) { spring_tuning(ui, advanced); }
+                if ui.button("Reset group to overall settings").clicked() {
+                    tuning = Default::default(); secondary.groups.remove(&group.id); monitor.reset_motion = true;
+                }
+                if tuning != previous { settings.groups.insert(group.id.clone(), tuning); }
             }));
             }
         },
     );
-    monitor.save_requested |= before != *settings;
+    if ui.button("Save physics for this avatar").clicked() {
+        monitor.save_requested = true;
+    }
+    monitor.save_requested |= before != *settings || before_secondary != *secondary;
+}
+fn spring_tuning(ui: &mut egui::Ui, settings: &mut aria_core::vrm::SpringTuning) {
+    help::control(ui, "vrm-physics", |ui| {
+        ui.add(egui::Slider::new(&mut settings.damping, 0.0..=1.0).text("Extra damping"))
+    });
+    help::control(ui, "vrm-physics", |ui| {
+        ui.add(egui::Slider::new(&mut settings.swing, 0.0..=90.0).text("Maximum bend (degrees)"))
+    });
+    help::control(ui, "vrm-physics", |ui| {
+        ui.checkbox(&mut settings.collisions, "Use exported body colliders")
+    });
 }
 fn sliders(
     ui: &mut egui::Ui,

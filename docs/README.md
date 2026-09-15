@@ -1,6 +1,10 @@
-# ARIA documentation — v0.30 Alpha
+# ARIA documentation
 
 ![Odette in the Live2D appearance workspace](images/customization-v30.png)
+
+Next release in development: [recorded hotkeys and visual actions](actions.md),
+clear stage tabs, shared stage/profile names, individual preview locks and
+[Experimental VRC / GLB humanoid avatars](glb-avatars.md) using the existing tracking pipeline.
 
 New to ARIA? Start with the [beginner setup walkthrough](../README.md#first-time-setup)
 and [changelog](../CHANGELOG.md). For system-specific steps use [Windows setup](windows.md), [Linux installation](linux.md) or
@@ -36,10 +40,13 @@ This is a release status grid, not a promise of universal model/device compatibi
 | Feature | Status | What works / what remains |
 | --- | --- | --- |
 | Built-in demo avatar | Working | Starts without extra model files or SDKs. |
+| VRC / GLB avatars | Experimental · v0.34 | Skinned GLB, editable humanoid mapping, named facial shapes, shared tracking, profiles, pinning and output. ICHIGO Windows GPU validation passed. Unity controllers/shaders and VRChat PhysBones are not imported. [Guide](glb-avatars.md). |
 | iFacialMocap live UDP input | Implemented in v0.28 Alpha | Legacy/v2 parsing, head/eye/blendshape data, scoped receiver and stale recovery; physical phone acceptance remains unverified. No TCP/Bluetooth/recording transfer. |
 | Live2D model3/moc3 imports and nested folders | Working with limits | Standard ArtMeshes, authored mappings, full-body framing and exported textures; advanced Cubism 5.3 offscreen rendering is unsupported. |
 | Separate Cubism runtime process | Implemented | Native Core worker, private binary pipes, bounded messages and failure timeouts; use the library matching the OS. |
 | PNG/GIF avatars | Working | Guided import, talking/blinking states, transitions and bounded GIF playback; large sources may be downscaled to the playback budget. |
+| Secondary bone physics | Experimental for generated chains | Medium defaults, per-avatar/group tuning, authored VRM colliders, manual roots. [Guide](secondary-motion.md). |
+| Avatar lighting | Working with limits | Per-avatar color/direction or even light. 2D uses a gradient; 3D uses normals. [Guide](lighting.md). |
 | VRM 0.x / 1.0 | Working with limits | Native GPU rendering, supported expressions/skinning/springs and pins; this is not a complete reference VRM/MToon renderer. |
 | iPhone VTube Studio / external JSON | Partial validation | Protocol, axes, loopback packets and calibration tested; physical phone/network acceptance remains. |
 | VTube Studio customization import | **Experimental in v0.29 Alpha** | Tracking, physics, expressions/hotkeys, motion/part opacity, mesh colors and local item scenes; missing or incompatible actions are repaired inside ARIA. No VTS execution fallback. |
@@ -95,6 +102,7 @@ and [compatibility reports](https://github.com/NekoUnix/A.R.I.A/issues/new/choos
 | Choose from nested model folders or pin items | [Folders and pins](model-folders-and-pins.md) |
 | Configure secondary motion | [Physics](physics.md) |
 | Use expressions and hotkeys | [Expressions](expressions.md) |
+| Record shortcuts and connect avatar actions (development) | [Hotkeys and action nodes](actions.md) |
 | Capture landscape, portrait or Freeform in OBS | [Outputs](obs-output.md) |
 | Sign into Twitch / YouTube chat | [Streaming chat](streaming-chat.md) |
 | Change colors or share a custom theme | [Themes](themes.md) |

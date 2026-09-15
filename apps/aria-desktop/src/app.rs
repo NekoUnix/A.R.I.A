@@ -55,6 +55,7 @@ impl Default for IFacialSettings {
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 struct Settings {
+    actions: crate::actions::Library,
     profiles: profiles::Workspace,
     ifacial: IFacialSettings,
     chat_accounts: crate::chat::Accounts,
@@ -88,6 +89,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             profiles: Default::default(),
+            actions: Default::default(),
             ifacial: IFacialSettings::default(),
             chat_accounts: Default::default(),
             image_avatar: None,
@@ -294,6 +296,8 @@ pub struct AriaApp {
     input_monitor: InputMonitor,
     items: crate::items::Items,
     hotkeys: crate::hotkeys::Hotkeys,
+    action_editor: crate::actions::Editor,
+    action_runs: Vec<crate::actions::Run>,
     live_inputs: Inputs,
     animation_time: f32,
     idle: Option<Sprite>,
@@ -310,6 +314,11 @@ pub struct AriaApp {
 impl AriaApp {
     fn scene(&self) -> crate::output::Scene {
         crate::output::Scene {
+            lighting: if self.vrm.is_some() {
+                Default::default()
+            } else {
+                self.input_monitor.saved.config.vrm.lighting
+            },
             placement: if self.live2d.is_some() {
                 self.input_monitor
                     .vts
@@ -427,6 +436,8 @@ impl AriaApp {
             input_monitor,
             items: Default::default(),
             hotkeys: crate::hotkeys::Hotkeys::new(cc.egui_ctx.clone()),
+            action_editor: Default::default(),
+            action_runs: Vec::new(),
             live_inputs: Inputs::new(),
             animation_time: 0.0,
             idle: None,
@@ -899,6 +910,25 @@ impl AriaApp {
         use anyhow::ensure;
         let parameters = self.current_parameters();
         match action {
+            Action::RunGraph { id } => {
+                let graph = self
+                    .settings
+                    .actions
+                    .graphs
+                    .iter()
+                    .find(|g| g.id == id)
+                    .ok_or_else(|| anyhow::anyhow!("Unknown action graph"))?;
+                graph.validate()?;
+                ensure!(
+                    self.action_runs.len() < 16
+                        && !self.action_runs.iter().any(|r| r.graph.id == id),
+                    "Action is already running or the 16-run limit is reached"
+                );
+                self.trigger_target(crate::actions::Target::Graph(id));
+            }
+            Action::StopActions => {
+                self.action_runs.clear();
+            }
             Action::SetParameters { values } => {
                 ensure!(
                     !values.is_empty() && values.len() <= 64,
@@ -1558,6 +1588,11 @@ impl AriaApp {
                             self.pending_vrm = None;
                             self.importer.start(Some(crate::avatar_import::Kind::Vrm));
                         }
+                        if ui.button("Import VRC / GLB avatar…").clicked() {
+                            self.pending_image = None;
+                            self.pending_vrm = None;
+                            self.importer.start(Some(crate::avatar_import::Kind::Glb));
+                        }
                         if ui.button("Import Live2D avatar…").clicked() {
                             self.pending_image = None;
                             self.pending_vrm = None;
@@ -1568,7 +1603,7 @@ impl AriaApp {
                     Some(crate::avatar_import::Kind::Images) => {
                         ui.strong("PNG / GIF avatar");
                         if let Some(sprite) = &self.idle {
-                            ui.label(&sprite.name);
+                            ui.label(self.profile_name());
                             ui.small(format!(
                                 "{} × {} source · {} × {} base playback",
                                 sprite.size.x as u32,
@@ -1594,13 +1629,17 @@ impl AriaApp {
                         self.input_monitor.save_requested |=
                             previous != self.input_monitor.saved.config.images.playback_mib;
                     }
-                    Some(crate::avatar_import::Kind::Vrm) => {
-                        ui.strong("VRM 3D avatar");
+                    Some(crate::avatar_import::Kind::Vrm | crate::avatar_import::Kind::Glb) => {
+                        ui.strong(if kind == Some(crate::avatar_import::Kind::Glb) {
+                            "VRC / GLB avatar · experimental"
+                        } else {
+                            "VRM 3D avatar"
+                        });
                         if let Some(avatar) = &self.vrm {
-                            ui.label(&avatar.asset.summary.name);
+                            ui.label(self.profile_name());
                             ui.small(format!(
-                                "VRM {} · {} bones · {} expressions",
-                                avatar.asset.summary.version,
+                                "{} · {} bones · {} expressions",
+                                avatar.asset.summary.format_label(),
                                 avatar.asset.bones.len(),
                                 avatar.asset.expressions.len()
                             ));
@@ -1627,7 +1666,7 @@ impl AriaApp {
                                 "Automatic full-avatar framing",
                                 "live2d-framing",
                             );
-                            ui.label(&avatar.name);
+                            ui.label(self.profile_name());
                             ui.small(format!(
                                 "{} parameters · {} physics groups · {} expressions",
                                 avatar.model.parameters().len(),
@@ -1696,6 +1735,7 @@ impl AriaApp {
                     }
                 }
                 if kind.is_some() {
+                    crate::lighting::panel(ui, &mut self.input_monitor, self.vrm.is_some());
                     crate::help::control(ui, "avatar", |ui| {
                         ui.add(
                             egui::Slider::new(&mut self.settings.zoom, 0.5..=1.5)
@@ -1964,8 +2004,12 @@ impl AriaApp {
     fn avatar_kind(&self) -> Option<crate::avatar_import::Kind> {
         if self.live2d.is_some() {
             Some(crate::avatar_import::Kind::Live2d)
-        } else if self.vrm.is_some() {
-            Some(crate::avatar_import::Kind::Vrm)
+        } else if let Some(avatar) = &self.vrm {
+            Some(if avatar.asset.summary.is_glb() {
+                crate::avatar_import::Kind::Glb
+            } else {
+                crate::avatar_import::Kind::Vrm
+            })
         } else if self.idle.is_some() {
             Some(crate::avatar_import::Kind::Images)
         } else {
@@ -2031,6 +2075,7 @@ impl AriaApp {
     }
 
     fn advance_avatar(&mut self, ctx: &egui::Context, dt: f32) {
+        self.refresh_avatar_label();
         if dt > 0.0 {
             let mouth_response = self.input_monitor.saved.config.mouth_response;
             self.params = self.pipeline.update_with_response(
@@ -2426,10 +2471,7 @@ impl AriaApp {
             self.importer.folder(path.to_owned());
             return;
         }
-        if path
-            .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("vrm"))
-        {
+        if crate::avatar_import::Kind::from_3d_path(path).is_some() {
             self.begin_vrm(path);
             return;
         }
@@ -2720,7 +2762,7 @@ impl AriaApp {
             avatar = json!({"kind":"Live2D","content_identity":a.model_key,"core_version":a.model.version,"moc_bytes":a.files.moc.metadata().ok().map(|m|m.len()),"canvas":a.model.canvas,"textures":textures,"meshes":meshes,"parts":a.model.parts,"physics_groups":physics,"physics_settings":self.input_monitor.saved.config.physics,"appearance":self.input_monitor.saved.config.customization,"parameter_folders":a.parameter_groups,"layer_settings":self.input_monitor.saved.config.layers,"warnings":a.files.warnings,"import_notices":self.input_monitor.saved.vts.notes});
         } else if let Some(a) = &self.vrm {
             let a = &a.asset;
-            avatar = json!({"kind":"VRM","version":a.summary.version,"content_identity":a.key,"bones":a.bones,"springs":a.springs.len(),"materials":a.materials.len(),"nodes":a.nodes.len(),"skins":a.skins.len(),"geometry":a.geometry.iter().map(|g|json!({"vertices":g.vertices.len(),"morphs":g.morphs.len(),"skin":g.skin})).collect::<Vec<_>>(),"textures":a.images.iter().map(|i|i.as_ref().map(|i|i.dimensions())).collect::<Vec<_>>(),"warnings":a.warnings});
+            avatar = json!({"kind":if a.summary.is_glb() {"VRC/GLB"} else {"VRM"},"bone_overrides":self.input_monitor.saved.config.vrm.bone_map,"version":a.summary.version,"content_identity":a.key,"bones":a.bones,"springs":a.springs.len(),"materials":a.materials.len(),"nodes":a.nodes.len(),"skins":a.skins.len(),"geometry":a.geometry.iter().map(|g|json!({"vertices":g.vertices.len(),"morphs":g.morphs.len(),"skin":g.skin})).collect::<Vec<_>>(),"textures":a.images.iter().map(|i|i.as_ref().map(|i|i.dimensions())).collect::<Vec<_>>(),"warnings":a.warnings});
         }
         let expressions: Vec<_> = self
             .input_monitor
@@ -2755,7 +2797,7 @@ impl AriaApp {
                     crate::vrm::panel::view(ui, avatar, &mut self.input_monitor);
                 }
                 if self.input_monitor.tab == Tab::Physics {
-                    crate::vrm::panel::physics(ui, &avatar.asset.springs, &mut self.input_monitor);
+                    crate::vrm::panel::physics(ui, avatar, &mut self.input_monitor);
                 }
             }
             if self.input_monitor.tab == Tab::Layers
@@ -3037,14 +3079,15 @@ impl eframe::App for AriaApp {
         }
         if let Some(path) = dropped_items
             .iter()
-            .find(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("vrm")))
+            .find(|p| crate::avatar_import::Kind::from_3d_path(p).is_some())
             .cloned()
         {
             self.pending_vrm = None;
             self.pending_image = None;
-            self.importer.start(Some(crate::avatar_import::Kind::Vrm));
+            self.importer
+                .start(crate::avatar_import::Kind::from_3d_path(&path));
             self.importer.model = Some(path);
-            dropped_items.retain(|p| !p.extension().is_some_and(|e| e.eq_ignore_ascii_case("vrm")));
+            dropped_items.retain(|p| crate::avatar_import::Kind::from_3d_path(p).is_none());
         }
         let now = Instant::now();
         // A layout discard can call update twice for the same frame.
@@ -3069,6 +3112,7 @@ impl eframe::App for AriaApp {
             let parameters:Vec<_>=self.current_parameters().iter().map(|p|serde_json::json!({"id":p.id,"min":p.min,"max":p.max,"default":p.default,"value":p.value})).collect();
             self.effect_api.publish(serde_json::json!({
                 "workspace":self.workspace_summary(),
+                "action_graphs":self.settings.actions.graphs.iter().map(|g|serde_json::json!({"id":g.id,"name":g.name,"nodes":g.nodes.len(),"running":self.action_runs.iter().any(|r|r.graph.id == g.id)})).collect::<Vec<_>>(),
                 "tracking_status":self.connection_status(),"source":self.settings.source,
                 "parameters":parameters,"inputs":self.live_inputs,"pose":self.input_monitor.saved.config.pose.mode,
                 "presets":self.input_monitor.saved.presets.iter().enumerate().map(|(index,p)|serde_json::json!({"index":index,"name":p.name})).collect::<Vec<_>>(),
@@ -3085,7 +3129,9 @@ impl eframe::App for AriaApp {
                 crate::hotkeys::Event::Pressed { generation, action }
                     if generation == self.hotkeys.generation =>
                 {
-                    self.dispatch_hotkey(action);
+                    if !self.action_editor.recording() {
+                        self.dispatch_hotkey(action);
+                    }
                 }
                 crate::hotkeys::Event::Registered {
                     generation,
@@ -3098,10 +3144,14 @@ impl eframe::App for AriaApp {
                     } else {
                         Some(errors.join("\n"))
                     };
+                    self.action_editor
+                        .registration_errors
+                        .clone_from(&self.input_monitor.hotkey_status);
                 }
                 _ => {}
             }
         }
+        self.update_actions(ctx);
         if std::mem::take(&mut self.input_monitor.reset_item_rules) {
             self.items.reset_rules();
         }
@@ -3171,6 +3221,7 @@ impl eframe::App for AriaApp {
                     if ui.small_button("Diagnostics / export logs").clicked() {
                         self.support.open = true;
                     }
+                    crate::actions::hotkey_button(ui);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
                             RichText::new(format!(
@@ -3198,7 +3249,7 @@ impl eframe::App for AriaApp {
                         (ui.available_width() - crate::socials::WIDTH - crate::bread::WIDTH - 8.0)
                             .max(400.0);
                     ui.allocate_ui_with_layout(
-                        egui::vec2(width, 40.0),
+                        egui::vec2(width, 57.0),
                         egui::Layout::left_to_right(egui::Align::Center),
                         |ui| {
                             ui.set_min_width(width);
@@ -3257,12 +3308,13 @@ impl eframe::App for AriaApp {
                 }
                 ui.horizontal(|ui| {
                     ui.heading(format!("Stage · {}", self.profile_name()));
+                    self.rename_stage_button(ui);
                     crate::help::button(ui, "stage");
                     ui.label(
                         RichText::new(if self.live2d.is_some() {
                             "LIVE2D / CUBISM"
-                        } else if self.vrm.is_some() {
-                            "VRM / 3D HUMANOID"
+                        } else if let Some(avatar) = &self.vrm {
+                            if avatar.asset.summary.is_glb() { "VRC / GLB HUMANOID" } else { "VRM / 3D HUMANOID" }
                         } else if self.idle.is_some() {
                             "PNG / GIF PUPPET"
                         } else {
@@ -3272,6 +3324,10 @@ impl eframe::App for AriaApp {
                         .color(muted()),
                     );
                 });
+                egui::CollapsingHeader::new("Stage tools & customization")
+                    .id_salt(("stage-tools", self.profiles.current))
+                    .default_open(false)
+                    .show(ui, |ui| {
                 ui.label(RichText::new(self.connection_status()).color(mint()));
                 ui.horizontal_wrapped(|ui| {
                     crate::help::button(ui, "png-items");
@@ -3299,6 +3355,7 @@ impl eframe::App for AriaApp {
                         }
                     });
                 }
+                    });
                 let selecting_layers = self.live2d.is_some()
                     && self.input_monitor.layers_panel.stage_selection.enabled;
                 if selecting_layers {
@@ -3631,7 +3688,12 @@ impl eframe::App for AriaApp {
             self.input_monitor.hotkey_status =
                 Some("Hotkey worker could not start. Preset buttons remain available.".into());
         }
-        self.hotkeys.configure(self.workspace_hotkeys());
+        self.hotkeys
+            .configure(if !cfg!(windows) || self.action_editor.recording() {
+                Vec::new()
+            } else {
+                self.workspace_hotkeys()
+            });
         if let Some(mut editor) = self.effects.editor.take() {
             let reply = editor.show(
                 ctx,
@@ -3665,11 +3727,16 @@ impl eframe::App for AriaApp {
         self.input_monitor.save_requested |= self.outputs.take_dirty();
         self.input_monitor.save_requested |= self.items.take_save();
         self.input_monitor.save_requested |= self.effects.take_save();
-        if std::mem::take(&mut self.input_monitor.save_requested) && !crate::smoke_mode() {
-            self.remember_current_rig();
-            if let Some(storage) = frame.storage_mut() {
-                eframe::set_value(storage, "aria-settings-v1", &self.settings);
-                storage.flush();
+        if std::mem::take(&mut self.input_monitor.save_requested) {
+            // Compositor-only edits (such as lighting on frozen Live2D artwork)
+            // need a native OBS redraw even when the model texture did not change.
+            self.scene_revision = self.scene_revision.wrapping_add(1);
+            if !crate::smoke_mode() {
+                self.remember_current_rig();
+                if let Some(storage) = frame.storage_mut() {
+                    eframe::set_value(storage, "aria-settings-v1", &self.settings);
+                    storage.flush();
+                }
             }
         }
         #[cfg(feature = "screenshots")]

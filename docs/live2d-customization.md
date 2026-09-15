@@ -177,9 +177,9 @@ running. Tracking calibration, physics, props, current expressions and microphon
 settings retain their current values.
 
 Choose **Manage looks, shortcuts & exports** to open the preset library. There
-you can select a look, rename or replace it, delete it, export it, or assign an
-available **Ctrl+Alt+F1–F11** shortcut on Windows. Enable global hotkeys for the
-avatar to use those shortcuts. Conflicting shortcuts are rejected. Imported
+you can select a look, rename or replace it, delete it, or export it. Open
+**Hotkeys & actions** to record a shortcut for the saved look. Conflicting
+shortcuts are rejected. Imported
 looks must belong to the same avatar content identity; imported keyboard
 assignments are cleared.
 

@@ -145,6 +145,69 @@ fn both_versions_share_geometry_and_import_expression_units() {
         assert!(asset.key.starts_with("vrm:"));
     }
 }
+
+#[test]
+fn glb_import_keeps_large_morph_sets_defaults_and_rejects_static_props() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("avatar.GLB");
+    let (mut j, bin) = fixture(false);
+    j["extensions"] = json!({});
+    j["extensionsUsed"] = json!([]);
+    j["extensionsRequired"] = json!([]);
+    j["nodes"][1]["name"] = json!("mixamorig:Hips");
+    j["nodes"][2]["name"] = json!("Head");
+    j["skins"][0]["joints"][0] = json!(2);
+    j["meshes"][0]["name"] = json!("Face");
+    let target = j["meshes"][0]["primitives"][0]["targets"][0].clone();
+    for p in j["meshes"][0]["primitives"].as_array_mut().unwrap() {
+        p["targets"] = json!(vec![target.clone(); 300]);
+    }
+    let mut names: Vec<_> = (0..300).map(|n| format!("Shape {n}")).collect();
+    names[0] = "vrc.v_aa".into();
+    names[1] = "eye_close_1_L".into();
+    names[2] = "eye_close_1_R".into();
+    j["meshes"][0]["extras"]["targetNames"] = json!(names);
+    let mut weights = vec![0f32; 300];
+    weights[299] = 0.7;
+    weights[297] = -0.2;
+    weights[298] = 1.3;
+    j["meshes"][0]["weights"] = json!(weights);
+    write(&path, &j, &bin);
+    let a = asset::load(&path, &|_| Ok(())).unwrap();
+    assert!(a.summary.is_glb() && a.key.starts_with("glb:"));
+    assert_eq!(a.summary.name, "avatar");
+    assert_eq!(a.bones["hips"], 1);
+    assert_eq!(a.bones["head"], 2);
+    assert_eq!(a.geometry.len(), 1);
+    assert_eq!(a.expressions.len(), 300);
+    assert_eq!(glb_default(&a, &a.expressions[299]), 0.7);
+    assert_eq!(glb_default(&a, &a.expressions[297]), -0.2);
+    assert_eq!(glb_default(&a, &a.expressions[298]), 1.3);
+    let mut bindings = glb::bindings(&a.expressions);
+    assert_eq!(
+        bindings
+            .get_mut(&expression_id(0))
+            .unwrap()
+            .evaluate(1., 0.016),
+        1.
+    );
+    assert_eq!(
+        bindings
+            .get_mut(&expression_id(1))
+            .unwrap()
+            .evaluate(0., 0.016),
+        1.
+    );
+    j["nodes"][4].as_object_mut().unwrap().remove("skin");
+    write(&path, &j, &bin);
+    assert!(
+        asset::load(&path, &|_| Ok(()))
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("skinned humanoid")
+    );
+}
 #[test]
 fn broken_exports_fail_before_gpu_or_large_allocation() {
     let dir = tempfile::tempdir().unwrap();
@@ -193,6 +256,7 @@ fn spring_step_is_finite_frame_rate_independent_and_freezes() {
                 &mut rotations,
                 &mut world,
                 &settings,
+                &Default::default(),
                 dt,
                 false,
             );
@@ -205,6 +269,7 @@ fn spring_step_is_finite_frame_rate_independent_and_freezes() {
             &mut rotations,
             &mut world,
             &settings,
+            &Default::default(),
             dt,
             true,
         );
@@ -273,4 +338,131 @@ fn both_versions_render_and_morph_on_gpu() {
         }
         assert_eq!(a.resolve_pin(&broken), crate::items::Anchor::Missing);
     }
+}
+
+#[test]
+fn secondary_detection_protects_humanoid_and_respects_manual_and_exported_chains() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("secondary.vrm");
+    let (j, bin) = fixture(false);
+    write(&path, &j, &bin);
+    let mut a = asset::load(&path, &|_| Ok(())).unwrap();
+    a.springs.clear();
+    let node = a.nodes[3].clone();
+    a.nodes[2].children = vec![5];
+    a.nodes[3].parent = Some(5);
+    a.nodes.push(asset::Node {
+        name: "Hair_Root".into(),
+        parent: Some(2),
+        children: vec![3],
+        translation: glam::Vec3::ZERO,
+        ..node
+    });
+    a.order = vec![0, 1, 2, 5, 3, 4];
+    a.skins[0].joints.push(3);
+    let mut settings = aria_core::vrm::Secondary::default();
+    let groups = secondary::groups(&a, &settings);
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].joints[0].node, 5);
+    assert!(
+        !groups
+            .iter()
+            .flat_map(|g| &g.joints)
+            .any(|j| a.bones.values().any(|&n| n == j.node))
+    );
+    a.springs = groups.clone();
+    assert_eq!(secondary::groups(&a, &settings).len(), 1);
+    a.springs.clear();
+    settings.auto_detect = false;
+    assert!(secondary::groups(&a, &settings).is_empty());
+    a.nodes[5].name = "unnamed".into();
+    settings.manual_roots.insert(5);
+    assert_eq!(secondary::groups(&a, &settings).len(), 1);
+    settings.manual_roots.clear();
+    settings.manual_roots.insert(2); // head is protected
+    assert!(secondary::groups(&a, &settings).is_empty());
+}
+
+#[test]
+fn secondary_world_inertia_lags_centered_head_and_settles_with_bounded_bend() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("inertia.vrm");
+    let (j, bin) = fixture(false);
+    write(&path, &j, &bin);
+    let a = asset::load(&path, &|_| Ok(())).unwrap();
+    let mut groups = a.springs.clone();
+    groups[0].center = Some(1);
+    groups[0].colliders.clear();
+    groups[0].joints[0].power = 0.;
+    let mut sim = spring::Simulation::default();
+    let mut rotations: Vec<_> = a.nodes.iter().map(|n| n.rotation).collect();
+    let mut world: Vec<_> = a.nodes.iter().map(|n| n.world).collect();
+    let mut settings = aria_core::physics::PhysicsSettings::default();
+    let secondary = aria_core::vrm::Secondary::default();
+    sim.update(
+        &a.nodes,
+        &a.order,
+        &groups,
+        &mut rotations,
+        &mut world,
+        &settings,
+        &secondary,
+        1. / 60.,
+        false,
+    );
+    let mut first = 0.;
+    for frame in 0..300 {
+        for (r, n) in rotations.iter_mut().zip(&a.nodes) {
+            *r = n.rotation;
+        }
+        rotations[1] = Quat::from_rotation_z(25f32.to_radians());
+        spring::world_matrices(&a.nodes, &a.order, &rotations, &mut world);
+        sim.update(
+            &a.nodes,
+            &a.order,
+            &groups,
+            &mut rotations,
+            &mut world,
+            &settings,
+            &secondary,
+            1. / 60.,
+            false,
+        );
+        let angle = rotations[2].angle_between(a.nodes[2].rotation).abs();
+        assert!(angle.is_finite() && angle <= 45.01f32.to_radians());
+        if frame == 0 {
+            first = angle;
+        }
+    }
+    assert!(
+        first > 5f32.to_radians(),
+        "spring should lag a head-centered turn"
+    );
+    assert!(
+        rotations[2].angle_between(a.nodes[2].rotation) < 0.01,
+        "spring should settle"
+    );
+    settings.groups.insert(
+        groups[0].id.clone(),
+        aria_core::physics::GroupSettings {
+            enabled: false,
+            ..Default::default()
+        },
+    );
+    for (r, n) in rotations.iter_mut().zip(&a.nodes) {
+        *r = n.rotation;
+    }
+    spring::world_matrices(&a.nodes, &a.order, &rotations, &mut world);
+    sim.update(
+        &a.nodes,
+        &a.order,
+        &groups,
+        &mut rotations,
+        &mut world,
+        &settings,
+        &secondary,
+        0.,
+        false,
+    );
+    assert_eq!(rotations[2], a.nodes[2].rotation);
 }

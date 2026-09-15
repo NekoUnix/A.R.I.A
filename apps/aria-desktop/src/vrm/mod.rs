@@ -2,10 +2,12 @@
 pub mod asset;
 #[cfg(test)]
 mod fixtures;
+pub mod glb;
 pub mod motion;
 pub mod panel;
 mod pins;
 mod render;
+pub mod secondary;
 pub mod spring;
 use anyhow::Result;
 use aria_core::{
@@ -84,6 +86,7 @@ pub struct Avatar {
     rotations: Vec<Quat>,
     world: Vec<Mat4>,
     springs: spring::Simulation,
+    pub spring_groups: Vec<spring::Group>,
     weights: Vec<Vec<f32>>,
     expression_weights: Vec<f32>,
     last_values: Vec<f32>,
@@ -93,6 +96,22 @@ pub struct Avatar {
     last_pose: PoseMode,
     clock: f32,
     pub motion: motion::Player,
+    pub detected_bones: BTreeMap<String, usize>,
+    glb_jaw: bool,
+}
+fn glb_default(asset: &asset::Asset, expression: &asset::Expression) -> f32 {
+    expression
+        .binds
+        .first()
+        .and_then(|b| {
+            asset
+                .geometry
+                .iter()
+                .find(|g| b.mesh == Some(g.mesh))
+                .and_then(|g| g.weights.get(b.index))
+        })
+        .copied()
+        .unwrap_or(0.)
 }
 pub fn expression_id(index: usize) -> String {
     format!("VRMExpression:{index}")
@@ -148,20 +167,31 @@ impl Avatar {
         for (i, e) in asset.expressions.iter().enumerate() {
             let id = expression_id(i);
             labels.insert(id.clone(), format!("Expression · {}", e.name));
+            let default = if asset.summary.is_glb() {
+                glb_default(&asset, e)
+            } else {
+                0.
+            };
             parameters.push(RigParameter {
                 id,
-                min: 0.,
-                max: 1.,
-                default: 0.,
-                value: 0.,
+                min: default.min(0.),
+                max: default.max(1.),
+                default,
+                value: default,
             });
         }
         let mut initial_config = RigConfig::from_parameters(&parameters);
+        if asset.summary.is_glb() {
+            initial_config
+                .bindings
+                .extend(glb::bindings(&asset.expressions));
+        }
         // Map additional ARKit shapes only when the file names them explicitly.
         // Mouth-open, eyelids and gaze use the standard VRM presets below.
         for (i, e) in asset.expressions.iter().enumerate() {
             let key = e.name.to_ascii_lowercase();
-            if (e.preset.is_empty() || e.preset == "unknown")
+            if !asset.summary.is_glb()
+                && (e.preset.is_empty() || e.preset == "unknown")
                 && ARKIT.split_whitespace().any(|name| name == key)
                 && !key.starts_with("eyeblink")
                 && !key.starts_with("eyelook")
@@ -179,6 +209,8 @@ impl Avatar {
         let weights = asset.geometry.iter().map(|g| g.weights.clone()).collect();
         let expression_weights = vec![0.; asset.expressions.len()];
         let mut avatar = Self {
+            detected_bones: asset.bones.clone(),
+            glb_jaw: false,
             asset,
             initial_config,
             labels,
@@ -187,6 +219,7 @@ impl Avatar {
             rotations,
             world,
             springs: Default::default(),
+            spring_groups: Vec::new(),
             weights,
             expression_weights,
             last_values: Vec::new(),
@@ -249,12 +282,72 @@ impl Avatar {
         dt: f32,
     ) -> Result<bool> {
         let frozen = config.pose.mode == PoseMode::Frozen;
+        self.glb_jaw = self.asset.summary.is_glb()
+            && !config.bindings.iter().any(|(id, b)| {
+                id.starts_with("VRMExpression:")
+                    && matches!(
+                        b.input.as_str(),
+                        "ParamMouthOpenY" | "MouthOpen" | "JawOpen" | "ARKit:jawopen"
+                    )
+            });
         if config.pose.mode != self.last_pose {
             if !frozen {
                 self.springs.reset();
             }
             self.last_pose = config.pose.mode;
         }
+        if self.asset.summary.is_glb()
+            && self.last_settings.as_ref().is_none_or(|last| {
+                last.bone_map != config.vrm.bone_map
+                    || last.reverse_forward != config.vrm.reverse_forward
+            })
+        {
+            self.asset.bones.clone_from(&self.detected_bones);
+            for (name, node) in &config.vrm.bone_map {
+                self.asset.bones.remove(name);
+                if let Some(n) = node.filter(|&n| n < self.asset.nodes.len()) {
+                    self.asset.bones.insert(name.clone(), n);
+                }
+            }
+            let mut front = glb::front(&self.asset.nodes, &self.asset.bones);
+            if config.vrm.reverse_forward {
+                front *= Mat4::from_rotation_y(std::f32::consts::PI);
+            }
+            if front
+                .transform_vector3(glam::Vec3::Z)
+                .dot(self.asset.front.transform_vector3(glam::Vec3::Z))
+                < 0.
+            {
+                let [min, max] = self.asset.bounds;
+                self.asset.bounds = [
+                    glam::vec3(-max.x, min.y, -max.z),
+                    glam::vec3(-min.x, max.y, -min.z),
+                ];
+            }
+            self.asset.front = front;
+        }
+        if self.last_settings.as_ref().is_none_or(|last| {
+            last.secondary.auto_detect != config.vrm.secondary.auto_detect
+                || last.secondary.manual_roots != config.vrm.secondary.manual_roots
+                || last.bone_map != config.vrm.bone_map
+        }) {
+            self.spring_groups = secondary::groups(&self.asset, &config.vrm.secondary);
+            self.springs.reset();
+        }
+        let blink_inputs;
+        let inputs = if self.asset.summary.is_glb() && config.vrm.auto_blink && !frozen {
+            blink_inputs = {
+                let mut values = inputs.clone();
+                for id in ["ParamEyeLOpen", "ParamEyeROpen"] {
+                    let value = values.entry(id.into()).or_insert(1.);
+                    *value = value.min(1. - self.blink());
+                }
+                values
+            };
+            &blink_inputs
+        } else {
+            inputs
+        };
         config.evaluate_with_expressions(inputs, &mut self.parameters, dt, None, |p, active| {
             expressions.update(p, active, dt)
         });
@@ -267,7 +360,7 @@ impl Avatar {
                 .copied()
                 .ne(self.parameters.iter().map(|p| p.value));
         let moving = !frozen
-            && (config.physics.enabled && !self.asset.springs.is_empty()
+            && (config.physics.enabled && !self.spring_groups.is_empty()
                 || config.vrm.auto_blink
                 || config.vrm.motion.moving()
                 || self.motion.active());
@@ -314,7 +407,7 @@ impl Avatar {
             &mut self.world,
         );
         if frozen {
-            for group in &self.asset.springs {
+            for group in &self.spring_groups {
                 for joint in &group.joints {
                     if let Some(q) = config.vrm_pose.rotations.get(&joint.node) {
                         self.rotations[joint.node] = Quat::from_array(*q);
@@ -332,14 +425,16 @@ impl Avatar {
             self.springs.update(
                 &self.asset.nodes,
                 &self.asset.order,
-                &self.asset.springs,
+                &self.spring_groups,
                 &mut self.rotations,
                 &mut self.world,
                 &config.physics,
+                &config.vrm.secondary,
                 dt,
                 false,
             );
-            for group in &self.asset.springs {
+            config.vrm_pose.rotations.clear();
+            for group in &self.spring_groups {
                 for joint in &group.joints {
                     config
                         .vrm_pose
@@ -419,6 +514,12 @@ impl Avatar {
         });
         self.rotate("neck", neck);
         self.rotate("head", head);
+        if self.glb_jaw {
+            self.rotate(
+                "jaw",
+                Quat::from_rotation_x(self.value("ParamMouthOpenY") * 20f32.to_radians()),
+            );
+        }
         let body = Quat::from_euler(
             glam::EulerRot::YXZ,
             self.value("ParamBodyAngleX").to_radians(),
@@ -475,6 +576,9 @@ impl Avatar {
         let brow_l = self.value("ParamBrowLY");
         let brow_r = self.value("ParamBrowRY");
         for (i, e) in self.asset.expressions.iter().enumerate() {
+            if self.asset.summary.is_glb() {
+                continue;
+            }
             let auto = match e.preset.as_str() {
                 "blink" if !separate_blink => left.max(right) * allow[0],
                 "blink_l" | "blinkleft" if separate_blink => left * allow[0],
@@ -538,17 +642,23 @@ impl Avatar {
         for (weights, g) in self.weights.iter_mut().zip(&self.asset.geometry) {
             weights.clone_from(&g.weights);
             for (e, &w) in self.asset.expressions.iter().zip(&self.expression_weights) {
-                if w > 0. {
+                if w > 0. || self.asset.summary.is_glb() {
                     for b in &e.binds {
                         if b.node.is_none_or(|n| n == g.node) && b.mesh.is_none_or(|m| m == g.mesh)
                         {
-                            weights[b.index] += b.weight * w;
+                            if self.asset.summary.is_glb() {
+                                weights[b.index] = b.weight * w;
+                            } else {
+                                weights[b.index] += b.weight * w;
+                            }
                         }
                     }
                 }
             }
-            for w in weights {
-                *w = w.clamp(0., 1.);
+            if !self.asset.summary.is_glb() {
+                for w in weights {
+                    *w = w.clamp(0., 1.);
+                }
             }
         }
     }
@@ -565,7 +675,16 @@ mod tests {
     #[ignore = "requires ARIA_TEST_VRM and a DX12 GPU; private artwork is read in place"]
     fn local_vrm_tracks_expressions_springs_and_freezes() {
         let path = std::env::var_os("ARIA_TEST_VRM").unwrap();
-        let asset = asset::load(Path::new(&path), &|message| {
+        exercise_avatar(Path::new(&path));
+    }
+    #[test]
+    #[ignore = "requires ARIA_TEST_GLB and a DX12 GPU; private artwork is read in place"]
+    fn local_glb_tracks_expressions_gestures_and_freezes() {
+        let path = std::env::var_os("ARIA_TEST_GLB").unwrap();
+        exercise_avatar(Path::new(&path));
+    }
+    fn exercise_avatar(path: &Path) {
+        let asset = asset::load(path, &|message| {
             println!("{message}");
             Ok(())
         })
@@ -602,7 +721,11 @@ mod tests {
             .filter(|p| p[3] > 0)
             .count();
         assert!(opaque > 1000 && opaque < before.len() / 4);
-        if let Some(path) = std::env::var_os("ARIA_TEST_VRM_PNG") {
+        if let Some(path) = std::env::var_os(if avatar.asset.summary.is_glb() {
+            "ARIA_TEST_GLB_PNG"
+        } else {
+            "ARIA_TEST_VRM_PNG"
+        }) {
             image::save_buffer(
                 Path::new(&path),
                 &before,
@@ -612,6 +735,42 @@ mod tests {
             )
             .unwrap();
         }
+        assert!(
+            !avatar.spring_groups.is_empty(),
+            "Test avatar needs secondary groups"
+        );
+        eprintln!(
+            "Secondary motion: {} authored + {} generated groups, {} joints; Medium enabled by default",
+            avatar.asset.springs.len(),
+            avatar.spring_groups.len() - avatar.asset.springs.len(),
+            avatar
+                .spring_groups
+                .iter()
+                .map(|g| g.joints.len())
+                .sum::<usize>()
+        );
+        config.vrm.lighting = aria_core::vrm::Lighting {
+            enabled: true,
+            directional: false,
+            color: [0.5, 0.8, 1.],
+            ..Default::default()
+        };
+        avatar
+            .update(&neutral, &mut config, &mut expressions, 0.)
+            .unwrap();
+        let even_light = avatar.renderer.read_rgba().unwrap();
+        assert_ne!(even_light, before, "light color must reach the 3D canvas");
+        config.vrm.lighting.directional = true;
+        config.vrm.lighting.azimuth = 90.;
+        avatar
+            .update(&neutral, &mut config, &mut expressions, 0.)
+            .unwrap();
+        assert_ne!(
+            even_light,
+            avatar.renderer.read_rgba().unwrap(),
+            "directional and even lighting must differ"
+        );
+        config.vrm.lighting = Default::default();
         let head = avatar.asset.bones["head"];
         let local_forward = avatar.asset.nodes[head].world.inverse().transform_vector3(
             avatar
@@ -664,6 +823,44 @@ mod tests {
             !rest_arm.abs_diff_eq(avatar.rotations[arm], 0.1),
             "Wave must move the arm"
         );
+        assert!(
+            avatar
+                .spring_groups
+                .iter()
+                .flat_map(|g| &g.joints)
+                .any(|j| !avatar.rotations[j.node]
+                    .abs_diff_eq(avatar.asset.nodes[j.node].rotation, 0.001)),
+            "secondary bones must actually move"
+        );
+        let sprung_world = avatar.world.clone();
+        let sprung_rotations = avatar.rotations.clone();
+        let sprung_pixels = avatar.renderer.read_rgba().unwrap();
+        for group in &avatar.spring_groups {
+            for j in &group.joints {
+                avatar.rotations[j.node] = avatar.asset.nodes[j.node].rotation;
+            }
+        }
+        spring::world_matrices(
+            &avatar.asset.nodes,
+            &avatar.asset.order,
+            &avatar.rotations,
+            &mut avatar.world,
+        );
+        avatar
+            .renderer
+            .render(&avatar.asset, &avatar.world, &avatar.weights, &config.vrm)
+            .unwrap();
+        assert_ne!(
+            sprung_pixels,
+            avatar.renderer.read_rgba().unwrap(),
+            "spring bones must deform visible skinned artwork"
+        );
+        avatar.world = sprung_world;
+        avatar.rotations = sprung_rotations;
+        avatar
+            .renderer
+            .render(&avatar.asset, &avatar.world, &avatar.weights, &config.vrm)
+            .unwrap();
         config.capture_pose(avatar.parameters());
         avatar
             .update(&input, &mut config, &mut expressions, 1. / 60.)
@@ -783,6 +980,57 @@ mod tests {
                 serde_json::from_slice(&serde_json::to_vec(&monitor.saved).unwrap()).unwrap();
             restored.validate(avatar.parameters()).unwrap();
             assert_eq!(restored.expression_hotkeys[&id], shortcut);
+        }
+        if avatar.asset.summary.is_glb() {
+            let mut config = avatar.initial_config.clone();
+            config.physics.enabled = false;
+            config.vrm.motion.enabled = false;
+            avatar.motion.stop();
+            avatar
+                .update(&neutral, &mut config, &mut expressions, 0.5)
+                .unwrap();
+            let part = &avatar.asset.parts[0];
+            let points: Vec<_> = part.indices[..3]
+                .iter()
+                .map(|&v| avatar.renderer.projected_vertex(part.geometry, v).unwrap())
+                .collect();
+            let point = (points[0] + points[1] + points[2]) / 3.;
+            let pin = avatar
+                .pick_pin(egui::vec2(point.x, point.y))
+                .expect("Pick GLB surface");
+            assert!(
+                matches!(avatar.resolve_pin(&pin), crate::items::Anchor::Surface { opacity, .. } if opacity > 0.)
+            );
+            let mut input = neutral.clone();
+            input.insert("ParamAngleX".into(), 25.);
+            config.vrm.bone_map.insert("head".into(), None);
+            config.vrm.bone_map.insert("neck".into(), None);
+            avatar
+                .update(&input, &mut config, &mut expressions, 0.016)
+                .unwrap();
+            assert!(
+                avatar.rotations[head].abs_diff_eq(avatar.asset.nodes[head].rotation, 0.001),
+                "Disabled head bone must retain its authored rotation"
+            );
+            config.vrm.bone_map.clear();
+            avatar
+                .update(&input, &mut config, &mut expressions, 0.016)
+                .unwrap();
+            assert!(!avatar.rotations[head].abs_diff_eq(avatar.asset.nodes[head].rotation, 0.01));
+            assert!(
+                matches!(avatar.resolve_pin(&pin), crate::items::Anchor::Surface { scale, .. } if scale.is_finite())
+            );
+            let front = avatar.asset.front;
+            config.vrm.reverse_forward = true;
+            avatar
+                .update(&input, &mut config, &mut expressions, 0.016)
+                .unwrap();
+            assert!(
+                front
+                    .transform_vector3(glam::Vec3::Z)
+                    .dot(avatar.asset.front.transform_vector3(glam::Vec3::Z))
+                    < -0.99
+            );
         }
         println!(
             "Transparent GPU avatar, tracking, morphs, finite springs and frozen screenshots passed; {:.1} MiB GPU assets + canvas",

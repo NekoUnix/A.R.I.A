@@ -5,6 +5,70 @@
 This file records checks for the development builds. The Windows CI workflow
 is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
+## v0.34 physics and lighting acceptance — 2026-09-14
+
+- 259 standard Rust tests and three tracking-worker Python tests passed. Strict
+  all-target/all-feature Clippy, formatting and repository contracts passed
+  (50 Markdown and 10 JSON files).
+- Synthetic tests cover Medium migration, per-group settings round trips,
+  protected humanoid bones, manual roots, duplicate authored-chain avoidance,
+  head-centered inertia, settling, bend limits, immediate disable and fixed-step
+  60/120 Hz behavior. Artwork lighting preserves alpha and even lighting has no
+  position-dependent gradient.
+- Native Windows GPU tests read the supplied private assets in place. NekoUnity2
+  retains 28 authored groups / 183 joints. ICHIGO adds 64 generated groups /
+  140 joints to an export with no authored springs. Both show visible skinned
+  deformation from springs, colored/even/directional lighting, tracking and
+  gestures. Frozen images and serialized spring poses restore correctly.
+- Earlier workspace tests in this batch cover GLB rendering in all three OBS
+  output layouts and the real UI. The new lighting path shares that compositor;
+  the 3D light is applied once in the avatar canvas. Physical webcam/phone and
+  macOS/Linux device acceptance are separate from these Windows tests.
+- Reviewed rfd 0.17.2, tungstenite 0.30.0 and cache-action 6.1.0 updates are
+  included. OpenCV 5 and SHA-2 0.11 PRs had failing checks and are deferred;
+  NumPy 2 needs full camera-runtime acceptance before changing the tested pins.
+
+## v0.34 workspace, action editor and GLB — 2026-09-14
+
+255 standard workspace Rust tests pass, along with formatting and strict
+all-target/all-feature Clippy. Repository checks validate 48 Markdown files,
+10 JSON files, local links and package consistency.
+
+- Standard tests cover shortcut recording/save/clear through actual egui input,
+  inherited binding replacement, profile renaming without retargeting actions,
+  missing-target errors, graph persistence, cycle rejection, delays, forks and joins.
+- Output tests cover per-avatar locks, multi-pass input, wheel/drag protection,
+  unlock without accidental movement, legacy locks, per-canvas storage and cleanup.
+- Theme tests toggle glass in every built-in palette and verify that solid mode
+  paints the whole workspace opaquely. Footer tests inspect visible values/units,
+  layout width and preserved hover history with session extrema.
+- The native Windows GPU test passed with both supplied Live2D models, the
+  animated Odette GIF and NekoUnity2 VRM together in all three output formats.
+  It also renders the solid Sakura workspace, named stage tabs, action cards and
+  shortcut window. Screenshots and provenance are in [the image guide](images/README.md).
+- Graph validation uses a dependency queue; API snapshots report graph metadata
+  without revalidating every saved graph on each poll. Execution remains bounded
+  and delays do not block rendering. No new rendering dependency was added.
+- These development checks do not claim published packages, native macOS/Linux
+  keyboard registration, or a measured end-to-end performance improvement.
+
+### Experimental VRC / GLB acceptance
+
+- Read the supplied private `ICHIGO_v1.04.glb` in place: 23 detected humanoid bones,
+  742 morph controls, 72,032 unique vertices, 29 draw sections and nine decoded textures.
+- Native Windows GPU checks passed head-axis independence, mouth/eye morph changes,
+  gestures, frozen-pose round trips, expression hotkeys, surface pins, disabling and
+  restoring bone mappings, and reversing the avatar's forward direction.
+- The real workspace loads the GLB through the shared import worker, registers its
+  profile, consumes the common tracking pipeline and exposes gesture actions. The
+  workspace UI and landscape, portrait and Freeform canvases render successfully.
+- Synthetic tests cover large morph sets including negative/above-one authored
+  weights, static-prop rejection, ambiguous/namespace bone names, microphone/common
+  tracking inputs, controller remapping and saved per-avatar assignments.
+- This validates the existing tracking-to-render path. Physical phone, webcam and
+  RTX acceptance sessions and native macOS/Linux GLB acceptance remain unverified.
+  No Unity/VRChat controller or PhysBone execution is claimed. See [GLB limits](glb-avatars.md).
+
 ## v0.33 glass workspace, tracking and engine efficiency — 2026-09-14
 
 - 242 standard workspace Rust tests pass, plus strict all-target/all-feature

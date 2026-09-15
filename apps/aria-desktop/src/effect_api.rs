@@ -53,6 +53,11 @@ struct Catalog {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Action {
+    #[serde(rename = "run_action")]
+    RunGraph {
+        id: u64,
+    },
+    StopActions,
     SetParameters {
         values: std::collections::BTreeMap<String, f32>,
     },
@@ -306,7 +311,7 @@ fn handle(
             if method == "GET" && path == "/v1/capabilities" {
                 return (
                     200,
-                    serde_json::json!({"version":1,"app_version":env!("CARGO_PKG_VERSION"),"actions":["set_parameters","release_parameters","pose","preset","expression","output","theme","save_profile","imported_action"],"max_requests_per_second":20,"max_body_bytes":4096}),
+                    serde_json::json!({"version":1,"app_version":env!("CARGO_PKG_VERSION"),"actions":["set_parameters","release_parameters","pose","preset","expression","output","theme","save_profile","imported_action","run_action","stop_actions"],"max_requests_per_second":20,"max_body_bytes":4096}),
                 );
             }
             if method == "GET" && path == "/v1/state" {

@@ -1,8 +1,9 @@
+#[cfg(test)]
+use aria_core::shortcuts::Shortcut;
 use aria_core::{
     expressions::{Expression, ExpressionPlayer},
     movement::{PoseMode, SavedRig},
     rig::RigParameter,
-    shortcuts::Shortcut,
 };
 use aria_model::ExpressionFile;
 use eframe::egui;
@@ -41,7 +42,6 @@ pub struct ExpressionsPanel {
     base: PathBuf,
     errors: Vec<String>,
     selected: Option<String>,
-    draft: Shortcut,
     search: String,
 }
 #[derive(Default)]
@@ -182,16 +182,7 @@ impl ExpressionsPanel {
             aria_core::asset_limits::EXPRESSION_JSON,
         )?)
     }
-    fn select(&mut self, id: Option<String>, saved: &SavedRig) {
-        self.draft = id
-            .as_ref()
-            .and_then(|id| saved.expression_hotkeys.get(id))
-            .copied()
-            .unwrap_or(Shortcut {
-                ctrl: true,
-                alt: true,
-                ..Default::default()
-            });
+    fn select(&mut self, id: Option<String>, _saved: &SavedRig) {
         self.selected = id;
     }
     pub fn set_fade(&mut self, id: &str, fade: f32) {
@@ -228,6 +219,7 @@ impl ExpressionsPanel {
             if enabled { "on" } else { "off" }
         ))
     }
+    #[cfg(test)]
     pub fn assign(saved: &mut SavedRig, id: &str, shortcut: Shortcut) -> anyhow::Result<()> {
         shortcut.validate()?;
         anyhow::ensure!(
@@ -456,59 +448,7 @@ impl ExpressionsPanel {
                         entry.expression.fade_out_time
                     ));
                     ui.separator();
-                    crate::help::label(ui, "Keyboard shortcut", "hotkeys");
-                    ui.horizontal_wrapped(|ui| {
-                        crate::help::control(ui, "hotkeys", |ui| {
-                            ui.checkbox(&mut self.draft.ctrl, "Ctrl")
-                        });
-                        crate::help::control(ui, "hotkeys", |ui| {
-                            ui.checkbox(&mut self.draft.alt, "Alt")
-                        });
-                        crate::help::control(ui, "hotkeys", |ui| {
-                            ui.checkbox(&mut self.draft.shift, "Shift")
-                        });
-                        crate::help::control(ui, "hotkeys", |ui| {
-                            ui.checkbox(&mut self.draft.win, "Win")
-                        });
-                    });
-                    egui::ComboBox::from_id_salt("expression-key")
-                        .selected_text(if self.draft.key == 0 {
-                            "Choose main key".into()
-                        } else {
-                            self.draft.label()
-                        })
-                        .show_ui(ui, |ui| {
-                            for (key, name) in Shortcut::keys() {
-                                ui.selectable_value(&mut self.draft.key, key, name);
-                            }
-                        });
-                    ui.horizontal_wrapped(|ui| {
-                        if crate::help::control(ui, "hotkeys", |ui| ui.button("Assign shortcut"))
-                            .clicked()
-                        {
-                            match Self::assign(saved, &entry.file.id, self.draft) {
-                                Ok(()) => {
-                                    actions.save = true;
-                                    actions.message = Some(format!(
-                                        "{} saved. Press once to turn on, again to turn off.",
-                                        self.draft.label()
-                                    ));
-                                }
-                                Err(error) => actions.message = Some(error.to_string()),
-                            }
-                        }
-                        if crate::help::control(ui, "hotkeys", |ui| ui.button("Clear shortcut"))
-                            .clicked()
-                        {
-                            saved.expression_hotkeys.remove(&entry.file.id);
-                            actions.save = true;
-                            actions.message = Some("Expression shortcut cleared.".into());
-                        }
-                    });
-                    crate::theme::caption(
-                        ui,
-                        "Global shortcuts work while ARIA is unfocused. Unmodified keys also intercept normal typing. F12 is reserved by Windows.",
-                    );
+                    crate::actions::hotkey_button(ui);
                     egui::CollapsingHeader::new(format!(
                         "{} parameter values",
                         entry.expression.parameters.len()
@@ -528,22 +468,6 @@ impl ExpressionsPanel {
                 },
             );
         }
-        crate::theme::category(
-            ui,
-            "expression-global-keys",
-            "Global shortcuts",
-            true,
-            |ui| {
-                actions.save |= crate::help::control(ui, "hotkeys", |ui| {
-                    ui.checkbox(&mut saved.global_hotkeys, "Enable global hotkeys (Windows)")
-                })
-                .changed();
-                crate::theme::caption(
-                    ui,
-                    "This switch also controls preset and pose shortcuts. Multiple expressions blend in the displayed file order. Frozen poses pause expressions.",
-                );
-            },
-        );
         if !self.errors.is_empty() {
             crate::theme::category(
                 ui,

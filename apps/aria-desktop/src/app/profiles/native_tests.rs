@@ -2,6 +2,122 @@
 use super::*;
 #[test]
 #[cfg(windows)]
+#[ignore = "requires ARIA_TEST_GLB, ARIA_TEST_RENDER_DIR and a DX12 GPU"]
+fn native_glb_profile_uses_shared_tracking_and_renders_workspace() {
+    let ctx = egui::Context::default();
+    let state = crate::spout::tests::gpu_state();
+    let mut cc = eframe::CreationContext::_new_kittest(ctx.clone());
+    cc.wgpu_render_state = Some(state.clone());
+    let mut app = AriaApp::new(&cc);
+    let path = PathBuf::from(std::env::var_os("ARIA_TEST_GLB").unwrap());
+    app.open_model(&path);
+    let deadline = Instant::now() + Duration::from_secs(90);
+    while app.pending_vrm.is_some() {
+        assert!(Instant::now() < deadline, "GLB import timeout");
+        app.poll_vrm_import();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(
+        app.avatar_kind(),
+        Some(crate::avatar_import::Kind::Glb),
+        "{:?}",
+        app.status_message
+    );
+    let id = app.profiles.current.unwrap();
+    assert_eq!(app.settings.profiles.entries.len(), 1);
+    app.rename_profile(id, "ICHIGO · GLB tracking");
+    app.settings.source = Source::Demo;
+    app.importer.open = false;
+    app.controls_page = ControlsPage::Avatar;
+    app.input_monitor.tab = Tab::Vrm;
+    for _ in 0..3 {
+        app.sample_profile_tracking(1. / 60.);
+        app.advance_profiles(&ctx, 1. / 60.);
+    }
+    assert!(app.raw.is_some());
+    assert!(
+        app.current_parameters()
+            .iter()
+            .any(|p| p.id == "ParamAngleX" && p.value != 0.)
+    );
+    assert_eq!(app.current_support_snapshot()["avatar"]["kind"], "VRC/GLB");
+    assert!(app.action_choices().iter().any(|choice| matches!(
+        &choice.target,
+        crate::actions::Target::Avatar {
+            command: crate::actions::Command::Gesture(_),
+            ..
+        }
+    )));
+    let output_dir = PathBuf::from(std::env::var_os("ARIA_TEST_RENDER_DIR").unwrap());
+    std::fs::create_dir_all(&output_dir).unwrap();
+    struct Artwork(Vec<egui::epaint::ClippedShape>);
+    impl crate::output::PaintScene for Artwork {
+        fn paint(&self, painter: &egui::Painter, _: egui::Rect, _: &crate::output::CanvasSettings) {
+            for shape in &self.0 {
+                painter
+                    .with_clip_rect(shape.clip_rect)
+                    .add(shape.shape.clone());
+            }
+        }
+    }
+    for _ in 0..2 {
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1500., 980.),
+                )),
+                ..Default::default()
+            },
+            |root| {
+                eframe::App::ui(&mut app, root, &mut eframe::Frame::_new_kittest());
+            },
+        );
+        {
+            let mut renderer = state.renderer.write();
+            for (id, deltas) in &output.textures_delta.set {
+                for delta in deltas {
+                    renderer.update_texture(&state.device, &state.queue, *id, delta);
+                }
+            }
+            for id in &output.textures_delta.free {
+                renderer.free_texture(id);
+            }
+        }
+        output.textures_delta.clear();
+        crate::broadcast::save_canvas_png(
+            &ctx,
+            &state,
+            &Artwork(output.shapes),
+            &Default::default(),
+            [1500, 980],
+            &output_dir.join("glb-workspace.png"),
+        )
+        .unwrap();
+    }
+    for (index, size) in [[1280, 720], [720, 1280], [1000, 800]]
+        .into_iter()
+        .enumerate()
+    {
+        let mut config = app.outputs.snapshot().canvas(index).clone();
+        config.background = Background::Transparent;
+        let path = output_dir.join(format!("glb-output-{index}.png"));
+        crate::broadcast::save_canvas_png(&ctx, &state, &app.composition(), &config, size, &path)
+            .unwrap();
+        assert!(
+            image::open(path)
+                .unwrap()
+                .into_rgba8()
+                .pixels()
+                .filter(|p| p.0[3] > 20)
+                .count()
+                > 1000
+        );
+    }
+}
+
+#[test]
+#[cfg(windows)]
 #[ignore = "requires Cubism Core, ARIA_TEST_MODEL, ARIA_TEST_SECOND_MODEL, ARIA_TEST_GIF and ARIA_TEST_VRM"]
 fn native_mixed_workspace_keeps_four_avatars_live_and_composes_all_outputs() {
     let ctx = egui::Context::default();
@@ -138,9 +254,35 @@ fn native_mixed_workspace_keeps_four_avatars_live_and_composes_all_outputs() {
         (6, "profiles-ui.png"),
         (7, "glass-light.png"),
         (5, "high-contrast.png"),
+        (2, "sakura-solid.png"),
+        (2, "action-nodes.png"),
+        (2, "hotkey-window.png"),
     ] {
         app.settings.theme.active = crate::theme::presets().remove(theme_index);
+        if theme_index == 2 {
+            app.settings.theme.active.colors.glass = false;
+            app.focus_profile(ids[0]);
+            app.rename_profile(ids[0], "Odette · Live2D stage");
+            app.controls_page = ControlsPage::Settings;
+            if image_name == "action-nodes.png" {
+                let mut graph = crate::actions::Graph::new(1);
+                graph.name = "Screenshot pose".into();
+                graph.nodes[1].step = crate::actions::Step::Action {
+                    target: Some(crate::actions::Target::Avatar {
+                        profile: ids[0],
+                        command: crate::actions::Command::Pose,
+                    }),
+                    mode: crate::actions::Mode::On,
+                };
+                app.settings.actions.graphs.push(graph);
+                app.action_editor.edit_graph(1);
+            }
+            if image_name == "hotkey-window.png" {
+                app.action_editor.graph_page = false;
+            }
+        }
         crate::theme::apply(&ctx, app.settings.theme.active.colors);
+        app.input_monitor.vts.open = false;
         for _ in 0..2 {
             let mut output = ctx.run_ui(
                 egui::RawInput {

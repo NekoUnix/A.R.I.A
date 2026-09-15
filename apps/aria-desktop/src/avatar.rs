@@ -18,9 +18,10 @@ pub fn draw(
     sprite: Option<&Sprite>,
     zoom: f32,
     fields: &[aria_core::deformation::Field],
+    light: &aria_core::vrm::Lighting,
 ) {
     if let Some(sprite) = sprite {
-        draw_sprite(p, rect, params, sprite, zoom, fields);
+        draw_sprite(p, rect, params, sprite, zoom, fields, light);
     } else {
         draw_mica(p, rect, params, zoom, fields);
     }
@@ -86,6 +87,7 @@ fn draw_sprite(
     sprite: &Sprite,
     zoom: f32,
     fields: &[aria_core::deformation::Field],
+    light: &aria_core::vrm::Lighting,
 ) {
     let size = sprite.size
         * (rect.width() * 0.75 / sprite.size.x).min(rect.height() * 0.9 / sprite.size.y)
@@ -97,14 +99,17 @@ fn draw_sprite(
         );
     let rotation = egui::emath::Rot2::from_angle(-params.0[2].to_radians());
     if !fields.is_empty() {
-        p.add(Shape::mesh(crate::deformation::textured_mesh(
-            sprite.texture.id(),
-            center,
-            size,
-            -params.0[2].to_radians(),
-            Color32::WHITE,
-            None,
-            fields,
+        p.add(Shape::mesh(crate::lighting::mesh(
+            crate::deformation::textured_mesh(
+                sprite.texture.id(),
+                center,
+                size,
+                -params.0[2].to_radians(),
+                Color32::WHITE,
+                None,
+                fields,
+            ),
+            light,
         )));
         return;
     }
@@ -122,7 +127,7 @@ fn draw_sprite(
         });
     }
     mesh.indices.extend([0, 1, 2, 0, 2, 3]);
-    p.add(Shape::mesh(mesh));
+    p.add(Shape::mesh(crate::lighting::mesh(mesh, light)));
 }
 
 /// Original vector test puppet. Its mouth, eyelids, pupils, brows and head all use mapped inputs.

@@ -21,6 +21,8 @@ struct Frame {
     front: [[f32; 4]; 4],
     view: [[f32; 4]; 4],
     settings: [f32; 4],
+    light_direction: [f32; 4],
+    light_color: [f32; 4],
 }
 struct Geometry {
     vertices: wgpu::Buffer,
@@ -420,7 +422,22 @@ impl Renderer {
             vp: (projection * view).to_cols_array_2d(),
             front: asset.front.to_cols_array_2d(),
             view: view.to_cols_array_2d(),
-            settings: [settings.light, 0., 0., 0.],
+            settings: [
+                settings.light,
+                f32::from(settings.lighting.enabled),
+                f32::from(settings.lighting.directional),
+                settings.lighting.ambient,
+            ],
+            light_direction: {
+                let d = settings.lighting.direction();
+                [d[0], d[1], d[2], 0.]
+            },
+            light_color: [
+                settings.lighting.color[0],
+                settings.lighting.color[1],
+                settings.lighting.color[2],
+                1.,
+            ],
         };
         queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&frame));
         let mut encoder = self

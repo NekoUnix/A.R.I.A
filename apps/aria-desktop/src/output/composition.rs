@@ -109,6 +109,21 @@ impl Composition {
             .find(|a| self.bounds(a, canvas, config).contains(pos))
             .map(|a| a.id)
     }
+    fn target(
+        &self,
+        pos: egui::Pos2,
+        manual: Option<u64>,
+        canvas: Rect,
+        config: &CanvasSettings,
+    ) -> Option<u64> {
+        manual
+            .filter(|id| {
+                self.avatars
+                    .iter()
+                    .any(|a| a.id == *id && self.bounds(a, canvas, config).contains(pos))
+            })
+            .or_else(|| self.pick(pos, canvas, config))
+    }
     pub(super) fn canvas(
         &self,
         ui: &mut egui::Ui,
@@ -124,10 +139,17 @@ impl Composition {
         let manual = ui.data(|d| d.get_temp::<u64>(manual_id));
         let response = ui.interact(canvas, id, egui::Sense::click_and_drag());
         let mut dirty = false;
-        if config.locked {
+        if config.locked && !self.avatars.is_empty() {
+            config.locked_avatars.extend(config.avatars.keys().copied());
+            config
+                .locked_avatars
+                .extend(self.avatars.iter().map(|a| a.id));
+            config.locked = false;
+            dirty = true;
             ui.data_mut(|d| d.remove::<Drag>(id));
         }
-        if !config.locked && ui.ctx().current_pass_index() == 0 {
+        if ui.ctx().current_pass_index() == 0 {
+            let mut released_actor = None;
             let events = ui.input(|i| i.raw.events.clone());
             for event in events {
                 match event {
@@ -135,21 +157,27 @@ impl Composition {
                         pos,
                         button: egui::PointerButton::Primary,
                         pressed: true,
-                        ..
+                        modifiers,
                     } if canvas.contains(pos)
                         && ui.rect_contains_pointer(canvas)
                         && !(self.avatars.len() > 1 && menu_rect.contains(pos)) =>
                     {
-                        let target = manual
-                            .filter(|id| {
-                                self.avatars.iter().any(|a| {
-                                    a.id == *id && self.bounds(a, canvas, config).contains(pos)
-                                })
-                            })
-                            .or_else(|| self.pick(pos, canvas, config));
+                        ui.data_mut(|d| d.remove::<Drag>(id));
+                        let target = self.target(pos, manual, canvas, config);
                         if let Some(actor) = target {
                             let start = self.transform(actor, config).position;
+                            dirty |= config.selected_avatar != Some(actor);
                             config.selected_avatar = Some(actor);
+                            if modifiers.command && modifiers.shift && !modifiers.alt {
+                                if !config.locked_avatars.remove(&actor) {
+                                    config.locked_avatars.insert(actor);
+                                }
+                                dirty = true;
+                                continue;
+                            }
+                            if config.locked_avatars.contains(&actor) {
+                                continue;
+                            }
                             ui.data_mut(|d| {
                                 d.insert_temp(
                                     id,
@@ -165,6 +193,7 @@ impl Composition {
                     egui::Event::PointerMoved(pos) => {
                         if let Some(drag) = ui.data(|d| d.get_temp::<Drag>(id))
                             && self.avatars.iter().any(|a| a.id == drag.id)
+                            && !config.locked_avatars.contains(&drag.id)
                         {
                             let mut transform = self.transform(drag.id, config);
                             transform.position =
@@ -177,8 +206,11 @@ impl Composition {
                         button: egui::PointerButton::Primary,
                         pressed: false,
                         ..
+                    } => {
+                        released_actor = ui.data(|d| d.get_temp::<Drag>(id)).map(|d| d.id);
+                        ui.data_mut(|d| d.remove::<Drag>(id));
                     }
-                    | egui::Event::WindowFocused(false) => {
+                    egui::Event::WindowFocused(false) => {
                         ui.data_mut(|d| d.remove::<Drag>(id));
                     }
                     egui::Event::MouseWheel {
@@ -188,11 +220,11 @@ impl Composition {
                         ..
                     } if ui.rect_contains_pointer(canvas) => {
                         let pointer = ui.input(|i| i.pointer.hover_pos());
-                        let target = manual
-                            .or_else(|| pointer.and_then(|p| self.pick(p, canvas, config)))
-                            .or(config.selected_avatar);
+                        let target = pointer
+                            .filter(|p| !(self.avatars.len() > 1 && menu_rect.contains(*p)))
+                            .and_then(|p| self.target(p, manual, canvas, config));
                         if let Some(target) = target
-                            && self.avatars.iter().any(|a| a.id == target)
+                            && !config.locked_avatars.contains(&target)
                         {
                             let options = ui.ctx().options(|o| o.input_options);
                             let horizontal =
@@ -222,7 +254,8 @@ impl Composition {
                 }
             }
             if response.double_clicked()
-                && let Some(target) = config.selected_avatar
+                && let Some(target) = released_actor
+                && !config.locked_avatars.contains(&target)
             {
                 let mut transform = self.transform(target, config);
                 transform.position = [0.; 2];
@@ -231,6 +264,53 @@ impl Composition {
             }
         }
         self.paint(ui.painter(), canvas, config);
+        response.context_menu(|ui| {
+            if let Some(actor) = config
+                .selected_avatar
+                .and_then(|id| self.avatars.iter().find(|a| a.id == id))
+                .or_else(|| self.avatars.first())
+            {
+                ui.label(&actor.name);
+                let mut locked = config.locked_avatars.contains(&actor.id);
+                if ui.checkbox(&mut locked, "Lock position & scale").changed() {
+                    if locked {
+                        config.locked_avatars.insert(actor.id);
+                    } else {
+                        config.locked_avatars.remove(&actor.id);
+                    }
+                    dirty = true;
+                }
+                ui.add_enabled_ui(!locked, |ui| {
+                    if ui.button("Center avatar").clicked() {
+                        let mut transform = self.transform(actor.id, config);
+                        transform.position = [0.; 2];
+                        config.avatars.insert(actor.id, transform);
+                        dirty = true;
+                        ui.close();
+                    }
+                    if ui.button("Reset position & scale").clicked() {
+                        config.avatars.insert(actor.id, Transform::default());
+                        dirty = true;
+                        ui.close();
+                    }
+                });
+            }
+            ui.separator();
+            if ui
+                .checkbox(&mut config.always_on_top, "Keep preview on top")
+                .changed()
+            {
+                ui.ctx()
+                    .send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+                        if config.always_on_top {
+                            egui::WindowLevel::AlwaysOnTop
+                        } else {
+                            egui::WindowLevel::Normal
+                        },
+                    ));
+                dirty = true;
+            }
+        });
         if self.avatars.len() > 1 {
             // Preview-only targeting menu; full-resolution native output receives artwork only.
             let menu = Rect::from_min_size(canvas.min + egui::vec2(8., 8.), egui::vec2(190., 28.));
@@ -253,6 +333,7 @@ impl Composition {
                                 .clicked()
                             {
                                 ui.data_mut(|d| d.insert_temp(manual_id, actor.id));
+                                dirty = true;
                             }
                         }
                     });
@@ -267,7 +348,14 @@ impl Composition {
                 ui.painter().rect_stroke(
                     bounds,
                     2.,
-                    egui::Stroke::new(1., theme::mint().gamma_multiply(0.7)),
+                    egui::Stroke::new(
+                        1.,
+                        if config.locked_avatars.contains(&actor.id) {
+                            theme::orange()
+                        } else {
+                            theme::mint()
+                        },
+                    ),
                     egui::StrokeKind::Inside,
                 );
             }
@@ -279,6 +367,28 @@ impl Composition {
                 config.zoom = transform.zoom;
             }
         }
+        let locked = config
+            .selected_avatar
+            .is_some_and(|id| config.locked_avatars.contains(&id));
+        let text = format!(
+            "{} · {LOCK_GESTURE} to {}",
+            if locked {
+                "Framing locked"
+            } else {
+                "Drag / scroll to arrange"
+            },
+            if locked { "unlock" } else { "lock" }
+        );
+        let galley =
+            ui.painter()
+                .layout_no_wrap(text, egui::FontId::proportional(11.), theme::text_color());
+        let pos = canvas.left_bottom() + egui::vec2(8., -galley.size().y - 10.);
+        ui.painter().rect_filled(
+            Rect::from_min_size(pos, galley.size()).expand(4.),
+            4.,
+            theme::card_color(),
+        );
+        ui.painter().galley(pos, galley, theme::text_color());
         dirty
     }
 }
@@ -316,6 +426,7 @@ impl OutputWindows {
         for index in 0..3 {
             let config = state.config.canvas_mut(index);
             config.avatars.remove(&id);
+            config.locked_avatars.remove(&id);
             if config.selected_avatar == Some(id) {
                 config.selected_avatar = None;
             }

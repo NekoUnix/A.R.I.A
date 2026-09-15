@@ -284,7 +284,7 @@ extension point, not a general plugin host.
 
 ## Dependencies
 
-The desktop uses eframe 0.33.0 and wgpu 27, resolved in Cargo.lock. Windows defaults
+The desktop uses eframe 0.36.2 and wgpu 30.0.1, resolved in Cargo.lock. Windows defaults
 to Direct3D 12; `WGPU_BACKEND=vulkan` selects the available fallback. The toolchain
 is pinned in rust-toolchain.toml. CI builds on Windows MSVC without proprietary
 assets. Core and model files are supplied at runtime under their separate licenses.

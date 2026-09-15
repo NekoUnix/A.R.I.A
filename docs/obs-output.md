@@ -29,22 +29,23 @@ Live2D, VRM, PNG/GIF puppets and Mica can appear together in all three outputs. 
 2. Choose **Edit Landscape · 16:9**, **Portrait · 9:16**, or **Freeform**.
 3. Click the model inside its output window and drag to position it. The other
    output keeps its own framing.
-4. Scroll the mouse wheel over an avatar to scale it, or expand
-   **Framing & preview size** and use **Model scale**. Double-click the
-   model or choose **Center model** to recenter. **Reset framing** also restores
-   scale to 1.0. **Lock model framing** prevents dragging and wheel scaling.
+4. Scroll over an avatar to scale it; double-click to center it.
+   **Ctrl+Shift+click** an avatar to lock or unlock its position and scale
+   (**Cmd+Shift+click** on macOS). Each avatar has an independent lock in each
+   output. Tracking keeps moving. Right-click the preview to center/reset the
+   selected avatar, unlock an offscreen selection, or keep the window on top.
 5. Select the **OBS canvas resolution**: 640×360, 960×540, 1280×720, 1920×1080,
    2560×1440 or 3840×2160 for landscape; portrait reverses those dimensions.
    This menu is independent of **preview edge**, which defaults to 480 pixels.
 6. For Freeform, enter the OBS canvas width and height (64–4096 pixels each).
-   Under framing, enter the window width and height, or drag its native window
+   Under **Preview window size**, enter the window width and height, or drag its native window
    edges. The preview fits the canvas inside the window without stretching;
    any unused preview space is excluded from the OBS texture.
 
 **Keep the windows small to save desktop space. OBS still receives the selected
 full canvas resolution via the platform-specific native source.** Window Capture only sees the small
 preview; stretching it in OBS does not increase the source's actual resolution.
-The UI explains this alongside the resolution controls. **Keep this output on top**
+The UI explains this alongside the resolution controls. **Keep preview on top** in the right-click menu
 is optional. Preview dimensions are client pixels and exclude the title bar.
 
 Dragging the native title bar moves the window on your desktop. Dragging the model
@@ -68,7 +69,7 @@ editing stage to adjust pins and attached objects.
 Each output has **Studio background** (opaque dark), **Green screen / color key**
 (opaque solid color, initially `#00FF00`), and **Transparent**.
 The studio preview shows the selected output's background; preview zoom is separate
-from each output's Model scale.
+from each output's avatar scale.
 
 ### Custom hex color
 

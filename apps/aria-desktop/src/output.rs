@@ -24,6 +24,11 @@ pub const TITLES: [&str; 3] = [
 ];
 pub const NAMES: [&str; 3] = ["Landscape · 16:9", "Portrait · 9:16", "Freeform"];
 pub const SENDERS: [&str; 3] = ["ARIA Landscape", "ARIA Portrait", "ARIA Freeform"];
+pub const LOCK_GESTURE: &str = if cfg!(target_os = "macos") {
+    "Cmd+Shift+click"
+} else {
+    "Ctrl+Shift+click"
+};
 pub fn viewport_id(index: usize) -> egui::ViewportId {
     egui::ViewportId::from_hash_of(match index {
         0 => "aria-output-landscape",
@@ -52,6 +57,7 @@ impl Background {
 #[serde(default)]
 pub struct CanvasSettings {
     pub avatars: std::collections::BTreeMap<u64, Transform>,
+    pub locked_avatars: std::collections::BTreeSet<u64>,
     pub selected_avatar: Option<u64>,
     pub background: Background,
     pub key: [u8; 3],
@@ -70,6 +76,7 @@ impl Default for CanvasSettings {
     fn default() -> Self {
         Self {
             avatars: Default::default(),
+            locked_avatars: Default::default(),
             selected_avatar: None,
             background: Background::Studio,
             key: [0, 255, 0],
@@ -449,25 +456,18 @@ impl OutputWindows {
         if let Some(message) = &self.message {
             ui.label(egui::RichText::new(message).small().color(theme::mint()));
         }
-        let legacy = (config.zoom, config.position);
-        let selected_avatar = config
-            .selected_avatar
-            .filter(|id| config.avatars.contains_key(id));
-        if let Some(transform) = selected_avatar.and_then(|id| config.avatars.get(&id)) {
-            config.zoom = transform.zoom;
-            config.position = transform.position;
-        }
-        ui.collapsing("Framing & preview size", |ui| {
- crate::help::button(ui, "framing");
-            theme::caption(ui, "Drag the avatar to move it. Click an avatar to select it. Scroll over an avatar to resize it. Use the preview avatar menu when models overlap. Double-click the avatar to center it. Lock framing protects both position and scale.");
-            let zoom = crate::help::control(ui, "framing", |ui| ui.add(egui::Slider::new(&mut config.zoom,0.25..=3.0).text("Model scale")));
-            changed |= zoom.drag_stopped() || (zoom.changed() && !zoom.dragged());
-            ui.horizontal(|ui| {
-                if crate::help::control(ui, "framing", |ui| ui.button("Center model")).clicked() { config.position = [0.0;2]; changed = true; }
-                if crate::help::control(ui, "framing", |ui| ui.button("Reset framing")).clicked() { config.position = [0.0;2]; config.zoom = 1.0; changed = true; }
-            });
-            changed |= crate::help::control(ui, "framing", |ui| ui.checkbox(&mut config.locked,"Lock model framing")).changed();
-            changed |= crate::help::control(ui, "framing", |ui| ui.checkbox(&mut config.always_on_top,"Keep this output on top")).changed();
+        crate::help::label(ui, "Arrange avatars in the preview", "framing");
+        theme::caption(
+            ui,
+            format!(
+                "Drag to move · Scroll over an avatar to resize · {LOCK_GESTURE} an avatar to lock or unlock its position and scale."
+            ),
+        );
+        theme::caption(
+            ui,
+            "Locks apply to one avatar in this output. Tracking keeps moving. Right-click the preview for recovery and window options.",
+        );
+        ui.collapsing("Preview window size", |ui| {
             if selected == 2 {
                 crate::help::label(ui, "Window pixels · width × height", "preview");
                 changed |= size_fields(ui, &mut config.freeform_window, 160..=1600);
@@ -482,17 +482,6 @@ impl OutputWindows {
             }
             theme::caption(ui, "Preview window size does not change OBS resolution. Larger OBS canvases use more GPU memory and rendering time.");
         });
-        if let Some(id) = selected_avatar {
-            config.avatars.insert(
-                id,
-                Transform {
-                    zoom: config.zoom,
-                    position: config.position,
-                },
-            );
-            config.zoom = legacy.0;
-            config.position = legacy.1;
-        }
         if crate::help::control(ui, "profiles", |ui| ui.button("Save output layouts")).clicked() {
             changed = true;
             self.message = Some("Shared OBS output layouts saved for this workspace.".into());
@@ -606,6 +595,7 @@ impl OutputWindows {
 
 #[derive(Clone)]
 pub struct Scene {
+    pub lighting: aria_core::vrm::Lighting,
     pub placement: aria_core::vts::Placement,
     pub images: Arc<[crate::image_actions::Draw]>,
     pub dents: Arc<[crate::deformation::AvatarDent]>,
@@ -738,17 +728,21 @@ impl Scene {
                 zoom,
                 &self.images,
                 &fields,
+                &self.lighting,
             );
         } else if let Some(model) = self.model {
             let rect = self.model_rect(translated, zoom);
-            painter.add(egui::Shape::mesh(crate::deformation::textured_mesh(
-                model.id,
-                rect.center(),
-                rect.size(),
-                self.placement.rotation.to_radians(),
-                Color32::WHITE,
-                None,
-                &fields,
+            painter.add(egui::Shape::mesh(crate::lighting::mesh(
+                crate::deformation::textured_mesh(
+                    model.id,
+                    rect.center(),
+                    rect.size(),
+                    self.placement.rotation.to_radians(),
+                    Color32::WHITE,
+                    None,
+                    &fields,
+                ),
+                &self.lighting,
             )));
         } else {
             avatar::draw(
@@ -758,6 +752,7 @@ impl Scene {
                 self.sprite.as_ref(),
                 config.zoom,
                 &fields,
+                &self.lighting,
             );
         }
         crate::items::paint(painter, self, translated, config.zoom, false);
@@ -841,6 +836,7 @@ mod tests {
         for size in [egui::vec2(960.0, 540.0), egui::vec2(540.0, 960.0)] {
             let ctx = egui::Context::default();
             let scene = Scene {
+                lighting: Default::default(),
                 placement: Default::default(),
                 images: Default::default(),
                 dents: Default::default(),
@@ -982,6 +978,7 @@ mod tests {
         for size in [[480., 270.], [270., 480.], [480., 320.]] {
             let ctx = egui::Context::default();
             let scene = Scene {
+                lighting: Default::default(),
                 placement: Default::default(),
                 images: Default::default(),
                 dents: Default::default(),
