@@ -17,7 +17,7 @@ pub struct Editor {
     captured: Option<Shortcut>,
 }
 impl Editor {
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub fn edit_graph(&mut self, id: u64) {
         self.open = true;
         self.graph_page = true;
