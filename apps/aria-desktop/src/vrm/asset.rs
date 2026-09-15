@@ -1,4 +1,4 @@
-//! Bounded, self-contained VRM 0.x / 1.0 import. Shared glTF accessors stay shared.
+//! Bounded VRM 0.x / 1.0 and skinned GLB import. Shared accessors stay shared.
 use anyhow::{Context, Result, ensure};
 use glam::{Mat4, Quat, Vec3};
 use serde_json::Value;
@@ -24,6 +24,7 @@ pub struct Vertex {
 }
 #[derive(Clone)]
 pub struct Node {
+    pub name: String,
     pub parent: Option<usize>,
     pub children: Vec<usize>,
     pub translation: Vec3,
@@ -101,6 +102,18 @@ pub struct Summary {
     pub springs: usize,
     pub materials: usize,
 }
+impl Summary {
+    pub fn is_glb(&self) -> bool {
+        self.version == "glTF 2.0"
+    }
+    pub fn format_label(&self) -> String {
+        if self.is_glb() {
+            "VRC / GLB".into()
+        } else {
+            format!("VRM {}", self.version)
+        }
+    }
+}
 pub struct Asset {
     pub path: PathBuf,
     pub key: String,
@@ -153,12 +166,13 @@ fn color(v: &Value, default: [f32; 4]) -> [f32; 4] {
 }
 fn read(path: &Path) -> Result<(Vec<u8>, Value)> {
     let bytes = aria_model::read_bounded(path, FILE_LIMIT)
-        .context("VRM file exceeds 512 MiB or cannot be read")?;
-    let glb = gltf::binary::Glb::from_slice(&bytes).context("Choose a binary .vrm export")?;
-    ensure!(glb.header.version == 2, "VRM requires glTF 2.0");
+        .context("3D avatar file exceeds 512 MiB or cannot be read")?;
+    let glb =
+        gltf::binary::Glb::from_slice(&bytes).context("Choose a binary .vrm or .glb export")?;
+    ensure!(glb.header.version == 2, "3D avatar requires glTF 2.0");
     ensure!(
         glb.json.len() <= 32 * 1024 * 1024,
-        "VRM metadata exceeds 32 MiB"
+        "3D avatar metadata exceeds 32 MiB"
     );
     let json: Value = serde_json::from_slice(&glb.json)?;
     summary(&json)?;
@@ -166,20 +180,29 @@ fn read(path: &Path) -> Result<(Vec<u8>, Value)> {
 }
 pub fn inspect(path: &Path) -> Result<Summary> {
     let (_, j) = read(path)?;
-    summary(&j)
+    let mut info = summary(&j)?;
+    if info.name.is_empty() {
+        info.name = path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .chars()
+            .take(256)
+            .collect();
+    }
+    Ok(info)
 }
 fn summary(j: &Value) -> Result<Summary> {
     let old = &j["extensions"]["VRM"];
     let new = &j["extensions"]["VRMC_vrm"];
-    ensure!(
-        old.is_object() || new.is_object(),
-        "This GLB has no VRM humanoid extension. Export VRM 0.x or VRM 1.0."
-    );
+    if !old.is_object() && !new.is_object() {
+        return super::glb::summary(j);
+    }
     let is_old = old.is_object();
     let v = if is_old { old } else { new };
     ensure!(
         is_old || v["specVersion"] == "1.0",
-        "Only VRM 0.x and VRM 1.0 are supported"
+        "Only VRM 0.x and VRM 1.0 extensions are supported"
     );
     let meta = &v["meta"];
     let text = |x: &Value| {
@@ -227,18 +250,28 @@ fn summary(j: &Value) -> Result<Summary> {
 }
 
 pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset> {
-    progress("Reading VRM metadata")?;
+    progress("Reading 3D avatar metadata")?;
     let (bytes, mut json) = read(path)?;
-    let summary = summary(&json)?;
+    let mut summary = summary(&json)?;
+    let glb_avatar = summary.is_glb();
+    if summary.name.is_empty() {
+        summary.name = path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .chars()
+            .take(256)
+            .collect();
+    }
     let old = summary.version == "0.x";
     let vrm = json["extensions"][if old { "VRM" } else { "VRMC_vrm" }].clone();
-    let front = if old {
+    let mut front = if old {
         Mat4::from_rotation_y(std::f32::consts::PI)
     } else {
         Mat4::IDENTITY
     };
     let mut warnings = Vec::new();
-    // gltf-rs validates the core schema; VRM extensions are validated here.
+    // gltf-rs validates the core schema; 3D avatar extensions are validated here.
     if let Some(required) = json
         .get_mut("extensionsRequired")
         .and_then(Value::as_array_mut)
@@ -257,7 +290,7 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
                             | "KHR_materials_emissive_strength"
                     )
                 ),
-                "Unsupported required VRM extension: {ext}"
+                "Unsupported required 3D avatar extension: {ext}"
             );
         }
         required.clear();
@@ -268,33 +301,33 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
     let blob = glb
         .bin
         .as_deref()
-        .context("VRM has no embedded binary buffer")?;
+        .context("3D avatar has no embedded binary buffer")?;
     ensure!(
         doc.buffers().len() == 1
             && doc.buffers().all(
                 |b| matches!(b.source(), gltf::buffer::Source::Bin) && b.length() <= blob.len()
             ),
-        "VRM must contain one embedded buffer; external resources are not loaded"
+        "3D avatar must contain one embedded buffer; external resources are not loaded"
     );
     ensure!(
         doc.nodes().len() <= 4096
             && doc.materials().len() <= 256
             && doc.images().len() <= 256
             && doc.skins().len() <= 256,
-        "VRM exceeds node, skin or material limits"
+        "3D avatar exceeds node, skin or material limits"
     );
     for view in doc.views() {
         ensure!(
             view.offset()
                 .checked_add(view.length())
                 .is_some_and(|end| end <= blob.len()),
-            "VRM buffer view is truncated"
+            "3D avatar buffer view is truncated"
         );
     }
     for accessor in doc.accessors() {
         ensure!(
             accessor.count() > 0 && accessor.count() <= INDEX_LIMIT,
-            "Invalid or excessive VRM accessor count"
+            "Invalid or excessive 3D avatar accessor count"
         );
         let check = |view: gltf::buffer::View<'_>,
                      offset: usize,
@@ -310,7 +343,7 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
                         .and_then(|n| n.checked_add(offset))
                         .and_then(|n| n.checked_add(size))
                         .is_some_and(|end| end <= view.length()),
-                "VRM accessor exceeds its buffer view"
+                "3D avatar accessor exceeds its buffer view"
             );
             Ok(())
         };
@@ -343,6 +376,12 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
         .map(|n| {
             let (t, r, s) = n.transform().decomposed();
             Node {
+                name: n
+                    .name()
+                    .unwrap_or("Unnamed node")
+                    .chars()
+                    .take(128)
+                    .collect(),
                 parent: None,
                 children: n.children().map(|c| c.index()).collect(),
                 translation: Vec3::from(t),
@@ -358,12 +397,12 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
                 && nodes[i].rotation.is_finite()
                 && nodes[i].scale.is_finite()
                 && nodes[i].scale.abs().min_element() > 1e-6,
-            "Invalid VRM node transform"
+            "Invalid 3D avatar node transform"
         );
         for child in nodes[i].children.clone() {
             ensure!(
                 child < nodes.len() && nodes[child].parent.is_none(),
-                "VRM node has multiple parents"
+                "3D avatar node has multiple parents"
             );
             nodes[child].parent = Some(i);
         }
@@ -378,7 +417,7 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
     while let Some((i, depth)) = stack.pop() {
         ensure!(
             depth < 128 && order.len() < 4096,
-            "VRM hierarchy is too deep"
+            "3D avatar hierarchy is too deep"
         );
         let local = Mat4::from_scale_rotation_translation(
             nodes[i].scale,
@@ -391,7 +430,7 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
     }
     ensure!(
         order.len() == nodes.len(),
-        "VRM contains a cyclic node hierarchy"
+        "3D avatar contains a cyclic node hierarchy"
     );
     let mut bones = BTreeMap::new();
     if old {
@@ -408,16 +447,22 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
             bones.insert(name.clone(), node);
         }
     }
-    ensure!(
-        bones.contains_key("hips") && bones.contains_key("head"),
-        "VRM must map at least hips and head bones"
-    );
+    if glb_avatar {
+        bones = super::glb::detect_bones(&json);
+        front = super::glb::front(&nodes, &bones);
+        warnings.extend(super::glb::warnings(&bones));
+    } else {
+        ensure!(
+            bones.contains_key("hips") && bones.contains_key("head"),
+            "3D avatar must map at least hips and head bones"
+        );
+    }
     let mut skins = Vec::new();
     for s in doc.skins() {
         let joints: Vec<_> = s.joints().map(|n| n.index()).collect();
         ensure!(
             !joints.is_empty() && joints.len() <= 1024,
-            "Invalid or excessive VRM skin joints"
+            "Invalid or excessive 3D avatar skin joints"
         );
         let inverse = s
             .reader(|_| Some(blob))
@@ -429,12 +474,14 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
                 && inverse
                     .iter()
                     .all(|m| m.is_finite() && m.determinant().abs() > 1e-12),
-            "Invalid VRM inverse bind matrices"
+            "Invalid 3D avatar inverse bind matrices"
         );
         skins.push(Skin { joints, inverse });
     }
     let mut expressions = Vec::new();
-    if old {
+    if glb_avatar {
+        expressions = super::glb::expressions(&json)?;
+    } else if old {
         for e in array(&vrm["blendShapeMaster"]["blendShapeGroups"]) {
             if !array(&e["materialValues"]).is_empty() {
                 warnings.push(
@@ -502,8 +549,8 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
         }
     }
     ensure!(
-        expressions.len() <= 256 && expressions.iter().all(|e| e.binds.len() <= 4096),
-        "Too many VRM expression binds"
+        expressions.len() <= 2048 && expressions.iter().all(|e| e.binds.len() <= 4096),
+        "Too many 3D avatar expression binds"
     );
     let mut materials = Vec::new();
     for (i, m) in array(&json["materials"]).iter().enumerate() {
@@ -518,7 +565,7 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
         for tex in mat.textures.iter_mut().flatten() {
             let im = *textures
                 .get(*tex)
-                .context("Invalid VRM material texture index")?;
+                .context("Invalid 3D avatar material texture index")?;
             *tex = im;
             if images[im].is_some() {
                 continue;
@@ -534,9 +581,9 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
                                 .checked_add(view.length())
                                 .context("Invalid image length")?,
                     )
-                    .context("VRM image buffer is truncated")?,
+                    .context("3D avatar image buffer is truncated")?,
                 _ => anyhow::bail!(
-                    "VRM textures must be embedded; external resources are not loaded"
+                    "3D avatar textures must be embedded; external resources are not loaded"
                 ),
             };
             let (w, h) = image::ImageReader::new(std::io::Cursor::new(data))
@@ -547,7 +594,7 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
                 .context("Image size overflow")?;
             ensure!(
                 w > 0 && h > 0 && w <= 16384 && h <= 16384 && texture_bytes <= TEXTURE_LIMIT,
-                "VRM textures exceed 16384px or 2 GiB decoded; reduce texture sizes"
+                "3D avatar textures exceed 16384px or 2 GiB decoded; reduce texture sizes"
             );
             let mut reader =
                 image::ImageReader::new(std::io::Cursor::new(data)).with_guessed_format()?;
@@ -562,11 +609,11 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
     let scene = doc
         .default_scene()
         .or_else(|| doc.scenes().next())
-        .context("VRM has no scene")?;
+        .context("3D avatar has no scene")?;
     let mut active = vec![false; nodes.len()];
     let mut stack: Vec<_> = scene.nodes().map(|n| n.index()).collect();
     while let Some(n) = stack.pop() {
-        ensure!(!active[n], "Repeated VRM scene node");
+        ensure!(!active[n], "Repeated 3D avatar scene node");
         active[n] = true;
         stack.extend(&nodes[n].children);
     }
@@ -587,22 +634,25 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
         for prim in mesh.primitives() {
             ensure!(
                 prim.mode() == gltf::mesh::Mode::Triangles,
-                "VRM primitives must use triangles"
+                "3D avatar primitives must use triangles"
             );
             let pos = prim
                 .get(&gltf::Semantic::Positions)
-                .context("VRM mesh has no positions")?;
+                .context("3D avatar mesh has no positions")?;
             let count = pos.count();
-            ensure!(count > 0 && count <= VERTEX_LIMIT, "VRM mesh is too large");
+            ensure!(
+                count > 0 && count <= VERTEX_LIMIT,
+                "3D avatar mesh is too large"
+            );
             ensure!(
                 prim.attributes().all(|(_, a)| a.count() == count),
-                "Mismatched VRM vertex attribute counts"
+                "Mismatched 3D avatar vertex attribute counts"
             );
             for m in prim.morph_targets() {
                 ensure!(
                     m.positions().is_none_or(|a| a.count() == count)
                         && m.normals().is_none_or(|a| a.count() == count),
-                    "Mismatched VRM morph counts"
+                    "Mismatched 3D avatar morph counts"
                 );
             }
             let mut key = vec![node.index(), pos.index()];
@@ -620,7 +670,7 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
                 vertices_used += count;
                 ensure!(
                     vertices_used <= VERTEX_LIMIT,
-                    "VRM exceeds two million unique vertices"
+                    "3D avatar exceeds two million unique vertices"
                 );
                 let positions: Vec<_> = reader
                     .read_positions()
@@ -657,7 +707,7 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
                     ]
                     .iter()
                     .all(|&n| n == count),
-                    "Mismatched VRM vertex attributes"
+                    "Mismatched 3D avatar vertex attributes"
                 );
                 let skin = node.skin().map(|s| s.index());
                 let joint_count = skin.map_or(1, |s| skins[s].joints.len());
@@ -671,12 +721,12 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
                             .chain(colors[i].iter())
                             .chain(weights[i].iter())
                             .all(|v| v.is_finite()),
-                        "Non-finite VRM vertex data"
+                        "Non-finite 3D avatar vertex data"
                     );
                     ensure!(
                         joints[i].iter().all(|&j| (j as usize) < joint_count)
                             && weights[i].iter().all(|&w| w >= 0.),
-                        "Invalid VRM skin weights or joints"
+                        "Invalid 3D avatar skin weights or joints"
                     );
                     let sum: f32 = weights[i].iter().sum();
                     vertices.push(Vertex {
@@ -694,13 +744,16 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
                 }
                 let target_count = prim.morph_targets().len();
                 ensure!(
-                    target_count <= 256,
-                    "VRM exceeds 256 morph targets per mesh"
+                    target_count <= 1024,
+                    "3D avatar exceeds 1024 morph targets per mesh"
                 );
                 morph_used = morph_used
                     .checked_add(count * target_count)
                     .context("Morph size overflow")?;
-                ensure!(morph_used <= 32_000_000, "VRM morph data is too large");
+                ensure!(
+                    morph_used <= 32_000_000,
+                    "3D avatar morph data is too large"
+                );
                 let mut morphs = Vec::new();
                 for (position, normal, _) in reader.read_morph_targets() {
                     let position: Vec<_> = position
@@ -713,7 +766,7 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
                         (position.is_empty() || position.len() == count)
                             && (normal.is_empty() || normal.len() == count)
                             && position.iter().chain(normal.iter()).all(|v| v.is_finite()),
-                        "Invalid VRM morph accessor"
+                        "Invalid 3D avatar morph accessor"
                     );
                     morphs.push(Morph { position, normal });
                 }
@@ -740,7 +793,10 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
                 id
             };
             if let Some(a) = prim.indices() {
-                ensure!(a.count() <= INDEX_LIMIT, "VRM index accessor is too large");
+                ensure!(
+                    a.count() <= INDEX_LIMIT,
+                    "3D avatar index accessor is too large"
+                );
             }
             let indices: Vec<_> = reader
                 .read_indices()
@@ -751,17 +807,20 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
                 indices_used <= INDEX_LIMIT
                     && indices.len() % 3 == 0
                     && indices.iter().all(|&i| (i as usize) < count),
-                "Invalid or excessive VRM triangle indices"
+                "Invalid or excessive 3D avatar triangle indices"
             );
             parts.push(Part {
                 geometry: geometry_index,
                 indices,
                 material: prim.material().index().unwrap_or(materials.len() - 1),
             });
-            ensure!(parts.len() <= 1024, "VRM exceeds 1024 draw parts");
+            ensure!(parts.len() <= 1024, "3D avatar exceeds 1024 draw parts");
         }
     }
-    ensure!(!parts.is_empty(), "VRM has no drawable triangle meshes");
+    ensure!(
+        !parts.is_empty(),
+        "3D avatar has no drawable triangle meshes"
+    );
     for e in &expressions {
         for b in &e.binds {
             ensure!(
@@ -846,12 +905,16 @@ pub fn load(path: &Path, progress: &dyn Fn(&str) -> Result<()>) -> Result<Asset>
         bounds.iter().all(|v| v.is_finite())
             && (bounds[1] - bounds[0]).y > 0.01
             && (bounds[1] - bounds[0]).max_element() < 1000.,
-        "Invalid VRM world bounds"
+        "Invalid 3D avatar world bounds"
     );
     progress("Preparing the renderer")?;
     Ok(Asset {
         path: path.to_owned(),
-        key: format!("vrm:{}", aria_core::movement::model_key(&bytes)),
+        key: format!(
+            "{}:{}",
+            if glb_avatar { "glb" } else { "vrm" },
+            aria_core::movement::model_key(&bytes)
+        ),
         summary,
         nodes,
         order,

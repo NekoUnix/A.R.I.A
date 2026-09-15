@@ -181,6 +181,7 @@ impl InputMonitor {
         self.save_requested = true;
         true
     }
+    #[cfg(test)]
     pub fn hotkey(&mut self, key: u8, parameters: &[RigParameter], mapping: &mut MappingSettings) {
         if key == crate::hotkeys::TOGGLE_POSE {
             self.toggle_pose(parameters);
@@ -193,6 +194,7 @@ impl InputMonitor {
             self.apply_preset(index, mapping);
         }
     }
+    #[cfg(test)]
     pub fn hotkey_action(
         &mut self,
         action: crate::hotkeys::Action,
@@ -200,7 +202,9 @@ impl InputMonitor {
         mapping: &mut MappingSettings,
     ) {
         match action {
-            crate::hotkeys::Action::Profiles(_) => unreachable!("Workspace routes profile hotkeys"),
+            crate::hotkeys::Action::Profiles(_) | crate::hotkeys::Action::Custom(_) => {
+                unreachable!("Workspace routes profile hotkeys")
+            }
             crate::hotkeys::Action::Preset(key) => self.hotkey(key, parameters, mapping),
             crate::hotkeys::Action::TogglePose => self.toggle_pose(parameters),
             crate::hotkeys::Action::Expression(id) => {
@@ -224,6 +228,7 @@ impl InputMonitor {
             }
         }
     }
+    #[cfg(test)]
     pub fn hotkey_keys(&self) -> Vec<crate::hotkeys::Registration> {
         use crate::hotkeys::{Action, Registration};
         use aria_core::shortcuts::Shortcut;
@@ -328,10 +333,10 @@ impl InputMonitor {
         {
             self.tab = Tab::Images;
         }
-        if kind == Some(crate::avatar_import::Kind::Vrm) && self.tab == Tab::Images {
+        if kind.is_some_and(crate::avatar_import::Kind::is_3d) && self.tab == Tab::Images {
             self.tab = Tab::Vrm;
         }
-        if kind != Some(crate::avatar_import::Kind::Vrm) && self.tab == Tab::Vrm {
+        if !kind.is_some_and(crate::avatar_import::Kind::is_3d) && self.tab == Tab::Vrm {
             self.tab = Tab::Inputs;
         }
         let mut group = match self.tab {
@@ -366,7 +371,7 @@ impl InputMonitor {
                     (Tab::Expressions, "Expressions"),
                     (Tab::Layers, "Layers"),
                 ],
-                Some(crate::avatar_import::Kind::Vrm) => &[
+                Some(crate::avatar_import::Kind::Vrm | crate::avatar_import::Kind::Glb) => &[
                     (Tab::Vrm, "View"),
                     (Tab::Physics, "Springs"),
                     (Tab::Expressions, "Expressions"),
@@ -414,7 +419,7 @@ impl InputMonitor {
                 Tab::Inputs => "inputs",
                 Tab::Pose => "pose",
                 Tab::Physics => {
-                    if self.model_key.starts_with("vrm:") {
+                    if self.model_key.starts_with("vrm:") || self.model_key.starts_with("glb:") {
                         "vrm-physics"
                     } else {
                         "physics"
@@ -424,7 +429,7 @@ impl InputMonitor {
                 Tab::Layers => "live2d-layers",
                 Tab::Customize => "live2d-customization",
                 Tab::Expressions => {
-                    if self.model_key.starts_with("vrm:") {
+                    if self.model_key.starts_with("vrm:") || self.model_key.starts_with("glb:") {
                         "vrm-expressions"
                     } else {
                         "expressions"
@@ -463,7 +468,9 @@ impl InputMonitor {
             Tab::Inputs => self.inputs_ui(ui, parameters, labels, inputs),
             Tab::Pose => self.pose_ui(ui, parameters, labels, can_export),
             Tab::Presets => self.presets_ui(ui, parameters, mapping),
-            Tab::Physics if !self.model_key.starts_with("vrm:") => {
+            Tab::Physics
+                if !(self.model_key.starts_with("vrm:") || self.model_key.starts_with("glb:")) =>
+            {
                 let actions = self.physics_panel.show(
                     ui,
                     &mut self.saved.config.physics,
@@ -921,7 +928,7 @@ impl InputMonitor {
                         .desired_width(f32::INFINITY),
                 )
             });
-            hotkey_combo(ui, "new-preset-key", &mut self.draft_hotkey);
+            crate::actions::hotkey_button(ui);
             ui.horizontal_wrapped(|ui| {
                 if crate::help::control(ui, "presets", |ui| ui.button("Save movement")).clicked() {
                     self.save_new(PresetKind::Movement, parameters, mapping);
@@ -939,22 +946,7 @@ impl InputMonitor {
                 }
             });
         });
-        crate::theme::category(ui, "preset-shortcuts", "Keyboard shortcuts", false, |ui| {
-            if crate::help::control(ui, "hotkeys", |ui| {
-                ui.checkbox(
-                    &mut self.saved.global_hotkeys,
-                    "Enable global hotkeys (Windows)",
-                )
-            })
-            .changed()
-            {
-                self.save_requested = true;
-            }
-            if let Some(error) = &self.hotkey_status {
-                ui.colored_label(egui::Color32::LIGHT_RED, error);
-            }
-            ui.label(egui::RichText::new("Ctrl+Alt+F1–F11 apply assigned presets. Ctrl+Alt+P freezes/resumes the pose. Keys are released when disabled or ARIA closes.").small());
-        });
+        crate::actions::hotkey_button(ui);
         crate::theme::category(ui, "preset-library", "Saved presets", true, |ui| {
             if self.saved.presets.is_empty() {
                 crate::theme::caption(ui, "Your saved movement and poses will appear here.");
@@ -1010,7 +1002,7 @@ impl InputMonitor {
                     }
                 });
                 ui.horizontal_wrapped(|ui| {
-                    if crate::help::control(ui, "presets", |ui| ui.button("Rename / assign key"))
+                    if crate::help::control(ui, "presets", |ui| ui.button("Rename preset"))
                         .clicked()
                     {
                         let mut preset = self.saved.presets[index].clone();
@@ -1028,7 +1020,7 @@ impl InputMonitor {
                         } else {
                             self.saved.global_hotkeys |= preset.hotkey.is_some();
                             self.saved.presets[index] = preset;
-                            self.message = Some("Name and hotkey saved.".into());
+                            self.message = Some("Preset name saved.".into());
                             self.save_requested = true;
                         }
                     }
@@ -1210,18 +1202,6 @@ fn value_slider(ui: &mut egui::Ui, value: &mut f32, p: &RigParameter, step: f32)
         *value = snap(*value, p.min, p.max, step);
     }
 }
-fn hotkey_combo(ui: &mut egui::Ui, id: &str, key: &mut Option<u8>) {
-    crate::help::label(ui, "Preset shortcut", "hotkeys");
-    egui::ComboBox::from_id_salt(id)
-        .selected_text(key.map_or_else(|| "No hotkey".into(), crate::hotkeys::label))
-        .show_ui(ui, |ui| {
-            ui.selectable_value(key, None, "No hotkey");
-            for n in 1..=11 {
-                ui.selectable_value(key, Some(n), crate::hotkeys::label(n));
-            }
-        });
-}
-
 #[cfg(test)]
 mod tests {
     #[test]

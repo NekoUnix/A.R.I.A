@@ -1,5 +1,7 @@
 # Themes and custom palettes
 
+![Sakura with Glass surfaces disabled in the development build](images/sakura-solid-development.png)
+
 ![Glass Light workspace with the supplied avatars](images/glass-light-v33.png)
 
 Open **Settings → Appearance & themes**. The eight built-in palettes are **Glass
@@ -12,7 +14,7 @@ their saved colors. **Glass surfaces** adds translucent cards, a quiet color was
 rounded controls and fine edges. The current profile has an accent outline and
 an **Editing** label so you can identify the avatar you are changing.
 
-Turn **Glass surfaces** off for solid panels and cards. **High Contrast** always
+Turn **Glass surfaces** off for solid panels, cards and an opaque workspace background. The stage controls keep the chosen theme colors instead of exposing a black window clear color. **High Contrast** always
 uses solid surfaces, including when loading an older saved High Contrast palette.
 Popups remain nearly opaque to keep underlying content from competing with text.
 

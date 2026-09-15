@@ -1,6 +1,6 @@
 //! Exported ArtMesh selection and model-owned visibility looks.
 use crate::{help, live2d::Avatar, theme};
-use aria_core::{layers::Group, movement::SavedRig, shortcuts::Shortcut};
+use aria_core::{layers::Group, movement::SavedRig};
 use eframe::egui;
 use std::collections::BTreeSet;
 
@@ -12,7 +12,6 @@ pub struct Panel {
     selected: BTreeSet<String>,
     name: String,
     editing: Option<u64>,
-    draft: Shortcut,
     message: Option<String>,
     range_anchor: Option<String>,
     row_drag: Option<(String, BTreeSet<String>, bool)>,
@@ -481,7 +480,6 @@ impl Panel {
                 changed = true;
             }
             let mut remove = None;
-            let mut assign = None;
             for group in &mut saved.config.layers.groups {
                 ui.push_id(group.id, |ui| {
                     ui.horizontal_wrapped(|ui| {
@@ -497,10 +495,7 @@ impl Panel {
                             if ui.button("Delete group").clicked() { remove = Some(group.id); }
                         });
                         if let Some(key) = saved.layer_hotkeys.get(&group.id) { ui.label(format!("Shortcut: {}", key.label())); }
-                        ui.horizontal_wrapped(|ui| {
-                            if ui.button("Assign chosen shortcut").clicked() { assign = Some(group.id); }
-                            if ui.button("Clear shortcut").clicked() { saved.layer_hotkeys.remove(&group.id); changed = true; }
-                        });
+                        crate::actions::hotkey_button(ui);
                         let missing = group.layers.iter().filter(|id| !avatar.model.drawables.iter().any(|d| &d.id == *id)).count();
                         if missing > 0 { ui.label(format!("{missing} saved layers are absent from this export and are skipped.")); }
                     });
@@ -514,55 +509,10 @@ impl Panel {
                 }
                 changed = true;
             }
-            help::button(ui, "hotkeys");
-            changed |= ui
-                .checkbox(
-                    &mut saved.global_hotkeys,
-                    "Enable global hotkeys for this avatar",
-                )
-                .changed();
-            ui.horizontal_wrapped(|ui| {
-                ui.checkbox(&mut self.draft.ctrl, "Ctrl");
-                ui.checkbox(&mut self.draft.alt, "Alt");
-                ui.checkbox(&mut self.draft.shift, "Shift");
-                ui.checkbox(&mut self.draft.win, "Win");
-                egui::ComboBox::from_id_salt("layer-key")
-                    .selected_text(if self.draft.key == 0 {
-                        "Choose key".into()
-                    } else {
-                        self.draft.label()
-                    })
-                    .show_ui(ui, |ui| {
-                        for (key, name) in Shortcut::keys() {
-                            ui.selectable_value(&mut self.draft.key, key, name);
-                        }
-                    });
-            });
-            if let Some(id) = assign {
-                let old = saved.layer_hotkeys.insert(id, self.draft);
-                match saved
-                    .validate_layer_hotkeys()
-                    .and_then(|()| saved.validate_vts_hotkeys())
-                {
-                    Ok(()) => {
-                        saved.global_hotkeys = true;
-                        changed = true;
-                        self.message =
-                            Some("Shortcut assigned. It toggles this group's transparency.".into());
-                    }
-                    Err(e) => {
-                        if let Some(old) = old {
-                            saved.layer_hotkeys.insert(id, old);
-                        } else {
-                            saved.layer_hotkeys.remove(&id);
-                        }
-                        self.message = Some(e.to_string());
-                    }
-                }
-            }
+            crate::actions::hotkey_button(ui);
             theme::caption(
                 ui,
-                "Choose a key, then use Assign chosen shortcut in a group's settings. Global shortcuts currently require Windows; group buttons work on every platform. Movement and pose presets also save layer visibility and groups.",
+                "Groups and selection protection save with this avatar. Record shortcuts in Hotkeys & actions.",
             );
         });
         if let Some(message) = &self.message {

@@ -20,7 +20,6 @@ pub struct Editor {
     audition: crate::effect_audio::Audio,
     message: Option<String>,
     hex: String,
-    shortcut: Shortcut,
     open: bool,
 }
 #[derive(Default)]
@@ -112,11 +111,6 @@ impl Editor {
                 "#{:02X}{:02X}{:02X}",
                 draft.tint[0], draft.tint[1], draft.tint[2]
             ),
-            shortcut: draft.hotkey.unwrap_or(Shortcut {
-                ctrl: true,
-                alt: true,
-                ..Default::default()
-            }),
             draft,
             selected: 0,
             tool: 0,
@@ -678,36 +672,9 @@ impl Editor {
             ui.add(egui::Slider::new(&mut self.draft.volume, 0.0..=1.0).text("Design volume"))
         });
     }
-    fn hotkey(&mut self, ui: &mut egui::Ui, saved: &SavedRig) {
-        help::label(ui, "User-defined trigger shortcut", "hotkeys");
-        ui.horizontal(|ui| {
-            ui.checkbox(&mut self.shortcut.ctrl, "Ctrl");
-            ui.checkbox(&mut self.shortcut.alt, "Alt");
-            ui.checkbox(&mut self.shortcut.shift, "Shift");
-            ui.checkbox(&mut self.shortcut.win, "Win");
-        });
-        egui::ComboBox::from_id_salt("editor-shortcut")
-            .selected_text(self.shortcut.label())
-            .show_ui(ui, |ui| {
-                for (key, label) in Shortcut::keys() {
-                    ui.selectable_value(&mut self.shortcut.key, key, label);
-                }
-            });
-        if ui.button("Assign to this toggle").clicked() {
-            let old = self.draft.hotkey;
-            self.draft.hotkey = Some(self.shortcut);
-            if let Err(e) = validate_save(&self.draft, saved) {
-                self.draft.hotkey = old;
-                self.message = Some(e.to_string());
-            }
-        }
-        if ui.button("Clear shortcut").clicked() {
-            self.draft.hotkey = None;
-        }
-        if let Some(key) = self.draft.hotkey {
-            ui.label(format!("Assigned: {}", key.label()));
-        }
-        ui.small("One press emits a burst. This shortcut becomes active when you save. Stream-tool events can trigger the saved ID through the local API.");
+    fn hotkey(&mut self, ui: &mut egui::Ui, _saved: &SavedRig) {
+        crate::actions::hotkey_button(ui);
+        ui.label("Save this design, then record its shortcut in Hotkeys & actions.");
     }
 }
 pub fn validate_save(d: &Design, saved: &SavedRig) -> anyhow::Result<()> {
@@ -908,6 +875,7 @@ mod tests {
         let ctx = egui::Context::default();
         let rect = Rect::from_min_size(Pos2::ZERO, vec2(600.0, 500.0));
         let scene = Scene {
+            lighting: Default::default(),
             placement: Default::default(),
             images: Default::default(),
             dents: Default::default(),

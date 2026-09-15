@@ -18,7 +18,7 @@ resolved dependency index into `dependency-licenses/` in the portable bundle.
   [requirements lock](tracking/requirements-lock.txt). Native frameworks and
   external SDK terms are described below; they are not all Rust packages.
 
-Graphics/UI dependency review for v0.33 (2026-09-14): wgpu **30.0.1** and
+Graphics/UI dependency review for v0.34 (2026-09-14): wgpu **30.0.1** and
 egui/eframe **0.36.2** already match the current stable releases. The pinned Syphon
 framework revision is unchanged. Runtime performance changes are documented in
 [the performance guide](docs/performance.md); no dependency speedup is claimed.
@@ -132,3 +132,7 @@ The separate Linux **ARIA Canvas** OBS plugin links libobs and is GPL-2.0-or-lat
 Its license, complete source and build instructions accompany every plugin binary
 under [native/linux-canvas](native/linux-canvas/README.md). The transport and ARIA
 application remain MIT licensed. OBS itself is not bundled.
+
+Release v0.34 incorporates reviewed `rfd` 0.17.2, `tungstenite` 0.30.0 and
+pinned GitHub cache actions 6.1.0. Camera NumPy/OpenCV remain at their tested pins;
+SHA-2 0.11 is deferred because its upgrade PR failed native builds.

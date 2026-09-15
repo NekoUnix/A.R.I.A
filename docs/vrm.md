@@ -6,6 +6,9 @@ ARIA supports primary VRM 0.x and VRM 1.0 avatars. The Rust runtime reads
 the embedded humanoid, skins, facial morphs, textures and spring bones. Windows
 renders them using wgpu/DX12. Unity and Cubism Core are not required for VRM.
 
+For skinned `.glb` exports from a VRC workflow, use the separate
+[Experimental VRC / GLB guide](glb-avatars.md). It shares this 3D renderer and tracking pipeline.
+
 ## Import and run
 
 1. Extract the current Windows alpha ZIP from [Releases](https://github.com/NekoUnix/A.R.I.A/releases) and run `aria-desktop.exe`.
@@ -87,12 +90,11 @@ names and weights from 0 to 1. Existing expression blending fades toggles over
 0.15 seconds. Binary expressions switch at weights above 0.5. VRM 1.0 overrides
 can block/reduce automatic blinking, mouth opening or gaze.
 
-**Avatar → Springs** lists the actual groups from the imported file. Global and
-group settings control enable, strength, inertia, stiffness/response, gravity and
-side wind. Defaults apply the author's stiffness, drag, gravity and collision
-radii. Click a group's circled **?** for its authored values. Settle motion resets
-momentum; individual or overall reset buttons restore the original modifiers.
-The solver uses fixed 60 Hz steps with sphere/capsule collision constraints.
+**Avatar → Spring physics / Springs** keeps exported chains and adds suitable
+missing hair/accessory chains. Medium is the starting preset. Tune damping,
+bend limits and inherited per-group settings; saved custom settings survive
+reopening. [Physics guide](secondary-motion.md) explains all controls and limits.
+**Avatar lighting** supplies direction/color or even light. [Lighting guide](lighting.md).
 
 **Poses → Pose controls** holds individual parameters or freezes the final pose,
 including idle/gesture offsets, spring rotations and automatic blink state, which are stored in

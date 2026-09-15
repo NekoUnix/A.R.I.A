@@ -467,7 +467,7 @@ To toggle sunglasses with a blink, use EyeOpenLeft, Toggle on entering range, St
 
 ### Keyboard shortcuts and frozen poses
 
-Choose Ctrl, Alt, Shift or Win modifiers and a main key, then Assign shortcut. ARIA rejects duplicates assigned to expressions, presets, other objects or the reserved pose shortcut. Enable global hotkeys applies to all actions for this avatar. Clear shortcut removes only this item's assignment. A shortcut flips master visibility; in Visible while in range mode, the input condition must also match. A key without modifiers can intercept normal typing in other applications. Windows reserves F12, and another application can own a shortcut; registration failures appear in the panel.
+Open Hotkeys & actions, find this object, click Record, press your combination, then Save shortcut. Clear removes only the assignment. A shortcut flips master visibility; in Visible while in range mode, the input condition must still match. New duplicate combinations are rejected. Windows registration errors appear in the recorder. Buttons work on every platform; global registration currently requires Windows.
 
 Freeze pose pauses input rules and captures the current gated visibility with the pose preset. Manual master toggles and hotkeys still work so you can choose accessories for screenshots without moving the model. Resume live reevaluates the input conditions. Save a pose or movement preset to keep multiple accessory layouts for the same avatar.
 
@@ -496,7 +496,7 @@ Open Workspace → Profiles → + Add avatar… and follow the guided import for
 
 Click Edit or an Edit stage tab to choose which avatar the workspace and inspector change. Its name is displayed above the settings and stage. Switching tabs preserves each avatar's animation, input filters, physics, expression state and props. The avatar name can be changed under Name, tracking & order.
 
-All checked profiles are combined in landscape, portrait and Freeform outputs. Click an avatar in a preview and drag to move only that avatar. Wheel scrolling resizes it. If avatars overlap, choose a name from the preview's avatar menu before dragging. Send back and Bring forward change drawing order. Model scale and Center model refer to the selected output avatar. Lock model framing protects the entire canvas. Native OBS output excludes the preview's targeting menu and selection outline; ordinary Window Capture records the preview UI.
+All checked profiles are combined in landscape, portrait and Freeform outputs. Click an avatar in a preview and drag to move only that avatar. Wheel scrolling resizes it. If avatars overlap, choose a name from the preview's avatar menu before dragging. Send back and Bring forward change drawing order. Ctrl+Shift+click (Cmd+Shift+click on macOS) toggles only the clicked avatar's framing lock in that preview. Right-click provides centering and recovery. Native OBS output excludes the preview's targeting menu and selection outline; ordinary Window Capture records the preview UI.
 
 ### Save and share tracking
 
@@ -659,7 +659,7 @@ Import PNG / GIF avatar guides you through choosing PNG/GIF artwork and action r
 
 ### Studio zoom and model details
 
-Zoom from 0.5 to 1.5 changes the studio preview. Each output has its own Model scale and position. Model details reports meshes, tracked assignments, decoded atlas memory and Core version. Configure avatar physics opens that avatar's discovered groups; Model parameters opens Inputs. A model can have many parameters without all of them having tracking assignments.
+Zoom from 0.5 to 1.5 changes the studio preview. Each output has independent per-avatar scaling and position using drag and wheel gestures. Model details reports meshes, tracked assignments, decoded atlas memory and Core version. Configure avatar physics opens that avatar's discovered groups; Model parameters opens Inputs. A model can have many parameters without all of them having tracking assignments.
 
 ## runtime | Cubism Core runtime setup | Select the official Core library for this OS, or select an extracted Native SDK folder in guided import. Each model runs in a separate runtime process.
 
@@ -848,7 +848,7 @@ For a posed landscape or portrait composition, frame an output and capture that 
 
 ### Create a preset
 
-Enter a unique name of up to 80 characters, choose No hotkey or Ctrl+Alt+F1–F11, then click Save movement or Save pose. Movement saves current input bindings, manual values, steps, mapping, physics, active expressions and stage-object layouts. It clears full frozen mode for live movement, but partial Hold overrides remain part of the rig. Pose captures the current final parameter values and accessory visibility and freezes them. Up to 128 presets can be stored per avatar.
+Enter a unique name of up to 80 characters, then click Save movement or Save pose. Open Hotkeys & actions to record a shortcut for the saved preset. Movement saves current input bindings, manual values, steps, mapping, physics, active expressions and stage-object layouts. It clears full frozen mode for live movement, but partial Hold overrides remain part of the rig. Pose captures the current final parameter values and accessory visibility and freezes them. Up to 128 presets can be stored per avatar.
 
 ### Use and edit the library
 
@@ -860,19 +860,35 @@ Export selected preset writes an ARIA JSON preset containing its model identity 
 
 Use Save profile for the entire avatar workspace. Presets are intended for variants such as gentle movement, energetic movement or portrait poses, rather than transferring unrelated avatars' parameter IDs.
 
-## hotkeys | Global hotkeys & conflicts | Global shortcuts work while ARIA is unfocused. Presets use Ctrl+Alt+F1–F11; Ctrl+Alt+P freezes/resumes; expressions accept a chosen modifier/key combination.
+## hotkeys | Record keyboard shortcuts | Open Hotkeys & actions to record a combination, review conflicts and assign it to an avatar control or saved action graph.
 
-### Enable and assign
+### Record, review and save
 
-Enable global hotkeys (Windows) controls preset, pose and expression shortcuts together for the active avatar. Assigning a preset key or expression shortcut enables the switch. Disabling it releases registrations while retaining assignments; closing ARIA also releases them. Only the active avatar's registrations are used.
+Open Hotkeys & actions in the top bar. On Keyboard shortcuts, find an avatar or action, click Record, press the keys together, then Save shortcut. Record again retries; Escape or Cancel recording abandons it. Other ARIA keyboard actions pause during recording. Clear removes the binding without removing the action. Enable keyboard shortcuts is the workspace-wide switch. Existing assignments are retained; new recordings reject duplicate combinations across available actions.
 
-In the expression editor, choose any desired Ctrl, Alt, Shift and Win modifiers and a main key, then Assign shortcut. Press once to toggle on and again to toggle off. Clear shortcut removes the assignment, not the expression. Selecting modifiers alone does not save a new shortcut. F12 is reserved by Windows and is not offered.
+### Platform behavior and conflicts
 
-### Conflicts and typing
+Windows registrations work while another application has focus. On macOS and Linux, shortcuts currently require ARIA to be focused and not typing into a field. F12 is reserved by Windows. Windows may refuse a key owned by another application; read the registration error and record a different combination. Plain letter shortcuts can intercept typing. The recorder only listens while recording in this window and does not store ordinary typing.
 
-ARIA rejects a shortcut already assigned to another active-avatar preset or expression, and reserves Ctrl+Alt+P for pose mode. Windows can also refuse a combination already registered by another application; read the registration error and choose another key. Unmodified letters or digits intercept ordinary typing when globally registered. Modifier combinations reduce accidental activation.
+Imported VTube Studio actions preserve hold/release timing. New expressions, image states, layer groups and effect designs must be saved before they appear in the recorder. Frozen poses may prevent expressions from visibly changing the model. Buttons and the API work when shortcuts are disabled. Action nodes combine several controls under one button or recorded key.
 
-If a key does nothing, check the global switch, active avatar, registration status and frozen pose. Expressions do not change a frozen model. The tracking packet's hotkey diagnostic field is separate from these Windows keyboard shortcuts. Buttons remain usable if global registration is unavailable.
+## action-nodes | Visual action graphs | Connect expressions, layer and object toggles, image states, presets, effects and avatar changes. Add delays and branches to build a reusable action.
+
+### Build and connect
+
+Open Hotkeys & actions, choose Action nodes, then New action. Name it and click the Action card to select an avatar control above the canvas. Click an output dot on the right of one card, then an input dot on the left of the next. Drag cards to arrange them. Select a node to remove its connections or delete it. Every node must be connected from Start and finish at End. Toggle reverses a state; On and Off set it explicitly. For layer groups, On applies the group's saved opacity, which can hide its layers.
+
+### Example and timing
+
+Start → Expression On → Wait 2 seconds → Expression Off → End. Click Run action to test. Record a key for the saved graph from Keyboard shortcuts. Forks execute together; a joined node waits for all incoming branches. Delays begin after preceding nodes finish and never pause tracking. Effects and gestures can keep playing after their trigger node finishes; add a Delay to wait for them.
+
+### Avatar changes and repair
+
+Load avatar waits for a saved profile to load before following nodes run. Switch current avatar loads the replacement first and then unloads the previously edited avatar, preserving other loaded profiles. Edit stage selects that avatar's editor; Unload removes it from the live scene while retaining its settings. Rename stage/profile keeps its action references. Deleted targets stop the run with a node-specific repair message. Load the avatar, choose its replacement target in the node editor and retry. Avatar loads time out after a 60-second wait.
+
+### Save, cancel and share
+
+Graphs autosave in the workspace. Export writes a JSON template; Import restores layout and steps and asks you to choose local avatar targets. No artwork or executable code is embedded. Stop all actions cancels pending steps; completed changes and launched effects remain. Running graphs use a snapshot; edits apply on the next run. Loops and nested graphs are not allowed. Limits: 128 saved graphs, 256 nodes and 1,024 connections per graph, 300 seconds per delay, 16 simultaneous runs, 1 MiB per imported file.
 
 ## expressions | Expression files, blending & toggles | Expressions apply values from this avatar's .exp3.json or .exp3 files. Toggle several independently, inspect their parameters, and assign global shortcuts.
 
@@ -1072,19 +1088,19 @@ Detection scans nontransparent atlas colors, including hidden artwork, and the c
 
 In OBS, add a Chroma Key filter, select Custom, paste the same hex color and begin with low similarity. Increase carefully while checking hair, eyes and clothing. Color separation is a best-fit suggestion, not a guarantee: translucency, antialiasing, later color effects and high filter similarity can still remove model detail. Recheck after changing artwork or expressions. A warning means no clearly separated candidate was found; consider Transparent with Spout instead.
 
-## framing | Moving, scaling & locking an output | Drag the avatar to move it, scroll over an avatar to scale it, and double-click the avatar to center it. Each output keeps independent framing.
+## framing | Arrange and lock avatars | Drag to move, scroll over an avatar to resize and Ctrl+Shift+click to lock that avatar in this output. Use Cmd+Shift+click on macOS.
 
-### Mouse controls
+### Mouse gestures
 
-Start a primary-button drag on the avatar's bounds to move it. Wheel scrolling over the canvas changes its size between 0.25× and 3×; scrolling over a letterboxed area outside the actual canvas does not zoom. Double-click the avatar to center it. Position offsets are normalized to the canvas so they remain meaningful when its resolution changes.
+Each avatar has a separate position, scale and lock in landscape, portrait and Freeform previews. Click an avatar's bounds to select it, drag to move it, scroll over it to resize between 0.25× and 3×, and double-click to center. Ctrl+Shift+click toggles the clicked avatar's lock (Cmd+Shift+click on macOS). Locking protects position and scale; tracking and animation continue. Locked avatars can still be selected. The same gesture unlocks them without moving them. Older whole-canvas locks become individual avatar locks.
 
-### Framing controls
+### Overlaps and recovery
 
-Model scale sets the same scale as the wheel. Center model resets position while preserving scale. Reset framing restores centered position and 1× scale. Lock model framing blocks drag and wheel interactions to protect a composition; explicit controls in the studio can still change its framing. Keep this output on top affects only that preview's desktop stacking order, not OBS resolution or process priority.
+Choose an overlapping avatar from the preview's avatar menu before interacting. Right-click the preview to lock/unlock the selected avatar, Center avatar or Reset position & scale. Unlock it first to center/reset. This menu recovers an offscreen selected avatar and contains Keep preview on top. Preview window size controls desktop space; OBS canvas resolution is independent.
 
-### Recovery and persistence
+### Persistence and OBS
 
-If the model is out of view, use Center model or Reset framing from the studio controls. It is possible to move part of the avatar off the canvas intentionally. Output framing is independent from Avatar & appearance's studio Zoom. Per-avatar placements save in the workspace with a short debounce; Save output layouts requests an explicit save. The avatar selection menu and outlines appear only in previews, not native OBS output. Choose an overlapping avatar in the menu before dragging it.
+Framing saves per avatar and per output with a short debounce. Save output layouts requests an explicit save. Preview hints, menus and outlines are excluded from native OBS output; ordinary Window Capture includes the preview UI. Studio stage zoom is independent of OBS framing.
 
 ## preview | Compact preview & Freeform window size | Preview dimensions determine how much desktop space an output uses. They do not lower the full canvas resolution that Spout sends to OBS.
 
@@ -1125,6 +1141,8 @@ High is the strongest priority offered here. Realtime is not offered because it 
 ## metrics | Performance graphs and session records | Colorful bottom-bar graphs show FPS, CPU, RAM, VRAM, tracking rate and packet age. Hover to inspect a sample and the session low/high; Graphs opens the detailed view.
 
 ### Read a graph
+
+The latest number and its unit appear below each compact graph: FPS, CPU percent, RAM/VRAM memory, tracking Hz and packet age in milliseconds. No hover is needed to read current values. N/A means unavailable, not zero. Hovering still shows the sampled history and session low/high.
 
 Each colored line shows up to the last two minutes of readings, sampled once per second. The newest sample is on the right. During the first two minutes, the horizontal scale grows with the session; afterward it stays at two minutes. Each graph automatically scales its own vertical axis to the visible values. Compare the units and plot scale in the tooltip rather than comparing line heights across different graphs. The colors identify counters, not safe or dangerous thresholds.
 
@@ -1257,19 +1275,23 @@ Toon lighting scales the lit/shaded colors; emissive materials keep their own gl
 
 Relax arms is a pose parameter: 0° uses the authored T-pose and 65° lowers the arms for streaming. Input monitor lets you remap, hold or step it like other parameters. Save profile persists camera/quality changes; movement and pose presets include them too.
 
-## vrm-physics | VRM spring physics | Tune the current avatar's hair, clothes and accessory chains globally or by exported group.
+## vrm-physics | 3D spring physics | Medium defaults make hair, tails and clothing follow your movement, with per-avatar tuning.
 
-Humanoid pose moves the spring roots. A fixed 60 Hz solver carries tail momentum, pulls each joint toward its authored direction, applies gravity/wind, preserves segment length and resolves sphere or capsule colliders. Rendering shares the resulting pose across outputs. Spring groups and their names come from each VRM, not from a test model.
+VRM and GLB share fixed 60 Hz spring physics. Exported VRM groups and colliders are retained; missing named hair/tail/ear/clothing chains are generated from the active skeleton. Humanoid bones and authored chains are protected from duplicate automatic simulation. Generated physics is Experimental, not imported Unity PhysBone behavior. Add a manual chain in Find secondary bones for unusual names; it needs at least two bones. Unrigged artwork cannot bend.
 
-Motion strength blends the simulated rotation with the posed skeleton. Zero disables the visible spring result; values above one are capped at the full simulated rotation. Inertia scales retained motion after the authored drag, with a stability cap. Stiffness / response scales the authored return force: increase it for a quicker return, lower it for softer motion. Gravity multiplier scales each joint's exported gravity vector and strength; a joint authored with zero gravity stays at zero. Side wind adds a small sideways force in model space. Global and group multipliers combine. Increasing these values changes motion, not the original file.
+Soft, Medium and Firm reset overall and group tuning while keeping detection/manual roots. Medium uses 0.15 extra damping, a 45-degree bend limit and exported collisions. Motion strength blends the simulated bend (above one caps at full strength). Inertia carries momentum; response pulls back to rest. Gravity multiplies exported gravity, which can be zero. Wind adds a steady sideways force. Global and group multipliers combine. Higher extra damping settles sooner. Maximum bend bounds the joint relative to its posed parent. Per-group advanced settings inherit overall values until Custom is checked.
 
-Enable spring bones controls all groups. A group's toggle affects only that chain. Settle motion clears momentum at the current pose. Restore authored physics resets global and group modifiers to one (wind zero); Reset this group affects only its modifiers. Click the small ? beside a group to see authored joint stiffness, drag, gravity and collision radii.
+Settle motion clears momentum. Reset group restores inheritance. Changes save automatically per avatar; Save physics for this avatar, Save profile and movement presets retain them too. Freeze stores the final joint rotations for screenshots. All OBS outputs share one simulation. Plain GLB has no invented body colliders; reduce bend/strength if hair intersects clothing. This does not simulate cloth meshes or self-collision.
 
-Save profile and presets store these settings per avatar. Frozen poses stop the spring simulation and keep the final joint rotations and blink state in saved presets for reproducible screenshots; changing a held driver still refreshes the model. Resume live restarts motion. Different VRM files can export different groups or none.
+## avatar-lighting | Avatar lighting | Choose light color and direction, or even all-over lighting, for the selected avatar.
+
+Enable Custom lighting in Workspace → Avatar → Avatar lighting. Directional light has left/right and above/below controls. Positive elevation lights from above, positive horizontal angle from the right; zero faces the viewer. Fill light brightens shadows. Even / all-over light removes direction dependence. Click the color swatch or White light to choose a tint. Disable Custom lighting to restore the original rendering.
+
+3D uses surface normals. Live2D, PNG and GIF use a soft image gradient and tint because they have no 3D normals. Even mode colors them uniformly. Opacity and GIF transitions remain intact; every OBS output receives the same result. Pinned items, throws and backgrounds retain their own appearance. 3D emission/rim/matcap effects may still show. No cast shadows or environmental lighting are generated. Settings save per avatar and in movement/pose presets; configure each avatar to match an overall scene. Recheck your chroma key after tinting.
 
 ## vrm-expressions | VRM expressions and face tracking | Use embedded expressions from phone inputs, manual controls or your own keyboard shortcuts.
 
-ARIA lists the preset and custom expressions embedded in the current VRM. A .exp3 file belongs to Live2D and is not used by a VRM avatar. Use the expression checkbox to toggle it, choose a key with optional Ctrl/Alt/Shift/Win, then Assign shortcut. Enable global shortcuts in the existing hotkey controls if they must work while OBS or another app is focused. Shortcuts and active expressions belong to this avatar; movement/pose presets also keep the expression selection.
+ARIA lists the preset and custom expressions embedded in this VRM. A .exp3 file belongs to Live2D. Toggle a VRM expression with its checkbox. Open Hotkeys & actions to record its shortcut or combine it with a gesture in an action graph. Keys and active expressions belong to this avatar; movement/pose presets keep the expression selection.
 
 Each expression exposes a VRMExpression parameter from 0 to 1 in Inputs and Pose controls. The visible label is the expression's exported name. Expressions combine weighted morph targets. Toggle transitions fade over 0.15 seconds; binary expressions switch at a weight above 0.5. VRM 1.0 blink, look and mouth overrides reduce or block the automatic channels while a conflicting expression is active.
 
@@ -1443,7 +1465,7 @@ To protect artwork from selection, enable Protect from selection in its saved gr
 
 To save a reusable look, select layers, enter a group name and Create group from selection. A new group starts inactive with zero opacity. Check its name to apply it. Expand Group settings & shortcut to change its opacity, delete it, or Edit selected layers; the name field and Save group selection update that group. Select results adds every search result; Clear selection only clears the editing selection.
 
-Choose Ctrl, Alt, Shift or Win plus a main key, then Assign chosen shortcut in the intended group. Clear shortcut removes it. Conflicts with other actions are rejected. Global shortcuts currently require Windows and Enable global hotkeys for this avatar; group buttons work on every platform. A shortcut toggles the group's active state. Settings save for this avatar and are included in movement and pose presets. There are up to 128 groups; absent saved layers are skipped and counted.
+Open Hotkeys & actions to find the group, record a key combination and save it. Clear removes the assignment. A shortcut toggles the group's active state. Action nodes can apply it explicitly with On or Off and combine it with expressions and other controls. Settings save for this avatar and are included in movement/pose presets. Up to 128 groups are supported; absent layers are skipped and counted.
 
 Effective opacity = authored animated opacity × lowest of the individual override and all active group opacities. Overlapping half-opacity groups stay at 50%. Restore selected removes individual overrides, but active groups can still hide those layers. Show all layers clears overrides and turns every group off. A layer hidden by the model's own parameters stays hidden until those controls reveal it.
 
@@ -1473,7 +1495,7 @@ Check an appearance control to hold that parameter at the displayed value. Adjus
 
 Expand Control name, category & options to give a raw ID a friendly name, move it to your own category, and choose a continuous Slider, a min/max Toggle, or a list of named Choices with explicit numeric values. Step zero is continuous; step one suits integer outfit variants. All values stay within the exported parameter's range. Toggle On uses the maximum and Off uses the minimum; use named choices for reversed or multi-state artwork. The creator decides how intermediate values blend. Remove a control through Browse all to release its override and remove it from your workspace.
 
-Saved appearance looks capture locked appearance values, layer visibility groups and mesh colors. Applying one preserves your tracking calibration, physics tuning, props, microphone and current expressions. It can change appearance while a pose is frozen without moving other parameters. Use Manage looks, shortcuts & exports to rename, replace, delete, export or import a look and assign an available Ctrl+Alt+F1–F11 preset shortcut on Windows. Imports are matched to the same avatar's content identity and do not import keyboard assignments. To save active expression toggles together with broader movement settings, use a Movement preset. Expression-based outfits opens the existing expression library.
+Saved appearance looks capture locked appearance values, layer visibility groups and mesh colors. Applying one preserves your tracking calibration, physics tuning, props, microphone and current expressions. It can change appearance while a pose is frozen without moving other parameters. Use Manage looks, shortcuts & exports to rename, replace, delete, export or import a look and use Hotkeys & actions to record a preset shortcut. Imports are matched to the same avatar's content identity and do not import keyboard assignments. To save active expression toggles together with broader movement settings, use a Movement preset. Expression-based outfits opens the existing expression library.
 
 Select layers & edit colors opens Layers. A multiply tint affects the selected exported meshes: white preserves their original texture colors; darker colors tint and darken them. Black texture pixels cannot be recolored by multiplication. Restore selected colors restores the creator's multiply/screen settings. No texture files are rewritten. Appearance parameters and colors are shared by Your stage, all outputs, and exported PNG images; selection rectangles remain visible only in the editing views.
 
@@ -1549,3 +1571,20 @@ asymmetric image to confirm both top/bottom and left/right match ARIA.
 Syphon skips GPU publication when a canvas is unchanged and retains the latest
 pending image while OBS is disconnected. This saves output work for stationary
 canvases; it does not stop avatar tracking or guarantee a particular FPS gain.
+
+
+## glb-import | VRC / GLB rig and tracking | Experimental import for skinned GLB humanoids, connected to the tracking source you already use.
+
+Choose Profiles → Add avatar → VRC / GLB, or drop a GLB on the stage. Include the armature, skin weights, shape keys and embedded PNG/JPEG textures when exporting. Review and import; no Unity or Cubism runtime is needed. The current avatar stays available while the new file loads.
+
+Open Avatar → View → GLB rig & tracking. Humanoid bone assignments detects common Unity, Blender and Mixamo names. Auto detect uses that suggestion, Disabled stops driving that part, and a named node overrides it. Node numbers distinguish duplicate names. Reverse avatar forward direction corrects a backward-facing export and its tracking axes; Camera orbit only changes the view. Unnamed rigs still load so you can assign their bones. Changes belong to this avatar and are saved with its profile and presets.
+
+Face input assignments connects mouth opening, eye closure, smile and brows to exported shapes. Closed eyes use one minus the tracked eye opening. Edit all shape inputs opens the existing Inputs controls for ARKit, controller and custom sources, ranges, smoothing, steps and held values. Restore detected face inputs replaces the current shape bindings. Head motion and eye bones use the same calibrated input values as other avatar types.
+
+Webcam / RTX / VTube Studio / iFacialMocap / microphone → shared calibration and inputs → mapped bones and shape keys → stage and OBS outputs.
+
+Use Set up personal tracking to calibrate one movement at a time. Microphone controls mouth opening; it does not identify the full set of VRChat phonemes. Extra named ARKit shapes require those values from your selected tracker. Use Expressions, recorded hotkeys and action nodes for combinations. Freeze holds screenshots. Missing optional bones are skipped. If only a jaw bone is available, mouth opening rotates it when no mouth shape is assigned.
+
+GLB is an avatar export, not a Unity runtime. VRChat expression menus, FX controllers, PhysBones and Unity shaders are not imported. Rebuild behaviors in ARIA with expressions, presets and actions. Base-color/alpha/emission render with ARIA lighting; metallic/roughness and shader-only effects may differ. Embedded animation clips are reported but not played. Model details lists limitations. GLB with no morphs can still follow head/body tracking; no facial shape can move unless exported. The author's usage terms still apply.
+
+Limits: 512 MiB file, 32 MiB JSON, two million vertices, six million indices, 1024 morphs per mesh, 2048 total shape controls, and 32 million aggregate morph vertex/target entries. Embedded textures are limited to 16384 pixels per dimension and 2 GiB decoded total. External files/URLs and unsupported required compression extensions fail with a readable error. Lower View canvas resolution if GPU use is high. Diagnostics / export logs includes format, bone assignments and morph counts without artwork.

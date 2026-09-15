@@ -1,6 +1,7 @@
 //! Independent live avatar sessions and the persistent workspace catalog.
 //! The editor borrows one session at a time; captures and render resources stay owned.
 use super::*;
+mod actions;
 use std::collections::VecDeque;
 #[cfg(all(test, windows))]
 mod native_tests;
@@ -78,6 +79,7 @@ pub(super) struct Sessions {
     restore: VecDeque<u64>,
     restore_active: Option<u64>,
     errors: BTreeMap<u64, String>,
+    rename: Option<(u64, String)>,
 }
 enum Action {
     Focus(u64),
@@ -204,6 +206,19 @@ fn short_name(name: &str) -> String {
     text
 }
 impl AriaApp {
+    pub(super) fn refresh_avatar_label(&mut self) {
+        if let Some(avatar) = &mut self.live2d
+            && let Some(entry) = self
+                .settings
+                .profiles
+                .entries
+                .iter()
+                .find(|e| Some(e.id) == self.profiles.current)
+            && avatar.name != entry.name
+        {
+            avatar.name.clone_from(&entry.name);
+        }
+    }
     pub(super) fn profile_name(&self) -> String {
         if self.profiles.current.is_none() && !self.settings.profiles.entries.is_empty() {
             return "No avatar selected".into();
@@ -591,6 +606,10 @@ impl AriaApp {
         }
     }
     pub(super) fn workspace_hotkeys(&self) -> Vec<crate::hotkeys::Registration> {
+        self.custom_hotkeys()
+    }
+    #[cfg(test)]
+    fn legacy_workspace_hotkeys(&self) -> Vec<crate::hotkeys::Registration> {
         let mut grouped: BTreeMap<
             aria_core::shortcuts::Shortcut,
             Vec<(u64, crate::hotkeys::Action)>,
@@ -623,18 +642,25 @@ impl AriaApp {
             .collect()
     }
     pub(super) fn dispatch_hotkey(&mut self, action: crate::hotkeys::Action) {
-        if let crate::hotkeys::Action::Profiles(actions) = action {
+        if let crate::hotkeys::Action::Custom(target) = action {
+            self.trigger_target(target);
+        } else if let crate::hotkeys::Action::Profiles(actions) = action {
             for (id, action) in actions {
-                if id == 0 && self.profiles.current.is_none() {
+                if matches!(action, crate::hotkeys::Action::Custom(_))
+                    || (id == 0 && self.profiles.current.is_none())
+                {
                     self.dispatch_hotkey(action);
                 } else {
                     self.with_profile(id, |app| app.dispatch_hotkey(action));
                 }
             }
-        } else if self.input_monitor.saved.global_hotkeys {
-            let parameters = self.current_parameters();
-            self.input_monitor
-                .hotkey_action(action, &parameters, &mut self.settings.mapping);
+        } else {
+            #[cfg(test)]
+            if self.input_monitor.saved.global_hotkeys {
+                let parameters = self.current_parameters();
+                self.input_monitor
+                    .hotkey_action(action, &parameters, &mut self.settings.mapping);
+            }
         }
     }
     pub(super) fn advance_profiles(&mut self, ctx: &egui::Context, dt: f32) {
@@ -686,9 +712,28 @@ impl AriaApp {
             for entry in &self.settings.profiles.entries {
                 if entry.enabled
                     && ui
-                        .selectable_label(
-                            self.profiles.current == Some(entry.id),
-                            short_name(&entry.name),
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new(short_name(&entry.name)).strong(),
+                            )
+                            .selected(self.profiles.current == Some(entry.id))
+                            .fill(if self.profiles.current == Some(entry.id) {
+                                theme::wash(theme::mint())
+                            } else {
+                                theme::card_color()
+                            })
+                            .stroke(if self.profiles.current == Some(entry.id) {
+                                egui::Stroke::new(1.5, theme::mint())
+                            } else {
+                                theme::surface_edge()
+                            })
+                            .corner_radius(egui::CornerRadius {
+                                nw: 10,
+                                ne: 10,
+                                sw: 2,
+                                se: 2,
+                            })
+                            .min_size(egui::vec2(100., 34.)),
                         )
                         .on_hover_text(&entry.name)
                         .clicked()
@@ -700,11 +745,61 @@ impl AriaApp {
                 self.profiles.actions.push_back(Action::Add);
             }
         });
+        ui.separator();
         theme::caption(
             ui,
             "Each tab edits one avatar. OBS previews combine all checked profiles.",
         );
         ui.add_space(6.);
+    }
+    pub(super) fn rename_stage_button(&mut self, ui: &mut egui::Ui) {
+        if let Some(id) = self.profiles.current
+            && ui
+                .small_button("Rename…")
+                .on_hover_text("One name for this stage and profile, everywhere in ARIA.")
+                .clicked()
+        {
+            self.profiles.rename = Some((id, self.profile_name()));
+        }
+    }
+    pub(super) fn show_profile_rename(&mut self, ctx: &egui::Context) {
+        let Some((id, mut name)) = self.profiles.rename.clone() else {
+            return;
+        };
+        let mut open = true;
+        let mut save = false;
+        let mut cancel = false;
+        egui::Window::new("Rename stage & profile").id(egui::Id::new("rename-stage"))
+            .open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
+                ui.label("This name appears in tabs, the inspector, tracking sources and OBS preview selectors. Your avatar files keep their original names.");
+                ui.add(egui::TextEdit::singleline(&mut name).char_limit(80));
+                ui.horizontal(|ui| {
+                    save = ui.add_enabled(!name.trim().is_empty(), egui::Button::new("Save name")).clicked();
+                    cancel = ui.button("Cancel").clicked();
+                });
+            });
+        if save {
+            self.rename_profile(id, &name);
+        }
+        self.profiles.rename = if open && !save && !cancel {
+            Some((id, name))
+        } else {
+            None
+        };
+    }
+    fn rename_profile(&mut self, id: u64, name: &str) {
+        let name: String = name.trim().chars().take(80).collect();
+        if !name.is_empty()
+            && let Some(entry) = self
+                .settings
+                .profiles
+                .entries
+                .iter_mut()
+                .find(|e| e.id == id)
+        {
+            entry.name = name;
+            self.input_monitor.save_requested = true;
+        }
     }
     pub(super) fn shared_tracking_ui(&mut self, ui: &mut egui::Ui) {
         let name = self
@@ -788,6 +883,7 @@ impl AriaApp {
                     });
                     ui.small(match entry.kind {
                         Some(crate::avatar_import::Kind::Vrm) => "VRM · independent stage",
+                        Some(crate::avatar_import::Kind::Glb) => "VRC / GLB · independent stage",
                         Some(crate::avatar_import::Kind::Images) => "PNG / GIF · independent stage",
                         Some(crate::avatar_import::Kind::Live2d) => "Live2D · independent stage",
                         None => "Mica · test stage",
@@ -798,8 +894,8 @@ impl AriaApp {
                         if ui.button("Retry load").clicked() { self.profiles.actions.push_back(Action::Load(entry.id)); }
                     }
                     ui.collapsing("Name, tracking & order",|ui| {
-                        if ui.add(egui::TextEdit::singleline(&mut entry.name).char_limit(80)).changed() {
-                            self.input_monitor.save_requested=true;
+                        if ui.button("Rename stage & profile…").clicked() {
+                            self.profiles.rename = Some((entry.id, entry.name.clone()));
                         }
                         ui.label("Face tracking");
                         let before=entry.follow;
@@ -1029,6 +1125,111 @@ mod tests {
         assert_eq!(app.settings.profiles.entries.len(), 2);
     }
     #[test]
+    fn renamed_profiles_keep_action_targets_and_names_in_composition_and_storage() {
+        use crate::actions::{Command, Mode, Step, Target};
+        let (ctx, mut app) = app();
+        let first = add(&mut app, &ctx, "first.png");
+        let second = add(&mut app, &ctx, "second.png");
+        let target = Target::Avatar {
+            profile: first,
+            command: Command::Pose,
+        };
+        app.settings.actions.bind(
+            target.clone(),
+            Some(aria_core::shortcuts::Shortcut::preset(4)),
+        );
+        let mut graph = crate::actions::Graph::new(1);
+        graph.name = "Freeze first".into();
+        graph.nodes[1].step = Step::Action {
+            target: Some(target.clone()),
+            mode: Mode::On,
+        };
+        app.settings.actions.graphs.push(graph);
+        app.rename_profile(first, "  New stage name  ");
+        assert_eq!(app.composition().avatars[0].name, "New stage name");
+        assert!(
+            app.action_choices()
+                .iter()
+                .any(|c| c.target == target && c.label.starts_with("New stage name"))
+        );
+        assert_eq!(app.profiles.current, Some(second));
+        app.trigger_target(Target::Graph(1));
+        let _ = crate::run_test_ui(&ctx, egui::RawInput::default(), |_| {
+            app.update_actions(&ctx)
+        });
+        assert!(app.action_runs.is_empty());
+        assert_eq!(
+            app.profiles.parked[&first]
+                .input_monitor
+                .saved
+                .config
+                .pose
+                .mode,
+            PoseMode::Frozen
+        );
+        assert_eq!(app.input_monitor.saved.config.pose.mode, PoseMode::Live);
+        assert_eq!(app.profiles.current, Some(second));
+        app.remember_current_rig();
+        let restored: Settings =
+            serde_json::from_slice(&serde_json::to_vec(&app.settings).unwrap()).unwrap();
+        assert_eq!(restored.profiles.entries[0].name, "New stage name");
+        assert_eq!(
+            restored.actions.graphs[0].validate().unwrap(),
+            vec![1, 2, 3]
+        );
+        assert_eq!(restored.actions.bindings[0].target, target);
+    }
+    #[test]
+    fn custom_shortcuts_replace_inherited_keys_and_disabled_keys_do_not_register() {
+        let (ctx, mut app) = app();
+        let id = add(&mut app, &ctx, "one.png");
+        app.input_monitor.saved.global_hotkeys = true;
+        let target = crate::actions::Target::Avatar {
+            profile: id,
+            command: crate::actions::Command::Pose,
+        };
+        let key = aria_core::shortcuts::Shortcut::preset(5);
+        app.settings.actions.bind(target.clone(), Some(key));
+        assert!(
+            !app.workspace_hotkeys()
+                .iter()
+                .any(|k| k.shortcut == aria_core::shortcuts::Shortcut::pose())
+        );
+        let binding = app
+            .workspace_hotkeys()
+            .into_iter()
+            .find(|k| k.shortcut == key)
+            .unwrap();
+        app.dispatch_hotkey(binding.action);
+        let _ = crate::run_test_ui(&ctx, egui::RawInput::default(), |_| {
+            app.update_actions(&ctx)
+        });
+        assert_eq!(app.input_monitor.saved.config.pose.mode, PoseMode::Frozen);
+        app.settings.actions.bind(target, None);
+        assert!(app.workspace_hotkeys().is_empty());
+    }
+    #[test]
+    fn missing_action_targets_stop_with_repair_message_without_touching_other_avatars() {
+        let (ctx, mut app) = app();
+        add(&mut app, &ctx, "one.png");
+        app.trigger_target(crate::actions::Target::Avatar {
+            profile: 999,
+            command: crate::actions::Command::Pose,
+        });
+        let _ = crate::run_test_ui(&ctx, egui::RawInput::default(), |_| {
+            app.update_actions(&ctx)
+        });
+        assert!(app.action_runs.is_empty());
+        assert!(
+            app.action_editor
+                .message
+                .as_ref()
+                .unwrap()
+                .contains("not loaded")
+        );
+        assert_eq!(app.input_monitor.saved.config.pose.mode, PoseMode::Live);
+    }
+    #[test]
     fn workspace_storage_migrates_and_round_trips_all_profiles() {
         let (ctx, mut app) = app();
         let first = add(&mut app, &ctx, "one.png");
@@ -1075,7 +1276,7 @@ mod tests {
         app.input_monitor.saved.global_hotkeys = true;
         let b = add(&mut app, &ctx, "b.png");
         app.input_monitor.saved.global_hotkeys = true;
-        let keys = app.workspace_hotkeys();
+        let keys = app.legacy_workspace_hotkeys();
         let key = keys
             .into_iter()
             .find(|k| k.shortcut == aria_core::shortcuts::Shortcut::pose())

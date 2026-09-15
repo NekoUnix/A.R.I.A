@@ -147,3 +147,17 @@ demo tracking while this preview stayed frozen. No avatar sources are included.
 `bread-footer.png` shows the built-in bread action in the native Windows app.
 The isolated screenshot run pauses the transient burst after 0.8 seconds to
 make it visible in the capture; normal playback crosses the screen and expires.
+
+## Action editor development update — 2026-09-14
+
+`sakura-solid-development.png`, `action-nodes-development.png` and
+`hotkeys-development.png` render the actual egui workspace through ARIA's native
+Windows GPU renderer. They use isolated test settings, synthetic Demo tracking,
+the owner's supplied full Odette model, OilBun model, Odette GIF and NekoUnity2 VRM.
+No private model files or SDK binaries are included. Only the main Odette stage
+is visible; all four profiles are loaded. The test also renders each avatar into
+all three native canvas formats and verifies their workers survive stage changes.
+These screenshots show unreleased changes based on v0.33; their version label
+does not claim a published new release. Slow stepping and resource readings in
+this debug screenshot test are not a performance benchmark. No image editing
+was applied to these captures.

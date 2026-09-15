@@ -11,13 +11,21 @@ use std::{
 pub const TOGGLE_POSE: u8 = 100;
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Action {
+    Custom(crate::actions::Target),
     Profiles(Vec<(u64, Action)>),
+    #[cfg(test)]
     Preset(u8),
+    #[cfg(test)]
     TogglePose,
+    #[cfg(test)]
     Expression(String),
+    #[cfg(test)]
     ItemToggle(u64),
+    #[cfg(test)]
     Layers(u64),
+    #[cfg(test)]
     Effect(u64),
+    #[cfg(test)]
     Image(u64),
 }
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]

@@ -2,7 +2,6 @@
 use aria_core::{
     motion::Motion,
     movement::{PoseMode, SavedRig},
-    shortcuts::Shortcut,
     vts::{self, Action},
 };
 use aria_model::ExpressionFile;
@@ -60,7 +59,6 @@ pub struct Panel {
     pub repair_tracking: bool,
     pub requests: Vec<String>,
     pub runtime: vts::Runtime,
-    drafts: BTreeMap<String, Shortcut>,
     pub keys: crate::vts_keys::Keys,
     sway: [f32; 3],
     scene_deadlines: BTreeMap<String, f32>,
@@ -711,7 +709,7 @@ impl Panel {
                     if ui.button("Center / normal scale").clicked(){saved.vts.placement=Default::default();self.dirty=true;}
                 });
                 });
-                let mut changed=None;let mut repair=None;
+                let mut repair=None;
                 egui::ScrollArea::vertical().max_height(320.).id_salt("vts-actions").show(ui,|ui|{
                     for h in &mut saved.vts.actions {
                         ui.push_id(&h.id,|ui|{
@@ -728,14 +726,7 @@ impl Panel {
                             egui::CollapsingHeader::new("Configure action").show(ui,|ui|{
                                 self.dirty|=ui.add(egui::TextEdit::singleline(&mut h.name).char_limit(80)).changed();
                                 if h.name.trim().is_empty(){h.name="Imported action".into();}
-                                self.dirty|=ui.checkbox(&mut h.global,"Global (Windows)").changed();
-                                let key=self.drafts.entry(h.id.clone()).or_insert(h.shortcut.unwrap_or(Shortcut{ctrl:true,alt:true,key:0x31,..Default::default()}));
-                                ui.horizontal_wrapped(|ui|{
-                                    ui.checkbox(&mut key.ctrl,"Ctrl");ui.checkbox(&mut key.alt,"Alt");ui.checkbox(&mut key.shift,"Shift");
-                                    egui::ComboBox::from_id_salt("key").selected_text(key.label()).show_ui(ui,|ui|{for (k,label) in Shortcut::keys(){ui.selectable_value(&mut key.key,k,label);}});
-                                    if ui.button("Assign").clicked(){changed=Some((h.id.clone(),Some(*key)));}
-                                    if ui.button("Clear key").clicked(){changed=Some((h.id.clone(),None));}
-                                });
+                                crate::actions::hotkey_button(ui);
                                 if matches!(h.action,Action::Expression(_) | Action::ItemScene{..}) {
                                     self.dirty|=ui.checkbox(&mut h.release,"Hold until key/button released").changed();
                                     let mut timed=h.seconds.is_some();if ui.checkbox(&mut timed,"Turn off after a duration").changed(){h.seconds=timed.then_some(10.);self.dirty=true;}
@@ -752,7 +743,6 @@ impl Panel {
                     }
                 });
                 if let Some(id)=repair{self.repair=Some(crate::vts_repair::Guide::new(id));}
-                if let Some((id,key))=changed {let mut candidate=saved.clone();let h=candidate.vts.actions.iter_mut().find(|h|h.id==id).unwrap();h.shortcut=key;h.chord.clear();match candidate.validate_vts_hotkeys(){Ok(())=>{*saved=candidate;self.dirty=true;self.error=None;},Err(e)=>self.error=Some(format!("Shortcut not changed: {e:#}"))}}
                 egui::CollapsingHeader::new(format!("Import notes / repairs · {}",saved.vts.notes.len())).show(ui,|ui|{ for note in &saved.vts.notes {ui.label(note);} });
                 if ui.button("Remove imported action list").clicked(){saved.vts.actions.clear();self.runtime.reset();self.dirty=true;}
             }

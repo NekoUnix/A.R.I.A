@@ -1,6 +1,6 @@
 # Native platforms and the Cubism runtime host
 
-The v0.33.0-alpha.1 release provides Windows x64, Linux x64, macOS Apple Silicon
+The v0.34.0-alpha.1 release provides Windows x64, Linux x64, macOS Apple Silicon
 and macOS Intel packages. Every app and archive is labeled **Alpha**. Native builds
 and protocol tests do not replace acceptance testing on physical GPUs, webcams,
 phones and every model. See [validation](validation.md) for the tested boundary.
@@ -80,7 +80,7 @@ On Ubuntu 24.04 install native build dependencies first:
 ```sh
 sudo apt-get update
 sudo apt-get install -y build-essential cmake pkg-config libasound2-dev libudev-dev libssl-dev libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libgl1-mesa-dev
-git clone --branch v0.33.0-alpha.1 https://github.com/NekoUnix/A.R.I.A.git
+git clone --branch v0.34.0-alpha.1 https://github.com/NekoUnix/A.R.I.A.git
 cd A.R.I.A
 cargo build --locked --release --workspace
 ./target/release/aria-desktop
@@ -104,12 +104,12 @@ repository packages. Cubism Core and private avatar files are not included.
 
 | System | Artifact | Launch |
 | --- | --- | --- |
-| Windows x64 | `aria-0.33.0-alpha.1-windows-x64.zip` | Extract, run `aria-desktop.exe` |
-| Linux x64 | `aria-0.33.0-alpha.1-linux-x64.tar.gz` | Extract, run `./aria-desktop` |
-| macOS Apple Silicon | `aria-0.33.0-alpha.1-macos-arm64.zip` | Extract, open `ARIA Alpha.app` |
-| macOS Intel | `aria-0.33.0-alpha.1-macos-x64.zip` | Extract, open `ARIA Alpha.app` |
-| Fedora x64 | `aria-alpha-0.33.0.alpha.1-1.x86_64.rpm` | Install with DNF; launch ARIA Alpha |
-| Arch x64 | `aria-alpha-0.33.0alpha.1-1-x86_64.pkg.tar.zst` | Install with pacman; launch ARIA Alpha |
+| Windows x64 | `aria-0.34.0-alpha.1-windows-x64.zip` | Extract, run `aria-desktop.exe` |
+| Linux x64 | `aria-0.34.0-alpha.1-linux-x64.tar.gz` | Extract, run `./aria-desktop` |
+| macOS Apple Silicon | `aria-0.34.0-alpha.1-macos-arm64.zip` | Extract, open `ARIA Alpha.app` |
+| macOS Intel | `aria-0.34.0-alpha.1-macos-x64.zip` | Extract, open `ARIA Alpha.app` |
+| Fedora x64 | `aria-alpha-0.34.0.alpha.1-1.x86_64.rpm` | Install with DNF; launch ARIA Alpha |
+| Arch x64 | `aria-alpha-0.34.0alpha.1-1-x86_64.pkg.tar.zst` | Install with pacman; launch ARIA Alpha |
 
 For complete [Ubuntu, Fedora and Arch installation instructions](linux.md),
 including runtime dependencies, checksum verification, optional OBS installation,
@@ -127,11 +127,11 @@ should use their matching package or compile the included source against their O
 
 ```sh
 # Fedora: run in the downloaded release folder
-sudo dnf install ./aria-alpha-0.33.0.alpha.1-1.x86_64.rpm ./aria-obs-canvas-0.33.0.alpha.1-1.x86_64.rpm
+sudo dnf install ./aria-alpha-0.34.0.alpha.1-1.x86_64.rpm ./aria-obs-canvas-0.34.0.alpha.1-1.x86_64.rpm
 
 # Arch: run in the downloaded release folder
 sudo pacman -Syu
-sudo pacman -U ./aria-alpha-0.33.0alpha.1-1-x86_64.pkg.tar.zst ./aria-obs-canvas-0.33.0alpha.1-1-x86_64.pkg.tar.zst
+sudo pacman -U ./aria-alpha-0.34.0alpha.1-1-x86_64.pkg.tar.zst ./aria-obs-canvas-0.34.0alpha.1-1-x86_64.pkg.tar.zst
 ```
 
 The application installs under `/opt/aria-alpha`, with CLI/desktop launch links in

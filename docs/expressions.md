@@ -31,32 +31,17 @@ avatar will not necessarily work.
 
 ## Assign your own keyboard shortcut
 
-1. Select an expression's name in the library.
-2. Under **Selected expression → Keyboard shortcut**, choose any combination of
-   **Ctrl**, **Alt**, **Shift** and **Win**, then choose the main key from the menu.
-   Supported keys include letters, digits, function keys, numpad keys, arrows and
-   navigation keys. For example, choose **Ctrl + Shift + H** for a hoodie toggle.
-3. Click **Assign shortcut**. The assignment is saved and enables global hotkeys.
-4. Press the combination once to turn the expression on and again to turn it off.
-   Holding the key does not repeatedly toggle it. The shortcut also works while
-   another app is focused. **Clear shortcut** removes just this assignment.
+Open **Hotkeys & actions → Keyboard shortcuts**, find the avatar's expression,
+click **Record…**, press the desired combination, then **Save shortcut**. Press it
+once to turn the expression on and again to turn it off. **Clear** removes its
+binding. Windows registrations work outside ARIA; other platforms currently use
+focused shortcuts. Registration errors and duplicate assignments appear in the
+dedicated window. See [the shortcut and action guide](actions.md).
 
-ARIA rejects a shortcut already assigned to another expression or preset.
-**Ctrl+Alt+P** remains reserved for freezing/resuming a pose. F12 is excluded because
-Windows reserves it for debuggers. If another application or Windows owns a key,
-the registration error appears in the panel; choose another combination or disable
-and re-enable global hotkeys after freeing it. These are owned
-[Windows RegisterHotKey registrations](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-registerhotkey),
-without a keyboard hook. Windows-reserved combinations may be unavailable.
-
-Modifiers are optional. An unmodified shortcut, such as `H`, also intercepts that
-key during normal typing while ARIA's global hotkeys are enabled. A modifier
-combination is usually more convenient. **Enable global hotkeys (Windows)** controls
-expression, preset and pose shortcuts together. Disabling it or closing ARIA
-releases the registrations. Buttons still work when global hotkeys are disabled.
-
-VTube Studio phone hotkey numbers and desktop VTS shortcut assignments are not
-imported. Set the desired keyboard combination in ARIA.
+The same expression can be used in a visual action graph with explicit On/Off
+steps and delays. Imported VTube Studio desktop actions use the same recorder
+while retaining their hold/release semantics. Phone tracking hotkey diagnostics
+are separate from desktop keyboard shortcuts.
 
 ## Blending, movement and screenshots
 
@@ -82,8 +67,8 @@ then freeze the pose and export a transparent PNG from **Pose**.
 ## Saved profiles and presets
 
 On/off selections, expression file paths and shortcuts save with the avatar's
-existing profile. Switching models releases the outgoing shortcuts and loads the
-incoming model's assignments. Reopening the same model restores its selections;
+existing profile. Loaded profiles keep their shortcuts when changing editor tabs.
+Unloading a profile releases its live action registrations. Reopening the same model restores its selections;
 active expressions fade in again unless its saved pose is frozen.
 
 Movement presets include the active expression selection. Pose presets capture

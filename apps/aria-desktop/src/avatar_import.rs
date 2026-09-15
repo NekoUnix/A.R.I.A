@@ -9,6 +9,24 @@ pub enum Kind {
     Images,
     Live2d,
     Vrm,
+    Glb,
+}
+impl Kind {
+    pub fn is_3d(self) -> bool {
+        matches!(self, Self::Vrm | Self::Glb)
+    }
+    pub fn from_3d_path(path: &Path) -> Option<Self> {
+        match path
+            .extension()?
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "vrm" => Some(Self::Vrm),
+            "glb" => Some(Self::Glb),
+            _ => None,
+        }
+    }
 }
 #[derive(Clone)]
 pub struct Artwork {
@@ -162,7 +180,7 @@ impl Wizard {
                     return;
                 }
                 if let Some(message)=&vrm_progress {
-                    ui.heading("Importing VRM avatar");ui.spinner();ui.label(message);
+                    ui.heading("Importing 3D avatar");ui.spinner();ui.label(message);
                     ui.label("Meshes and textures are prepared in the background. Your current avatar stays on stage until the import succeeds.");
                     if ui.button("Cancel import").clicked(){request=Some(Request::Cancel);}
                     return;
@@ -177,11 +195,12 @@ impl Wizard {
                 }
                 if self.step==0 {
                     ui.heading("1. Choose your avatar type");
-                    ui.label("PNG / GIF uses artwork states for idle, talking, blinking and hotkeys. Live2D uses a rigged Cubism model. VRM uses a 3D humanoid with facial expressions and spring bones.");
-                    ui.columns(3,|cols| {
+                    ui.label("PNG / GIF uses artwork states for idle, talking, blinking and hotkeys. Live2D uses a rigged Cubism model. VRM uses a 3D humanoid with expressions and spring bones. VRC / GLB imports skinned humanoids exported as GLB.");
+                    ui.columns(4,|cols| {
                         if cols[0].add_sized([cols[0].available_width(),58.0],egui::Button::new("PNG / GIF avatar")).clicked() {self.choose(Kind::Images);}
                         if cols[1].add_sized([cols[1].available_width(),58.0],egui::Button::new("Live2D avatar")).clicked() {self.choose(Kind::Live2d);}
                         if cols[2].add_sized([cols[2].available_width(),58.0],egui::Button::new("VRM 3D avatar")).clicked() {self.choose(Kind::Vrm);}
+                        if cols[3].add_sized([cols[3].available_width(),58.0],egui::Button::new("VRC / GLB avatar")).clicked() {self.choose(Kind::Glb);}
                     });
                 } else if self.step==1 {
                     ui.heading("2. Choose and prepare files");
@@ -218,12 +237,13 @@ impl Wizard {
                             for n in [64,128,256,512,1024] {ui.selectable_value(&mut self.budget,n,format!("{n} MiB per GIF"));}
                         }));
                         theme::caption(ui,"The default 256 MiB fits large animations without storing all full-size frames. Higher budgets retain more detail and consume more VRAM. Source files are unchanged.");
-                    } else if self.kind==Some(Kind::Vrm) {
-                        help::label(ui,"VRM 0.x / VRM 1.0","vrm-import");
-                        ui.label("Choose a .vrm file exported by your avatar author. The file contains the skeleton, meshes, textures, expressions and spring settings. No Cubism SDK is needed.");
-                        if ui.button("Choose VRM avatar…").clicked() && let Some(path)=rfd::FileDialog::new().add_filter("VRM avatar",&["vrm"]).pick_file(){self.model=Some(path);self.model_summary=None;self.error=None;}
+                    } else if self.kind.is_some_and(Kind::is_3d) {
+                        let glb = self.kind==Some(Kind::Glb);
+                        help::label(ui,if glb {"VRC / GLB · experimental"} else {"VRM 0.x / VRM 1.0"},if glb {"glb-import"} else {"vrm-import"});
+                        ui.label(if glb {"Choose a self-contained .glb exported with its armature, skin weights, shape keys and embedded PNG/JPEG textures. No Unity or Cubism runtime is needed. Review the detected rig after import; unnamed bones can be assigned in ARIA."} else {"Choose a .vrm file exported by your avatar author. The file contains the skeleton, meshes, textures, expressions and spring settings. No Cubism SDK is needed."});
+                        if ui.button(if glb {"Choose GLB avatar…"} else {"Choose VRM avatar…"}).clicked() && let Some(path)=rfd::FileDialog::new().add_filter("3D avatar",if glb {&["glb"]} else {&["vrm"]}).pick_file(){self.model=Some(path);self.model_summary=None;self.error=None;}
                         if let Some(path)=&self.model {ui.label(path.display().to_string());}
-                        ui.label("After import: set up webcam, phone tracking or the microphone, choose full-body or portrait framing, then tune spring bones and expression hotkeys. All changes are saved for this avatar.");
+                        ui.label(if glb {"After import: review GLB rig & tracking, connect your existing tracker, and choose full-body or portrait framing. Shape expressions and settings save with this avatar."} else {"After import: set up webcam, phone tracking or the microphone, choose full-body or portrait framing, then tune spring bones and expression hotkeys. All changes are saved for this avatar."});
                     } else {
                         ui.label("Choose the exported .model3.json, or its .moc3 with a matching manifest beside it. Keep the atlas PNGs, physics and expressions in the exported folder structure.");
                         if ui.button("Choose Live2D export…").clicked() && let Some(path)=rfd::FileDialog::new().add_filter("Cubism export",&["json","moc3"]).pick_file(){self.model=Some(path);self.model_summary=None;self.error=None;}
@@ -253,7 +273,7 @@ impl Wizard {
                         if ui.button("Back").clicked(){self.step=0;}
                         let ready = if self.kind==Some(Kind::Images) {
                             !self.artwork.is_empty()&&self.artwork.len()<=128&&self.artwork.iter().all(|a|a.info.is_ok())&&self.artwork.iter().filter(|a|a.trigger==Trigger::Idle).count()==1
-                        }else{self.model.as_ref().is_some_and(|p|p.is_file())&&(self.kind==Some(Kind::Vrm)||aria_live2d::platform::resolve(Path::new(core.trim())).is_ok())};
+                        }else{self.model.as_ref().is_some_and(|p|p.is_file())&&(self.kind.is_some_and(Kind::is_3d)||aria_live2d::platform::resolve(Path::new(core.trim())).is_ok())};
                         if ui.add_enabled(ready,egui::Button::new("Review import →")).clicked(){self.step=2;self.error=None;}
                     });
                 } else {
@@ -273,13 +293,15 @@ impl Wizard {
                         let fits=retained<=aria_core::asset_limits::IMAGE_COLLECTION;
                         if !fits {ui.colored_label(egui::Color32::LIGHT_RED,"This selection exceeds the 2560 MiB collection budget. Go back and lower the per-GIF budget or remove artwork.");}
                         if ui.add_enabled(fits,egui::Button::new("Import PNG / GIF avatar")).clicked(){request=Some(Request::Images{artwork:self.artwork.clone(),budget:self.budget});}
-                    } else if self.kind==Some(Kind::Vrm) {
+                    } else if self.kind.is_some_and(Kind::is_3d) {
                         if let Some(path)=&self.model {
-                            let summary=self.model_summary.get_or_insert_with(||crate::vrm::asset::inspect(path).map(|s|format!("{} · VRM {}\nAuthor: {}\n{} humanoid bones · {} expressions · {} spring groups · {} materials\nLicense declared in file: {}",s.name,s.version,s.author,s.bones,s.expressions,s.springs,s.materials,s.license)).map_err(|e|format!("{e:#}")));
+                            let summary=self.model_summary.get_or_insert_with(||crate::vrm::asset::inspect(path).map(|s|format!("{} · {}\nAuthor: {}\n{} humanoid bones · {} expressions · {} spring groups · {} materials\nLicense declared in file: {}",s.name,s.format_label(),s.author,s.bones,s.expressions,s.springs,s.materials,s.license)).map_err(|e|format!("{e:#}")));
                             match summary {Ok(info)=>{ui.label(info.as_str());},Err(e)=>{ui.colored_label(egui::Color32::LIGHT_RED,e.as_str());}}
-                            help::label(ui,"What will be imported?","vrm-import");
-                            ui.label("ARIA reads the original file in place. The avatar's usage terms still apply. Mesh skinning, facial morphs, toon shading and spring bones use ARIA's VRM runtime; optional unsupported features are listed in Model details after import.");
-                            if ui.add_enabled(summary.is_ok(),egui::Button::new("Import VRM avatar")).clicked(){request=Some(Request::Vrm(path.clone()));}
+                            let glb = self.kind==Some(Kind::Glb);
+                            help::label(ui,"What will be imported?",if glb {"glb-import"} else {"vrm-import"});
+                            if glb { ui.label("Head, eyes, mouth and named ARKit shapes connect to your existing tracking source. VRChat menus, controllers, custom shaders and PhysBones are not contained in GLB. Rebuild actions and expression combinations in ARIA. Review rig mappings in Avatar → View after importing."); }
+                            ui.label(if glb {"ARIA reads your original file in place and saves changes in this avatar's profile. The author's usage terms still apply. Model details lists import limits."} else {"ARIA reads the original file in place. The avatar's usage terms still apply. Mesh skinning, facial morphs, toon shading and spring bones use ARIA's VRM runtime; optional unsupported features are listed in Model details after import."});
+                            if ui.add_enabled(summary.is_ok(),egui::Button::new(if glb {"Import GLB avatar"} else {"Import VRM avatar"})).clicked(){request=Some(Request::Vrm(path.clone()));}
                         }
                     } else if let Some(path)=&self.model {
                         let summary=self.model_summary.get_or_insert_with(||aria_model::load_files(path).map(|files|format!("{} atlas textures · {} expressions · physics {}",files.textures.len(),files.expressions.len(),if files.physics.is_some(){"included"}else{"not included"})).map_err(|e|format!("{e:#}")));

@@ -1,5 +1,6 @@
 #![cfg_attr(all(not(debug_assertions), not(test)), windows_subsystem = "windows")]
 
+mod actions;
 mod app;
 mod avatar;
 mod avatar_import;
@@ -27,6 +28,7 @@ mod items_panel;
 mod layer_editor;
 mod layer_selection;
 mod layers_panel;
+mod lighting;
 #[cfg(target_os = "linux")]
 mod linux_output;
 mod liquid_art;

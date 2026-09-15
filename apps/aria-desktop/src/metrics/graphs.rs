@@ -395,7 +395,7 @@ impl History {
         let width =
             ((ui.available_width() - 88.0) / 6.0 - ui.spacing().item_spacing.x).clamp(75.0, 145.0);
         for metric in &ALL[..6] {
-            self.chart(ui, *metric, Vec2::new(width, 40.0), false);
+            self.chart(ui, *metric, Vec2::new(width, 57.0), false);
         }
         let button = ui.button("Graphs");
         let popup = egui::Popup::menu(&button)
@@ -469,7 +469,7 @@ impl History {
         );
         let plot = Rect::from_min_max(
             rect.min + egui::vec2(5.0, 21.0),
-            rect.max - egui::vec2(5.0, if expanded { 19.0 } else { 4.0 }),
+            rect.max - egui::vec2(5.0, 21.0),
         );
         let start = (self.seconds - WINDOW_SECONDS).max(0.0);
         let duration = (self.seconds - start).max(1.0);
@@ -554,7 +554,7 @@ impl History {
         if let Some(point) = latest_point {
             painter.circle_filled(point, 2.0, color);
         }
-        if series.current().is_none() {
+        if series.current().is_none() && expanded {
             painter.text(
                 plot.right_top(),
                 Align2::RIGHT_TOP,
@@ -581,6 +581,15 @@ impl History {
                 "now",
                 FontId::proportional(9.0),
                 ui.visuals().weak_text_color(),
+            );
+        }
+        if !expanded {
+            painter.text(
+                egui::pos2(rect.center().x, rect.bottom() - 10.),
+                Align2::CENTER_CENTER,
+                metric.unit().format(series.current()),
+                FontId::proportional(11.),
+                ui.visuals().text_color(),
             );
         }
         let hovered = response.hover_pos().map(|pointer| {
@@ -732,8 +741,37 @@ mod tests {
                 },
             );
             assert!(bounds.width() <= width - 20.0);
-            assert!(bounds.height() <= 41.0, "footer wrapped at width {width}");
+            assert!(bounds.height() <= 58.0, "footer wrapped at width {width}");
             assert!(!output.shapes.is_empty());
+        }
+    }
+    #[test]
+    fn footer_displays_latest_numbers_and_units_without_hover() {
+        fn contains(shape: &egui::Shape, needle: &str) -> bool {
+            match shape {
+                egui::Shape::Text(t) => t.galley.text().contains(needle),
+                egui::Shape::Vec(s) => s.iter().any(|s| contains(s, needle)),
+                _ => false,
+            }
+        }
+        let ctx = egui::Context::default();
+        let mut history = History::default();
+        history.series[Metric::Fps as usize].record(1., Some(59.8));
+        history.series[Metric::Cpu as usize].record(1., Some(12.5));
+        history.series[Metric::Ram as usize].record(1., Some(104857600.));
+        let output = crate::run_test_ui(&ctx, egui::RawInput::default(), |root| {
+            root.horizontal(|ui| history.footer(ui, "GPU"));
+        });
+        for (metric, value) in [
+            (Metric::Fps, 59.8),
+            (Metric::Cpu, 12.5),
+            (Metric::Ram, 104857600.),
+        ] {
+            let label = metric.unit().format(Some(value));
+            assert!(
+                output.shapes.iter().any(|s| contains(&s.shape, &label)),
+                "Missing visible number {label}"
+            );
         }
     }
 

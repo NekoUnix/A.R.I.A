@@ -25,9 +25,10 @@ merged or omitted during export cannot be recovered from a moc3.
    inactive with zero opacity. Check its name to hide its members.
 4. Expand **Group settings & shortcut** to change its opacity, edit its membership,
    rename it using **Edit selected layers → Save group selection**, or delete it.
-5. Choose modifiers and a main key, then use **Assign chosen shortcut** on the
-   intended group. The shortcut toggles that group. Conflicts with poses,
-   presets, expressions, objects, image actions or effects are rejected.
+5. Open **Hotkeys & actions**, find the group, click **Record…**, press a
+   combination and **Save shortcut**. The shortcut toggles that group. New
+   duplicate assignments are rejected. Use [action nodes](actions.md) to combine
+   groups with expressions, image changes and other avatar actions.
 
 Selection uses mesh triangles, including transparent texture areas. Use
 **Reveal ARIA-hidden layers in this preview** to select artwork hidden by ARIA

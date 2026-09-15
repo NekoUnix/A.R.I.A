@@ -126,3 +126,27 @@ move that avatar within the selected shared canvas. Selecting another stage
 invalidates the previous model generation; fetch state again before submitting
 commands. The roster is read-only in this API version; use Profiles in the app to
 load, unload and choose editing stages.
+
+## Visual action graphs (next release in development)
+
+Author a graph in **Hotkeys & actions → Action nodes**. `state.action_graphs`
+lists its ID, name, node count and whether it is running. Graph validation runs
+when you submit a trigger. With the current generation:
+
+```json
+{"version":1,"generation":1,"action":{"type":"run_action","id":1}}
+```
+
+An applied ticket means the graph was accepted and started, not that delayed
+steps or animations have finished. Inspect `state.action_graphs[].running` for
+activity; node failures appear in ARIA and exported diagnostic logs. A graph
+targets explicit profile IDs; switching the editor does not redirect those nodes.
+Load/switch nodes can manage the saved profiles referenced by that authored graph.
+
+```json
+{"version":1,"generation":1,"action":{"type":"stop_actions"}}
+```
+
+Stopping cancels pending nodes. Already applied changes and launched effects remain.
+Both commands use the existing authentication, generation check and ticket mechanism.
+Read [Hotkeys and visual actions](actions.md) for graph semantics and limits.

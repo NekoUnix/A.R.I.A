@@ -6,6 +6,15 @@ windows combine all the profiles you have checked.
 
 ![Profiles and the editing stage](images/profiles-v33.png)
 
+## Names and editing tabs
+
+Click an outlined tab above the stage to edit that avatar. The active tab has an
+accent border. **Rename…** beside the stage name changes the same display name as
+**Profiles → Name, tracking & order**. Tabs, inspector, tracking sources and preview
+selectors update together; saved action references keep their profile IDs. Source
+asset filenames are unchanged. **Stage tools & customization** below the name
+expands the connection status, object tools and Live2D layer controls.
+
 ## Add your first avatar
 
 1. Open **Profiles** near the top of the left sidebar.
@@ -72,9 +81,9 @@ recognize. Renaming does not rename the source files.
    that avatar; choose a different name to target another overlapping model.
 5. Under **Profiles → Name, tracking & order**, use **Send back** or **Bring
    forward** to change overlap order. Later profiles in the list draw in front.
-6. Use **Framing & preview size → Model scale**, **Center model** or **Reset
-   framing** for the selected output avatar. **Lock model framing** prevents mouse
-   movement and resizing for the whole canvas.
+6. **Ctrl+Shift+click** an avatar to lock or unlock its framing in that output
+   (**Cmd+Shift+click** on macOS). Other avatars remain movable. Right-click the
+   preview for centering, resetting, unlocking an offscreen selection and window options.
 7. Click **Save output layouts**. Dragging and settings edits also autosave after
    a short quiet period.
 

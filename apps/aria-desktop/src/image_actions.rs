@@ -1,11 +1,12 @@
 //! PNG/GIF action UI, shared asset cache and stage/output drawing.
 use crate::{avatar::Sprite, help, theme};
+#[cfg(test)]
+use aria_core::shortcuts::Shortcut;
 use aria_core::{
     image_actions::{Animation, Config, Motion, Player, State, Transform, Transition, Trigger},
     items::SignalKind,
     movement::{PoseMode, SavedRig},
     rig::{Inputs, RigParameter},
-    shortcuts::Shortcut,
 };
 use eframe::{
     egui::{self, Color32, Rect, vec2},
@@ -28,7 +29,6 @@ pub struct Images {
     playback_mib: u32,
     selected: Option<u64>,
     pub message: Option<String>,
-    draft: Shortcut,
 }
 impl Images {
     #[cfg(feature = "screenshots")]
@@ -200,11 +200,6 @@ impl Images {
         });
         config.enabled = true;
         self.selected = Some(id);
-        self.draft = Shortcut {
-            ctrl: true,
-            alt: true,
-            ..Default::default()
-        };
         id
     }
     pub fn panel(
@@ -302,11 +297,6 @@ impl Images {
                         .clicked()
                     {
                         self.selected = Some(s.id);
-                        self.draft = s.hotkey.unwrap_or(Shortcut {
-                            ctrl: true,
-                            alt: true,
-                            ..Default::default()
-                        });
                     }
                     if self.player.current == Some(s.id) {
                         ui.colored_label(theme::mint(), "active");
@@ -327,71 +317,181 @@ impl Images {
             return before != saved.config.images || save;
         };
         let mut remove = false;
-        let mut assign = false;
-        let mut clear = false;
         let mut preview = false;
         let mut duplicate = false;
         let s = &mut saved.config.images.states[index];
         let id = s.id;
-        ui.push_id(id,|ui|{
-            theme::category(ui,"image-art","Artwork & trigger",true,|ui|{
-                help::control(ui,"image-actions",|ui|ui.add(egui::TextEdit::singleline(&mut s.name).char_limit(80).desired_width(f32::INFINITY)));
-                if s.name.trim().is_empty(){s.name="Image action".into();}
-                ui.small(s.path.display().to_string());
-                if let Some(Err(error))=self.cache.get(&s.path){ui.colored_label(Color32::LIGHT_RED,error);}
-                if help::control(ui,"image-actions",|ui|ui.button("Choose PNG / GIF…")).clicked()&&let Some(path)=rfd::FileDialog::new().add_filter("PNG / GIF", &["png","gif"]).pick_file(){s.path=path;}
-                help::control(ui,"image-actions",|ui|egui::ComboBox::from_id_salt("image-trigger").selected_text(format!("{:?}",s.trigger)).show_ui(ui,|ui|{
-                    for (v,label) in [(Trigger::Idle,"Idle / fallback"),(Trigger::Talking,"Talking"),(Trigger::Quiet,"Quiet"),(Trigger::Blink,"Blink"),(Trigger::Input,"Tracking or parameter range"),(Trigger::Manual,"Manual / hotkey only")]{ui.selectable_value(&mut s.trigger,v,label);}
-                }));
-                help::control(ui,"image-actions",|ui|ui.add(egui::Slider::new(&mut s.priority,-1000..=1000).text("Priority (higher wins)")));
-                if s.trigger==Trigger::Input {
-                    help::control(ui,"image-actions",|ui|egui::ComboBox::from_id_salt("image-signal-kind").selected_text(format!("{:?}",s.rule.kind)).show_ui(ui,|ui|{ui.selectable_value(&mut s.rule.kind,SignalKind::Tracking,"Tracking / microphone");ui.selectable_value(&mut s.rule.kind,SignalKind::Parameter,"Avatar parameter");}));
-                    help::control(ui,"image-actions",|ui|egui::ComboBox::from_id_salt("image-source").selected_text(&s.rule.source).show_ui(ui,|ui|{
-                        let names:Vec<_>=if s.rule.kind==SignalKind::Tracking{inputs.keys().cloned().collect()}else{parameters.iter().map(|p|p.id.clone()).collect()};
-                        for name in names{ui.selectable_value(&mut s.rule.source,name.clone(),name);}
-                    }));
-                    let source_edit=help::control(ui,"image-actions",|ui|ui.add(egui::TextEdit::singleline(&mut s.rule.source).char_limit(256)));
-                    if source_edit.lost_focus() && s.rule.source.trim().is_empty(){s.rule.source="MouthOpen".into();}
-                    for (label,value) in [("Range starts",&mut s.rule.start),("Range ends",&mut s.rule.end),("Hysteresis",&mut s.rule.hysteresis)]{help::control(ui,"image-actions",|ui|{ui.label(label);ui.add(egui::DragValue::new(value).range(-1e6..=1e6).speed(0.01));});}
-                    s.rule.end=s.rule.end.max(s.rule.start);s.rule.hysteresis=s.rule.hysteresis.max(0.0);
-                    let value=if s.rule.kind==SignalKind::Tracking{inputs.get(&s.rule.source).copied()}else{parameters.iter().find(|p|p.id==s.rule.source).map(|p|p.value)};ui.small(format!("Current input: {}",value.map_or("unavailable".into(),|v|format!("{v:.3}"))));
+        ui.push_id(id, |ui| {
+            theme::category(ui, "image-art", "Artwork & trigger", true, |ui| {
+                help::control(ui, "image-actions", |ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut s.name)
+                            .char_limit(80)
+                            .desired_width(f32::INFINITY),
+                    )
+                });
+                if s.name.trim().is_empty() {
+                    s.name = "Image action".into();
                 }
-                ui.horizontal_wrapped(|ui|{preview=ui.button("Activate / hold image").clicked();duplicate=ui.button("Duplicate").clicked();remove=ui.button("Remove action").clicked();});
+                ui.small(s.path.display().to_string());
+                if let Some(Err(error)) = self.cache.get(&s.path) {
+                    ui.colored_label(Color32::LIGHT_RED, error);
+                }
+                if help::control(ui, "image-actions", |ui| ui.button("Choose PNG / GIF…")).clicked()
+                    && let Some(path) = rfd::FileDialog::new()
+                        .add_filter("PNG / GIF", &["png", "gif"])
+                        .pick_file()
+                {
+                    s.path = path;
+                }
+                help::control(ui, "image-actions", |ui| {
+                    egui::ComboBox::from_id_salt("image-trigger")
+                        .selected_text(format!("{:?}", s.trigger))
+                        .show_ui(ui, |ui| {
+                            for (v, label) in [
+                                (Trigger::Idle, "Idle / fallback"),
+                                (Trigger::Talking, "Talking"),
+                                (Trigger::Quiet, "Quiet"),
+                                (Trigger::Blink, "Blink"),
+                                (Trigger::Input, "Tracking or parameter range"),
+                                (Trigger::Manual, "Manual / hotkey only"),
+                            ] {
+                                ui.selectable_value(&mut s.trigger, v, label);
+                            }
+                        })
+                });
+                help::control(ui, "image-actions", |ui| {
+                    ui.add(
+                        egui::Slider::new(&mut s.priority, -1000..=1000)
+                            .text("Priority (higher wins)"),
+                    )
+                });
+                if s.trigger == Trigger::Input {
+                    help::control(ui, "image-actions", |ui| {
+                        egui::ComboBox::from_id_salt("image-signal-kind")
+                            .selected_text(format!("{:?}", s.rule.kind))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut s.rule.kind,
+                                    SignalKind::Tracking,
+                                    "Tracking / microphone",
+                                );
+                                ui.selectable_value(
+                                    &mut s.rule.kind,
+                                    SignalKind::Parameter,
+                                    "Avatar parameter",
+                                );
+                            })
+                    });
+                    help::control(ui, "image-actions", |ui| {
+                        egui::ComboBox::from_id_salt("image-source")
+                            .selected_text(&s.rule.source)
+                            .show_ui(ui, |ui| {
+                                let names: Vec<_> = if s.rule.kind == SignalKind::Tracking {
+                                    inputs.keys().cloned().collect()
+                                } else {
+                                    parameters.iter().map(|p| p.id.clone()).collect()
+                                };
+                                for name in names {
+                                    ui.selectable_value(&mut s.rule.source, name.clone(), name);
+                                }
+                            })
+                    });
+                    let source_edit = help::control(ui, "image-actions", |ui| {
+                        ui.add(egui::TextEdit::singleline(&mut s.rule.source).char_limit(256))
+                    });
+                    if source_edit.lost_focus() && s.rule.source.trim().is_empty() {
+                        s.rule.source = "MouthOpen".into();
+                    }
+                    for (label, value) in [
+                        ("Range starts", &mut s.rule.start),
+                        ("Range ends", &mut s.rule.end),
+                        ("Hysteresis", &mut s.rule.hysteresis),
+                    ] {
+                        help::control(ui, "image-actions", |ui| {
+                            ui.label(label);
+                            ui.add(egui::DragValue::new(value).range(-1e6..=1e6).speed(0.01));
+                        });
+                    }
+                    s.rule.end = s.rule.end.max(s.rule.start);
+                    s.rule.hysteresis = s.rule.hysteresis.max(0.0);
+                    let value = if s.rule.kind == SignalKind::Tracking {
+                        inputs.get(&s.rule.source).copied()
+                    } else {
+                        parameters
+                            .iter()
+                            .find(|p| p.id == s.rule.source)
+                            .map(|p| p.value)
+                    };
+                    ui.small(format!(
+                        "Current input: {}",
+                        value.map_or("unavailable".into(), |v| format!("{v:.3}"))
+                    ));
+                }
+                ui.horizontal_wrapped(|ui| {
+                    preview = ui.button("Activate / hold image").clicked();
+                    duplicate = ui.button("Duplicate").clicked();
+                    remove = ui.button("Remove action").clicked();
+                });
             });
-            theme::category(ui,"image-transition","Fade & transition",true,|ui|{
-                help::control(ui,"image-transitions",|ui|egui::ComboBox::from_id_salt("image-transition").selected_text(format!("{:?}",s.transition)).show_ui(ui,|ui|{for (v,label)in[(Transition::Cut,"Cut"),(Transition::Crossfade,"Crossfade"),(Transition::FadeThrough,"Fade through transparent"),(Transition::Slide,"Slide & fade")]{ui.selectable_value(&mut s.transition,v,label);}}));
-                for (label,value)in[("Fade in (s)",&mut s.fade_in),("Fade out (s)",&mut s.fade_out),("Minimum state hold (s)",&mut s.minimum_hold)]{help::control(ui,"image-transitions",|ui|ui.add(egui::Slider::new(value,0.0..=10.0).text(label)));}
+            theme::category(ui, "image-transition", "Fade & transition", true, |ui| {
+                help::control(ui, "image-transitions", |ui| {
+                    egui::ComboBox::from_id_salt("image-transition")
+                        .selected_text(format!("{:?}", s.transition))
+                        .show_ui(ui, |ui| {
+                            for (v, label) in [
+                                (Transition::Cut, "Cut"),
+                                (Transition::Crossfade, "Crossfade"),
+                                (Transition::FadeThrough, "Fade through transparent"),
+                                (Transition::Slide, "Slide & fade"),
+                            ] {
+                                ui.selectable_value(&mut s.transition, v, label);
+                            }
+                        })
+                });
+                for (label, value) in [
+                    ("Fade in (s)", &mut s.fade_in),
+                    ("Fade out (s)", &mut s.fade_out),
+                    ("Minimum state hold (s)", &mut s.minimum_hold),
+                ] {
+                    help::control(ui, "image-transitions", |ui| {
+                        ui.add(egui::Slider::new(value, 0.0..=10.0).text(label))
+                    });
+                }
             });
-            motion_ui(ui,&mut s.motion);
-            theme::category(ui,"image-gif","GIF playback",true,|ui|{
-                help::control(ui,"gif-playback",|ui|ui.add(egui::Slider::new(&mut s.gif_speed,0.05..=4.0).text("GIF speed")));
-                help::control(ui,"gif-playback",|ui|ui.checkbox(&mut s.gif_loop,"Loop GIF"));
-                help::control(ui,"gif-playback",|ui|ui.checkbox(&mut s.restart_gif,"Restart GIF when action activates"));
-                if let Some(Ok(sprite))=self.cache.get(&s.path){ui.small(sprite.animation.as_ref().map_or("Static image".into(),|a|format!("{} frames · {:.2}s · {} × {} playback · {:.1} MiB",a.frames.len(),a.ends.last().unwrap(),sprite.texture.size()[0],sprite.texture.size()[1],sprite.bytes() as f64/1048576.0)));}
+            motion_ui(ui, &mut s.motion);
+            theme::category(ui, "image-gif", "GIF playback", true, |ui| {
+                help::control(ui, "gif-playback", |ui| {
+                    ui.add(egui::Slider::new(&mut s.gif_speed, 0.05..=4.0).text("GIF speed"))
+                });
+                help::control(ui, "gif-playback", |ui| {
+                    ui.checkbox(&mut s.gif_loop, "Loop GIF")
+                });
+                help::control(ui, "gif-playback", |ui| {
+                    ui.checkbox(&mut s.restart_gif, "Restart GIF when action activates")
+                });
+                if let Some(Ok(sprite)) = self.cache.get(&s.path) {
+                    ui.small(
+                        sprite
+                            .animation
+                            .as_ref()
+                            .map_or("Static image".into(), |a| {
+                                format!(
+                                    "{} frames · {:.2}s · {} × {} playback · {:.1} MiB",
+                                    a.frames.len(),
+                                    a.ends.last().unwrap(),
+                                    sprite.texture.size()[0],
+                                    sprite.texture.size()[1],
+                                    sprite.bytes() as f64 / 1048576.0
+                                )
+                            }),
+                    );
+                }
             });
-            theme::category(ui,"image-hotkey","Image action hotkey",true,|ui|{
-                shortcut_editor(ui,&mut self.draft);
-                ui.horizontal_wrapped(|ui|{assign=ui.button("Assign hotkey").clicked();clear=ui.button("Clear hotkey").clicked();});
-                ui.small("The hotkey holds this image; press it again to resume automatic actions. Enable global shortcuts in Presets to use it outside ARIA.");
-            });
+            crate::actions::hotkey_button(ui);
         });
         if preview {
             saved.config.images.manual = Some(id);
-        }
-        if clear {
-            saved.config.images.states[index].hotkey = None;
-        }
-        if assign {
-            let mut candidate = saved.clone();
-            candidate.config.images.states[index].hotkey = Some(self.draft);
-            match candidate.validate(parameters) {
-                Ok(()) => {
-                    saved.global_hotkeys = true;
-                    saved.config.images.states[index].hotkey = Some(self.draft);
-                    self.message = Some(format!("Assigned {}", self.draft.label()));
-                }
-                Err(e) => self.message = Some(format!("Cannot assign: {e:#}")),
-            }
         }
         if duplicate {
             let mut copy = saved.config.images.states[index].clone();
@@ -451,30 +551,6 @@ fn export_config(config: &Config, path: &std::path::Path) -> anyhow::Result<()> 
     std::fs::write(path, serde_json::to_vec_pretty(&config)?)?;
     Ok(())
 }
-fn shortcut_editor(ui: &mut egui::Ui, draft: &mut Shortcut) {
-    ui.horizontal_wrapped(|ui| {
-        for (label, value) in [
-            ("Ctrl", &mut draft.ctrl),
-            ("Alt", &mut draft.alt),
-            ("Shift", &mut draft.shift),
-            ("Win", &mut draft.win),
-        ] {
-            help::control(ui, "hotkeys", |ui| ui.checkbox(value, label));
-        }
-    });
-    egui::ComboBox::from_id_salt("image-shortcut-key")
-        .selected_text(if draft.key == 0 {
-            "Choose key".into()
-        } else {
-            draft.label()
-        })
-        .show_ui(ui, |ui| {
-            for (key, label) in Shortcut::keys() {
-                ui.selectable_value(&mut draft.key, key, label);
-            }
-        });
-}
-
 pub fn motion_ui(ui: &mut egui::Ui, m: &mut Motion) {
     theme::category(ui, "image-motion", "Animation on change", true, |ui| {
         help::control(ui, "image-motion", |ui| {
@@ -515,6 +591,7 @@ pub fn paint(
     zoom: f32,
     layers: &[Draw],
     fields: &[aria_core::deformation::Field],
+    light: &aria_core::vrm::Lighting,
 ) {
     for d in layers {
         let size = d.sprite.size
@@ -526,14 +603,17 @@ pub fn paint(
                 -params.0[1] * rect.height() * 0.001,
             )
             + vec2(d.transform.offset[0], d.transform.offset[1]) * size.y;
-        p.add(egui::Shape::mesh(crate::deformation::textured_mesh(
-            d.sprite.texture.id(),
-            center,
-            size * vec2(d.transform.scale[0], d.transform.scale[1]),
-            -params.0[2].to_radians() + d.transform.rotation,
-            Color32::WHITE.gamma_multiply(d.opacity * d.transform.opacity),
-            None,
-            fields,
+        p.add(egui::Shape::mesh(crate::lighting::mesh(
+            crate::deformation::textured_mesh(
+                d.sprite.texture.id(),
+                center,
+                size * vec2(d.transform.scale[0], d.transform.scale[1]),
+                -params.0[2].to_radians() + d.transform.rotation,
+                Color32::WHITE.gamma_multiply(d.opacity * d.transform.opacity),
+                None,
+                fields,
+            ),
+            light,
         )));
     }
 }

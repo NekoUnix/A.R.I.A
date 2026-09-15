@@ -3,6 +3,38 @@
 All downloads remain Alpha. See [Releases](https://github.com/NekoUnix/A.R.I.A/releases)
 for packages and checksums. Features labeled Experimental have compatibility limits.
 
+## 0.34.0-alpha.1 — Flexible avatars, lighting and visual actions
+
+- Add Medium-default VRM/GLB secondary motion, automatic hair/tail/ear/clothing
+  chains, manual roots, Soft/Medium/Firm presets, damping and bend limits.
+  Preserve authored VRM groups and colliders; save all tuning per avatar.
+  Fix head-centered springs losing inertia, bound large time steps and reuse
+  the solver's scratch buffer. Freeze preserves generated and authored joints.
+- Add per-avatar light color/direction and even lighting for all avatar formats.
+  3D uses surface normals; Live2D/PNG/GIF use a tint and soft image gradient.
+  Preserve alpha, profile/preset settings and shared OBS rendering.
+- Update reviewed file-dialog/WebSocket libraries and pinned GitHub cache actions.
+  Keep webcam NumPy/OpenCV and SHA-2 upgrades deferred pending compatibility fixes.
+
+- Add **Experimental VRC / GLB humanoid import**, a guided file picker and stage-drop
+  support. Share existing webcam, RTX, VTube Studio, iFacialMocap and microphone
+  tracking, calibration, profiles, output composition, pins and action nodes.
+- Detect common humanoid bones and VRC/ARKit facial shapes; allow per-avatar bone
+  overrides and editable face inputs. Keep authored morph weights and expose up to
+  1,024 shapes per mesh / 2,048 shape controls, within the existing aggregate memory
+  budget. Include format and bone overrides in support reports. Validate with the
+  supplied ICHIGO GLB. [Setup and compatibility limits](docs/glb-avatars.md).
+- Fix black workspace backgrounds when Glass surfaces is disabled, including Sakura.
+- Show clear stage tabs; rename a stage/profile throughout ARIA without changing its identity.
+- Collapse stage tools below the stage name and show current numbers and units below resource graphs.
+- Replace output framing controls with mouse gestures: Ctrl+Shift+click (Cmd+Shift+click on macOS)
+  locks only the clicked avatar in that output. Right-click offers centering, reset and window options.
+- Add a dedicated shortcut recorder with conflict checks, global Windows registration and focused
+  shortcuts on other platforms. Preserve imported VTS hold/release behavior and existing bindings.
+- Add saved visual action graphs: toggles, expressions, presets, images, objects, effects, VRM
+  gestures, profile changes, delays, branching and joins. Include validation, cancellation,
+  templates, API triggers and per-node repair messages. See [the action guide](docs/actions.md).
+
 ## 0.33.0-alpha.1 — Glass workspace, tracking direction and engine efficiency
 
 - Correct VTube Studio UDP head roll before calibration and model mapping.
