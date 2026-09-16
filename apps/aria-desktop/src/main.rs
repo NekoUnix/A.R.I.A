@@ -37,6 +37,7 @@ mod media;
 mod mesh_asset;
 mod metrics;
 mod microphone;
+mod model_mount;
 mod native_output;
 mod object_models;
 mod output;

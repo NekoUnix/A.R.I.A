@@ -63,7 +63,7 @@ This is a release status grid, not a promise of universal model/device compatibi
 | Live2D layer selection and visibility groups | Updated in v0.30 Alpha | Stage marquee, list ranges, reversible hiding/tinting, named groups, presets and Windows hotkeys; picks mesh geometry rather than texture pixels. |
 | Customizable Live2D workspace | Implemented in v0.30 Alpha | Exported parameter folders, curated sliders/toggles/choices, appearance locks and looks; only artwork exported by the creator is available. |
 | VRM idle motion and gestures | Implemented in v0.26 Alpha | Configurable sway, breathing and arms; six procedural gestures, blending and frozen poses. |
-| Pinned PNG/GIF and Live2D objects | Working | Independent anchor editing, tracking enabled on new Live2D objects; limited simultaneous Live2D object instances. |
+| Pinned PNG/GIF and Live2D objects | Working | Two-model visual mounts, independent anchor editing and tracking on both models; up to four attached Live2D instances. [Mounting guide](in-app-help.md#model-mount--mount-two-live2d-models--choose-a-point-on-each-model-to-join-them-while-both-receive-tracking). |
 | Custom throw assets | Updated | Replace/add controls, exact quantities, background PNG/GIF loading, file-specific errors and save validation; large 3D/Live2D props still have cold-load costs. |
 | 3D throw assets | Working with limits | Static GLB/glTF, VRM, FBX and OBJ; native .blend/.max/.ma project files must be exported first. |
 | Throws, sounds, bounce/stick and visual dents | Working with limits | Saved visual designs, routes, lifetime and 2D impact deformation; not full soft-body simulation. |

@@ -15,6 +15,7 @@ impl Items {
         saved: &mut SavedRig,
         inputs: &Inputs,
         parameters: &[RigParameter],
+        live2d: bool,
     ) -> bool {
         let before = saved.config.items.clone();
         let keys = saved.item_hotkeys.clone();
@@ -24,6 +25,27 @@ impl Items {
             "Drop PNGs, GIFs or Live2D exports onto Your stage. Select and drag an object, then pin it to your avatar. Each object keeps its own settings.",
         );
         ui.horizontal_wrapped(|ui| {
+            if live2d
+                && help::control(ui, "model-mount", |ui| ui.button("Add & mount Live2D…")).clicked()
+                && let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Live2D model3.json / moc3", &["json", "moc3"])
+                    .pick_file()
+            {
+                if !aria_core::items::is_model(&path) {
+                    self.message = Some(
+                        "Choose a .model3.json or .moc3 export. The current avatar is kept.".into(),
+                    );
+                } else if self.add(vec![path], &mut saved.config, [0.; 2])
+                    && let Some(item) = saved
+                        .config
+                        .items
+                        .iter_mut()
+                        .find(|i| Some(i.id) == self.selected)
+                {
+                    item.height = 0.4;
+                    self.mount_editor = Some(crate::model_mount::Editor::new(item));
+                }
+            }
             if help::control(ui, "model-items", |ui| ui.button("Add objects…")).clicked()
                 && let Some(paths) = rfd::FileDialog::new()
                     .add_filter(
@@ -126,6 +148,15 @@ impl Items {
                 if help::control(ui,"png-items",|ui| ui.button("Remove item")).clicked() { remove = true; }
             });
             self.models.panel(ui,item);
+            if item.pin.is_some() && item.model.mount.is_some()
+                && self.models.avatar(item.id).is_some()
+                && self.models.mounted_image(item).is_none() {
+                ui.colored_label(egui::Color32::YELLOW,"The saved child mount no longer matches this model. Open Mount two models and choose a new point.");
+            }
+            if live2d && aria_core::items::is_model(&item.path)
+                && help::control(ui, "model-mount", |ui| ui.button("Mount two models…")).clicked() {
+                self.mount_editor = Some(crate::model_mount::Editor::new(item));
+            }
             theme::category(ui,"png-pin","Pin to avatar",true,|ui| {
                 help::label(ui,match &item.pin { None => "Free on canvas".into(), Some(Pin::Puppet {..}) => "Pinned to PNG / GIF movement".into(), Some(Pin::VrmSurface {geometry,..}) => format!("Pinned to 3D surface #{}",geometry+1), Some(Pin::Surface { mesh,..}) => format!("Pinned to ArtMesh #{}",mesh+1) },"png-pins");
                 if self.draws.iter().any(|d| d.item.id == id && d.anchor == crate::items::Anchor::Missing) {

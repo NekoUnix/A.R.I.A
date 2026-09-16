@@ -2841,6 +2841,7 @@ impl AriaApp {
                     &mut self.input_monitor.saved,
                     &self.live_inputs,
                     &parameters,
+                    self.live2d.is_some(),
                 ) {
                     self.items.edited();
                 }
@@ -3424,6 +3425,9 @@ impl eframe::App for AriaApp {
                         );
                         ctx.data_mut(|d| d.insert_temp(key, true));
                     }
+                }
+                if self.items.mount_window(ctx, self.live2d.as_ref(), &mut self.input_monitor.saved.config) {
+                    self.items.edited();
                 }
                 if !selecting_layers
                     && self.items.stage(

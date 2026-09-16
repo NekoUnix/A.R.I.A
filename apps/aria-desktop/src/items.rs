@@ -71,6 +71,7 @@ impl Target<'_> {
 pub enum ItemImage {
     Png(Sprite),
     Model {
+        mount: Option<Vec2>,
         image: crate::cubism_render::ModelImage,
         _lease: Arc<crate::cubism_render::ModelTexture>,
         revision: u64,
@@ -166,10 +167,24 @@ impl DrawItem {
         } else {
             origin
         };
+        let size = self.image.size() / self.image.size().y * self.item.height * base.scale * scale;
+        let rotation = angle + self.item.rotation.to_radians();
+        let mount = match &self.image {
+            ItemImage::Model {
+                mount: Some(point), ..
+            } if self.item.pin.is_some() => {
+                let mut point = *point;
+                if self.item.flip {
+                    point.x = -point.x;
+                }
+                rotate(point * size.y, rotation)
+            }
+            _ => Vec2::ZERO,
+        };
         Some(Placement {
-            center: origin + offset,
-            size: self.image.size() / self.image.size().y * self.item.height * base.scale * scale,
-            angle: angle + self.item.rotation.to_radians(),
+            center: origin + offset - mount,
+            size,
+            angle: rotation,
             opacity: self.item.opacity
                 * if self.item.follow_visibility {
                     opacity
@@ -370,6 +385,7 @@ pub fn paint_list(
 
 #[derive(Default)]
 pub struct Items {
+    pub mount_editor: Option<crate::model_mount::Editor>,
     pub clock: f32,
     pub models: crate::object_models::ObjectModels,
     assets: BTreeMap<PathBuf, Result<Sprite, String>>,
@@ -611,7 +627,7 @@ impl Items {
             .iter()
             .filter_map(|item| {
                 let image = if aria_core::items::is_model(&item.path) {
-                    self.models.image(item.id)?
+                    self.models.mounted_image(item)?
                 } else {
                     ItemImage::Png(self.assets.get(&item.path)?.as_ref().ok()?.at(
                         self.clock,
@@ -919,6 +935,9 @@ impl Items {
 fn anchor_marker(draw: &DrawItem, scene: &Scene, canvas: Rect, zoom: f32) -> Option<Pos2> {
     let mut marker = draw.clone();
     marker.item.position = [0.; 2];
+    if let ItemImage::Model { mount, .. } = &mut marker.image {
+        *mount = None;
+    }
     marker.pose(scene, canvas, zoom).map(|p| p.center)
 }
 /// Change the attachment surface while preserving the rendered center, angle and size.
@@ -936,14 +955,15 @@ fn reanchor(
     next.item.pin = Some(pin);
     next.item.position = [0.; 2];
     let at = next.pose(scene, canvas, zoom)?;
-    let offset = rotate(old.center - at.center, -at.offset_angle) / at.offset_scale;
     let height = old.size.y / at.offset_scale;
+    next.item.rotation = degrees(old.angle - at.offset_angle);
+    next.item.height = height;
+    let at = next.pose(scene, canvas, zoom)?;
+    let offset = rotate(old.center - at.center, -at.offset_angle) / at.offset_scale;
     if !offset.is_finite() || offset.abs().max_elem() > 4. || !(0.005..=4.).contains(&height) {
         return None;
     }
     next.item.position = [offset.x, offset.y];
-    next.item.rotation = degrees(old.angle - at.offset_angle);
-    next.item.height = height;
     Some(next.item)
 }
 fn bounded(v: Vec2) -> [f32; 2] {
@@ -1129,7 +1149,85 @@ pub fn pick_surface(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
+    pub(crate) fn verify_model_mount(mut image: ItemImage) {
+        let ItemImage::Model { mount, .. } = &mut image else {
+            panic!("model required")
+        };
+        let point = mount.expect("resolved child surface");
+        let scene = Scene {
+            lighting: Default::default(),
+            placement: Default::default(),
+            images: Default::default(),
+            dents: Default::default(),
+            effects: Default::default(),
+            recoil: [0.; 2],
+            _model_lease: None,
+            model: None,
+            model_bounds: Rect::NOTHING,
+            sprite: None,
+            params: Default::default(),
+            items: Default::default(),
+        };
+        for size in [vec2(1920., 1080.), vec2(1080., 1920.), vec2(512., 384.)] {
+            for flip in [false, true] {
+                for rotation in [-135., 0., 73.] {
+                    let canvas = Rect::from_min_size(egui::pos2(27., 40.), size);
+                    let draw = DrawItem {
+                        deformation: None,
+                        tint: Color32::WHITE,
+                        visible: true,
+                        item: Item {
+                            pin: Some(Pin::Puppet { point: [0.; 2] }),
+                            height: 0.4,
+                            rotation,
+                            flip,
+                            follow_scale: true,
+                            ..Default::default()
+                        },
+                        image: image.clone(),
+                        anchor: Anchor::Surface {
+                            point: vec2(-0.2, 0.1),
+                            angle: 0.5,
+                            scale: 1.3,
+                            opacity: 1.,
+                        },
+                    };
+                    let pose = draw.pose(&scene, canvas, 0.8).unwrap();
+                    let child = vec2(if flip { -point.x } else { point.x }, point.y);
+                    let joined = pose.center + rotate(child * pose.size.y, pose.angle);
+                    let parent = anchor_marker(&draw, &scene, canvas, 0.8).unwrap();
+                    assert!((joined - parent).length() < 0.001, "mounts must coincide");
+                    let anchor = Anchor::Surface {
+                        point: vec2(0.1, -0.15),
+                        angle: -0.8,
+                        scale: 0.7,
+                        opacity: 1.,
+                    };
+                    let item = reanchor(
+                        &draw,
+                        pose,
+                        anchor,
+                        Pin::Puppet { point: [0.; 2] },
+                        &scene,
+                        canvas,
+                        0.8,
+                    )
+                    .unwrap();
+                    let next = DrawItem {
+                        item,
+                        anchor,
+                        ..draw
+                    }
+                    .pose(&scene, canvas, 0.8)
+                    .unwrap();
+                    assert!((next.center - pose.center).length() < 0.001);
+                    assert!((next.size - pose.size).length() < 0.001);
+                    assert!((next.angle - pose.angle).abs() < 0.00001);
+                }
+            }
+        }
+    }
     #[test]
     fn reanchoring_preserves_world_placement_across_transforms_and_canvases() {
         let ctx = egui::Context::default();

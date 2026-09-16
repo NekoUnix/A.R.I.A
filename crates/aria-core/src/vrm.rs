@@ -109,6 +109,9 @@ impl Settings {
 pub struct Secondary {
     pub auto_detect: bool,
     pub manual_roots: std::collections::BTreeSet<usize>,
+    /// Keep these generated bones and their descendants rigid. Authored springs use group controls.
+    pub excluded_roots: std::collections::BTreeSet<usize>,
+    pub collision: CollisionSettings,
     pub tuning: SpringTuning,
     pub groups: std::collections::BTreeMap<String, SpringTuning>,
 }
@@ -117,6 +120,8 @@ impl Default for Secondary {
         Self {
             auto_detect: true,
             manual_roots: Default::default(),
+            excluded_roots: Default::default(),
+            collision: Default::default(),
             tuning: Default::default(),
             groups: Default::default(),
         }
@@ -125,9 +130,12 @@ impl Default for Secondary {
 impl Secondary {
     pub fn validate(&self) -> Result<()> {
         self.tuning.validate()?;
+        self.collision.validate()?;
         ensure!(
             self.manual_roots.len() <= 128
                 && self.manual_roots.iter().all(|&n| n < 4096)
+                && self.excluded_roots.len() <= 4096
+                && self.excluded_roots.iter().all(|&n| n < 4096)
                 && self.groups.len() <= 256,
             "Too many secondary motion groups or invalid root"
         );
@@ -138,6 +146,34 @@ impl Secondary {
             );
             tuning.validate()?;
         }
+        Ok(())
+    }
+}
+/// Generated collision envelopes, saved per avatar; authored VRM shapes stay intact.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CollisionSettings {
+    pub body: bool,
+    pub other_groups: bool,
+    pub body_size: f32,
+    pub thickness: f32,
+}
+impl Default for CollisionSettings {
+    fn default() -> Self {
+        Self {
+            body: true,
+            other_groups: true,
+            body_size: 1.,
+            thickness: 0.12,
+        }
+    }
+}
+impl CollisionSettings {
+    pub fn validate(&self) -> Result<()> {
+        ensure!(
+            (0.5..=1.5).contains(&self.body_size) && (0.0..=0.5).contains(&self.thickness),
+            "Invalid generated body collision size or spring thickness"
+        );
         Ok(())
     }
 }
@@ -221,6 +257,8 @@ mod tests {
         let mut settings: Settings = serde_json::from_str("{}").unwrap();
         assert!(settings.secondary.auto_detect);
         assert_eq!(settings.secondary.tuning.swing, 45.);
+        assert!(settings.secondary.collision.body && settings.secondary.collision.other_groups);
+        settings.secondary.collision.body_size = 1.2;
         settings.secondary.tuning.damping = 0.6;
         settings.secondary.groups.insert(
             "aria:spring:5".into(),
@@ -230,10 +268,17 @@ mod tests {
             },
         );
         settings.secondary.manual_roots.insert(5);
+        settings.secondary.excluded_roots.insert(6);
         let restored: Settings =
             serde_json::from_slice(&serde_json::to_vec(&settings).unwrap()).unwrap();
         assert_eq!(settings, restored);
         restored.validate().unwrap();
+        let mut invalid = restored.clone();
+        invalid.secondary.excluded_roots.insert(4096);
+        assert!(invalid.validate().is_err());
+        invalid = restored.clone();
+        invalid.secondary.collision.thickness = f32::NAN;
+        assert!(invalid.validate().is_err());
         settings.secondary.tuning.swing = f32::NAN;
         assert!(settings.validate().is_err());
     }

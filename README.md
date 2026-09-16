@@ -4,7 +4,7 @@ Bring your **Live2D, VRM, GLB and PNG/GIF avatars** to life, tune how it follows
 arrange them together in OBS. ARIA runs on Windows, Linux and macOS. You can start with the
 included Mica puppet before importing a model or connecting a camera.
 
-**[Download v0.34 Alpha](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.34.0-alpha.1)** ·
+**[Download v0.35 Alpha](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.35.0-alpha.1)** ·
 [What's new](#whats-new) · [First-time setup](#first-time-setup) ·
 [Help when something goes wrong](#help-when-something-goes-wrong)
 
@@ -16,23 +16,20 @@ required third-party tracking app or runtime are supplied separately.
 
 ## What's new
 
-**v0.34 Alpha adds flexible hair and accessories, customizable lighting, GLB
-avatars and visual action graphs.**
+**v0.35 Alpha adds visual Live2D mounts and smoother, more reliable VRM/GLB physics.**
 
-- **Hair and tails move:** VRM/GLB starts with Medium spring physics. Tune the
-  whole avatar or individual chains, then save it. [Physics setup](docs/secondary-motion.md).
-- **Choose your lighting:** set direction/color or even all-over light for any
-  avatar. Live2D/PNG/GIF use a soft artwork gradient; 3D uses surface shading.
-  [Lighting controls](docs/lighting.md).
-- **Import VRC / GLB:** the guided importer accepts skinned GLB avatars and hooks
-  them into your existing webcam, RTX, phone and microphone tracking.
-  Bone and face mappings are editable. [Experimental GLB guide](docs/glb-avatars.md).
-- **Record hotkeys and combine actions:** open **Hotkeys & actions** to record
-  shortcuts or connect expressions, toggles, gestures, presets, effects and
-  profile changes with nodes. [Step-by-step guide](docs/actions.md).
-- **Clearer workspace:** visible stage tabs, shared stage/profile renaming,
-  collapsible stage tools, numbers under resource graphs and a solid-surface fix.
-  Ctrl+Shift+click an avatar in an output to lock its framing (Cmd+Shift on Mac).
+- **Join two Live2D models:** open **Stage → Objects → Add & mount Live2D…**.
+  Pick a mesh point on each model, then choose **Mount together**. Both receive
+  tracking through their own mappings and physics. Adjust rotation, size and
+  offsets, and choose whether the attached model sits in front or behind.
+  [Mounting guide](docs/in-app-help.md#model-mount--mount-two-live2d-models--choose-a-point-on-each-model-to-join-them-while-both-receive-tracking).
+- **Smoother hair, clothing and body motion:** small spring rotations now respond
+  on both sides. Medium defaults, changing frame rates and stronger arm idle
+  settings are handled more smoothly. [Physics controls](docs/secondary-motion.md).
+- **More flexible GLB rigs:** review inferred chains, add unusual roots and tune
+  generated collision envelopes per avatar. Authored VRM colliders remain intact.
+  Generated collisions are approximations, not full mesh self-collision or Unity
+  PhysBones. [GLB compatibility](docs/glb-avatars.md).
 
 Existing Live2D, PNG/GIF and VRM profiles stay available. Use **Profiles →
 + Add avatar** to load more, then click the stage tab for the avatar you want to
@@ -45,17 +42,17 @@ configure. All checked profiles appear together in OBS.
 
 ### 1. Download the right file
 
-Open the [v0.34 Alpha release](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.34.0-alpha.1)
+Open the [v0.35 Alpha release](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.35.0-alpha.1)
 and expand **Assets** if the downloads are hidden. Choose the file for your computer:
 
 | Your computer | Download |
 | --- | --- |
-| Windows 10/11, 64-bit Intel or AMD | `aria-0.34.0-alpha.1-windows-x64.zip` |
-| Mac with an M-series chip | `aria-0.34.0-alpha.1-macos-arm64.zip` |
-| Mac with an Intel processor | `aria-0.34.0-alpha.1-macos-x64.zip` |
-| Ubuntu 24.04, 64-bit Intel or AMD | `aria-0.34.0-alpha.1-linux-x64.tar.gz` |
-| Fedora 44, 64-bit Intel or AMD | `aria-alpha-0.34.0.alpha.1-1.x86_64.rpm` |
-| Current Arch Linux, 64-bit Intel or AMD | `aria-alpha-0.34.0alpha.1-1-x86_64.pkg.tar.zst` |
+| Windows 10/11, 64-bit Intel or AMD | `aria-0.35.0-alpha.1-windows-x64.zip` |
+| Mac with an M-series chip | `aria-0.35.0-alpha.1-macos-arm64.zip` |
+| Mac with an Intel processor | `aria-0.35.0-alpha.1-macos-x64.zip` |
+| Ubuntu 24.04, 64-bit Intel or AMD | `aria-0.35.0-alpha.1-linux-x64.tar.gz` |
+| Fedora 44, 64-bit Intel or AMD | `aria-alpha-0.35.0.alpha.1-1.x86_64.rpm` |
+| Current Arch Linux, 64-bit Intel or AMD | `aria-alpha-0.35.0alpha.1-1-x86_64.pkg.tar.zst` |
 
 On a Mac, **Apple menu → About This Mac** tells you whether it has an Apple chip
 or an Intel processor. Linux ARM, Windows ARM, `.deb`, AppImage and Flatpak/Snap
@@ -278,6 +275,9 @@ click it for the complete offline help window.
   looks without replacing tracking. See the [appearance guide](docs/live2d-customization.md).
 - **Stage:** add and pin images or independent Live2D accessories; create reusable
   throw and spray effects with assets, sound, direction and impact settings.
+  **Objects → Add & mount Live2D…** lets you click a
+  mount point on each of two models and join them. Both receive current tracking
+  through their own mappings. See the [two-model mounting guide](docs/in-app-help.md#model-mount--mount-two-live2d-models--choose-a-point-on-each-model-to-join-them-while-both-receive-tracking).
 - **Poses:** freeze the model for a screenshot, export an image, and save named
   movement presets. Assign a supported hotkey to recall a preset or expression.
 - **Settings:** choose a theme, edit colors and save your own palette.
@@ -292,7 +292,7 @@ Export important configurations before experimenting with a new Alpha build.
 | Problem | First things to check |
 | --- | --- |
 | ARIA will not open | Extract the complete package, use the right CPU/OS download and update the graphics driver. Read the error dialog and your installation guide. |
-| Clicking an online link does nothing | Install this updated v0.34 Alpha build. Set a default browser in your operating system and check behind ARIA for a new tab or window. If it still fails, use **Diagnostics / export logs** and describe the link you clicked. |
+| Clicking an online link does nothing | Install this updated v0.35 Alpha build. Set a default browser in your operating system and check behind ARIA for a new tab or window. If it still fails, use **Diagnostics / export logs** and describe the link you clicked. |
 | A phone connects but no motion arrives | Check **Tracking live**, the current phone IP, matching ports, Local Network permission, firewall and same LAN. Demo motion does not confirm a phone connection. |
 | Cannot bind the tracking port | Close the other application receiving on that port, or configure matching custom ports on both sides. |
 | Mouth feels slow | Try **Quick** or **Instant** mouth response; check the tracking-rate and packet-age graphs. Phone sampling and network delay remain outside that setting. |

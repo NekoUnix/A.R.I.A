@@ -5,6 +5,109 @@
 This file records checks for the development builds. The Windows CI workflow
 is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
+## Paired body physics development update — 2026-09-15
+
+- Found a small-angle dead zone in repeated direction-to-rotation conversion.
+  Near-parallel directions were replaced with identity, which could suppress
+  gentle movement differently across mirrored bones. Both detected ICHIGO breast
+  chains stalled in the isolated default-idle replay before this correction.
+  Spring integration and collision recovery now retain these small rotations.
+- 275 standard workspace tests, strict Clippy and formatting passed. New generated
+  regressions exercise both mirrored chains at 30/60/120/144/240 FPS with full and
+  reduced strength, plus tiny, ordinary and antiparallel direction changes.
+- Native ICHIGO checks verify the left and right chains independently with Medium
+  physics, default idle and zero wind. With collisions enabled, their root bends
+  reached approximately 0.28 and 0.47 degrees. Resetting just one chain changed
+  507 and 754 visible pixels respectively in the 768-pixel render. The no-collision
+  variants also passed. These are measurements for this rig and test sequence;
+  independent weights, contacts and poses can produce different amplitudes.
+- The tracking/gesture regression now checks each side's visible deformation
+  separately; motion of a center strap can no longer stand in for either side.
+  Private artwork stays outside source control and packages. Saved physics
+  groups, exclusions and tuning are retained rather than silently reset.
+- The precision change exposed contact chatter in the center strap. Removing
+  repeated outward bias and tightening generated-contact convergence fixed it;
+  the unchanged head-tracking/settling regression passed with a final-second
+  maximum step below 0.07 degrees and a tail error below 0.015 model units.
+  Authored collision radii are retained; no additional contact drag was needed.
+- The final five native Windows checks passed: independent bilateral idle,
+  head tracking and settling, maximum arm idle with all collision combinations,
+  GLB tracking/expressions/gestures/freeze and NekoUnity2's authored VRM rig.
+  Repository contracts also passed (50 Markdown and 10 JSON files).
+
+## Continuous 3D physics development update — 2026-09-15
+
+- 273 standard workspace tests, strict Clippy, formatting and repository
+  contracts passed (50 Markdown and 10 JSON files).
+- Inspected the supplied 10.24-second recording and reproduced instability on
+  ICHIGO at Medium defaults with wind zero. A smooth head-turn sequence produced
+  an 88.57-degree single-frame joint change in the old solver. The corrected
+  60 FPS sequence measured at most 3.83 degrees, followed by six seconds at rest;
+  the final second stayed below 0.17 degrees per frame. Hair ends returned within
+  0.018 model units of the unforced reference (gravity remains active). These
+  values describe this test asset/sequence, not a guarantee for every export.
+- Native GLB checks passed for the continuous head/settling replay, maximum arm
+  idle with all four collision combinations, and expressions/gestures/frozen-pose
+  restoration. Torso tracking is explicitly varied for the breast regression;
+  nine breast-region joints deform visible artwork. The former head-only stimulus
+  depended on unstable contact movement. NekoUnity2's authored VRM rig also passed.
+- Regression coverage includes 30/60/85/120/144/240 FPS motion at full and reduced
+  strength, small-link anchor jumps, settling, tangential contact velocity and
+  unchanged authored collision radius. Strength blends the displayed pose once;
+  simulation state no longer repeatedly receives an already weakened pose.
+- Generated contacts use bounded angular recovery; this can permit brief overlap
+  while conflicting approximate envelopes settle. These are bone envelopes rather
+  than triangle-level cloth. Private recordings and rendered replay frames remain
+  outside version control and release packages.
+
+## Arm idle stability development update — 2026-09-14
+
+- Reproduced on ICHIGO with sway/breathing zero, arm strength 2 and speed 1.
+  With all collision options enabled, the previous build produced an 83.77-degree
+  spring rotation change in one frame. The corrected six-second run measured
+  3.57 degrees maximum per frame during steady maximum-arm idle, and 12.24 degrees
+  across all spring joints including the on/off transitions. Rendered coat panels
+  remain beside the legs. These measurements apply to this test asset and sequence.
+- Native GPU checks passed with no collisions, body only, flexible groups only
+  and both options. Body contacts remain active (3,663 corrections in the complete
+  idle/transition sample). GLB and VRM tracking, gestures, visible breast deformation,
+  expressions and frozen-pose restoration also passed on ICHIGO and NekoUnity2.
+- 270 standard workspace Rust tests passed. New regressions cover smooth idle
+  edits, frame-rate-independent strength/speed blending, preserving posed clearance
+  without disabling contact, and a relaxed-arm/coat fixture at 30, 60 and 120 Hz.
+  Generated geometry is committed; private test artwork stays outside the repository.
+
+## Generated collision development update — 2026-09-14
+
+- 266 standard Rust tests passed across the workspace and targeted collision
+  checks. Tests cover length/bend limits after contact, midpoint penetration,
+  fast tip crossings, intentional rest overlaps, per-avatar migration, independent
+  body/group toggles and preservation of authored VRM shapes. Strict Clippy,
+  formatting and repository contracts passed.
+- Native Windows GPU acceptance passed on ICHIGO and NekoUnity2. ICHIGO recorded
+  28,866 contact corrections over the 60-frame movement sample, with breast-region
+  deformation, tracking, gestures and frozen-pose restoration still verified.
+  NekoUnity2 keeps its 28 authored groups / 183 joints and renders correctly.
+- Body capsules use dominant weighted mesh regions; flexible envelopes are
+  capped at 256. Far shapes are rejected before contact work, transformed shapes
+  reuse a scratch buffer, and all output windows share one simulation. These
+  are approximate bone envelopes, not a claim of triangle-level cloth collision
+  or a measured frame-rate improvement.
+
+## Bone detection development update — 2026-09-14
+
+- 261 standard Rust tests passed, including weighted leaf motion, unweighted
+  endpoint retention, manual/rigid precedence and protected skeletal helpers.
+  Strict Clippy and repository contracts passed.
+- Native Windows GPU acceptance passed with ICHIGO and NekoUnity2. ICHIGO now
+  generates 83 groups / 245 joints, including 9 breast-region joints whose
+  removal changes rendered pixels. NekoUnity2 retains its 28 authored groups /
+  183 joints without duplicate generated descendants. Tracking, expressions,
+  gestures, finite motion and frozen-pose restoration also pass.
+- Bone inventory and mesh-derived leaf estimates are cached per loaded avatar.
+  These remain experimental guesses; unfamiliar names need review and no Unity
+  PhysBone settings or missing mesh weights are reconstructed.
+
 ## v0.34 physics and lighting acceptance — 2026-09-14
 
 - 259 standard Rust tests and three tracking-worker Python tests passed. Strict
@@ -1048,3 +1151,18 @@ blink/gaze/mouth ranges, calibration and reconnection after backgrounding the ap
 iFacialMocap UDP has no explicit face-found flag; ARIA uses packet freshness.
 TCP, Bluetooth and recording transfer are not implemented. See the
 [setup and protocol guide](ifacialmocap.md) for the supported interface and limits.
+
+
+### Two-surface Live2D mounts (local development)
+
+- Added saved child mesh points with backward-compatible defaults, round-trip
+  coverage and rejection of malformed/unsupported child pins.
+- Native Cubism/DX12 regression using the supplied 90s Outfit export passes:
+  two independent instances receive the same tracking source, while the original
+  model's state remains isolated. Both resolved points stay joined under flips,
+  rotation and landscape/portrait/freeform-sized canvases. Reanchoring preserves
+  world position, size and angle; frozen snapshots survive configuration reload.
+- The new editor provides separate live previews and crosshairs, draft/cancel,
+  explicit apply, tracking control and recovery instructions for replaced meshes.
+  Manual visual usability testing on additional artist-authored rigs is still
+  recommended; triangle picking does not sample texture alpha or clipping masks.
