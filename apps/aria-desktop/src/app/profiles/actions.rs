@@ -219,6 +219,66 @@ impl AriaApp {
             }
         }
     }
+    pub(in crate::app) fn start_api_target(
+        &mut self,
+        target: Target,
+        mode: Mode,
+        ticket: u64,
+    ) -> Result<()> {
+        let choices = self.action_choices();
+        let choice = choices.iter().find(|c| c.target == target)
+            .ok_or_else(|| anyhow::anyhow!("Action is unavailable. Load its avatar or select a current action in Streamer.bot setup."))?;
+        ensure!(
+            self.action_runs.len() < 16,
+            "At most 16 actions can run together"
+        );
+        let single = !matches!(target, Target::Graph(_));
+        let graph = if let Target::Graph(id) = target {
+            ensure!(
+                mode == Mode::Toggle,
+                "Graphs are one-shot actions; use Toggle mode"
+            );
+            ensure!(
+                !self.action_runs.iter().any(|r| r.graph.id == id),
+                "Action graph is already running"
+            );
+            self.settings
+                .actions
+                .graphs
+                .iter()
+                .find(|g| g.id == id)
+                .unwrap()
+                .clone()
+        } else {
+            ensure!(
+                mode == Mode::Toggle || crate::streamerbot::supports_mode(&target),
+                "This is a one-shot action; use Toggle mode"
+            );
+            let mut graph = crate::actions::Graph::new(0);
+            graph.name = choice.label.chars().take(80).collect();
+            graph.nodes[1].step = Step::Action {
+                target: Some(target),
+                mode,
+            };
+            graph
+        };
+        let mut run = crate::actions::Run::new(&graph, self.started.elapsed().as_secs_f64())?;
+        run.receipt = Some(self.effect_api.receipt(ticket));
+        // Bind Switch's replacement origin before another queued action can change focus.
+        if single {
+            run.origins.insert(2, self.profiles.current);
+        }
+        self.action_runs.push(run);
+        Ok(())
+    }
+    pub(in crate::app) fn stop_actions(&mut self) {
+        for run in self.action_runs.drain(..) {
+            if let Some(receipt) = run.receipt {
+                self.effect_api
+                    .finish(receipt, Err("Action cancelled before completion".into()));
+            }
+        }
+    }
     fn start_action(&mut self, id: u64) {
         let Some(graph) = self.settings.actions.graphs.iter().find(|g| g.id == id) else {
             self.action_editor.message = Some("Action was removed. Choose another action.".into());
@@ -302,7 +362,7 @@ impl AriaApp {
             self.start_action(id);
         }
         if std::mem::take(&mut self.action_editor.stop) {
-            self.action_runs.clear();
+            self.stop_actions();
             self.action_editor.message =
                 Some("Stopped pending steps. Changes already applied remain in place.".into());
         }
@@ -322,6 +382,12 @@ impl AriaApp {
         let mut remaining = Vec::new();
         let mut budget = 32;
         for mut run in runs.drain(..) {
+            if run
+                .receipt
+                .is_some_and(|r| !self.effect_api.receipt_is_current(r))
+            {
+                continue;
+            }
             let mut failed = false;
             loop {
                 let ready = run.ready(now);
@@ -356,6 +422,9 @@ impl AriaApp {
                                 .map_or("Avatar loading timed out after 60 seconds".into(), |e| {
                                     e.to_string()
                                 });
+                            if let Some(receipt) = run.receipt {
+                                self.effect_api.finish(receipt, Err(error.clone()));
+                            }
                             crate::diagnostics::record(
                                 "error",
                                 "action-node",
@@ -378,6 +447,9 @@ impl AriaApp {
             if !failed && !run.finished() {
                 remaining.push(run);
             } else if !failed {
+                if let Some(receipt) = run.receipt {
+                    self.effect_api.finish(receipt, Ok(()));
+                }
                 self.action_editor.message = Some(format!("Finished {}", run.graph.name));
             }
         }

@@ -297,6 +297,7 @@ pub struct AriaApp {
     items: crate::items::Items,
     hotkeys: crate::hotkeys::Hotkeys,
     action_editor: crate::actions::Editor,
+    streamerbot: crate::streamerbot::Setup,
     action_runs: Vec<crate::actions::Run>,
     live_inputs: Inputs,
     animation_time: f32,
@@ -437,6 +438,7 @@ impl AriaApp {
             items: Default::default(),
             hotkeys: crate::hotkeys::Hotkeys::new(cc.egui_ctx.clone()),
             action_editor: Default::default(),
+            streamerbot: Default::default(),
             action_runs: Vec::new(),
             live_inputs: Inputs::new(),
             animation_time: 0.0,
@@ -536,6 +538,10 @@ impl AriaApp {
                 } else {
                     ControlsPage::Avatar
                 };
+                if scenario == "streamerbot-setup" {
+                    app.controls_page = ControlsPage::Settings;
+                    app.streamerbot.open = true;
+                }
                 if scenario.starts_with("theme-") || scenario == "api-controls" {
                     app.controls_page = ControlsPage::Settings;
                     if scenario == "theme-light" {
@@ -910,6 +916,9 @@ impl AriaApp {
         use anyhow::ensure;
         let parameters = self.current_parameters();
         match action {
+            Action::Workspace { .. } => {
+                anyhow::bail!("Workspace actions require a result ticket")
+            }
             Action::RunGraph { id } => {
                 let graph = self
                     .settings
@@ -927,7 +936,7 @@ impl AriaApp {
                 self.trigger_target(crate::actions::Target::Graph(id));
             }
             Action::StopActions => {
-                self.action_runs.clear();
+                self.stop_actions();
             }
             Action::SetParameters { values } => {
                 ensure!(
@@ -1215,6 +1224,13 @@ impl AriaApp {
                 true,
                 |ui| self.settings.theme.ui(ui),
             );
+            theme::category(ui, "streamerbot-settings", "Streamer.bot", true, |ui| {
+                crate::help::label(ui, "Stream events → ARIA actions", "streamerbot");
+                ui.label("Connect commands, rewards and stream events to any saved avatar action.");
+                if ui.button("Set up Streamer.bot…").clicked() {
+                    self.streamerbot.open = true;
+                }
+            });
             theme::category(ui, "api-settings", "Developer API", true, |ui| {
                 self.effect_api.ui(ui, &mut self.settings.effect_api)
             });
@@ -3113,6 +3129,7 @@ impl eframe::App for AriaApp {
             let parameters:Vec<_>=self.current_parameters().iter().map(|p|serde_json::json!({"id":p.id,"min":p.min,"max":p.max,"default":p.default,"value":p.value})).collect();
             self.effect_api.publish(serde_json::json!({
                 "workspace":self.workspace_summary(),
+                "workspace_actions":self.action_choices().iter().map(|c| serde_json::json!({"name":c.label,"target":c.target,"supports_on_off":crate::streamerbot::supports_mode(&c.target)})).collect::<Vec<_>>(),
                 "action_graphs":self.settings.actions.graphs.iter().map(|g|serde_json::json!({"id":g.id,"name":g.name,"nodes":g.nodes.len(),"running":self.action_runs.iter().any(|r|r.graph.id == g.id)})).collect::<Vec<_>>(),
                 "tracking_status":self.connection_status(),"source":self.settings.source,
                 "parameters":parameters,"inputs":self.live_inputs,"pose":self.input_monitor.saved.config.pose.mode,
@@ -3152,6 +3169,15 @@ impl eframe::App for AriaApp {
                 _ => {}
             }
         }
+        if self.streamerbot.open {
+            let choices = self.action_choices();
+            self.streamerbot.ui(
+                ctx,
+                &choices,
+                &mut self.effect_api,
+                &mut self.settings.effect_api,
+            );
+        }
         self.update_actions(ctx);
         if std::mem::take(&mut self.input_monitor.reset_item_rules) {
             self.items.reset_rules();
@@ -3171,7 +3197,14 @@ impl eframe::App for AriaApp {
                 {
                     Err("Model changed before the command was applied".into())
                 } else if let Some(action) = command.action {
-                    self.apply_api_action(action).map_err(|e| e.to_string())
+                    if let crate::effect_api::Action::Workspace { target, mode } = action {
+                        match self.start_api_target(target, mode, command.ticket) {
+                            Ok(()) => continue, // Scheduler completes the ticket after execution.
+                            Err(e) => Err(e.to_string()),
+                        }
+                    } else {
+                        self.apply_api_action(action).map_err(|e| e.to_string())
+                    }
                 } else if self
                     .input_monitor
                     .saved

@@ -1180,6 +1180,106 @@ mod tests {
         assert_eq!(restored.actions.bindings[0].target, target);
     }
     #[test]
+    fn streamerbot_targets_profiles_not_focus_and_rejects_missing_targets() {
+        use crate::actions::{Command, Mode, Target};
+        let (ctx, mut app) = app();
+        let api_settings = crate::effect_api::Settings {
+            enabled: true,
+            port: 0,
+            token: "a".repeat(48),
+        };
+        app.effect_api
+            .update(&api_settings, "test", &Default::default(), &ctx);
+        let first = add(&mut app, &ctx, "bot-first.png");
+        let second = add(&mut app, &ctx, "bot-second.png");
+        let target = Target::Avatar {
+            profile: first,
+            command: Command::Pose,
+        };
+        app.start_api_target(target.clone(), Mode::On, 1).unwrap();
+        assert!(app.effect_api.test_result(1).is_none());
+        let _ = crate::run_test_ui(&ctx, egui::RawInput::default(), |_| {
+            app.update_actions(&ctx)
+        });
+        assert_eq!(app.profiles.current, Some(second));
+        assert_eq!(app.input_monitor.saved.config.pose.mode, PoseMode::Live);
+        assert_eq!(
+            app.profiles.parked[&first]
+                .input_monitor
+                .saved
+                .config
+                .pose
+                .mode,
+            PoseMode::Frozen
+        );
+        assert_eq!(app.effect_api.test_result(1).unwrap()["status"], "applied");
+        app.start_api_target(target, Mode::Off, 2).unwrap();
+        let _ = crate::run_test_ui(&ctx, egui::RawInput::default(), |_| {
+            app.update_actions(&ctx)
+        });
+        assert_eq!(
+            app.profiles.parked[&first]
+                .input_monitor
+                .saved
+                .config
+                .pose
+                .mode,
+            PoseMode::Live
+        );
+        assert!(
+            app.start_api_target(
+                Target::Avatar {
+                    profile: first,
+                    command: Command::Item(999)
+                },
+                Mode::On,
+                3
+            )
+            .is_err()
+        );
+        assert!(
+            app.start_api_target(
+                Target::Avatar {
+                    profile: first,
+                    command: Command::Load
+                },
+                Mode::Off,
+                3
+            )
+            .is_err()
+        );
+        assert!(
+            app.start_api_target(Target::Graph(999), Mode::Toggle, 3)
+                .is_err()
+        );
+        app.start_api_target(
+            Target::Avatar {
+                profile: first,
+                command: Command::Pose,
+            },
+            Mode::On,
+            4,
+        )
+        .unwrap();
+        app.stop_actions();
+        assert!(app.action_runs.is_empty());
+        assert_eq!(app.effect_api.test_result(4).unwrap()["status"], "rejected");
+        app.start_api_target(
+            Target::Avatar {
+                profile: first,
+                command: Command::Pose,
+            },
+            Mode::On,
+            5,
+        )
+        .unwrap();
+        app.unload_profile(first);
+        let _ = crate::run_test_ui(&ctx, egui::RawInput::default(), |_| {
+            app.update_actions(&ctx)
+        });
+        assert_eq!(app.effect_api.test_result(5).unwrap()["status"], "rejected");
+    }
+    #[test]
     fn custom_shortcuts_replace_inherited_keys_and_disabled_keys_do_not_register() {
         let (ctx, mut app) = app();
         let id = add(&mut app, &ctx, "one.png");

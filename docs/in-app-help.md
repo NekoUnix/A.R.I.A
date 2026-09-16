@@ -1618,3 +1618,28 @@ Send current tracking to the added model is enabled for new objects. Each model 
 Use the object's size, rotation, flip, draw order, visibility, hotkey and input-rule controls as usual. Dragging adds an offset from the joined points. Follow pin rotation, surface stretch and visibility refer to the current avatar's surface. Move anchor only preserves the attached object's placement; reopen Mount two models to snap the two points together again. Unpin keeps the visible position and returns to free placement.
 
 Mounts save with the current avatar's settings and presets, including both mesh points. Stage and OBS outputs use the same composition. Up to four Live2D objects may be attached to one avatar, within the shared texture budget. Objects render in front of or behind the main avatar, not between its individual layers. A replaced model may have different mesh IDs: reopen Mount two models and choose new points if the old mount cannot be resolved. Missing files or textures must be repaired in the object's file/texture controls first.
+
+
+## streamerbot | Streamer.bot connector | Connect stream commands, rewards and events to saved ARIA actions using the authenticated local API.
+
+### Set up once
+
+Open Settings → Streamer.bot → Set up Streamer.bot. Enable API on this PC; leave port 39421 or choose a free port. Copy API key. In Streamer.bot open Global Variables → Persisted Globals and add ariaApiKey as text (Auto Type off), plus ariaPort with the matching number. Both apps must run on the same computer. No Streamer.bot WebSocket server or port forwarding is needed.
+
+Click Copy connection-test C# in ARIA. Create a Streamer.bot action, add Core → C# → Execute C# Code, replace its contents with the copied code, compile and run it. The log should say ARIA connection test passed. The connector uses Streamer.bot's included Newtonsoft.Json library. If compilation reports missing references, use Find References in that editor.
+
+### Add an event action
+
+Search the ARIA action list and select an avatar's expression, layer group, object, PNG/GIF state, preset, throw/spray, imported action, 3D gesture, profile operation or node graph. For stateful actions choose Toggle, On or Off. Copy action C# and paste it into a new Streamer.bot Execute C# Code sub-action. Test it, then attach your desired command/reward/event trigger in Streamer.bot. Use a sequential ARIA queue and cooldowns to stay within the API's shared 20 requests per second.
+
+    Stream event → Streamer.bot action → ARIA target → Result ticket
+
+Profile-targeted actions use saved IDs, so changing which stage you edit does not redirect them. Unloaded profiles provide load/switch controls; load them to discover their other actions. To load and then configure an avatar, make an action graph with Load before the expression or effect. Advanced JSON supports the remaining control API operations: parameters, themes and output framing. These current-avatar operations follow the editing stage; use explicit workspace targets for stable profile targeting.
+
+### Results and privacy
+
+Scripts wait for an applied or rejected ticket, and set ariaSuccess, ariaStatus, ariaTicket, ariaError and ariaState arguments. Workspace graphs wait for their scheduler steps, including delays/loading; applied does not mean an animation or throw has finished playing. A timeout reports pending and does not cancel the action. Do not automatically repeat a timed-out trigger. Stop all pending actions cancels future nodes, not changes already applied. Set ariaWaitSeconds to 1–600 if a longer wait is needed (default 75).
+
+The key is stored separately in Streamer.bot globals, never in generated scripts. Rotating it in ARIA requires updating ariaApiKey; it also invalidates old results and pending authenticated runs. Do not share global-variable backups containing the key. This uses the same listener as Developer API; turning it off disables both.
+
+For HTTP 409 wait for avatar changes to finish; for 429 reduce trigger frequency; for 503 wait for loading. Missing actions need a fresh selection or avatar repair. Logs can be exported from ARIA's Diagnostics button; include the connector's error and ticket without your key. See docs/streamerbot.md in the package for the full illustrated-flow instructions, examples and error table. This controls existing actions; importing assets and editing rigs stay in ARIA.

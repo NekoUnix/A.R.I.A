@@ -49,6 +49,7 @@ mod screenshot;
 mod socials;
 #[cfg(windows)]
 mod spout;
+mod streamerbot;
 #[cfg(target_os = "macos")]
 mod syphon;
 mod theme;

@@ -77,3 +77,5 @@ status for later failures. Loading another avatar discards queued commands for t
 previous profile. Query the catalogue after changing avatars: IDs are local to a
 profile and ID 1 can represent a different design there. Disable the API to stop
 accepting events. Header limit: 8 KiB; body limit: 4 KiB; no chunked transfer.
+
+For all actions, profile targeting and execution results, use the [full Streamer.bot connector](../../streamerbot/README.md). The older effect-only example remains compatible.

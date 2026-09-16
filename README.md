@@ -4,7 +4,7 @@ Bring your **Live2D, VRM, GLB and PNG/GIF avatars** to life, tune how it follows
 arrange them together in OBS. ARIA runs on Windows, Linux and macOS. You can start with the
 included Mica puppet before importing a model or connecting a camera.
 
-**[Download v0.35 Alpha](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.35.0-alpha.1)** ·
+**[Download v0.36 Alpha](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.36.0-alpha.1)** ·
 [What's new](#whats-new) · [First-time setup](#first-time-setup) ·
 [Help when something goes wrong](#help-when-something-goes-wrong)
 
@@ -16,20 +16,18 @@ required third-party tracking app or runtime are supplied separately.
 
 ## What's new
 
-**v0.35 Alpha adds visual Live2D mounts and smoother, more reliable VRM/GLB physics.**
+**v0.36 Alpha adds a guided Streamer.bot connector for avatar actions.**
 
-- **Join two Live2D models:** open **Stage → Objects → Add & mount Live2D…**.
-  Pick a mesh point on each model, then choose **Mount together**. Both receive
-  tracking through their own mappings and physics. Adjust rotation, size and
-  offsets, and choose whether the attached model sits in front or behind.
-  [Mounting guide](docs/in-app-help.md#model-mount--mount-two-live2d-models--choose-a-point-on-each-model-to-join-them-while-both-receive-tracking).
-- **Smoother hair, clothing and body motion:** small spring rotations now respond
-  on both sides. Medium defaults, changing frame rates and stronger arm idle
-  settings are handled more smoothly. [Physics controls](docs/secondary-motion.md).
-- **More flexible GLB rigs:** review inferred chains, add unusual roots and tune
-  generated collision envelopes per avatar. Authored VRM colliders remain intact.
-  Generated collisions are approximations, not full mesh self-collision or Unity
-  PhysBones. [GLB compatibility](docs/glb-avatars.md).
+- Open **Settings → Streamer.bot → Set up Streamer.bot…**. Test the local
+  connection, select an avatar action and copy ready-to-paste C# into Streamer.bot.
+- Connect chat commands, rewards, timers and events to expressions, toggles,
+  objects, throws, animations, profile changes and complete action graphs.
+- Choose **Toggle / On / Off** for stateful actions. Saved profile targets stay
+  attached to the right avatar when you switch editing stages.
+- Get completion, rejection and cancellation results, with troubleshooting guidance
+  and no API key embedded in generated code. Both apps run on the same computer.
+
+[Step-by-step Streamer.bot setup](docs/streamerbot.md) · [Complete changelog](CHANGELOG.md)
 
 Existing Live2D, PNG/GIF and VRM profiles stay available. Use **Profiles →
 + Add avatar** to load more, then click the stage tab for the avatar you want to
@@ -42,15 +40,15 @@ configure. All checked profiles appear together in OBS.
 
 ### 1. Download the right file
 
-Open the [v0.35 Alpha release](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.35.0-alpha.1)
+Open the [v0.36 Alpha release](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.36.0-alpha.1)
 and expand **Assets** if the downloads are hidden. Choose the file for your computer:
 
 | Your computer | Download |
 | --- | --- |
-| Windows 10/11, 64-bit Intel or AMD | `aria-0.35.0-alpha.1-windows-x64.zip` |
-| Mac with an M-series chip | `aria-0.35.0-alpha.1-macos-arm64.zip` |
-| Mac with an Intel processor | `aria-0.35.0-alpha.1-macos-x64.zip` |
-| Ubuntu 24.04, 64-bit Intel or AMD | `aria-0.35.0-alpha.1-linux-x64.tar.gz` |
+| Windows 10/11, 64-bit Intel or AMD | `aria-0.36.0-alpha.1-windows-x64.zip` |
+| Mac with an M-series chip | `aria-0.36.0-alpha.1-macos-arm64.zip` |
+| Mac with an Intel processor | `aria-0.36.0-alpha.1-macos-x64.zip` |
+| Ubuntu 24.04, 64-bit Intel or AMD | `aria-0.36.0-alpha.1-linux-x64.tar.gz` |
 | Fedora 44, 64-bit Intel or AMD | `aria-alpha-0.35.0.alpha.1-1.x86_64.rpm` |
 | Current Arch Linux, 64-bit Intel or AMD | `aria-alpha-0.35.0alpha.1-1-x86_64.pkg.tar.zst` |
 
@@ -287,12 +285,19 @@ written. Reopen the same avatar to recall its settings. Keep avatar folders in a
 stable location; moving or renaming files may require importing them again.
 Export important configurations before experimenting with a new Alpha build.
 
+### Streamer.bot integration
+
+Open **Settings → Streamer.bot → Set up Streamer.bot…** to generate actions for
+commands, rewards and events. Choose a saved avatar action, copy the C# connector
+and follow the [step-by-step setup guide](docs/streamerbot.md). Both apps run on the
+same computer; generated code excludes your API key. Included in v0.36 Alpha.
+
 ## Help when something goes wrong
 
 | Problem | First things to check |
 | --- | --- |
 | ARIA will not open | Extract the complete package, use the right CPU/OS download and update the graphics driver. Read the error dialog and your installation guide. |
-| Clicking an online link does nothing | Install this updated v0.35 Alpha build. Set a default browser in your operating system and check behind ARIA for a new tab or window. If it still fails, use **Diagnostics / export logs** and describe the link you clicked. |
+| Clicking an online link does nothing | Install this updated v0.36 Alpha build. Set a default browser in your operating system and check behind ARIA for a new tab or window. If it still fails, use **Diagnostics / export logs** and describe the link you clicked. |
 | A phone connects but no motion arrives | Check **Tracking live**, the current phone IP, matching ports, Local Network permission, firewall and same LAN. Demo motion does not confirm a phone connection. |
 | Cannot bind the tracking port | Close the other application receiving on that port, or configure matching custom ports on both sides. |
 | Mouth feels slow | Try **Quick** or **Instant** mouth response; check the tracking-rate and packet-age graphs. Phone sampling and network delay remain outside that setting. |

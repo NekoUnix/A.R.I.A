@@ -53,6 +53,11 @@ struct Catalog {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Action {
+    #[serde(rename = "workspace_action")]
+    Workspace {
+        target: crate::actions::Target,
+        mode: crate::actions::Mode,
+    },
     #[serde(rename = "run_action")]
     RunGraph {
         id: u64,
@@ -112,11 +117,46 @@ impl Drop for Server {
 }
 #[derive(Default)]
 pub struct Api {
+    session: u64,
     settings: Option<Settings>,
     server: Option<Server>,
     pub error: Option<String>,
 }
+#[derive(Clone, Copy)]
+pub struct Receipt {
+    session: u64,
+    ticket: u64,
+}
 impl Api {
+    #[cfg(test)]
+    pub fn test_result(&self, ticket: u64) -> Option<serde_json::Value> {
+        self.server
+            .as_ref()?
+            .catalog
+            .lock()
+            .unwrap()
+            .results
+            .get(&ticket)
+            .cloned()
+    }
+    pub fn receipt_is_current(&self, receipt: Receipt) -> bool {
+        receipt.session == self.session
+    }
+    pub fn receipt(&self, ticket: u64) -> Receipt {
+        Receipt {
+            session: self.session,
+            ticket,
+        }
+    }
+    pub fn finish(&self, receipt: Receipt, result: Result<(), String>) {
+        if receipt.session == self.session {
+            self.complete(receipt.ticket, result);
+        }
+    }
+    pub fn listening(&self) -> bool {
+        self.server.is_some()
+    }
+
     pub fn invalidate_model(&self) {
         if let Some(server) = &self.server {
             let mut c = server.catalog.lock().unwrap();
@@ -202,6 +242,7 @@ impl Api {
         ctx: &eframe::egui::Context,
     ) -> Vec<Command> {
         if self.settings.as_ref() != Some(settings) {
+            self.session = self.session.wrapping_add(1);
             self.server = None;
             self.settings = Some(settings.clone());
             self.error = None;
@@ -311,7 +352,7 @@ fn handle(
             if method == "GET" && path == "/v1/capabilities" {
                 return (
                     200,
-                    serde_json::json!({"version":1,"app_version":env!("CARGO_PKG_VERSION"),"actions":["set_parameters","release_parameters","pose","preset","expression","output","theme","save_profile","imported_action","run_action","stop_actions"],"max_requests_per_second":20,"max_body_bytes":4096}),
+                    serde_json::json!({"version":1,"app_version":env!("CARGO_PKG_VERSION"),"actions":["set_parameters","release_parameters","pose","preset","expression","output","theme","save_profile","imported_action","run_action","stop_actions","workspace_action"],"max_requests_per_second":20,"max_body_bytes":4096}),
                 );
             }
             if method == "GET" && path == "/v1/state" {
@@ -581,6 +622,67 @@ mod tests {
             command.action,
             Some(Action::Pose { frozen: true })
         ));
+    }
+    #[test]
+    fn workspace_actions_require_current_generation_and_preserve_explicit_profile() {
+        let body = r#"{"version":1,"generation":7,"action":{"type":"workspace_action","target":{"Avatar":{"profile":42,"command":{"Item":3}}},"mode":"Off"}}"#;
+        let (result, command) = new_request(body, 7);
+        assert_eq!(result.0, 202);
+        assert!(matches!(
+            command.unwrap().action,
+            Some(Action::Workspace {
+                target: crate::actions::Target::Avatar {
+                    profile: 42,
+                    command: crate::actions::Command::Item(3)
+                },
+                mode: crate::actions::Mode::Off
+            })
+        ));
+        assert_eq!(new_request(body, 8).0.0, 409);
+        assert_eq!(
+            new_request(&body.replace("\"Off\"", "\"Invalid\""), 7).0.0,
+            400
+        );
+        assert_eq!(
+            new_request(
+                &body.replace("\"profile\":42", "\"extra\":1,\"profile\":42"),
+                7
+            )
+            .0
+            .0,
+            400
+        );
+    }
+    #[test]
+    fn old_api_receipts_cannot_complete_new_session_tickets() {
+        let ctx = eframe::egui::Context::default();
+        let settings = Settings {
+            enabled: true,
+            port: 0,
+            token: "a".repeat(48),
+        };
+        let mut api = Api::default();
+        api.update(&settings, "model", &Default::default(), &ctx);
+        let old = api.receipt(1);
+        let mut rotated = settings.clone();
+        rotated.token = "b".repeat(48);
+        api.update(&rotated, "model", &Default::default(), &ctx);
+        api.finish(old, Ok(()));
+        assert!(
+            !api.server
+                .as_ref()
+                .unwrap()
+                .catalog
+                .lock()
+                .unwrap()
+                .results
+                .contains_key(&1)
+        );
+        api.finish(api.receipt(2), Err("cancelled".into()));
+        assert_eq!(
+            api.server.as_ref().unwrap().catalog.lock().unwrap().results[&2]["status"],
+            "rejected"
+        );
     }
     #[test]
     fn rejects_missing_auth_browser_origins_unknown_ids_and_excess_body() {
