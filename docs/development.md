@@ -142,3 +142,14 @@ platform job must be repaired and rerun before publishing; do not substitute an
 older binary under the new version. Include SHA256SUMS.txt and state native hardware
 validation limits. Main-branch review protections remain separate from prerelease
 publication; a prerelease branch must not be described as independently approved.
+
+
+### Streamer.bot connector regression
+
+On a machine with Python 3 and PowerShell 7, run
+`python scripts/test-streamerbot.py`. Use `--powershell /path/to/pwsh` if it is not
+on PATH. This compiles the shipped C# source with a small CPH adapter and tests
+loopback HTTP results, rejections, stale generations, pending timeouts and missing
+credentials. It does not connect a real streaming account. Windows CI runs it.
+Rust tests separately cover authenticated command parsing, cross-profile routing,
+execution/cancellation receipts and invalidated API sessions.

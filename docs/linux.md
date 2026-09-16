@@ -1,8 +1,8 @@
 # Install ARIA Alpha on Linux
 
-This guide covers the **v0.35.0-alpha.1** downloads for Ubuntu 24.04, Fedora 44
+This guide covers the **v0.36.0-alpha.1** downloads for Ubuntu 24.04, Fedora 44
 and current Arch Linux on **x86_64 / amd64** PCs. Use the
-[published Alpha release](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.35.0-alpha.1).
+[published Alpha release](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.36.0-alpha.1).
 Linux ARM64 packages, a Debian `.deb`, an AppImage and Flatpak/Snap packages are
 not included in this release.
 
@@ -15,7 +15,7 @@ of whether your desktop uses Wayland or X11.
 
 | Environment | Application | Optional native OBS plugin |
 | --- | --- | --- |
-| Ubuntu 24.04 | `aria-0.35.0-alpha.1-linux-x64.tar.gz` | Included in the archive; install separately with its script |
+| Ubuntu 24.04 | `aria-0.36.0-alpha.1-linux-x64.tar.gz` | Included in the archive; install separately with its script |
 | Fedora 44 | `aria-alpha-0.35.0.alpha.1-1.x86_64.rpm` | `aria-obs-canvas-0.35.0.alpha.1-1.x86_64.rpm` |
 | Current Arch Linux | `aria-alpha-0.35.0alpha.1-1-x86_64.pkg.tar.zst` | `aria-obs-canvas-0.35.0alpha.1-1-x86_64.pkg.tar.zst` |
 
@@ -63,12 +63,12 @@ Extract the complete archive into a folder you own and launch the app:
 
 ```sh
 mkdir -p "$HOME/Applications"
-tar -xzf aria-0.35.0-alpha.1-linux-x64.tar.gz -C "$HOME/Applications"
-"$HOME/Applications/aria-0.35.0-alpha.1-linux-x64/aria-cli" --version
-"$HOME/Applications/aria-0.35.0-alpha.1-linux-x64/aria-desktop"
+tar -xzf aria-0.36.0-alpha.1-linux-x64.tar.gz -C "$HOME/Applications"
+"$HOME/Applications/aria-0.36.0-alpha.1-linux-x64/aria-cli" --version
+"$HOME/Applications/aria-0.36.0-alpha.1-linux-x64/aria-desktop"
 ```
 
-The CLI should print `aria-cli 0.35.0-alpha.1`. Keep the extracted files together.
+The CLI should print `aria-cli 0.36.0-alpha.1`. Keep the extracted files together.
 The portable archive does not add an application-menu entry automatically. Run
 ARIA as your desktop user; it does not need `sudo`.
 
@@ -77,7 +77,7 @@ the included plugin installer **without sudo**:
 
 ```sh
 sudo apt install obs-studio
-sh "$HOME/Applications/aria-0.35.0-alpha.1-linux-x64/install-obs-linux.sh"
+sh "$HOME/Applications/aria-0.36.0-alpha.1-linux-x64/install-obs-linux.sh"
 ```
 
 This installs the source for your user under

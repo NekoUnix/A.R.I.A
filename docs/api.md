@@ -13,6 +13,10 @@ The API is HTTP/1.1 with JSON request/response bodies. Browser Origin headers ar
 rejected; desktop scripts and stream integrations are supported. There is no
 arbitrary file loading, command execution, model import or remote network listener.
 
+For Streamer.bot, use the dedicated [setup guide](streamerbot.md) and
+[connector template](../templates/streamerbot/AriaConnector.cs). ARIA's setup window
+can generate a script for any saved action without including your API key.
+
 ## Discover, queue, confirm
 
 1. `GET /v1/capabilities` returns protocol/app version, actions and limits.
@@ -44,6 +48,7 @@ while enabled. An initial **503** means the first state is not available yet.
 | `output` | `index`, `open`, optional `zoom`, `position` | Indices 0 landscape, 1 portrait, 2 freeform. Zoom 0.25–3; position `[x,y]` each −1 to 1. All fields validate before mutation. |
 | `theme` | `name`: string | Selects a built-in or saved custom theme by exact name. |
 | `imported_action` | `id`: string from `state.imported_actions` | Runs an enabled, reviewed VTS import action inside ARIA. Experimental. Missing assets, repair-required actions and frozen poses return a rejected ticket. |
+| `workspace_action` | `target`: object from `state.workspace_actions`, `mode`: `Toggle`, `On` or `Off` | Run an explicit profile action or graph; poll the ticket until its scheduler finishes. Development build after v0.35. |
 | `save_profile` | none | Requests the normal per-avatar profile save. |
 
 Requests reject unknown fields, unsupported action names and invalid values.
@@ -124,10 +129,9 @@ array with IDs, names, loaded state, tracking followers and load errors. Existin
 commands continue to act on the avatar being edited. Output position/zoom commands
 move that avatar within the selected shared canvas. Selecting another stage
 invalidates the previous model generation; fetch state again before submitting
-commands. The roster is read-only in this API version; use Profiles in the app to
-load, unload and choose editing stages.
+commands. The development connector adds `state.workspace_actions`, including load/unload/focus/switch targets for saved profiles. Importing new files still happens in ARIA.
 
-## Visual action graphs (next release in development)
+## Visual action graphs (v0.34 and later)
 
 Author a graph in **Hotkeys & actions → Action nodes**. `state.action_graphs`
 lists its ID, name, node count and whether it is running. Graph validation runs
@@ -150,3 +154,27 @@ Load/switch nodes can manage the saved profiles referenced by that authored grap
 Stopping cancels pending nodes. Already applied changes and launched effects remain.
 Both commands use the existing authentication, generation check and ticket mechanism.
 Read [Hotkeys and visual actions](actions.md) for graph semantics and limits.
+
+
+## Explicit workspace actions (development build after v0.35)
+
+Read `state.workspace_actions`: entries contain `name`, `target` and
+`supports_on_off`. Copy the exact target rather than deriving it from a display name.
+
+```json
+{"version":1,"generation":7,"action":{"type":"workspace_action","target":{"Avatar":{"profile":42,"command":{"Item":3}}},"mode":"Off"}}
+```
+
+The profile ID keeps the target stable across editor focus changes. Generation is
+checked at acceptance. Once accepted, loading/profile changes do not redirect the
+saved target. Unavailable targets reject. `Toggle` also means execute a one-shot
+operation; `On`/`Off` are allowed only when `supports_on_off` is true. Graph target
+shape is `{"Graph":1}`. Use the same ticket endpoint as other commands.
+
+Unlike legacy `run_action`, `workspace_action` stays queued until its scheduled
+steps complete, fail, time out or are cancelled. Successful animation/effect steps
+mean playback was initiated, not that it has finished. Errors include missing
+assets/targets and cancelled pending work. Key/port/listener changes invalidate
+outstanding receipts; old runs cannot write results into a new API session.
+Limit: 16 concurrently running actions; model loading may wait up to 60 seconds.
+Normal profile loading/asset diagnostics remain available in ARIA.

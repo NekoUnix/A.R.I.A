@@ -187,6 +187,181 @@
             "id"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "workspace_action"
+            },
+            "target": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "Graph": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "Graph"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "Avatar": {
+                      "type": "object",
+                      "properties": {
+                        "profile": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "command": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "Pose",
+                                "Load",
+                                "Unload",
+                                "Focus",
+                                "Switch"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "Preset": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "Preset"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "Expression": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "Expression"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "Imported": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "Imported"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "Gesture": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "Gesture"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "Layers": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "Layers"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "Item": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "Item"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "Image": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "Image"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "Effect": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "Effect"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "profile",
+                        "command"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "Avatar"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "mode": {
+              "enum": [
+                "Toggle",
+                "On",
+                "Off"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "target",
+            "mode"
+          ],
+          "additionalProperties": false
         }
       ]
     }

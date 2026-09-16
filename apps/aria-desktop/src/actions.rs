@@ -24,6 +24,7 @@ pub enum Command {
     Switch,
 }
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum Target {
     Avatar { profile: u64, command: Command },
     Graph(u64),
@@ -289,6 +290,7 @@ impl Graph {
     }
 }
 pub struct Run {
+    pub receipt: Option<crate::effect_api::Receipt>,
     pub graph: Graph,
     order: Vec<u64>,
     done: BTreeMap<u64, f64>,
@@ -299,6 +301,7 @@ pub struct Run {
 impl Run {
     pub fn new(graph: &Graph, now: f64) -> Result<Self> {
         Ok(Self {
+            receipt: None,
             graph: graph.clone(),
             order: graph.validate()?,
             done: BTreeMap::new(),

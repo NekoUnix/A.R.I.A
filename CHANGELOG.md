@@ -3,6 +3,15 @@
 All downloads remain Alpha. See [Releases](https://github.com/NekoUnix/A.R.I.A/releases)
 for packages and checksums. Features labeled Experimental have compatibility limits.
 
+## 0.36.0-alpha.1 — 2026-09-16
+
+- Add a dedicated Streamer.bot setup window with secret-free generated C# actions,
+  a read-only connection test and a complete setup/troubleshooting guide. Expose
+  every saved hotkey/node target through the authenticated API, including explicit
+  avatar selection, layer/object/image toggles, effects and 3D gestures. Return
+  execution results after scheduled workspace actions complete or fail, and reject
+  cancelled or stale-session work.
+
 ## 0.35.0-alpha.1 — 2026-09-15
 
 - Mount an additional Live2D model visually using a point on each model. Both
