@@ -3,6 +3,45 @@
 All downloads remain Alpha. See [Releases](https://github.com/NekoUnix/A.R.I.A/releases)
 for packages and checksums. Features labeled Experimental have compatibility limits.
 
+## 0.35.0-alpha.1 — 2026-09-15
+
+- Mount an additional Live2D model visually using a point on each model. Both
+  mesh points stay joined during tracking and physics, including rotation, scale
+  and flip. Mounts save with avatar settings/presets and appear in OBS outputs.
+  Added models keep independent tracking mappings and physics. Access the new
+  two-preview window from Stage → Objects → Add & mount Live2D.
+
+- Fix gentle GLB/VRM spring motion stalling or responding on only one side.
+  Preserve very small rotations through simulation and collision recovery instead
+  of rounding them to zero. Verify left and right breast chains independently,
+  including visible mesh deformation at Medium defaults with wind zero.
+  Refine generated collision convergence and remove push-out overshoot so
+  close-fitting straps and accessories settle without suppressing small motions.
+
+- Stabilize default VRM/GLB hair and accessory motion during head tracking.
+  Advance every rendered frame with bounded 8.3 ms substeps, interpolated tracking
+  poses, time-scaled damping and one-time strength blending. Prevent tiny links and approximate
+  collisions from launching joints across their bend limits; preserve sliding
+  momentum and gradually recover conflicting generated contacts.
+
+- Fix GLB/VRM clothing being forced outward or flipping during arm idle motion.
+  Generated collision clearance now follows the current posed skeleton, including
+  relaxed arms, and all groups use a consistent collision snapshot. Blend idle
+  strength, speed and on/off changes smoothly while retaining the full 0–2 range.
+
+- Add default body and flexible-group collision envelopes for generated GLB/VRM
+  physics, fitted from the weighted rig. Add body size, spring thickness, shape
+  counts and contact feedback with per-avatar persistence. Retain authored VRM
+  shapes and existing rest-pose overlaps. Correct contacts after bend/length
+  constraints, check bone segments and catch fast tip crossings.
+
+- Expand VRM/GLB physics guesses to breast/body bones, earrings, animal ears and
+  more clothing/accessories. Preserve unweighted chain endpoints and estimate a
+  bounded virtual endpoint for weighted single bones. Protect tracking, fingers,
+  facial controls and twist helpers from generated physics.
+- Add a searchable inspector for all imported skeleton bones, with role/weight
+  explanations and per-avatar Auto, Simulate and Keep rigid overrides.
+
 ## 0.34.0-alpha.1 — Flexible avatars, lighting and visual actions
 
 - Add Medium-default VRM/GLB secondary motion, automatic hair/tail/ear/clothing

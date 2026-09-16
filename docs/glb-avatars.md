@@ -93,8 +93,17 @@ PNG/moc3 objects can pin to the GLB surface and follow deformation, using the sa
 ## Flexible movement and lighting
 
 Open **Avatar → Spring physics** for Medium defaults, individual group controls
-and manual chain selection. [Physics guide](secondary-motion.md). Use **Avatar
+and the searchable **Find secondary bones → Bone inspector**. Breast/body bones,
+hair and accessories receive automatic physics guesses; review unfamiliar names
+with Auto, Simulate and Keep rigid. Weighted single bones and unweighted chain
+endpoints are supported. [Physics guide](secondary-motion.md). Use **Avatar
 lighting** for color, direction or even light. [Lighting guide](lighting.md).
+
+**Spring physics → Body & self collision** now generates body capsules and moving
+flexible-part envelopes by default. Adjust body size and spring thickness and
+watch the contact counter. These are approximate bone collisions; exact cloth
+surfaces and rigid arm/hand poses can still intersect. See the
+[collision controls](secondary-motion.md#body-and-self-collision).
 
 ## Compatibility and repair
 
@@ -102,8 +111,8 @@ This imports the **GLB export**, not a running VRChat avatar. GLB contains stand
 geometry, skins and morph targets; it does not contain Unity avatar descriptors,
 VRChat expression menus, FX controllers or PhysBone components. Rebuild combinations
 using ARIA expressions, presets and actions. The provided ICHIGO export includes
-no authored spring groups or animation clips. ARIA now generates suitable hair/tail/
-accessory chains from the rig with Medium defaults. This is an experimental ARIA
+no authored spring groups or animation clips. ARIA now generates suitable breast/body,
+hair/tail/accessory chains from the rig with Medium defaults. This is an experimental ARIA
 simulation, not a reconstruction of Unity PhysBone settings. See [secondary motion](secondary-motion.md).
 
 Exported base-color textures, alpha and emission use ARIA's lighting. Unity custom
@@ -118,6 +127,7 @@ limitations appear in Model details. Source conventions: [glTF specification](ht
 | Static prop rejected | Export the avatar's armature and skin weights. Static GLB props belong in Throws & sprays. |
 | Tracking values move but face/body does not | Assign bones/shape targets in GLB rig & tracking. Confirm Live mode rather than a frozen or held pose. |
 | Arms intersect clothing | Adjust Relax arms; reduce idle/gesture strength. This is not full-body capture or collision avoidance. |
+| Only one breast/body chain moves | Update ARIA for the small-rotation fix. In Spring physics, inspect both branches for Keep rigid, disabled groups or zero strength/bend. Each side has independent saved tuning. See [secondary motion](secondary-motion.md#if-hair-stays-rigid-or-the-wrong-thing-moves). |
 | Texture missing or unsupported compression | Re-export as an uncompressed GLB with one embedded binary buffer and PNG/JPEG textures. External URLs/files and required Draco/meshopt/KTX extensions are rejected with an error. |
 | Render differs from Unity | Export a base-color/alpha material approximation. Shader-only effects need an exported equivalent. |
 | Need help | **Diagnostics / export logs** includes avatar format, detected/overridden bones, morph counts and warnings. Artwork is not included. [Support guide](diagnostics.md). |

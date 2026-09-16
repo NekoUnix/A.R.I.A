@@ -38,6 +38,26 @@ pub struct ObjectModels {
     search: String,
 }
 impl ObjectModels {
+    pub fn avatar(&self, id: u64) -> Option<&Avatar> {
+        let loaded = self.entries.get(&id)?.loaded.as_ref().ok()?;
+        loaded.error.is_none().then_some(&loaded.avatar)
+    }
+    pub fn mounted_image(&self, item: &Item) -> Option<ItemImage> {
+        let mut image = self.image(item.id)?;
+        if item.pin.is_some()
+            && let Some(pin) = &item.model.mount
+        {
+            let crate::items::Anchor::Surface { point, .. } =
+                crate::items::anchor(Some(pin), self.avatar(item.id))
+            else {
+                return None;
+            };
+            if let ItemImage::Model { mount, .. } = &mut image {
+                *mount = Some(point);
+            }
+        }
+        Some(image)
+    }
     pub fn process_ids(&self) -> impl Iterator<Item = u32> + '_ {
         self.entries
             .values()
@@ -144,6 +164,7 @@ impl ObjectModels {
             return None;
         }
         Some(ItemImage::Model {
+            mount: None,
             image: loaded.avatar.image(),
             _lease: loaded.avatar.image_lease(),
             revision: loaded.revision,
@@ -549,6 +570,46 @@ mod tests {
                 .map(|p| (p.id.clone(), p.value))
                 .collect::<Vec<_>>()
         );
+        // Mount a real animated triangle; two independent instances receive the same source.
+        let a = objects.avatar(1).unwrap();
+        let (mesh, d) = a
+            .model
+            .drawables
+            .iter()
+            .enumerate()
+            .find(|(_, d)| !d.indices.is_empty() && d.opacity > 0.)
+            .unwrap();
+        let pin = aria_core::items::Pin::Surface {
+            mesh,
+            vertices: [d.indices[0], d.indices[1], d.indices[2]],
+            weights: [0.2, 0.3, 0.5],
+            angle: 0.,
+            length: 1.,
+        };
+        parent.items[0].pin = Some(pin.clone());
+        parent.items[0].model.mount = Some(pin);
+        let mut second = parent.items[0].clone();
+        second.id = 2;
+        parent.items.push(second);
+        objects.sync(Some(&state), &core, &parent);
+        for value in [binding.input_max, binding.input_min] {
+            for _ in 0..30 {
+                objects.update(
+                    &mut parent,
+                    &Inputs::from([(binding.input.clone(), value)]),
+                    0.016,
+                );
+            }
+            for item in &parent.items {
+                crate::items::tests::verify_model_mount(objects.mounted_image(item).unwrap());
+            }
+            assert!(
+                (parent.items[0].model.snapshot[&p.id] - parent.items[1].model.snapshot[&p.id])
+                    .abs()
+                    < 0.05,
+                "Both independent avatars must receive tracking"
+            );
+        }
         parent.pose.mode = PoseMode::Frozen;
         let frozen = parent.items[0].model.snapshot.clone();
         let mut restored: RigConfig =

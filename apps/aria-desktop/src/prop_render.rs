@@ -251,6 +251,7 @@ impl Prop {
     }
     pub fn image(&self) -> ItemImage {
         ItemImage::Model {
+            mount: None,
             image: self.image,
             _lease: self.lease.clone(),
             revision: self.revision,

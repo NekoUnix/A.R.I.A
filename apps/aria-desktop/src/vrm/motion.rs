@@ -63,6 +63,12 @@ pub struct Player {
     from: Pose,
     last: Pose,
     settling: bool,
+    idle: Option<Idle>,
+}
+struct Idle {
+    amounts: Vec3,
+    speed: f32,
+    settling: bool,
 }
 fn smooth(x: f32) -> f32 {
     let x = x.clamp(0., 1.);
@@ -83,7 +89,7 @@ impl Player {
         self.settling = true;
     }
     pub fn active(&self) -> bool {
-        self.current.is_some() || self.settling
+        self.current.is_some() || self.settling || self.idle.as_ref().is_some_and(|i| i.settling)
     }
     pub fn update(&mut self, dt: f32, settings: &Motion) -> Pose {
         let dt = if dt.is_finite() {
@@ -91,7 +97,28 @@ impl Player {
         } else {
             0.
         };
-        self.idle_phase = (self.idle_phase + dt * settings.speed).rem_euclid(1000. * TAU);
+        let amounts = if settings.enabled {
+            Vec3::new(settings.sway, settings.breathing, settings.arms)
+        } else {
+            Vec3::ZERO
+        };
+        let idle = self.idle.get_or_insert(Idle {
+            amounts,
+            speed: settings.speed,
+            settling: false,
+        });
+        // Slider/preset edits change the target, not the pose in a single frame. The
+        // exact exponential integral keeps both phase and strength independent of FPS.
+        let tau = 0.15;
+        let blend = 1. - (-dt / tau).exp();
+        let phase_step = settings.speed * dt + (idle.speed - settings.speed) * tau * blend;
+        idle.speed += (settings.speed - idle.speed) * blend;
+        idle.amounts = idle.amounts.lerp(amounts, blend);
+        idle.settling = idle.amounts.distance(amounts) > 0.0001;
+        if !idle.settling {
+            idle.amounts = amounts;
+        }
+        self.idle_phase = (self.idle_phase + phase_step).rem_euclid(1000. * TAU);
         self.elapsed += dt * settings.gesture_speed;
         self.blend = (self.blend + dt / 0.3).min(1.);
         let mut target = [Vec3::ZERO; 11];
@@ -143,21 +170,21 @@ impl Player {
             self.settling = false;
         }
         let mut pose = self.last;
-        if settings.enabled {
+        if idle.amounts != Vec3::ZERO {
             let t = self.idle_phase;
             pose[0] += Vec3::new(
                 0.3 * (t * 0.7).sin(),
                 (t * 0.6).sin(),
                 1.8 * (t * 0.9).sin(),
-            ) * settings.sway;
-            pose[1].x += 0.8 * (t * 1.5).sin() * settings.breathing;
+            ) * idle.amounts.x;
+            pose[1].x += 0.8 * (t * 1.5).sin() * idle.amounts.y;
             for (upper, lower, sign) in [(3, 5, -1.), (4, 6, 1.)] {
                 pose[upper] += Vec3::new(
                     2. * (t * 0.9 + sign * 0.4).sin(),
                     0.,
                     sign * (1. + 1.5 * (t * 1.5).sin()),
-                ) * settings.arms;
-                pose[lower].y += sign * (5. + 2. * (t * 0.9 + 0.6).sin()) * settings.arms;
+                ) * idle.amounts.z;
+                pose[lower].y += sign * (5. + 2. * (t * 0.9 + 0.6).sin()) * idle.amounts.z;
             }
         }
         pose
@@ -167,6 +194,70 @@ impl Player {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn idle_menu_edits_blend_without_instant_pose_changes_and_settle_to_zero() {
+        let mut settings = Motion {
+            sway: 0.,
+            breathing: 0.,
+            arms: 0.,
+            ..Default::default()
+        };
+        let mut player = Player::default();
+        let before = player.update(1. / 60., &settings);
+        settings.arms = 2.;
+        settings.speed = 2.;
+        assert_eq!(player.update(0., &settings), before);
+        let mut previous = before;
+        for _ in 0..120 {
+            let pose = player.update(1. / 60., &settings);
+            assert!(
+                pose.iter()
+                    .zip(previous)
+                    .all(|(a, b)| (*a - b).length() < 1.5)
+            );
+            previous = pose;
+        }
+        assert!(previous[5].length() > 5., "Full arm strength is retained");
+        settings.enabled = false;
+        assert_eq!(player.update(0., &settings), previous);
+        assert!(
+            player.active(),
+            "Keep repainting while disabled idle settles"
+        );
+        for _ in 0..120 {
+            let pose = player.update(1. / 60., &settings);
+            assert!(
+                pose.iter()
+                    .zip(previous)
+                    .all(|(a, b)| (*a - b).length() < 1.5)
+            );
+            previous = pose;
+        }
+        assert_eq!(previous, [Vec3::ZERO; 11]);
+        assert!(!player.active());
+    }
+    #[test]
+    fn changed_idle_strength_and_speed_blend_independently_of_frame_rate() {
+        let mut settings = Motion {
+            arms: 0.,
+            ..Default::default()
+        };
+        let mut a = Player::default();
+        let mut b = Player::default();
+        a.update(0., &settings);
+        b.update(0., &settings);
+        settings.arms = 2.;
+        settings.speed = 2.;
+        for _ in 0..60 {
+            a.update(1. / 60., &settings);
+        }
+        for _ in 0..120 {
+            b.update(1. / 120., &settings);
+        }
+        for (a, b) in a.update(0., &settings).iter().zip(b.update(0., &settings)) {
+            assert!((*a - b).length() < 0.001);
+        }
+    }
     #[test]
     fn gestures_finish_loop_and_stop_without_jumps_or_drift() {
         let mut settings = Motion {

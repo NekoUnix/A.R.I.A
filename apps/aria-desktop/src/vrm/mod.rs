@@ -1,5 +1,6 @@
 //! Primary VRM avatars, independent of Cubism Core and of static 3D throw props.
 pub mod asset;
+mod collision;
 #[cfg(test)]
 mod fixtures;
 pub mod glb;
@@ -8,6 +9,7 @@ pub mod panel;
 mod pins;
 mod render;
 pub mod secondary;
+mod secondary_panel;
 pub mod spring;
 use anyhow::Result;
 use aria_core::{
@@ -87,6 +89,8 @@ pub struct Avatar {
     world: Vec<Mat4>,
     springs: spring::Simulation,
     pub spring_groups: Vec<spring::Group>,
+    pub bone_inventory: secondary::Inventory,
+    pub bone_search: String,
     weights: Vec<Vec<f32>>,
     expression_weights: Vec<f32>,
     last_values: Vec<f32>,
@@ -209,6 +213,8 @@ impl Avatar {
         let weights = asset.geometry.iter().map(|g| g.weights.clone()).collect();
         let expression_weights = vec![0.; asset.expressions.len()];
         let mut avatar = Self {
+            bone_inventory: secondary::Inventory::new(&asset),
+            bone_search: String::new(),
             detected_bones: asset.bones.clone(),
             glb_jaw: false,
             asset,
@@ -329,9 +335,15 @@ impl Avatar {
         if self.last_settings.as_ref().is_none_or(|last| {
             last.secondary.auto_detect != config.vrm.secondary.auto_detect
                 || last.secondary.manual_roots != config.vrm.secondary.manual_roots
+                || last.secondary.excluded_roots != config.vrm.secondary.excluded_roots
+                || last.secondary.collision != config.vrm.secondary.collision
                 || last.bone_map != config.vrm.bone_map
         }) {
-            self.spring_groups = secondary::groups(&self.asset, &config.vrm.secondary);
+            self.spring_groups = secondary::groups_with_inventory(
+                &self.asset,
+                &config.vrm.secondary,
+                &self.bone_inventory,
+            );
             self.springs.reset();
         }
         let blink_inputs;
@@ -683,6 +695,332 @@ mod tests {
         let path = std::env::var_os("ARIA_TEST_GLB").unwrap();
         exercise_avatar(Path::new(&path));
     }
+    #[test]
+    #[ignore = "requires ARIA_TEST_GLB and a GPU; reads private artwork in place"]
+    fn local_glb_bilateral_idle() {
+        let path = std::env::var_os("ARIA_TEST_GLB").unwrap();
+        let asset = asset::load(Path::new(&path), &|_| Ok(())).unwrap();
+        let state = crate::spout::tests::gpu_state();
+        let mut avatar = Avatar::from_asset(&state, asset).unwrap();
+        let neutral =
+            aria_core::rig::tracking_inputs(None, aria_core::Parameters::default(), false, 1.);
+        let mut expressions = Default::default();
+        for collisions in [false, true] {
+            avatar.springs.reset();
+            avatar.motion = Default::default();
+            let mut config = avatar.initial_config.clone();
+            config.vrm.resolution = 768;
+            config.vrm.secondary.collision.body = collisions;
+            config.vrm.secondary.collision.other_groups = collisions;
+            let chains: Vec<_> = ["Breasts_L", "Breasts_R"]
+                .into_iter()
+                .map(|name| {
+                    let group = avatar
+                        .spring_groups
+                        .iter()
+                        .find(|g| g.name == name)
+                        .expect("Both breast chains must be detected");
+                    assert_eq!(group.joints.len(), 2, "Keep both weighted joints on {name}");
+                    group.joints.iter().map(|j| j.node).collect::<Vec<_>>()
+                })
+                .collect();
+            let mut maxima = [0f32; 2];
+            let mut best = [avatar.rotations.clone(), avatar.rotations.clone()];
+            for _ in 0..240 {
+                avatar
+                    .update(&neutral, &mut config, &mut expressions, 1. / 60.)
+                    .unwrap();
+                for (side, chain) in chains.iter().enumerate() {
+                    let root = chain[0];
+                    let angle = avatar.rotations[root]
+                        .angle_between(avatar.asset.nodes[root].rotation)
+                        .to_degrees();
+                    if angle > maxima[side] {
+                        maxima[side] = angle;
+                        best[side].clone_from(&avatar.rotations);
+                    }
+                }
+            }
+            for (side, chain) in chains.iter().enumerate() {
+                assert!(
+                    maxima[side] > 0.1,
+                    "{} must respond to gentle default idle, collisions={collisions}: {} degrees",
+                    avatar.asset.nodes[chain[0]].name,
+                    maxima[side]
+                );
+                avatar.rotations.clone_from(&best[side]);
+                assert_chain_deforms(&mut avatar, &config, chain);
+            }
+            eprintln!(
+                "Bilateral Medium idle, collisions={collisions}: left/right root bend {maxima:?} degrees"
+            );
+        }
+    }
+
+    fn assert_chain_deforms(avatar: &mut Avatar, config: &RigConfig, chain: &[usize]) {
+        let rotations = avatar.rotations.clone();
+        let mut render = |rigid: bool| {
+            if rigid {
+                for &n in chain {
+                    avatar.rotations[n] = avatar.asset.nodes[n].rotation;
+                }
+            }
+            spring::world_matrices(
+                &avatar.asset.nodes,
+                &avatar.asset.order,
+                &avatar.rotations,
+                &mut avatar.world,
+            );
+            avatar
+                .renderer
+                .render(&avatar.asset, &avatar.world, &avatar.weights, &config.vrm)
+                .unwrap();
+            avatar.renderer.read_rgba().unwrap()
+        };
+        let sprung = render(false);
+        let rigid = render(true);
+        let changed = sprung
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(rigid.as_chunks::<4>().0.iter())
+            .filter(|(a, b)| a.iter().zip(*b).any(|(&a, &b)| a.abs_diff(b) > 1))
+            .count();
+        assert!(
+            changed > 8,
+            "{} must independently deform visible pixels: {changed}",
+            avatar.asset.nodes[chain[0]].name
+        );
+        eprintln!(
+            "{}: {changed} visible pixels changed independently",
+            avatar.asset.nodes[chain[0]].name
+        );
+        avatar.rotations = rotations;
+        spring::world_matrices(
+            &avatar.asset.nodes,
+            &avatar.asset.order,
+            &avatar.rotations,
+            &mut avatar.world,
+        );
+        avatar
+            .renderer
+            .render(&avatar.asset, &avatar.world, &avatar.weights, &config.vrm)
+            .unwrap();
+    }
+    #[test]
+    #[ignore = "requires ARIA_TEST_GLB and a GPU; reads private artwork in place"]
+    fn local_glb_maximum_arm_idle_stays_stable() {
+        let path = std::env::var_os("ARIA_TEST_GLB").unwrap();
+        let asset = asset::load(Path::new(&path), &|_| Ok(())).unwrap();
+        let state = crate::spout::tests::gpu_state();
+        let mut avatar = Avatar::from_asset(&state, asset).unwrap();
+        let neutral =
+            aria_core::rig::tracking_inputs(None, aria_core::Parameters::default(), false, 1.);
+        let mut expressions = crate::expressions_panel::ExpressionsPanel::default();
+        for (label, body, other) in [
+            ("none", false, false),
+            ("body", true, false),
+            ("groups", false, true),
+            ("all", true, true),
+        ] {
+            avatar.springs.reset();
+            avatar.motion = Default::default();
+            let mut config = avatar.initial_config.clone();
+            config.vrm.resolution = 512;
+            config.vrm.motion.sway = 0.;
+            config.vrm.motion.breathing = 0.;
+            config.vrm.motion.arms = 0.;
+            config.vrm.secondary.collision.body = body;
+            config.vrm.secondary.collision.other_groups = other;
+            let mut previous = avatar.rotations.clone();
+            let mut max_step = (0f32, 0usize, 0usize);
+            let mut max_bend = (0f32, 0usize, 0usize);
+            let mut contacts = 0;
+            let mut steady_step = 0f32;
+            for frame in 0..360 {
+                if frame == 60 {
+                    config.vrm.motion.arms = 2.;
+                }
+                if frame == 300 {
+                    config.vrm.motion.enabled = false;
+                }
+                avatar
+                    .update(&neutral, &mut config, &mut expressions, 1. / 60.)
+                    .unwrap();
+                for j in avatar.spring_groups.iter().flat_map(|g| &g.joints) {
+                    let q = avatar.rotations[j.node];
+                    let step = q.angle_between(previous[j.node]).to_degrees();
+                    let bend = q
+                        .angle_between(avatar.asset.nodes[j.node].rotation)
+                        .to_degrees();
+                    if frame > 0 && step > max_step.0 {
+                        max_step = (step, j.node, frame);
+                    }
+                    if (120..300).contains(&frame) {
+                        steady_step = steady_step.max(step);
+                    }
+                    if bend > max_bend.0 {
+                        max_bend = (bend, j.node, frame);
+                    }
+                }
+                previous.clone_from(&avatar.rotations);
+                contacts += avatar.springs.contacts;
+                if frame == 180
+                    && let Some(folder) = std::env::var_os("ARIA_TEST_IDLE_IMAGES")
+                {
+                    image::save_buffer(
+                        Path::new(&folder).join(format!("idle-{label}.png")),
+                        &avatar.renderer.read_rgba().unwrap(),
+                        avatar.image().size.x as u32,
+                        avatar.image().size.y as u32,
+                        image::ColorType::Rgba8,
+                    )
+                    .unwrap();
+                }
+            }
+            eprintln!(
+                "ARM IDLE {label}: max step {max_step:?} {} / max bend {max_bend:?} {} / {contacts} contacts",
+                avatar.asset.nodes[max_step.1].name, avatar.asset.nodes[max_bend.1].name
+            );
+            eprintln!("ARM IDLE {label}: steady maximum step {steady_step:.3} degrees");
+            assert!(
+                max_step.0 < 15.,
+                "A menu edit must not flip clothing to the opposite bend limit"
+            );
+            assert!(
+                steady_step < 5.,
+                "Maximum arm idle must not cause clothing jitter"
+            );
+            if body {
+                assert!(contacts > 0, "Collision response remains enabled");
+            }
+        }
+    }
+    #[test]
+    #[ignore = "requires ARIA_TEST_GLB and a GPU; reads private artwork in place"]
+    fn local_glb_long_hair_tracking_settles() {
+        let path = std::env::var_os("ARIA_TEST_GLB").unwrap();
+        let asset = asset::load(Path::new(&path), &|_| Ok(())).unwrap();
+        let state = crate::spout::tests::gpu_state();
+        let mut avatar = Avatar::from_asset(&state, asset).unwrap();
+        let neutral =
+            aria_core::rig::tracking_inputs(None, aria_core::Parameters::default(), false, 1.);
+        let mut expressions = Default::default();
+        for (label, collisions) in [("no-collisions", false), ("medium", true)] {
+            if !collisions && std::env::var_os("ARIA_TEST_FLUID_ONLY_MEDIUM").is_some() {
+                continue;
+            }
+            let mut config = avatar.initial_config.clone();
+            config.vrm.resolution = 512;
+            config.vrm.secondary.collision.body = collisions;
+            config.vrm.secondary.collision.other_groups = collisions;
+            config.vrm.motion.enabled = false;
+            config.physics.enabled = false;
+            avatar
+                .update(&neutral, &mut config, &mut expressions, 1. / 60.)
+                .unwrap();
+            let baseline = avatar.world.clone();
+            let folder =
+                std::env::var_os("ARIA_TEST_FLUID_IMAGES").map(|p| PathBuf::from(p).join(label));
+            if let Some(folder) = &folder {
+                std::fs::create_dir_all(folder).unwrap();
+                image::save_buffer(
+                    folder.join("reference.png"),
+                    &avatar.renderer.read_rgba().unwrap(),
+                    avatar.image().size.x as u32,
+                    avatar.image().size.y as u32,
+                    image::ColorType::Rgba8,
+                )
+                .unwrap();
+            }
+            config.physics.enabled = true;
+            let mut previous = avatar.rotations.clone();
+            let mut jumps = vec![0f32; avatar.asset.nodes.len()];
+            let mut max_end_speed = 0f32;
+            let mut end_jumps = vec![0f32; avatar.asset.nodes.len()];
+            let mut tail_error = 0f32;
+            for frame in 0..720 {
+                let t = frame as f32 / 60.;
+                let mut input = neutral.clone();
+                let activity = if t < 6. {
+                    (std::f32::consts::PI * t / 6.).sin().powi(2)
+                } else {
+                    0.
+                };
+                input.insert("ParamAngleX".into(), (t * 2.).sin() * 20. * activity);
+                input.insert("ParamAngleY".into(), (t * 1.3).sin() * 12. * activity);
+                input.insert("ParamAngleZ".into(), (t * 1.7).sin() * 15. * activity);
+                avatar
+                    .update(&input, &mut config, &mut expressions, 1. / 60.)
+                    .unwrap();
+                for j in avatar.spring_groups.iter().flat_map(|g| &g.joints) {
+                    let angle = avatar.rotations[j.node]
+                        .angle_between(previous[j.node])
+                        .to_degrees();
+                    jumps[j.node] = jumps[j.node].max(angle);
+                    if frame >= 660 {
+                        max_end_speed = max_end_speed.max(angle);
+                        end_jumps[j.node] = end_jumps[j.node].max(angle);
+                        tail_error = tail_error.max(
+                            avatar.world[j.node]
+                                .transform_point3(j.tip)
+                                .distance(baseline[j.node].transform_point3(j.tip)),
+                        );
+                    }
+                }
+                previous.clone_from(&avatar.rotations);
+                let stride = if std::env::var_os("ARIA_TEST_FLUID_DENSE").is_some() {
+                    2
+                } else {
+                    30
+                };
+                if frame % stride == 0
+                    && let Some(folder) = &folder
+                {
+                    image::save_buffer(
+                        folder.join(format!("{:04}.png", frame / stride)),
+                        &avatar.renderer.read_rgba().unwrap(),
+                        avatar.image().size.x as u32,
+                        avatar.image().size.y as u32,
+                        image::ColorType::Rgba8,
+                    )
+                    .unwrap();
+                }
+            }
+            let mut ranking: Vec<_> = jumps.iter().copied().enumerate().collect();
+            ranking.sort_by(|a, b| b.1.total_cmp(&a.1));
+            let mut end_ranking: Vec<_> = end_jumps.iter().copied().enumerate().collect();
+            end_ranking.sort_by(|a, b| b.1.total_cmp(&a.1));
+            eprintln!(
+                "Settling {label}: {:?}",
+                end_ranking
+                    .iter()
+                    .take(8)
+                    .map(|(n, a)| (&avatar.asset.nodes[*n].name, a))
+                    .collect::<Vec<_>>()
+            );
+            eprintln!(
+                "FLUID {label}: largest steps {:?}; settled max step {max_end_speed:.3}, tip error {tail_error:.4}",
+                ranking
+                    .iter()
+                    .take(8)
+                    .map(|(n, a)| (&avatar.asset.nodes[*n].name, a))
+                    .collect::<Vec<_>>()
+            );
+            assert!(
+                ranking[0].1 < 4.1,
+                "Smooth head motion must not flip a generated joint"
+            );
+            assert!(
+                max_end_speed < 0.25,
+                "Motion must settle after tracking stops"
+            );
+            assert!(
+                tail_error < 0.04,
+                "Hair must return close to its resting shape"
+            );
+        }
+    }
     fn exercise_avatar(path: &Path) {
         let asset = asset::load(path, &|message| {
             println!("{message}");
@@ -813,10 +1151,31 @@ mod tests {
         let arm = avatar.asset.bones["rightUpperArm"];
         let rest_arm = avatar.rotations[arm];
         avatar.motion.play(motion::Gesture::Wave);
-        for _ in 0..60 {
+        let mut collision_contacts = 0usize;
+        for frame in 0..60 {
+            // A breast/body spring needs changing torso input. Head tracking and
+            // an arm wave alone previously moved it through unstable contacts.
+            input.insert(
+                "ParamBodyAngleX".into(),
+                ((frame + 1) as f32 / 60. * std::f32::consts::PI).sin() * 8.,
+            );
             avatar
                 .update(&input, &mut config, &mut expressions, 1. / 60.)
                 .unwrap();
+            collision_contacts += avatar.springs.contacts;
+        }
+        if avatar.asset.summary.is_glb() {
+            assert!(
+                avatar.spring_groups.iter().any(|g| !g.colliders.is_empty()),
+                "Generated GLB groups need collision envelopes"
+            );
+            assert!(
+                collision_contacts > 0,
+                "The test GLB must exercise body / group collision response"
+            );
+            eprintln!(
+                "Generated GLB collision response: {collision_contacts} corrections over 60 frames"
+            );
         }
         assert!(avatar.world.iter().all(|m| m.is_finite()));
         assert!(
@@ -832,6 +1191,22 @@ mod tests {
                     .abs_diff_eq(avatar.asset.nodes[j.node].rotation, 0.001)),
             "secondary bones must actually move"
         );
+        if avatar.asset.summary.is_glb() && avatar.asset.nodes.iter().any(|n| n.name == "Breasts_L")
+        {
+            for name in ["Breasts_L", "Breasts_R"] {
+                let chain: Vec<_> = avatar
+                    .spring_groups
+                    .iter()
+                    .find(|g| g.name == name)
+                    .expect("Both breast groups must be detected")
+                    .joints
+                    .iter()
+                    .map(|j| j.node)
+                    .collect();
+                assert_eq!(chain.len(), 2, "Keep the weighted tip on {name}");
+                assert_chain_deforms(&mut avatar, &config, &chain);
+            }
+        }
         let sprung_world = avatar.world.clone();
         let sprung_rotations = avatar.rotations.clone();
         let sprung_pixels = avatar.renderer.read_rgba().unwrap();

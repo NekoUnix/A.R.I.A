@@ -383,6 +383,479 @@ fn secondary_detection_protects_humanoid_and_respects_manual_and_exported_chains
     assert!(secondary::groups(&a, &settings).is_empty());
 }
 
+fn body_rig(leaf: bool) -> asset::Asset {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("body.vrm");
+    let (j, bin) = fixture(false);
+    write(&path, &j, &bin);
+    let mut a = asset::load(&path, &|_| Ok(())).unwrap();
+    a.springs.clear();
+    a.nodes[2].children = if leaf { vec![3, 5] } else { vec![5] };
+    a.nodes[3].parent = Some(if leaf { 2 } else { 5 });
+    a.nodes.push(asset::Node {
+        name: "Breast_L".into(),
+        parent: Some(2),
+        children: if leaf { vec![] } else { vec![3] },
+        translation: glam::vec3(0.1, 0., 0.1),
+        rotation: Quat::IDENTITY,
+        scale: glam::Vec3::ONE,
+        world: Mat4::IDENTITY,
+    });
+    a.order = vec![0, 1, 2, 5, 3, 4];
+    let rotations: Vec<_> = a.nodes.iter().map(|n| n.rotation).collect();
+    let mut world = vec![Mat4::IDENTITY; a.nodes.len()];
+    spring::world_matrices(&a.nodes, &a.order, &rotations, &mut world);
+    for (node, matrix) in a.nodes.iter_mut().zip(&world) {
+        node.world = *matrix;
+    }
+    a.skins[0].joints.push(5);
+    a.skins[0].inverse.push(world[5].inverse());
+    for geometry in &mut a.geometry {
+        for vertex in &mut geometry.vertices {
+            vertex.joints = [1; 4];
+        }
+    }
+    a
+}
+
+#[test]
+fn secondary_body_bones_keep_unweighted_tips_and_per_bone_rigid_choices() {
+    let mut a = body_rig(false);
+    let mut settings = aria_core::vrm::Secondary::default();
+    let inventory = secondary::Inventory::new(&a);
+    assert!(
+        inventory.skeleton.contains(&3),
+        "Unweighted end node must remain visible"
+    );
+    assert!(!inventory.weighted.contains(&3));
+    assert!(inventory.weighted.contains(&5));
+    let groups = secondary::groups(&a, &settings);
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].joints[0].node, 5);
+    assert_eq!(groups[0].joints[0].tip, a.nodes[3].translation);
+    settings.manual_roots.insert(5);
+    settings.excluded_roots.insert(5);
+    assert!(
+        secondary::groups(&a, &settings).is_empty(),
+        "Rigid wins over manual/automatic selection"
+    );
+    settings.excluded_roots.clear();
+    a.springs = groups;
+    assert_eq!(
+        secondary::groups(&a, &settings).len(),
+        1,
+        "Do not duplicate authored groups"
+    );
+    a.springs.clear();
+    for name in ["IndexDistal_L", "Forearm_L", "Tongue", "UpperArm_twist_L"] {
+        a.nodes[5].name = name.into();
+        assert!(
+            secondary::groups(&a, &settings).is_empty(),
+            "Preserve rigid role: {name}"
+        );
+    }
+    a.nodes[5].name = "Unknown_023".into();
+    settings.manual_roots.clear();
+    assert!(secondary::groups(&a, &settings).is_empty());
+    settings.manual_roots.insert(5);
+    assert_eq!(secondary::groups(&a, &settings).len(), 1);
+}
+
+#[test]
+fn secondary_weighted_leaf_bone_gets_a_bounded_tip_and_deforms() {
+    let a = body_rig(true);
+    let inventory = secondary::Inventory::new(&a);
+    let tip = inventory.leaf_tips[&5];
+    assert!(tip.is_finite() && tip.length() > 0.);
+    assert!(tip.length() <= (a.bounds[1] - a.bounds[0]).max_element() * 0.12001);
+    let secondary = aria_core::vrm::Secondary::default();
+    let groups = secondary::groups_with_inventory(&a, &secondary, &inventory);
+    assert_eq!(groups.len(), 1);
+    let mut simulation = spring::Simulation::default();
+    let mut rotations: Vec<_> = a.nodes.iter().map(|n| n.rotation).collect();
+    let mut world: Vec<_> = a.nodes.iter().map(|n| n.world).collect();
+    let settings = aria_core::physics::PhysicsSettings::default();
+    let mut moved = 0f32;
+    for step in 0..90 {
+        for (q, node) in rotations.iter_mut().zip(&a.nodes) {
+            *q = node.rotation;
+        }
+        rotations[2] *= Quat::from_rotation_z((step as f32 * 0.08).sin() * 0.3);
+        spring::world_matrices(&a.nodes, &a.order, &rotations, &mut world);
+        simulation.update(
+            &a.nodes,
+            &a.order,
+            &groups,
+            &mut rotations,
+            &mut world,
+            &settings,
+            &secondary,
+            1. / 60.,
+            false,
+        );
+        moved = moved.max(rotations[5].angle_between(a.nodes[5].rotation));
+        assert!(world.iter().all(|m| m.is_finite()));
+        assert!(rotations[5].angle_between(a.nodes[5].rotation) <= 45f32.to_radians() + 0.001);
+    }
+    assert!(
+        moved > 0.01,
+        "A weighted leaf must respond to parent movement"
+    );
+}
+
+#[test]
+fn generated_colliders_follow_body_and_other_groups_with_independent_toggles() {
+    let mut a = body_rig(false);
+    let mut node = a.nodes[5].clone();
+    node.name = "Breast_R".into();
+    node.children.clear();
+    node.translation.x = -0.1;
+    node.world = a.nodes[2].world * Mat4::from_translation(node.translation);
+    a.nodes.push(node);
+    a.nodes[2].children.push(6);
+    a.order.push(6);
+    a.skins[0].joints.push(6);
+    let mut inventory = secondary::Inventory::new(&a);
+    inventory.volumes.insert(
+        1,
+        [glam::vec3(-0.2, -0.2, -0.08), glam::vec3(0.2, 0.4, 0.08)],
+    );
+    inventory.volumes.insert(
+        6,
+        [glam::vec3(-0.05, 0., -0.05), glam::vec3(0.05, 0.12, 0.05)],
+    );
+    inventory.leaf_tips.insert(6, glam::Vec3::Y * 0.1);
+    let mut settings = aria_core::vrm::Secondary::default();
+    let groups = secondary::groups_with_inventory(&a, &settings, &inventory);
+    assert_eq!(groups.len(), 2);
+    assert!(
+        groups[0].colliders.iter().any(|c| c.node == 1),
+        "Body mesh must supply colliders"
+    );
+    assert!(
+        groups[0].colliders.iter().any(|c| c.node == 6),
+        "Other flexible body part must collide"
+    );
+    assert!(
+        !groups[0].colliders.iter().any(|c| c.node == 5),
+        "Never collide against the same spring family"
+    );
+    settings.collision.other_groups = false;
+    let body_only = secondary::groups_with_inventory(&a, &settings, &inventory);
+    assert!(body_only[0].colliders.iter().all(|c| c.node == 1));
+    settings.collision.body = false;
+    let disabled = secondary::groups_with_inventory(&a, &settings, &inventory);
+    assert!(disabled.iter().all(|g| g.colliders.is_empty()));
+    a.springs = vec![groups[0].clone()];
+    a.springs[0].id = "vrm:spring:0".into();
+    let retained = secondary::groups_with_inventory(&a, &settings, &inventory);
+    assert_eq!(
+        retained[0].colliders.len(),
+        a.springs[0].colliders.len(),
+        "Author's collision groups stay intact"
+    );
+}
+
+#[test]
+fn relaxed_arm_does_not_explode_a_generated_clothing_spring() {
+    // The export's arm collider is clear of the coat. Relax arms rotates it
+    // beside the coat, where its approximate envelope overlaps the posed rig.
+    let mut nodes = vec![
+        asset::Node {
+            name: "root".into(),
+            parent: None,
+            children: vec![1, 2],
+            translation: glam::Vec3::ZERO,
+            rotation: Quat::IDENTITY,
+            scale: glam::Vec3::ONE,
+            world: Mat4::IDENTITY,
+        };
+        3
+    ];
+    nodes[1].parent = Some(0);
+    nodes[1].children.clear();
+    nodes[1].translation = glam::vec3(0.7, 0.6, 0.);
+    nodes[1].world = Mat4::from_translation(nodes[1].translation);
+    nodes[2].parent = Some(0);
+    nodes[2].children.clear();
+    let groups = vec![spring::Group {
+        id: "aria:spring:2".into(),
+        name: "coat".into(),
+        center: None,
+        joints: vec![spring::Joint {
+            node: 2,
+            tip: glam::Vec3::Y,
+            stiffness: 0.45,
+            drag: 0.22,
+            gravity: glam::Vec3::ZERO,
+            power: 0.,
+            radius: 0.02,
+        }],
+        colliders: vec![spring::Collider {
+            node: 1,
+            offset: glam::Vec3::Y * 0.6,
+            tail: glam::Vec3::Y * 0.6,
+            radius: 0.25,
+            generated: true,
+        }],
+    }];
+    for hz in [30., 60., 120.] {
+        let mut simulation = spring::Simulation::default();
+        let mut world = vec![Mat4::IDENTITY; 3];
+        let settings = aria_core::physics::PhysicsSettings::default();
+        let secondary = aria_core::vrm::Secondary::default();
+        for frame in 0..(hz as usize * 4) {
+            let angle = std::f32::consts::FRAC_PI_2 + (frame as f32 / hz).sin() * 0.04;
+            let mut rotations = vec![Quat::IDENTITY, Quat::from_rotation_z(angle), Quat::IDENTITY];
+            spring::world_matrices(&nodes, &[0, 1, 2], &rotations, &mut world);
+            simulation.update(
+                &nodes,
+                &[0, 1, 2],
+                &groups,
+                &mut rotations,
+                &mut world,
+                &settings,
+                &secondary,
+                1. / hz,
+                false,
+            );
+            assert!(world.iter().all(|m| m.is_finite()));
+            assert!(
+                rotations[2].angle_between(Quat::IDENTITY) < 0.001,
+                "Kinematic overlap must not create spring energy at {hz} Hz, frame {frame}"
+            );
+        }
+    }
+}
+
+#[test]
+fn secondary_motion_advances_every_frame_and_scales_with_elapsed_time() {
+    let a = body_rig(true);
+    let secondary = aria_core::vrm::Secondary::default();
+    let groups = secondary::groups(&a, &secondary);
+    let run = |hz: usize, strength: f32| {
+        let mut simulation = spring::Simulation::default();
+        let mut rotations: Vec<_> = a.nodes.iter().map(|n| n.rotation).collect();
+        let mut world: Vec<_> = a.nodes.iter().map(|n| n.world).collect();
+        let settings = aria_core::physics::PhysicsSettings {
+            strength,
+            ..Default::default()
+        };
+        simulation.update(
+            &a.nodes,
+            &a.order,
+            &groups,
+            &mut rotations,
+            &mut world,
+            &settings,
+            &secondary,
+            0.,
+            false,
+        );
+        let mut changed = 0;
+        let mut previous = rotations[5];
+        for frame in 1..=hz * 2 {
+            for (q, n) in rotations.iter_mut().zip(&a.nodes) {
+                *q = n.rotation;
+            }
+            rotations[2] *= Quat::from_rotation_z((frame as f32 / hz as f32 * 1.3).sin() * 0.2);
+            spring::world_matrices(&a.nodes, &a.order, &rotations, &mut world);
+            simulation.update(
+                &a.nodes,
+                &a.order,
+                &groups,
+                &mut rotations,
+                &mut world,
+                &settings,
+                &secondary,
+                1. / hz as f32,
+                false,
+            );
+            changed += usize::from(!rotations[5].abs_diff_eq(previous, 1e-6));
+            previous = rotations[5];
+        }
+        assert!(
+            changed > hz * 18 / 10,
+            "Must not hold a 60 Hz spring pose on a {hz} Hz display: {changed} frames"
+        );
+        rotations[5]
+    };
+    for strength in [0.4, 1.] {
+        let at60 = run(60, strength);
+        for hz in [30, 85, 120, 144, 240] {
+            let rotation = run(hz, strength);
+            assert!(
+                at60.angle_between(rotation) < 0.02,
+                "Damping/response changed with {hz} Hz at strength {strength}"
+            );
+        }
+    }
+}
+
+#[test]
+fn tiny_secondary_link_keeps_bounded_lag_and_recovers_after_an_anchor_jump() {
+    let a = body_rig(true);
+    let secondary = aria_core::vrm::Secondary::default();
+    let mut groups = secondary::groups(&a, &secondary);
+    groups[0].joints[0].tip = glam::Vec3::Y * 0.002;
+    groups[0].joints[0].power = 0.;
+    let mut simulation = spring::Simulation::default();
+    let mut rotations: Vec<_> = a.nodes.iter().map(|n| n.rotation).collect();
+    let mut world: Vec<_> = a.nodes.iter().map(|n| n.world).collect();
+    let settings = aria_core::physics::PhysicsSettings::default();
+    let mut previous = rotations[5];
+    for frame in 0..360 {
+        for (q, n) in rotations.iter_mut().zip(&a.nodes) {
+            *q = n.rotation;
+        }
+        if (30..120).contains(&frame) {
+            rotations[2] *= Quat::from_rotation_z(0.5);
+        }
+        spring::world_matrices(&a.nodes, &a.order, &rotations, &mut world);
+        simulation.update(
+            &a.nodes,
+            &a.order,
+            &groups,
+            &mut rotations,
+            &mut world,
+            &settings,
+            &secondary,
+            1. / 60.,
+            false,
+        );
+        assert!(
+            rotations[5].angle_between(previous) < 0.14,
+            "A short link must not flip across its bend limits"
+        );
+        assert!(rotations[5].angle_between(a.nodes[5].rotation) <= 45.01f32.to_radians());
+        assert!(world.iter().all(|m| m.is_finite()));
+        previous = rotations[5];
+    }
+    assert!(
+        rotations[5].angle_between(a.nodes[5].rotation) < 0.01,
+        "Must settle after movement stops"
+    );
+}
+
+#[test]
+fn gentle_mirrored_springs_move_on_both_sides_at_every_refresh_rate() {
+    // A small, symmetric rig: no private artwork or node naming assumptions.
+    // The old near-parallel rotation shortcut made both tips stop at low speed,
+    // or only one move depending on its rest orientation and floating-point rounding.
+    let root = asset::Node {
+        name: "chest".into(),
+        parent: None,
+        children: vec![1, 2],
+        translation: glam::Vec3::ZERO,
+        rotation: Quat::IDENTITY,
+        scale: glam::Vec3::ONE,
+        world: Mat4::IDENTITY,
+    };
+    let mut nodes = vec![root];
+    let mut groups = Vec::new();
+    for (n, sign) in [(1, 1.), (2, -1.)] {
+        nodes.push(asset::Node {
+            name: format!("body-{n}"),
+            parent: Some(0),
+            children: vec![],
+            translation: glam::vec3(sign * 0.04, 0.9, 0.02),
+            rotation: Quat::from_rotation_x(0.4) * Quat::from_rotation_z(sign * 0.3),
+            scale: glam::Vec3::ONE,
+            world: Mat4::IDENTITY,
+        });
+        groups.push(spring::Group {
+            id: format!("aria:spring:{n}"),
+            name: nodes[n].name.clone(),
+            center: None,
+            joints: vec![spring::Joint {
+                node: n,
+                tip: glam::Vec3::Y * 0.08,
+                stiffness: 0.85,
+                drag: 0.3,
+                gravity: -glam::Vec3::Y,
+                power: 0.006,
+                radius: 0.01,
+            }],
+            colliders: vec![spring::Collider {
+                node: 0,
+                offset: glam::vec3(0., 0.85, -0.12),
+                tail: glam::vec3(0., 1., -0.12),
+                radius: 0.06,
+                generated: true,
+            }],
+        });
+    }
+    for hz in [30, 60, 120, 144, 240] {
+        for strength in [0.35, 1.] {
+            let secondary = aria_core::vrm::Secondary::default();
+            let settings = aria_core::physics::PhysicsSettings {
+                strength,
+                ..Default::default()
+            };
+            let mut simulation = spring::Simulation::default();
+            let mut world = vec![Mat4::IDENTITY; 3];
+            let mut peaks = [0f32; 2];
+            for frame in 0..hz * 4 {
+                let mut rotations: Vec<_> = nodes.iter().map(|n| n.rotation).collect();
+                rotations[0] =
+                    Quat::from_rotation_x((frame as f32 / hz as f32 * 1.5).sin() * 0.005);
+                spring::world_matrices(&nodes, &[0, 1, 2], &rotations, &mut world);
+                simulation.update(
+                    &nodes,
+                    &[0, 1, 2],
+                    &groups,
+                    &mut rotations,
+                    &mut world,
+                    &settings,
+                    &secondary,
+                    1. / hz as f32,
+                    false,
+                );
+                let mut displacements = [glam::Vec3::ZERO; 2];
+                for (side, group) in groups.iter().enumerate() {
+                    let j = &group.joints[0];
+                    displacements[side] = (rotations[j.node] * j.tip
+                        - nodes[j.node].rotation * j.tip)
+                        / j.tip.length();
+                    peaks[side] = peaks[side].max(displacements[side].length());
+                }
+                let mirrored = displacements[0] * glam::vec3(-1., 1., 1.);
+                assert!(
+                    mirrored.distance(displacements[1]) < 0.0001,
+                    "Unequal response at {hz} Hz / {strength}"
+                );
+            }
+            for peak in peaks {
+                assert!(
+                    peak > 0.0003,
+                    "Each side must respond to gentle motion at {hz} Hz / {strength}: {peak}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn direction_rotation_preserves_small_bends_and_handles_opposite_vectors() {
+    for from in [
+        glam::Vec3::X,
+        glam::Vec3::Y,
+        glam::vec3(1., 2., 3.).normalize(),
+    ] {
+        for angle in [0., 0.00001, -0.00001, 0.0001, -0.0001, 0.01, 0.5, 2.] {
+            let to = Quat::from_axis_angle(from.any_orthonormal_vector(), angle) * from;
+            let q = spring::direction_rotation(from, to);
+            assert!(q.is_finite() && q.is_normalized());
+            assert!(
+                (q * from).distance(to) < 0.000001,
+                "Lost {angle}-radian bend"
+            );
+        }
+        let opposite = spring::direction_rotation(from, -from);
+        assert!(opposite.is_finite() && (opposite * from).distance(-from) < 0.000001);
+    }
+}
+
 #[test]
 fn secondary_world_inertia_lags_centered_head_and_settles_with_bounded_bend() {
     let dir = tempfile::tempdir().unwrap();

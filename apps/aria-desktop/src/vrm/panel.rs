@@ -29,7 +29,7 @@ fn motion(ui: &mut egui::Ui, avatar: &mut Avatar, monitor: &mut InputMonitor) {
         });
         theme::caption(
             ui,
-            "Subtle movement adds to face tracking and feeds the avatar's spring bones. Set a strength to zero to disable that motion. Tune Relax arms in Pose controls for the resting arm position.",
+            "Subtle movement adds to face tracking and feeds the avatar's spring bones. Changes blend smoothly; zero gently stops that motion. Tune Relax arms in Pose controls for the resting arm position.",
         );
     });
     theme::category(ui, "vrm-gestures", "Gesture animations", true, |ui| {
@@ -252,7 +252,7 @@ fn glb_rig(ui: &mut egui::Ui, avatar: &Avatar, monitor: &mut InputMonitor) {
         },
     );
 }
-pub fn physics(ui: &mut egui::Ui, avatar: &Avatar, monitor: &mut InputMonitor) {
+pub fn physics(ui: &mut egui::Ui, avatar: &mut Avatar, monitor: &mut InputMonitor) {
     let before = monitor.saved.config.physics.clone();
     let before_secondary = monitor.saved.config.vrm.secondary.clone();
     let settings = &mut monitor.saved.config.physics;
@@ -287,6 +287,22 @@ pub fn physics(ui: &mut egui::Ui, avatar: &Avatar, monitor: &mut InputMonitor) {
                 &mut settings.wind,
             );
             spring_tuning(ui, &mut secondary.tuning);
+            ui.collapsing("Body & self collision", |ui| {
+                help::button(ui, "vrm-physics");
+                ui.checkbox(&mut secondary.collision.body, "Generate body collision shapes");
+                ui.checkbox(&mut secondary.collision.other_groups, "Collide with other flexible groups");
+                ui.add(egui::Slider::new(&mut secondary.collision.body_size, 0.5..=1.5).text("Body collision size"));
+                ui.add(egui::Slider::new(&mut secondary.collision.thickness, 0.0..=0.5).text("Spring thickness"));
+                let body_shapes = avatar.spring_groups.iter().find(|g| g.id.starts_with("aria:")).map_or(0, |g|
+                    g.colliders.iter().filter(|c| avatar.asset.bones.values().any(|&n| n == c.node)).count());
+                ui.small(format!("{body_shapes} fitted body shapes available to generated groups"));
+                if body_shapes == 0 && secondary.collision.body {
+                    ui.small("No body shapes found yet. For GLB, review the humanoid bone assignments; body bones need weighted mesh vertices. Authored VRM groups use their exported shapes.");
+                }
+                ui.small("On by default for generated physics. Fits head, torso and limb shapes from the weighted rig; flexible parts use up to 256 moving envelopes. Existing overlaps in the posed chain are retained. Contact recovery is gradual to avoid kicks, and sliding motion is preserved. Increase size/thickness gently; authored VRM shapes stay unchanged.");
+                ui.small(format!("{} contact corrections in the latest physics update", avatar.springs.contacts));
+                ui.small("These are bone collision envelopes, not full cloth or triangle-mesh self collision. Tracking and gestures still pose the rigid skeleton; hands and arms are not repositioned by spring physics.");
+            });
             if ui
                 .button("Settle motion")
                 .on_hover_text("Return springs to rest without changing your saved settings.")
@@ -295,28 +311,8 @@ pub fn physics(ui: &mut egui::Ui, avatar: &Avatar, monitor: &mut InputMonitor) {
                 monitor.reset_motion = true;
             }
             ui.collapsing("Find secondary bones", |ui| {
-            ui.checkbox(&mut secondary.auto_detect, "Automatically detect hair, tails, ears and clothing");
-            ui.small("Keeps exported VRM springs. Adds suitable named chains on the active skeleton, protecting humanoid tracking bones. Generated groups use ARIA physics, not Unity PhysBones. Disable an unwanted group below.");
-            let candidates = super::secondary::candidates(&avatar.asset);
-            let mut selected = None;
-            egui::ComboBox::from_id_salt("spring-add-root").selected_text("Add a bone chain…").show_ui(ui, |ui| {
-                for &n in &candidates {
-                    if !avatar.asset.nodes[n].children.is_empty() && !secondary.manual_roots.contains(&n) {
-                        ui.selectable_value(&mut selected, Some(n), format!("{} · #{}", avatar.asset.nodes[n].name, n));
-                    }
-                }
+                super::secondary_panel::show(ui, avatar, secondary);
             });
-            if let Some(n) = selected { secondary.manual_roots.insert(n); }
-            let mut remove = None;
-            for &n in &secondary.manual_roots {
-                ui.horizontal(|ui| {
-                    ui.label(avatar.asset.nodes.get(n).map_or("Missing bone", |node| node.name.as_str()));
-                    if ui.small_button("Remove manual chain").clicked() { remove = Some(n); }
-                });
-            }
-            if let Some(n) = remove { secondary.manual_roots.remove(&n); }
-            ui.small("Choose the top of a flexible chain if its names were not recognized. A chain needs at least two bones. Unrigged hair cannot bend until it has bones and skin weights.");
-        });
         },
     );
     let groups = &avatar.spring_groups;
@@ -327,7 +323,7 @@ pub fn physics(ui: &mut egui::Ui, avatar: &Avatar, monitor: &mut InputMonitor) {
         generated
     ));
     if groups.is_empty() {
-        ui.label("No flexible chains found. Add a bone chain above, or export a skinned rig with hair / accessory bones.");
+        ui.label("No flexible bones found. Review the bone inspector above, or import a skinned rig with flexible bones.");
     }
     theme::category(
         ui,
@@ -337,7 +333,7 @@ pub fn physics(ui: &mut egui::Ui, avatar: &Avatar, monitor: &mut InputMonitor) {
         |ui| {
             for group in groups {
                 ui.push_id(&group.id, |ui| ui.collapsing(&group.name, |ui| {
-                help::context_button(ui, "vrm-physics", || format!("{}\n{} joints · {} exported colliders\nProfile ID: {}\nExported center: {:?}", group.name, group.joints.len(), group.colliders.len(), group.id, group.center));
+                help::context_button(ui, "vrm-physics", || format!("{}\n{} joints · {} collision shapes\nProfile ID: {}\nExported center: {:?}", group.name, group.joints.len(), group.colliders.len(), group.id, group.center));
                 let mut tuning = settings.groups.get(&group.id).copied().unwrap_or_default();
                 let previous = tuning;
                 ui.small(if group.id.starts_with("aria:") { "ARIA generated chain · Medium defaults" } else { "Exported VRM chain · retains authored stiffness and colliders" });
@@ -370,7 +366,7 @@ fn spring_tuning(ui: &mut egui::Ui, settings: &mut aria_core::vrm::SpringTuning)
         ui.add(egui::Slider::new(&mut settings.swing, 0.0..=90.0).text("Maximum bend (degrees)"))
     });
     help::control(ui, "vrm-physics", |ui| {
-        ui.checkbox(&mut settings.collisions, "Use exported body colliders")
+        ui.checkbox(&mut settings.collisions, "Use collision shapes")
     });
 }
 fn sliders(

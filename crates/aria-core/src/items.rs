@@ -23,6 +23,8 @@ pub fn is_model(path: &Path) -> bool {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ModelSettings {
+    /// Surface on this model that stays joined to the parent's item pin.
+    pub mount: Option<Pin>,
     pub textures: Vec<PathBuf>,
     pub animate: bool,
     pub physics: bool,
@@ -33,6 +35,7 @@ pub struct ModelSettings {
 impl Default for ModelSettings {
     fn default() -> Self {
         Self {
+            mount: None,
             textures: Vec::new(),
             animate: true,
             physics: true,
@@ -229,57 +232,66 @@ pub fn validate(items: &[Item]) -> Result<()> {
                 && rule.hysteresis >= 0.0,
             "Invalid Object input rule"
         );
-        match &item.pin {
-            Some(Pin::VrmSurface {
-                geometry,
-                vertices,
-                weights,
-                angle,
-                length,
-            }) => {
-                ensure!(
-                    *geometry < 100_000
-                        && vertices.iter().all(|v| *v < 2_000_000)
-                        && vertices[0] != vertices[1]
-                        && vertices[1] != vertices[2]
-                        && vertices[0] != vertices[2]
-                        && weights
-                            .iter()
-                            .all(|v| v.is_finite() && (-0.001..=1.001).contains(v))
-                        && (weights.iter().sum::<f32>() - 1.0).abs() < 0.001
-                        && angle.is_finite()
-                        && length.is_finite()
-                        && *length > 1e-7,
-                    "Invalid VRM surface pin"
-                );
+        ensure!(
+            item.model
+                .mount
+                .as_ref()
+                .is_none_or(|p| matches!(p, Pin::Surface { .. })),
+            "A Live2D mount must reference a Live2D surface"
+        );
+        for pin in [&item.pin, &item.model.mount] {
+            match pin {
+                Some(Pin::VrmSurface {
+                    geometry,
+                    vertices,
+                    weights,
+                    angle,
+                    length,
+                }) => {
+                    ensure!(
+                        *geometry < 100_000
+                            && vertices.iter().all(|v| *v < 2_000_000)
+                            && vertices[0] != vertices[1]
+                            && vertices[1] != vertices[2]
+                            && vertices[0] != vertices[2]
+                            && weights
+                                .iter()
+                                .all(|v| v.is_finite() && (-0.001..=1.001).contains(v))
+                            && (weights.iter().sum::<f32>() - 1.0).abs() < 0.001
+                            && angle.is_finite()
+                            && length.is_finite()
+                            && *length > 1e-7,
+                        "Invalid VRM surface pin"
+                    );
+                }
+                Some(Pin::Surface {
+                    mesh,
+                    vertices,
+                    weights,
+                    angle,
+                    length,
+                }) => {
+                    ensure!(
+                        *mesh < 100_000
+                            && vertices[0] != vertices[1]
+                            && vertices[1] != vertices[2]
+                            && vertices[0] != vertices[2]
+                            && weights
+                                .iter()
+                                .all(|v| v.is_finite() && (-0.001..=1.001).contains(v))
+                            && (weights.iter().sum::<f32>() - 1.0).abs() < 0.001
+                            && angle.is_finite()
+                            && length.is_finite()
+                            && *length > 1e-7,
+                        "Invalid surface pin"
+                    );
+                }
+                Some(Pin::Puppet { point }) => ensure!(
+                    point.iter().all(|v| v.is_finite() && v.abs() <= 4.0),
+                    "Invalid puppet pin"
+                ),
+                None => {}
             }
-            Some(Pin::Surface {
-                mesh,
-                vertices,
-                weights,
-                angle,
-                length,
-            }) => {
-                ensure!(
-                    *mesh < 100_000
-                        && vertices[0] != vertices[1]
-                        && vertices[1] != vertices[2]
-                        && vertices[0] != vertices[2]
-                        && weights
-                            .iter()
-                            .all(|v| v.is_finite() && (-0.001..=1.001).contains(v))
-                        && (weights.iter().sum::<f32>() - 1.0).abs() < 0.001
-                        && angle.is_finite()
-                        && length.is_finite()
-                        && *length > 1e-7,
-                    "Invalid surface pin"
-                );
-            }
-            Some(Pin::Puppet { point }) => ensure!(
-                point.iter().all(|v| v.is_finite() && v.abs() <= 4.0),
-                "Invalid puppet pin"
-            ),
-            None => {}
         }
     }
     Ok(())
@@ -358,6 +370,37 @@ mod tests {
             .parameters
             .insert("bad".into(), f32::INFINITY);
         assert!(validate(&items).is_err());
+    }
+    #[test]
+    fn two_surface_mounts_round_trip_and_reject_invalid_child_pins() {
+        let mut item = Item {
+            path: "child.model3.json".into(),
+            ..Default::default()
+        };
+        let pin = Pin::Surface {
+            mesh: 7,
+            vertices: [2, 4, 8],
+            weights: [0.2, 0.3, 0.5],
+            angle: 0.4,
+            length: 0.2,
+        };
+        item.pin = Some(pin.clone());
+        item.model.mount = Some(pin);
+        validate(&[item.clone()]).unwrap();
+        assert_eq!(
+            item,
+            serde_json::from_slice::<Item>(&serde_json::to_vec(&item).unwrap()).unwrap()
+        );
+        item.model.mount = Some(Pin::Puppet { point: [0.; 2] });
+        assert!(validate(&[item.clone()]).is_err());
+        item.model.mount = Some(Pin::Surface {
+            mesh: 1,
+            vertices: [0, 1, 2],
+            weights: [f32::NAN, 0., 1.],
+            angle: 0.,
+            length: 1.,
+        });
+        assert!(validate(&[item]).is_err());
     }
     #[test]
     fn input_toggle_uses_real_edges_hysteresis_and_missing_signal_recovery() {
