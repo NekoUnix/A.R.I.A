@@ -12,8 +12,8 @@ This update was tested locally on Windows x64 with Rust 1.98.1 using the
 of this update remains for CI/target hardware validation. Earlier entries below
 describe earlier builds, including the retired proprietary Core setup.
 
-- 288 standard workspace tests passed with all features enabled; nine additional
-  opt-in model/GPU/worker tests passed separately. Strict all-target/all-feature
+- 288 standard workspace tests passed with all features enabled; 33 additional
+  opt-in desktop/model/GPU/worker checks passed across the native runs. Strict all-target/all-feature
   Clippy, formatting, 54-document/10-JSON repository checks and two distribution
   guard regression tests passed. The Windows desktop/CLI/worker build succeeded.
 - Purism Core 1.1.0 is compiled from pinned MIT source with the v6 ABI. Runtime
@@ -43,6 +43,28 @@ describe earlier builds, including the retired proprietary Core setup.
   36 moving physics parameters and DX12-to-independent-DX11 Spout transfer
   including alpha and sender cleanup. The desktop was launched with an isolated
   test profile; the Bouncy selector and tuning controls were visually checked.
+- Expanded native coverage passed GPU clipping/blending/culling/order, Windows
+  credential encryption, HTTP error fixtures, temporary hotkey cleanup, live
+  microphone callbacks/stop, controller events and disconnect, appearance
+  overrides, frozen layer previews, marquee selection, independent model objects,
+  GIF import/timing and custom PNG/GIF/3D/Live2D effects. A mixed workspace kept
+  two Live2D workers, an animated GIF and a VRM avatar live on all three canvases.
+- VRM 0/1 generated fixtures and local VRM/GLB assets passed tracking, expressions,
+  gestures, freeze, bilateral secondary motion, maximum arm idle and long-hair
+  settling checks. The largest sampled smooth-head joint step was 3.825 degrees;
+  the Medium fixture settled below 0.056 degrees/frame with tip error below 0.011
+  model units. These are measurements for the tested asset, not universal limits.
+- All 11 local VTube Studio configs passed import, apply, save/restore, undo and
+  rendering. Three initial opt-in failures were fixture-selection mistakes:
+  controller checks require Vespera's 15 authored mappings, appearance checks
+  require a visible authored control (`ParamControllerArmSetONOFF` on that model),
+  and the VTS inventory must contain `.vtube.json` paths rather than `.model3.json`.
+  All three passed on corrected inputs without weakening their assertions.
+- Three camera-adapter conversion tests and seven compiled Streamer.bot C#/HTTP
+  scenarios passed. Phone tracking was confirmed working by the user; it was not
+  independently observed by the agent. Physical controller hardware, live account
+  OAuth and actual MediaPipe/NVIDIA camera inference were not exercised. The
+  VBridger native test used a generated equation fixture, not a vendor export.
 - Synthetic regressions check increased rebound followed by settling, 30/60/120
   and irregular frame cadence, chain-length preservation, bounded velocity under
   extreme/invalid inputs, pause recovery, style transitions and old-profile migration.
@@ -55,8 +77,10 @@ describe earlier builds, including the retired proprietary Core setup.
 
 Repeat the opt-in library tests with `scripts/test-model-library.ps1 -Folder <folder>`.
 They use existing local files and the built-in runtime; do not commit the models
-or local reports/previews. Full animation aesthetics, live phone tracking and
-all GPU/OS combinations still require user/hardware acceptance testing.
+or local reports/previews. Full animation aesthetics and all GPU/OS/device
+combinations still require user/hardware acceptance testing. The ignored worker
+fixture is exercised by its parent test, not run as a standalone test; the
+optimized profile-handoff benchmark runs in the Windows Alpha package workflow.
 
 ## Paired body physics development update — 2026-09-15
 
