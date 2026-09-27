@@ -562,7 +562,11 @@ impl AriaApp {
                     "inputs" | "microphone" | "vts" | "responsiveness" | "performance-details"
                 ) {
                     ControlsPage::Tracking
-                } else if scenario == "studio-music" {
+                } else if scenario == "studio-music" || scenario == "studio-vst" {
+                    if scenario == "studio-vst" {
+                        app.settings.music.vst.path =
+                            std::env::var_os("ARIA_SMOKE_VST_PLUGIN").map(std::path::PathBuf::from);
+                    }
                     ControlsPage::Music
                 } else if scenario == "studio-scenes" {
                     let _ = app

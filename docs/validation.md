@@ -5,6 +5,29 @@
 This file records checks for the development builds. The Windows CI workflow
 is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
+## VST3 music worker — 2026-09-27 (unreleased)
+
+- 318 standard workspace tests passed (96 core, 190 desktop, 5 Live2D,
+  9 model, 18 tracking); 39 opt-in tests omitted. Strict workspace
+  all-target/all-feature Clippy, formatting, repository contracts and Purism
+  runtime/model distribution guards passed.
+- The additional seven-test VST run includes three opt-in native checks. Local
+  LoudMax and Elgato EQ passed mono/stereo at 44.1, 48 and 96 kHz, changed parameter
+  restoration, reported-versus-measured impulse latency and half-second silent
+  settling. LoudMax reported 55/60/120 samples of latency respectively; EQ reported
+  zero. A live LoudMax output adjustment changed processed samples as expected.
+- Native checks covered missing files, invalid channel counts, deliberate worker
+  termination, cancellation and watchdog expiry. A short buffered music source
+  drained fully with nonzero output and no underruns. Unit checks cover complete
+  stereo silence frames, queue draining, cancellation of a full queue, bounded
+  protocol messages and invalid saved values.
+- The Windows VST interface was captured and visually reviewed in a separate
+  test profile with actual LoudMax metadata and controls. Playback remained off.
+  Installed plugin binaries and test images are not repository fixtures.
+- These checks do not establish audible quality, one-hour stability, plugin-editor
+  support, full preset/state compatibility or an audio routing graph. See the
+  [remaining system plan](studio-system-plan.md).
+
 ## Browser, routing and event follow-up — 2026-09-27 (unreleased)
 
 - 314 standard workspace tests passed: 96 core, 186 desktop, 5 Live2D,
@@ -26,7 +49,7 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
   bounds and disabling without replay.
 - Live Twitch/YouTube account acceptance, download cancel/resume, long-session
   browser resource use and additional audio-device unplug/replug cases remain
-  unverified. Native VST3 hosting and remote guests remain planned systems; see
+  unverified. At this checkpoint VST3 hosting and remote guests were still planned; see
   [system plan](studio-system-plan.md). No claim of complete reference parity.
 
 ## Studio production expansion — 2026-09-27 (unreleased)

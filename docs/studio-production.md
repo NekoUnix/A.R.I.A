@@ -49,7 +49,30 @@ reports an error instead of falling back to speakers. Capture that output in OBS
 Spout/Syphon canvases do not carry audio. If a device stops,
 ARIA stops playback and displays a retry instruction. Play/Pause, Next and Stop are
 also available as hotkey, action-graph and authenticated integration targets.
-VST hosting, a routing graph and creating virtual audio devices are not implemented.
+
+### Experimental VST3 music effect (Windows)
+
+Expand **VST3 music effect**, choose a locally installed `.vst3` file or bundle,
+and wait for inspection. Enable **Process music through VST3**, then press Play.
+ARIA hosts one matching mono/stereo audio effect in a separate worker process.
+Inspection and processing stay off the avatar UI and audio callback. Generic
+normalized controls apply live; the plugin path, class ID and parameter values
+are saved locally. Changing the selected plugin or enable switch stops playback.
+Disable the effect and press Play to return to ordinary music playback.
+
+Processing uses bounded 512-frame blocks and up to eight queued blocks. Missing
+plugins, unsupported buses, invalid output, crashes and timeouts stop music with
+an error; there is no automatic unprocessed fallback. Buffer starvation inserts
+complete silent frames and displays an underrun count. Reported latency is drained
+at track endings, followed by the reported tail capped at five seconds. A live
+latency change requires restarting playback. Output samples are bounded to the
+digital range; this is clipping protection, not a loudness-normalization service.
+
+Seeking while processed, native plugin editors, opaque preset/state chunks,
+instruments/MIDI, sidechains, multi-effect chains, microphone processing and a
+shared routing graph remain unfinished. ARIA does not create virtual audio
+devices or redistribute installed plugin binaries. Process separation contains
+plugin crashes; it is not an operating-system security sandbox.
 
 ## Events and gestures
 

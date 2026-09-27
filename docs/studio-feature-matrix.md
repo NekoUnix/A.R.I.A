@@ -17,7 +17,7 @@ builds and [release status](README.md#current-and-planned-features) for platform
 | Native stream transmission and recording | Not implemented; ARIA supplies OBS canvases | Encoder, audio mix, credentials, service lifecycle and recording recovery |
 | Chat/Game/opening/ending scenes | New named layout snapshots, movement transitions and hotkeys/action targets | Video playback, crossfades and complete world/prop snapshots remain |
 | BGM playlists and audio ducking | New streaming player, 32 playlists, repeat/shuffle, seek, file repair, speech ducking and saved output-device routing; native route release passed with silent audio | Audible mix, additional endpoint/hot-unplug acceptance remain |
-| VST audio graph and virtual-audio output | Not implemented | Plugin isolation, audio device lifecycle, latency and monitoring |
+| VST audio graph and virtual-audio output | Experimental Windows single-effect music worker, normalized controls and existing output-device routing | Full routing graph, microphone/guest buses, native editors, opaque state, chains and long-session acceptance remain |
 | Remote guest collaboration | Local multi-avatar support exists | Remote media, consent, latency, guest reconnect and audio routing |
 | Streamer-only overlay HUD | Local editor metrics/utilities exist | Dedicated HUD positioning and capture-exclusion acceptance |
 | VR wrist controls | Not implemented | SteamVR integration, positioning and device acceptance |

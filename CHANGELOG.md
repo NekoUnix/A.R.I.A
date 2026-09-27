@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add an experimental Windows VST3 music effect with separate-process probing and processing, mono/stereo negotiation, saved normalized controls, bounded buffering and visible timeout/crash recovery. Preserve bounded reported tails; keep native editors, effect chains and shared audio routing marked unfinished.
+
 - Connect opt-in live Twitch/YouTube !commands to event rules, with bounded queues, backlog suppression, duplicate protection and pending-command moderation removal.
 
 - Extend gesture rules with up to eight All/Any input conditions, upper/lower thresholds and release hysteresis; clear partial holds after disabling or editing a rule.

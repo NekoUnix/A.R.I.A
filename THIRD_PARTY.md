@@ -25,6 +25,14 @@ framework revision is unchanged. Runtime performance changes are documented in
 
 ## Primary libraries
 
+The experimental Windows music-effect host pins
+[`vst3-host` 0.9.0](https://github.com/HelgeSverre/rust-vst3-host) (MIT) with
+[`vst3` 0.3.0](https://github.com/coupler-rs/vst3-rs) (MIT OR Apache-2.0) bindings.
+Their available license files and resolved metadata are collected by the existing
+dependency-license packaging step. Plugins remain user-installed files and are
+not included in ARIA packages or repository fixtures. Local LoudMax and Elgato EQ
+acceptance checks do not grant redistribution rights to those plugins.
+
 Exact Rust versions are recorded in Cargo.lock:
 
 

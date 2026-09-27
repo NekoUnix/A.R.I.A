@@ -89,10 +89,10 @@ fn hidden(command: &mut Command) {
     command.stdin(Stdio::null());
 }
 #[cfg(windows)]
-struct ProcessGroup(windows::Win32::Foundation::HANDLE);
+pub(crate) struct ProcessGroup(windows::Win32::Foundation::HANDLE);
 #[cfg(windows)]
 impl ProcessGroup {
-    fn new(child: &Child) -> anyhow::Result<Self> {
+    pub(crate) fn new(child: &Child) -> anyhow::Result<Self> {
         use std::os::windows::io::AsRawHandle;
         use windows::Win32::{Foundation::HANDLE, System::JobObjects::*};
         unsafe {

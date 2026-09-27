@@ -61,6 +61,7 @@ mod theme;
 mod tracking_guide;
 mod vbridger_panel;
 mod vrm;
+mod vst;
 mod vts_items;
 mod vts_keys;
 mod vts_panel;
@@ -84,6 +85,13 @@ fn smoke_mode() -> bool {
 }
 
 fn main() -> eframe::Result {
+    #[cfg(windows)]
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "--vst-worker")
+    {
+        std::process::exit(if vst::serve().is_ok() { 0 } else { 1 });
+    }
     #[cfg(windows)]
     if std::env::args_os()
         .nth(1)

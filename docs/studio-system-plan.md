@@ -14,23 +14,29 @@ Build bounded queues, resampling and measured peak/RMS meters before a patch edi
 Changing endpoints must stop/reconnect deliberately without unexpectedly routing
 private monitoring to speakers or to the broadcast bus.
 
-Host VST3 effects in a separate worker process, with plugin discovery and probing
-outside the render/audio callbacks. Persist class IDs, plugin state and explicit
-bus/channel layouts. Reject unsupported instruments or layouts with a repairable
-message. Add bypass, gain staging and latency accounting before connecting an
-effect chain to live output. A worker timeout/crash must release the plugin and
-leave a visible bypass/failure state; it must not hang the avatar renderer.
+The first VST3 slice now runs one Windows music effect in a separate worker with
+bounded queues, probe/processing timeouts, explicit mono/stereo negotiation,
+normalized parameter persistence and visible failure. See the
+[music guide](studio-production.md#experimental-vst3-music-effect-windows).
+Extend this with opaque plugin state, native editors and explicit chain/bus
+configuration. Add measured gain staging and cross-bus latency compensation before
+connecting microphone/guest inputs to a live effect graph. The existing worker
+stops music on failure; it does not silently bypass the selected effect.
 
 Use a pinned current SDK and preserve its notices. Steinberg's current
 [VST3 SDK](https://github.com/steinbergmedia/vst3sdk) and
 [file-specific licensing guidance](https://steinbergmedia.github.io/vst3_dev_portal/pages/VST%2B3%2BLicensing/Which%2Bfiles%2Bfall%2Bunder%2Bwhich%2Blicense.html)
-are the source of truth for an eventual host integration. Do not silently pull in
+remain the source of truth. The initial host pins MIT `vst3-host` 0.9.0 with
+`vst3` 0.3.0 bindings; dependency notices accompany packages. Do not silently pull in
 an old differently licensed SDK or redistribute users' commercial plugins.
 
 Acceptance: mono/stereo and sample-rate changes; silent-input stability; impulse
 latency; clipping protection; state restore; missing/bad plugins; worker crash;
-device unplug/replug; one-hour playback; two installed effects. Native VST3
-processing is not implemented by the current output-device selector.
+device unplug/replug; one-hour playback; two installed effects. Native checks cover
+LoudMax and Elgato EQ, mono/stereo and 44.1/48/96 kHz, impulse latency, parameter
+restoration, silent settling, missing files, cancellation and worker termination.
+Buffered playback has a short headless acceptance test. One-hour playback,
+audible quality, opaque state and device-unplug tests with effects remain open.
 
 ## Remote guests
 

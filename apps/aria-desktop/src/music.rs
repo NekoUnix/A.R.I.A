@@ -21,6 +21,7 @@ pub struct Playlist {
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    pub vst: crate::vst::Settings,
     pub device: Option<String>,
     pub playlists: Vec<Playlist>,
     pub selected: usize,
@@ -33,6 +34,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            vst: Default::default(),
             device: None,
             playlists: vec![Playlist {
                 name: "My music".into(),
@@ -49,6 +51,7 @@ impl Default for Settings {
 }
 impl Settings {
     pub fn sanitize(&mut self) {
+        self.vst.sanitize();
         self.playlists.truncate(32);
         if self.playlists.is_empty() {
             self.playlists = Self::default().playlists;
@@ -83,12 +86,15 @@ fn output_builder(id: Option<&str>) -> anyhow::Result<rodio::DeviceSinkBuilder> 
     Ok(rodio::DeviceSinkBuilder::from_device(device)?)
 }
 type Decoder = rodio::Decoder<std::io::BufReader<File>>;
-type Prepared = anyhow::Result<(Decoder, Option<Duration>)>;
+type Prepared = anyhow::Result<(crate::vst::AudioSource, Option<Duration>)>;
 struct Pending {
     generation: u64,
     result: mpsc::Receiver<Prepared>,
 }
 pub struct Music {
+    vst_editor: crate::vst::Editor,
+    vst_control: crate::vst::Control,
+    processed: bool,
     devices: Vec<(String, String)>,
     scanned_devices: bool,
     stream_device: Option<String>,
@@ -111,6 +117,9 @@ pub struct Music {
 impl Default for Music {
     fn default() -> Self {
         Self {
+            vst_editor: Default::default(),
+            vst_control: Default::default(),
+            processed: false,
             devices: vec![],
             scanned_devices: false,
             stream_device: None,
@@ -131,7 +140,7 @@ impl Default for Music {
         }
     }
 }
-fn prepare(path: PathBuf) -> Prepared {
+fn prepare(path: PathBuf) -> anyhow::Result<(Decoder, Option<Duration>)> {
     let file = File::open(path)?;
     anyhow::ensure!(file.metadata()?.is_file(), "Select a local audio file");
     let decoder = rodio::Decoder::try_from(file)?;
@@ -160,6 +169,7 @@ impl Music {
         }
     }
     pub fn stop(&mut self) {
+        self.vst_control.stop();
         self.generation = self.generation.wrapping_add(1);
         if let Some(voice) = self.voice.take() {
             voice.stop();
@@ -170,7 +180,7 @@ impl Music {
         self.duration = None;
         self.seek_draft = None;
     }
-    fn load(&mut self, index: usize) -> anyhow::Result<()> {
+    fn load(&mut self, index: usize, settings: &Settings) -> anyhow::Result<()> {
         anyhow::ensure!(
             self.pending.is_none(),
             "A music file is still opening; wait before trying another"
@@ -189,11 +199,22 @@ impl Music {
         self.duration = None;
         self.error = None;
         self.generation = self.generation.wrapping_add(1);
+        self.vst_control.stop();
+        self.vst_control = Default::default();
+        self.vst_control.update(&settings.vst);
+        self.processed = settings.vst.enabled;
+        let control = self.vst_control.clone();
         let (tx, rx) = mpsc::sync_channel(1);
         std::thread::Builder::new()
             .name("aria-music-open".into())
             .spawn(move || {
-                let _ = tx.send(prepare(path));
+                let result = prepare(path).and_then(|(decoder, duration)| {
+                    control.wrap(Box::new(decoder)).map(|source| {
+                        let duration = source.total_duration().or(duration);
+                        (source, duration)
+                    })
+                });
+                let _ = tx.send(result);
             })?;
         self.pending = Some(Pending {
             generation: self.generation,
@@ -209,7 +230,7 @@ impl Music {
             .map(|p| p.tracks.clone())
             .unwrap_or_default();
         self.played.clear();
-        self.load(index)
+        self.load(index, settings)
     }
     pub fn toggle(&mut self, settings: &Settings) -> anyhow::Result<()> {
         if let Some(voice) = &self.voice {
@@ -232,7 +253,7 @@ impl Music {
             &mut self.random,
             true,
         ) {
-            self.load(index)
+            self.load(index, settings)
         } else {
             self.stop();
             Ok(())
@@ -262,6 +283,11 @@ impl Music {
         )
     }
     pub fn update(&mut self, settings: &Settings, speaking: bool, dt: f32) {
+        self.vst_control.update(&settings.vst);
+        if let Some(error) = self.vst_control.take_error() {
+            self.stop();
+            self.error = Some(error);
+        }
         if self.stream.is_some() && self.stream_device != settings.device {
             self.stop();
             self.stream = None;
@@ -335,9 +361,16 @@ impl Music {
             voice.set_volume(settings.volume * self.gain);
         }
         if self.voice.as_ref().is_some_and(|v| v.empty()) {
+            // The worker may fail while the audio callback drains the final block,
+            // after the earlier error check. Do not turn that failure into Next.
+            if let Some(error) = self.vst_control.take_error() {
+                self.stop();
+                self.error = Some(error);
+                return;
+            }
             self.voice = None;
             if let Some(index) = self.next_automatic(settings) {
-                if let Err(error) = self.load(index) {
+                if let Err(error) = self.load(index, settings) {
                     self.error = Some(error.to_string());
                 }
             } else {
@@ -428,7 +461,8 @@ impl Music {
                     .seek_draft
                     .unwrap_or_else(|| voice.get_pos().as_secs_f32());
                 if let Some(duration) = self.duration {
-                    let response = ui.add(
+                    let response = ui.add_enabled(
+                        !self.processed,
                         egui::Slider::new(&mut position, 0.0..=duration.as_secs_f32().max(0.01))
                             .text("Seconds"),
                     );
@@ -467,6 +501,21 @@ impl Music {
                 }
             });
         });
+        let old_effect = (
+            settings.vst.path.clone(),
+            settings.vst.enabled,
+            settings.vst.class_id.clone(),
+        );
+        self.vst_editor.ui(ui, &mut settings.vst, &self.vst_control);
+        if old_effect
+            != (
+                settings.vst.path.clone(),
+                settings.vst.enabled,
+                settings.vst.class_id.clone(),
+            )
+        {
+            self.stop();
+        }
         ui.add_space(8.);
         egui::ComboBox::from_id_salt("music-playlist")
             .selected_text(&settings.playlists[settings.selected].name)
