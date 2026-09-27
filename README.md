@@ -16,18 +16,23 @@ required third-party tracking app or runtime are supplied separately.
 
 ## What's new
 
-**v0.37 Alpha adds a guided Streamer.bot connector for avatar actions.**
+**v0.37 Alpha includes Purism Core and expressive Bouncy physics.**
 
-- Open **Settings → Streamer.bot → Set up Streamer.bot…**. Test the local
-  connection, select an avatar action and copy ready-to-paste C# into Streamer.bot.
-- Connect chat commands, rewards, timers and events to expressions, toggles,
-  objects, throws, animations, profile changes and complete action graphs.
-- Choose **Toggle / On / Off** for stateful actions. Saved profile targets stay
-  attached to the right avatar when you switch editing stages.
-- Get completion, rejection and cancellation results, with troubleshooting guidance
-  and no API key embedded in generated code. Both apps run on the same computer.
+- Import compatible Live2D models immediately: the MIT-licensed Purism Core runtime
+  is built in. A separate proprietary Core download or library path is no longer needed.
+- Choose **Avatar → Physics → Bouncy** for longer swings and clearer rebound, or
+  **Natural** for faster settling. Both use a fixed 120 Hz simulation with bounded
+  momentum and pause recovery.
+- New avatars start with Bouncy. Existing profiles keep **Authored · legacy ARIA**;
+  choose Bouncy and save physics settings to opt in without replacing your profile.
+- Keep the app and runtime worker from the same package together. Your existing
+  model files and their permissions remain separate from the runtime license.
 
-[Step-by-step Streamer.bot setup](docs/streamerbot.md) · [Complete changelog](CHANGELOG.md)
+[Physics controls](docs/physics.md) · [Runtime and distribution](docs/purism-core.md) ·
+[Validation results](docs/validation.md) · [Complete changelog](CHANGELOG.md)
+
+The guided [Streamer.bot connector](docs/streamerbot.md) from v0.36 remains available
+under **Settings → Streamer.bot → Set up Streamer.bot…**.
 
 Existing Live2D, PNG/GIF and VRM profiles stay available. Use **Profiles →
 + Add avatar** to load more, then click the stage tab for the avatar you want to
@@ -49,8 +54,8 @@ and expand **Assets** if the downloads are hidden. Choose the file for your comp
 | Mac with an M-series chip | `aria-0.37.0-alpha.1-macos-arm64.zip` |
 | Mac with an Intel processor | `aria-0.37.0-alpha.1-macos-x64.zip` |
 | Ubuntu 24.04, 64-bit Intel or AMD | `aria-0.37.0-alpha.1-linux-x64.tar.gz` |
-| Fedora 44, 64-bit Intel or AMD | `aria-alpha-0.35.0.alpha.1-1.x86_64.rpm` |
-| Current Arch Linux, 64-bit Intel or AMD | `aria-alpha-0.35.0alpha.1-1-x86_64.pkg.tar.zst` |
+| Fedora 44, 64-bit Intel or AMD | `aria-alpha-0.37.0.alpha.1-1.x86_64.rpm` |
+| Current Arch Linux, 64-bit Intel or AMD | `aria-alpha-0.37.0alpha.1-1-x86_64.pkg.tar.zst` |
 
 On a Mac, **Apple menu → About This Mac** tells you whether it has an Apple chip
 or an Intel processor. Linux ARM, Windows ARM, `.deb`, AppImage and Flatpak/Snap

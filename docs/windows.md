@@ -55,8 +55,8 @@ systems and Windows ARM64 are not verified release targets yet.
 ### Download a compiled build
 
 1. Visit [Releases](https://github.com/NekoUnix/A.R.I.A/releases) and download
-   `aria-0.24.0-windows-x64.zip` and its `SHA256SUMS.txt` file.
-2. Optionally compare `Get-FileHash .\aria-0.24.0-windows-x64.zip -Algorithm SHA256`
+   `aria-0.37.0-alpha.1-windows-x64.zip` and its `SHA256SUMS.txt` file.
+2. Optionally compare `Get-FileHash .\aria-0.37.0-alpha.1-windows-x64.zip -Algorithm SHA256`
    with the published checksum to verify the download.
 3. Extract the ZIP into a normal writable folder, for example `C:\Apps\ARIA`.
 4. Double-click **aria-desktop.exe**. The default source is Demo and Mica should move.
@@ -119,7 +119,7 @@ for its runtime distribution check.
 The compiler version is pinned in `rust-toolchain.toml`; rustup will download it
 when first needed. `Cargo.lock` pins dependency resolution. Internet access is
 needed on the initial build; cached dependencies can be used offline afterward.
-The v0.24 dependency set requires Rust 1.95 or newer; the pinned toolchain is newer.
+The workspace requires Rust 1.95 or newer; the pinned toolchain is newer.
 Live2D-compatible avatars use the bundled Purism Core runtime; no SDK download is needed. See [Live2D setup](live2d.md).
 
 For a quicker edit/compile loop:

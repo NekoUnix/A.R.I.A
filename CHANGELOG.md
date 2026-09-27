@@ -2,14 +2,23 @@
 
 ## 0.37.0-alpha.1 — 2026-09-27
 
-- Add Bouncy and Natural 120 Hz physics styles, time-based damping, bounded momentum and pause recovery; retain the previous solver for saved profiles.
-- Reuse physics scratch buffers, expose the style selector per avatar, and add rebound/frame-cadence/stress regressions.
-
-- Replace external proprietary Cubism Core loading with pinned MIT Purism Core 1.1.0.
-- Import compatible models without downloading or selecting an SDK; ignore legacy Core paths.
-- Preserve worker isolation, bump the private protocol to v4, ship Purism's notice and check release contents.
+- Bundle pinned MIT Purism Core 1.1.0 so compatible models load without downloading
+  or selecting the proprietary Cubism Core. Ignore old runtime paths and remove
+  the runtime setup gate. Keep worker isolation and advance its protocol to v4.
+- Add Bouncy and Natural physics with a fixed 120 Hz simulation, time-based
+  damping, bounded momentum, pause recovery and reusable scratch buffers. New
+  avatars default to Bouncy; saved profiles retain Authored until the user opts in
+  through Avatar → Physics and saves the settings.
+- Include Purism's full MIT notice and add source-checksum and distribution guards
+  to prevent accidental proprietary Core/model inclusion in release archives.
 - Renderer limits and model/artwork permissions remain unchanged.
-- Expand native model, physics stress, GPU and system regression coverage; see docs/validation.md for measured results and platform checks.
+- Validate 11 local model renders and eight physics rigs across 57,600 stress
+  frames, with 1,944 exact native/worker geometry matches. Complete 288 standard
+  tests and 33 local native checks, including multi-avatar rendering, controllers,
+  microphone lifecycle, layers, VTS import/undo and VRM/GLB secondary motion.
+  See [validation](docs/validation.md) for test inputs, platform status and limits.
+- Update the release overview, upgrade instructions, Linux package filenames and
+  runtime/physics help. Retain the v0.36 Streamer.bot connector.
 
 All downloads remain Alpha. See [Releases](https://github.com/NekoUnix/A.R.I.A/releases)
 for packages and checksums. Features labeled Experimental have compatibility limits.
