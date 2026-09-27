@@ -583,13 +583,13 @@ mod tests {
     use super::*;
     #[test]
     #[cfg(windows)]
-    #[ignore = "requires ARIA_TEST_MODEL, ARIA_TEST_APPEARANCE_PARAMETER, Cubism Core and GPU"]
+    #[ignore = "requires ARIA_TEST_MODEL, ARIA_TEST_APPEARANCE_PARAMETER, bundled runtime and GPU"]
     fn native_appearance_override_renders_and_releases_without_stopping_face_tracking() {
         use aria_core::rig::Inputs;
         use std::path::Path;
         let state = crate::spout::tests::gpu_state();
         let path = std::env::var_os("ARIA_TEST_MODEL").unwrap();
-        let core = std::env::var_os("ARIA_CUBISM_CORE").unwrap();
+        let core = std::ffi::OsString::new();
         let id = std::env::var("ARIA_TEST_APPEARANCE_PARAMETER").unwrap();
         let mut avatar = Avatar::load(
             &state,
@@ -650,9 +650,9 @@ mod tests {
         );
         let changed = folder.path().join("appearance.png");
         avatar.save_png(&changed).unwrap();
-        assert_ne!(
-            image::open(&before).unwrap().into_rgba8(),
-            image::open(&changed).unwrap().into_rgba8(),
+        assert!(
+            image::open(&before).unwrap().into_rgba8()
+                != image::open(&changed).unwrap().into_rgba8(),
             "Authored appearance control changes real rendered pixels"
         );
         let moved = Inputs::from([("ParamAngleX".into(), -12.), ("FaceAngleX".into(), -12.)]);

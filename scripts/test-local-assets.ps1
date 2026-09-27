@@ -2,14 +2,12 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][string]$GifDirectory,
-    [Parameter(Mandatory=$true)][string]$Live2DModel,
-    [Parameter(Mandatory=$true)][string]$CubismCore
+    [Parameter(Mandatory=$true)][string]$Live2DModel
 )
 $ErrorActionPreference = 'Stop'
 $ariaPaths = @{
     ARIA_TEST_GIF_DIR = (Resolve-Path -LiteralPath $GifDirectory).Path
     ARIA_TEST_MODEL = (Resolve-Path -LiteralPath $Live2DModel).Path
-    ARIA_CUBISM_CORE = (Resolve-Path -LiteralPath $CubismCore).Path
 }
 $ariaPrevious = @{}
 foreach ($ariaName in $ariaPaths.Keys) {

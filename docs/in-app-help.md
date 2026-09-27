@@ -61,7 +61,7 @@ Open Avatar & appearance. For a new session choose Import PNG / GIF avatar or Im
 
 PNG/GIF: select one file, several files or an artwork folder. Folder import includes its immediate PNG/GIF files, not unrelated project files. Mark exactly one file Idle / base. Talking responds to MicTalking when the microphone is enabled, otherwise the mouth input; Blink follows eye input or auto-blink. Quiet reacts when talking stops. Manual / hotkey files display only when activated. Names containing inactive or idle suggest the base; talking suggests Talking; muted or deafened files suggest Manual. ARIA does not read Discord mute/deafen status. Assign those actions hotkeys or your own input rules after import.
 
-Live2D: select the exported model3.json or its matching moc3 and choose the official Cubism Native Core x64 DLL. Keep relative atlas, physics and expression paths intact. The review summarizes the export. A bare moc3 can be paired with ordered atlas textures in the follow-up dialog. Import restores this model's own parameter settings, groups, expressions and saved profile.
+Live2D: select the exported model3.json or its matching moc3 to use the built-in Purism Core runtime. Keep relative atlas, physics and expression paths intact. The review summarizes the export. A bare moc3 can be paired with ordered atlas textures in the follow-up dialog. Import restores this model's own parameter settings, groups, expressions and saved profile.
 
 ### Review, import and create
 
@@ -389,7 +389,7 @@ All three output canvases include the same accessories, with each canvas's frami
 
 Drag the .moc3 into Your stage, or use Stage objects & toggles → Add objects. Keep the matching .model3.json beside it and preserve all referenced texture folders. ARIA finds the manifest that references that exact moc3 and loads its atlases in the authored order. Dropping the .model3.json itself works too. Drop only one of those two files to create one object; dropping both creates two independent objects. A moc3 contains compiled geometry and parameters, not the texture images.
 
-Each object has a separate Cubism instance, parameter list and optional physics simulation. Adding, removing or posing it does not replace the main avatar, change the main profile identity, or edit its mappings, expressions or physics. The Cubism Core DLL selected under Avatar & appearance → Cubism runtime is shared as a runtime library. Set that DLL once before loading models. Main-avatar selection still uses Import Live2D avatar in the left panel.
+Each object has a separate Cubism instance, parameter list and optional physics simulation. Adding, removing or posing it does not replace the main avatar, change the main profile identity, or edit its mappings, expressions or physics. Purism Core is built into each model worker; no runtime setup is required. Main-avatar selection still uses Import Live2D avatar in the left panel.
 
 ### Bare moc3 texture setup
 
@@ -476,7 +476,7 @@ Freeze pose pauses input rules and captures the current gated visibility with th
 ### Your first session
 
 1. Leave Tracking & connection on Demo to check that the built-in Mica puppet moves.
-2. Open Avatar & appearance to load your own PNG or Live2D export. Live2D requires the official x64 Cubism Core DLL.
+2. Open Avatar & appearance to load your own PNG or Live2D export. Live2D uses the built-in Purism Core runtime.
 3. Choose your tracking source and connect. Face the camera naturally and calibrate a neutral pose.
 4. In the Inspector, adjust mappings, pose controls, physics or expressions for this avatar.
 5. Open an output under Capture & performance. For a full-resolution OBS source with a small desktop preview, use Spout2 Capture.
@@ -651,7 +651,7 @@ after importing an old external movement preset or changing custom equations.
 
 Prefer Import Live2D avatar with the exported .model3.json file. It describes the .moc3 geometry, texture atlases and optional physics, expressions and display metadata. Keep the exported folder structure intact. Dropping a .model3.json or .moc3 onto Your stage adds a separate pinnable object and preserves the main avatar. Use Import Live2D avatar to change the main model. A bare .moc3 can be used with its correct textures, but cannot provide all manifest metadata by itself.
 
-Select the official Windows x64 Cubism Core DLL in Cubism runtime before loading Live2D. ARIA does not bundle the proprietary Core or your model. A .cmo3 editor project is not the same as a runtime .moc3 export. Re-export from Cubism when needed. The model's own metadata and supported VTS profile assignments populate the rig; unrecognized controls remain available for manual mapping.
+Purism Core is included; select your exported model to import it. ARIA does not bundle proprietary Core or your model. A .cmo3 editor project is not the same as a runtime .moc3 export. Re-export from Cubism when needed. The model's own metadata and supported VTS profile assignments populate the rig; unrecognized controls remain available for manual mapping.
 
 ### Image puppets
 
@@ -661,21 +661,19 @@ Import PNG / GIF avatar guides you through choosing PNG/GIF artwork and action r
 
 Zoom from 0.5 to 1.5 changes the studio preview. Each output has independent per-avatar scaling and position using drag and wheel gestures. Model details reports meshes, tracked assignments, decoded atlas memory and Core version. Configure avatar physics opens that avatar's discovered groups; Model parameters opens Inputs. A model can have many parameters without all of them having tracking assignments.
 
-## runtime | Cubism Core runtime setup | Select the official Core library for this OS, or select an extracted Native SDK folder in guided import. Each model runs in a separate runtime process.
+## runtime | Built-in Purism Core | Live2D-compatible models run using the included runtime. No separate download or library selection is needed.
 
-### Select the runtime
+### Included runtime
 
-Use Choose Core library or enter the complete path. Windows x64 uses Core/dll/windows/x86_64/Live2DCubismCore.dll. Linux x64 uses Core/dll/linux/x86_64/libLive2DCubismCore.so. macOS uses the SDK's macOS libLive2DCubismCore.dylib or matching architecture variant. Guided import can find the native library from the extracted SDK folder. Static .lib/.a archives and Android libraries do not work as desktop runtimes.
+ARIA includes MIT-licensed Purism Core on every supported platform. Select your exported model and textures, then import. Old SDK paths are ignored; updating ARIA updates the runtime. Model details reports the compatibility API version.
 
-### What the container does
+### Separate model workers
 
-ARIA launches a separate, hidden runtime process for each Live2D model. The library and native model memory stay there; parameter values go in and mesh data comes back over private pipes. A worker crash or timeout reports an error for that model; reload it to start a new worker. The main app renders textures and owns your settings. No network service or SDK installation is performed automatically.
-
-This is process isolation, not Windows emulation or a security sandbox. A Windows DLL alone cannot run on Linux or macOS. Use the official native library for that operating system and architecture. Only load an SDK you trust. ARIA does not distribute Core or your avatar files.
+Each model runs in a hidden worker. Parameter values go in and mesh data comes back over private pipes. A crash or timeout reports an error for that model; reload it to start a new worker. This isolates crashes but is not an OS security sandbox. The main app renders textures and owns your settings.
 
 ### Troubleshooting
 
-Keep the model manifest, moc3 and atlases together. Select the correct native Core and reload after changing it. Missing symbols or unsupported moc versions require a compatible official SDK. A stopped worker must be reloaded; unsupported Cubism offscreen rendering cannot be enabled by changing libraries. See the bundled native platform guide for the experimental Linux/macOS build and hardware-validation limits.
+Keep the model manifest, moc3 and atlases together. Update ARIA for newer runtime support. Offscreen parts and advanced blending remain unsupported by the renderer. Your model author's terms still apply; see the bundled runtime distribution guide.
 
 
 ## textures | Bare moc3 & texture atlas order | A bare moc3 needs its exported texture atlases in texture-index order. Prefer the matching model3 manifest whenever it is available.
@@ -928,6 +926,8 @@ ARIA reads groups from the loaded avatar's physics3 export. Groups and their inp
 
 ### Overall controls
 
+Choose Bouncy for expressive rebound, Natural for faster settling, or Authored to keep ARIA's previous solver. New avatars start with Bouncy; older saved profiles retain Authored until you switch and save. Bouncy and Natural run at 120 fixed steps per second with time-based damping, a velocity limit and pause recovery. Changing style settles old momentum. These styles apply to Live2D-compatible rigs, not VRM/GLB spring bones.
+
 Enable avatar physics switches the simulation's effect on or off. Strength adjusts output amplitude. Inertia changes retained momentum, Response speed changes particle response, Gravity changes the restoring force, and Wind adds horizontal force. Overall and per-group multipliers combine, while wind offsets add. Tuning cannot invent missing deformation or a connection the artist never authored.
 
 ### Save and reset
@@ -967,6 +967,8 @@ Settings are local to this avatar and can be saved in a movement preset. Reset t
 ### Range and interaction
 
 Inertia ranges from 0 to 2 at both overall and group levels. A value of 1 keeps that factor neutral. The factors combine with the particle's authored mobility, which remains capped at 1. Increasing the slider does not guarantee proportionally longer motion once that cap is reached.
+
+Bouncy retains more momentum than Natural without raising the output amplitude. Both modes include a small drag floor so maximum inertia still dissipates energy. Lower Inertia to calm a group, or lower Strength to avoid hitting the model's parameter limits.
 
 ### Tune with movement
 

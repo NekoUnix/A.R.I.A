@@ -1,5 +1,16 @@
 # ARIA changelog
 
+## 0.37.0-alpha.1 — 2026-09-27
+
+- Add Bouncy and Natural 120 Hz physics styles, time-based damping, bounded momentum and pause recovery; retain the previous solver for saved profiles.
+- Reuse physics scratch buffers, expose the style selector per avatar, and add rebound/frame-cadence/stress regressions.
+
+- Replace external proprietary Cubism Core loading with pinned MIT Purism Core 1.1.0.
+- Import compatible models without downloading or selecting an SDK; ignore legacy Core paths.
+- Preserve worker isolation, bump the private protocol to v4, ship Purism's notice and check release contents.
+- Renderer limits and model/artwork permissions remain unchanged.
+- Expand native model, physics stress, GPU and system regression coverage; see docs/validation.md for measured results and platform checks.
+
 All downloads remain Alpha. See [Releases](https://github.com/NekoUnix/A.R.I.A/releases)
 for packages and checksums. Features labeled Experimental have compatibility limits.
 

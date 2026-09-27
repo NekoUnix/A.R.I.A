@@ -11,6 +11,9 @@ if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
 if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
     throw 'CMake was not found. Install C++ CMake tools for Windows; see docs/windows.md.'
 }
+if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
+    throw 'Python 3 is required for the runtime distribution check.'
+}
 Push-Location -LiteralPath $ariaRoot
 try {
     $ariaHost = (& rustc -vV | Select-String '^host: ').ToString().Substring(6).Trim()
@@ -24,7 +27,7 @@ try {
     & cargo build --locked --release --workspace
     if ($LASTEXITCODE -ne 0) { throw 'Rust build failed; no package was produced.' }
 
-    $ariaVersion = '0.36.0-alpha.1'
+    $ariaVersion = '0.37.0-alpha.1'
     $ariaDist = Join-Path $ariaRoot 'dist'
     $ariaStage = Join-Path $ariaDist ('staging\' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force -Path $ariaStage | Out-Null
@@ -72,6 +75,8 @@ try {
         $ariaIndex += ('- ' + $ariaDep.name + ' ' + $ariaDep.version + ': ' + $ariaDep.license + ' — ' + $ariaDep.repository)
     }
     $ariaIndex | Set-Content -LiteralPath (Join-Path $ariaLicenses 'INDEX.md') -Encoding UTF8
+    & python (Join-Path $PSScriptRoot 'check-runtime-distribution.py') --stage $ariaStage
+    if ($LASTEXITCODE -ne 0) { throw 'Runtime distribution check failed; no package was produced.' }
     # ZIP timestamps start in 1980; normalize only the staged copies of old notices.
     Get-ChildItem -LiteralPath $ariaStage -Recurse -File | Where-Object LastWriteTime -LT ([datetime]'1980-01-01') | ForEach-Object {
         $_.LastWriteTime = [datetime]'1980-01-02'

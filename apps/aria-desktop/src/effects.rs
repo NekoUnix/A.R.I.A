@@ -670,7 +670,7 @@ mod tests {
     }
     #[test]
     #[cfg(windows)]
-    #[ignore = "requires a DX12 GPU; optional ARIA_TEST_MODEL and ARIA_CUBISM_CORE exercise an independent Live2D throw"]
+    #[ignore = "requires a DX12 GPU; optional ARIA_TEST_MODEL exercise an independent Live2D throw"]
     fn custom_assets_render_on_demo_with_native_gpu_and_optional_cubism_host() {
         let state = crate::spout::tests::gpu_state();
         let ctx = egui::Context::default();
@@ -689,9 +689,7 @@ mod tests {
         if let Some(model) = std::env::var_os("ARIA_TEST_MODEL") {
             assets.push(model.into());
         }
-        let core = std::env::var_os("ARIA_CUBISM_CORE")
-            .map(PathBuf::from)
-            .unwrap_or_default();
+        let core = PathBuf::new();
         let library = Library {
             designs: vec![Design {
                 asset_counts: vec![1; assets.len()],

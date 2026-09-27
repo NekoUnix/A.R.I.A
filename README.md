@@ -4,7 +4,7 @@ Bring your **Live2D, VRM, GLB and PNG/GIF avatars** to life, tune how it follows
 arrange them together in OBS. ARIA runs on Windows, Linux and macOS. You can start with the
 included Mica puppet before importing a model or connecting a camera.
 
-**[Download v0.36 Alpha](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.36.0-alpha.1)** ·
+**[Download v0.37 Alpha](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.37.0-alpha.1)** ·
 [What's new](#whats-new) · [First-time setup](#first-time-setup) ·
 [Help when something goes wrong](#help-when-something-goes-wrong)
 
@@ -16,7 +16,7 @@ required third-party tracking app or runtime are supplied separately.
 
 ## What's new
 
-**v0.36 Alpha adds a guided Streamer.bot connector for avatar actions.**
+**v0.37 Alpha adds a guided Streamer.bot connector for avatar actions.**
 
 - Open **Settings → Streamer.bot → Set up Streamer.bot…**. Test the local
   connection, select an avatar action and copy ready-to-paste C# into Streamer.bot.
@@ -40,15 +40,15 @@ configure. All checked profiles appear together in OBS.
 
 ### 1. Download the right file
 
-Open the [v0.36 Alpha release](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.36.0-alpha.1)
+Open the [v0.37 Alpha release](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.37.0-alpha.1)
 and expand **Assets** if the downloads are hidden. Choose the file for your computer:
 
 | Your computer | Download |
 | --- | --- |
-| Windows 10/11, 64-bit Intel or AMD | `aria-0.36.0-alpha.1-windows-x64.zip` |
-| Mac with an M-series chip | `aria-0.36.0-alpha.1-macos-arm64.zip` |
-| Mac with an Intel processor | `aria-0.36.0-alpha.1-macos-x64.zip` |
-| Ubuntu 24.04, 64-bit Intel or AMD | `aria-0.36.0-alpha.1-linux-x64.tar.gz` |
+| Windows 10/11, 64-bit Intel or AMD | `aria-0.37.0-alpha.1-windows-x64.zip` |
+| Mac with an M-series chip | `aria-0.37.0-alpha.1-macos-arm64.zip` |
+| Mac with an Intel processor | `aria-0.37.0-alpha.1-macos-x64.zip` |
+| Ubuntu 24.04, 64-bit Intel or AMD | `aria-0.37.0-alpha.1-linux-x64.tar.gz` |
 | Fedora 44, 64-bit Intel or AMD | `aria-alpha-0.35.0.alpha.1-1.x86_64.rpm` |
 | Current Arch Linux, 64-bit Intel or AMD | `aria-alpha-0.35.0alpha.1-1-x86_64.pkg.tar.zst` |
 
@@ -102,7 +102,7 @@ controls relevant to that avatar.
 | Avatar type | What to select | What to expect |
 | --- | --- | --- |
 | PNG/GIF | Your image or animated GIF | Set up idle/talking states, transitions and movement. A static image does not need a 3D or Live2D runtime. |
-| Live2D | An exported `.model3.json`, matching `.vtube.json`, model folder, or `.moc3` with its supporting files nearby | Keep the model folder, textures and supporting files together. ARIA asks for the official Cubism Core library needed to run it. |
+| Live2D | An exported `.model3.json`, matching `.vtube.json`, model folder, or `.moc3` with its supporting files nearby | Keep the model folder, textures and supporting files together. The built-in Purism Core runtime evaluates the rig. |
 | VRM | A `.vrm` file | Load a VRM 0.x or 1.0 avatar with expressions, Medium spring physics and gestures. |
 | VRC / GLB · Experimental | A skinned `.glb` export | Import bones and facial shapes, review tracking assignments and tune flexible hair/accessories. No Unity or Cubism runtime is needed. |
 
@@ -111,58 +111,20 @@ profile list with its saved settings. Click **Edit** or a stage tab to work on o
 all checked profiles appear together in OBS. To use just one avatar, uncheck the
 others. Read [Profiles](docs/profiles.md) for tracking sharing and saved layouts.
 
-For Live2D, **Cubism Core** is the separate library that evaluates the model. Use
-its Windows DLL on Windows, its macOS library on Mac, or its Linux library on Linux;
-one operating system's library cannot replace another's. Follow the import guide's
-official download link and select the matching library. Avatar art and Core binaries
-are not bundled with ARIA. An editor project such as `.cmo3` must first be exported
-by its creator as a runtime model.
+For Live2D-compatible exports, ARIA includes **Purism Core**, an MIT-licensed
+runtime compiled into each native build. No Cubism SDK download or library
+selection is needed. Keep your `.model3.json`, `.moc3`, textures and supporting
+files together. An editor project such as `.cmo3` must first be exported by its creator.
 
-#### Live2D only: download and select Cubism Core
+#### Live2D import with built-in Purism Core
 
-**PNG/GIF, VRM and the built-in puppet do not need this step.** For Live2D, use
-the official link for your platform below. All four links intentionally open the
-same **Cubism SDK for Native** download page; the SDK contains the platform
-libraries. The table tells you which file ARIA needs after extraction.
+1. Open **Avatar → Avatar & appearance → Import avatar** and choose **Live2D**.
+2. Select the exported model or its folder, review the files, and finish the import.
+3. Test head motion, blinking and mouth movement before adding props or effects.
 
-| Your ARIA build | Official Cubism download | Library inside the extracted SDK |
-| --- | --- | --- |
-| Windows x64 | [Download Cubism Core for Windows](https://www.live2d.com/en/sdk/download/native/) | `Core/dll/windows/x86_64/Live2DCubismCore.dll` |
-| Mac with Apple Silicon | [Download Cubism Core for Apple Silicon](https://www.live2d.com/en/sdk/download/native/) | `Core/dll/macos/arm64/libLive2DCubismCore.dylib` |
-| Intel Mac | [Download Cubism Core for Intel Mac](https://www.live2d.com/en/sdk/download/native/) | `Core/dll/macos/x86_64/libLive2DCubismCore.dylib` |
-| Linux x64, including Ubuntu/Fedora/Arch | [Download Cubism Core for Linux](https://www.live2d.com/en/sdk/download/native/) | `Core/dll/linux/x86_64/libLive2DCubismCore.so` |
-
-Some Native SDK versions provide one universal Mac library at
-`Core/dll/macos/libLive2DCubismCore.dylib` instead of chip-specific folders.
-**Choose extracted SDK folder** in ARIA handles both layouts. Live2D's
-[official library list](https://github.com/Live2D/CubismNativeSamples/blob/develop/Core/README.md#library-list)
-documents the current platform folders. macOS uses `.dylib` and Linux uses `.so`;
-the `.dll` is the Windows library.
-
-1. Open the appropriate official link **on your computer**. Check that the page
-   says **Cubism SDK for Native**.
-2. Read Live2D's license terms, complete the download form as appropriate for
-   your use, and choose the current regular download. This is an SDK archive;
-   you do not need to compile its examples or install a game engine for ARIA.
-3. Extract the whole archive. On Windows use **Extract All**. Keep the extracted
-   folder somewhere permanent, such as Documents\Live2D SDK, rather than inside
-   the ZIP or a temporary folder.
-4. In ARIA open **Avatar → Avatar & appearance → Import avatar**, choose
-   **Live2D**, and select your model's exported files.
-5. At **Cubism Core runtime**, click **Choose extracted SDK folder…** and select
-   the top-level extracted folder, usually named `CubismSdkForNative-…`.
-   ARIA looks for the library matching the current operating system and CPU.
-6. Alternatively, click **Choose Cubism Core library…** and select the file from
-   the table. On Windows choose **x86_64**, not the 32-bit **x86** folder.
-   `.lib` and `.a` files are not the library files this picker uses.
-7. Click **Review import →**, check the model details, and finish the import.
-   If the library cannot load, check the OS/CPU choice and that all files were
-   extracted. The [Live2D guide](docs/live2d.md) explains compatibility errors.
-8. Keep the SDK folder in place. ARIA remembers its location for this computer;
-   if you move it later, choose the new folder in ARIA before loading Live2D again.
-
-Start with one avatar. Test head motion, blinking and mouth movement before adding
-props or effects. A model can only perform movements that its artwork and rig support.
+The runtime is included; model artwork is not. Your model author's terms still
+apply. See [Live2D import](docs/live2d.md) for compatibility limits and
+[runtime distribution notes](docs/purism-core.md) for licensing and provenance.
 
 ### 4. Choose how you want to control it
 
@@ -290,14 +252,14 @@ Export important configurations before experimenting with a new Alpha build.
 Open **Settings → Streamer.bot → Set up Streamer.bot…** to generate actions for
 commands, rewards and events. Choose a saved avatar action, copy the C# connector
 and follow the [step-by-step setup guide](docs/streamerbot.md). Both apps run on the
-same computer; generated code excludes your API key. Included in v0.36 Alpha.
+same computer; generated code excludes your API key. Included in v0.37 Alpha.
 
 ## Help when something goes wrong
 
 | Problem | First things to check |
 | --- | --- |
 | ARIA will not open | Extract the complete package, use the right CPU/OS download and update the graphics driver. Read the error dialog and your installation guide. |
-| Clicking an online link does nothing | Install this updated v0.36 Alpha build. Set a default browser in your operating system and check behind ARIA for a new tab or window. If it still fails, use **Diagnostics / export logs** and describe the link you clicked. |
+| Clicking an online link does nothing | Install this updated v0.37 Alpha build. Set a default browser in your operating system and check behind ARIA for a new tab or window. If it still fails, use **Diagnostics / export logs** and describe the link you clicked. |
 | A phone connects but no motion arrives | Check **Tracking live**, the current phone IP, matching ports, Local Network permission, firewall and same LAN. Demo motion does not confirm a phone connection. |
 | Cannot bind the tracking port | Close the other application receiving on that port, or configure matching custom ports on both sides. |
 | Mouth feels slow | Try **Quick** or **Instant** mouth response; check the tracking-rate and packet-age graphs. Phone sampling and network delay remain outside that setting. |

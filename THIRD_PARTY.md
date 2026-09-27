@@ -38,8 +38,8 @@ Exact Rust versions are recorded in Cargo.lock:
 | clap | CLI parsing | https://github.com/clap-rs/clap |
 | anyhow | Error reporting | https://github.com/dtolnay/anyhow |
 | tempfile | Isolated test files | https://github.com/Stebalien/tempfile |
-| libloading | Explicit native Cubism Core loading | https://github.com/nagisa/rust_libloading |
-| postcard | Compact private Cubism host protocol | https://github.com/jamesmunns/postcard |
+| libloading | Other optional native integrations | https://github.com/nagisa/rust_libloading |
+| postcard | Compact private model host protocol | https://github.com/jamesmunns/postcard |
 | bytemuck | Typed GPU buffer serialization | https://github.com/Lokathor/bytemuck |
 | windows-rs | Windows process and DXGI memory counters | https://github.com/microsoft/windows-rs |
 | Spout2 SDK protocol | Sender registry, synchronization and D3D11On12 sharing conventions | https://github.com/leadedge/Spout2 |
@@ -81,20 +81,18 @@ The packet fixture is a synthetic example of that public schema, not a recording
 of a person's face. This app is not affiliated with or endorsed by DenchiSoft,
 Live2D Inc., or Apple.
 
-No Cubism Core DLL, Cubism framework source, Live2D sample model, or third-party
-avatar art is redistributed in this copy. The Rust ABI wrapper and WGSL renderer
-implement the documented [Cubism Core API](https://cubism.live2d.com/sdk-doc/reference/NativeCoreAPIReference_en_r14.pdf).
-Core is loaded from the user's official Native SDK installation and remains under
-the [Live2D Proprietary Software License](https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html).
-ARIA's MIT license does not grant rights to redistribute Core or model assets.
-The independent Rust particle solver interprets exported `physics3.json` settings;
-see Live2D's [physics integration documentation](https://docs.live2d.com/en/cubism-sdk-manual/physics/).
-It does not embed Cubism Framework or reproduce VTube Studio's proprietary solver
-and tracking filters. Profile imports read the user's adjacent data files locally.
-Consult Live2D's [SDK licensing information](https://www.live2d.com/en/sdk/license/)
-before distributing a product with their runtime. The portable ZIP includes no Core DLL.
-Live2D's release guidance specifically covers VTuber tracking software as an
-Expandable Application; the repository is not evidence of publication-license approval.
+ARIA now compiles the MIT-licensed [Purism Core](https://github.com/SakuraMotion/PurismCore)
+implementation into its native runtime. See [the full MIT notice](docs/licenses/purism-core.txt)
+and [pinned source provenance](crates/aria-live2d/vendor/purism-core/README.md).
+That notice is included with every packaged application under `docs/licenses/`.
+No proprietary Cubism Core binary, Cubism Framework implementation, Live2D sample
+model or third-party avatar export is part of this runtime migration.
+
+The Rust renderer, motion parser and particle solver are independently implemented.
+Imported avatar/model artwork, textures, animations and editor exports retain
+their authors' terms. ARIA's MIT license does not grant rights to those assets.
+Live2D and Cubism are trademarks of Live2D Inc.; compatibility references do not
+imply affiliation or endorsement. See [distribution scope](docs/purism-core.md).
 
 ## Optional webcam runtime (v0.24)
 

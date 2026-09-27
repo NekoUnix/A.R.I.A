@@ -78,7 +78,6 @@ struct Settings {
     fps: u32,
     zoom: f32,
     always_on_top: bool,
-    cubism_core: String,
     saved_rigs: BTreeMap<String, SavedRig>,
     model_preferences: BTreeMap<String, ModelPreferences>,
     outputs: Option<OutputSettings>,
@@ -109,7 +108,6 @@ impl Default for Settings {
             fps: 60,
             zoom: 1.0,
             always_on_top: false,
-            cubism_core: String::new(),
             saved_rigs: BTreeMap::new(),
             model_preferences: BTreeMap::new(),
             outputs: None,
@@ -373,9 +371,6 @@ impl AriaApp {
             preferences.restore(&mut settings);
         }
         settings.fps = settings.fps.clamp(15, 120);
-        if let Some(path) = std::env::var_os("ARIA_CUBISM_CORE") {
-            settings.cubism_core = path.to_string_lossy().into_owned();
-        }
         settings.zoom = if settings.zoom.is_finite() {
             settings.zoom.clamp(0.5, 1.5)
         } else {
@@ -1730,23 +1725,9 @@ impl AriaApp {
                                 }
                             });
                         }
-                        ui.collapsing("Cubism runtime", |ui| {
-                            crate::help::label(ui, "Core library path", "runtime");
-                            ui.small(aria_live2d::platform::guidance());
-                            ui.small("Runs in a separate Cubism runtime process.");
-                            ui.hyperlink_to(
-                                aria_live2d::platform::download_label(),
-                                aria_live2d::platform::DOWNLOAD_URL,
-                            );
-                            ui.small(aria_live2d::platform::download_hint());
-                            ui.text_edit_singleline(&mut self.settings.cubism_core);
-                            if ui.button("Choose Core library…").clicked()
-                                && let Some(path) = rfd::FileDialog::new()
-                                    .add_filter("Cubism Core", aria_live2d::platform::extensions())
-                                    .pick_file()
-                            {
-                                self.settings.cubism_core = path.display().to_string();
-                            }
+                        ui.collapsing("Avatar runtime", |ui| {
+                            crate::help::label(ui, "Purism Core · built in", "runtime");
+                            ui.small("Ready to use. No separate runtime download is needed.");
                         });
                     }
                 }
@@ -2036,7 +2017,6 @@ impl AriaApp {
         let progress = self.pending_image.as_ref().map(|p| p.job.progress());
         match self.importer.show(
             ctx,
-            &mut self.settings.cubism_core,
             progress,
             self.pending_vrm.as_ref().map(|p| p.progress()),
         ) {
@@ -2290,7 +2270,7 @@ impl AriaApp {
         );
         self.items.models.sync(
             self.render_state.as_ref(),
-            Path::new(self.settings.cubism_core.trim()),
+            Path::new(""),
             &self.input_monitor.saved.config,
         );
 
@@ -2307,7 +2287,7 @@ impl AriaApp {
             && self.effects.update(
                 ctx,
                 self.render_state.as_ref(),
-                Path::new(self.settings.cubism_core.trim()),
+                Path::new(""),
                 (
                     &self.input_monitor.saved.effects,
                     self.input_monitor.saved.config.pose.mode,
@@ -2334,16 +2314,11 @@ impl AriaApp {
     fn import_model(&mut self, files: aria_model::ModelFiles) -> anyhow::Result<()> {
         self.pending_image = None;
         self.pending_vrm = None;
-        anyhow::ensure!(
-            !self.settings.cubism_core.trim().is_empty(),
-            "First choose the official native Cubism Core library under Cubism runtime setup."
-        );
         let state = self
             .render_state
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("GPU renderer is unavailable"))?;
-        let mut avatar =
-            crate::live2d::Avatar::load(state, Path::new(self.settings.cubism_core.trim()), files)?;
+        let mut avatar = crate::live2d::Avatar::load(state, Path::new(""), files)?;
         self.prepare_profile_import();
         self.remember_current_rig();
         self.input_monitor = InputMonitor::new(
@@ -3436,7 +3411,7 @@ impl eframe::App for AriaApp {
                 );
                 self.items.models.sync(
                     self.render_state.as_ref(),
-                    Path::new(self.settings.cubism_core.trim()),
+                    Path::new(""),
                     &self.input_monitor.saved.config,
                 );
                 self.items.refresh(
@@ -3736,7 +3711,7 @@ impl eframe::App for AriaApp {
                 ctx,
                 &self.scene(),
                 self.render_state.as_ref(),
-                Path::new(&self.settings.cubism_core),
+                Path::new(""),
                 (self.live2d.as_ref(), dt),
                 &self.input_monitor.saved,
             );
@@ -4068,6 +4043,15 @@ fn help_image_memory(ui: &mut egui::Ui, budget: &mut u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn legacy_core_path_is_ignored_and_not_saved_again() {
+        let settings: Settings =
+            serde_json::from_str(r#"{"cubism_core":"untrusted.dll","fps":30}"#).unwrap();
+        assert_eq!(settings.fps, 30);
+        let saved = serde_json::to_value(settings).unwrap();
+        assert!(saved.get("cubism_core").is_none());
+    }
+
     #[test]
     fn camera_preferences_follow_avatars_while_theme_stays_global() {
         let mut settings: Settings = serde_json::from_str("{}").unwrap();

@@ -12,6 +12,30 @@ parameter mapping is hardcoded to the development test model.
 Open **Inspector → Avatar → Physics**, or **Avatar & appearance → Configure avatar
 physics…**. Expand **Overall physics** and enable **Enable avatar physics**.
 
+Choose **Bouncy · expressive rebound** for longer hair/accessory swings and a
+clearer return bounce. It is the default for new avatars. **Natural** settles more
+quickly; **Authored · legacy ARIA** preserves the previous ARIA solver for existing
+saved profiles. Old profiles are not silently retuned: select Bouncy and save to
+opt in. These styles apply to Live2D-compatible particle rigs; VRM/GLB use their
+separate spring-bone solver.
+
+Natural and Bouncy run at 120 fixed steps per second, interpolate tracking inputs
+and rendered outputs, and express velocity/damping in time-based units. Bouncy
+reduces the authored mobility's damping exponent to retain more momentum; it
+does not simply multiply the final deformation. Both modes preserve chain lengths,
+bound velocity after tracking jumps, dissipate energy even at maximum inertia,
+and settle on resume after a pause longer than 250 ms. Scratch buffers are reused
+instead of cloning parameter vectors at every substep.
+
+Start with Bouncy, Strength 1, Inertia 1 and Response speed 1. Lower Inertia for
+shorter swings; reduce Strength if hair or clothing hits its authored limits.
+Individual group controls let you keep lively hair while calming clothing or ears.
+Switching styles settles the simulation so old momentum cannot kick the new solver.
+
+These are independent ARIA improvements, not Cubism Framework code or VTube Studio
+physics modes. Tests compare against ARIA's previous solver; no universal visual
+superiority over Live2D's implementation is claimed.
+
 | Control | Effect |
 | --- | --- |
 | Strength | Scales the output amplitude; 1 keeps the imported amplitude |
@@ -69,7 +93,7 @@ Each avatar independently retains:
 Switching avatars remembers the outgoing profile and restores the incoming one.
 The tracking connection is disconnected on a switch; click Connect tracking to
 connect to that model's saved sender. The OBS window open/closed state is a session
-action. The installed Cubism DLL path is a machine setting.
+action. Purism Core is built in; old Cubism DLL paths are ignored.
 
 Identity uses the `.moc3` contents, so relocating the same export keeps its profile.
 A different moc gets a different profile. PNG/JPEG puppets use their own decoded

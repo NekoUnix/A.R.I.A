@@ -8,6 +8,7 @@ import plistlib
 import platform
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import time
@@ -48,6 +49,7 @@ def contents(stage):
                 copy(notice, dest / notice.relative_to(folder))
         index.append(f'{package["name"]} {package["version"]}: {package.get("license")} {package.get("repository")}')
     (stage / "dependency-licenses/INDEX.txt").write_text("\n".join(index) + "\n")
+    run(sys.executable, str(ROOT / "scripts/check-runtime-distribution.py"), "--stage", str(stage))
 
 def archive_tree(source, path):
     with tarfile.open(path, "w:gz") as archive:

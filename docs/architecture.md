@@ -150,7 +150,7 @@ iPhone VTS UDP / ARIA JSON / deterministic demo
                     |
        rig bindings -> breath -> physics
                     |
-       aria-live2d -> Cubism Core DLL
+       aria-live2d -> statically linked MIT Purism Core
           owned animated mesh data
                     |
           wgpu ArtMesh renderer
@@ -165,7 +165,7 @@ iPhone VTS UDP / ARIA JSON / deterministic demo
 | `aria-core` | Tracking/parameter data, calibration, VTS profiles, response/ranges, stepping, fixed-step physics3, serializable configurations and poses |
 | `aria-tracking` | VTS/ARIA decoding, subscription renewal, bounded latest-frame snapshot |
 | `aria-model` | Bounded model3 parsing, path validation, moc-to-manifest discovery, ordered textures and optional rig sidecars |
-| `aria-live2d` | Private Core ABI, explicit DLL loading, aligned memory ownership, consistency/version checks, parameter metadata and owned mesh output |
+| `aria-live2d` | Private Purism Core C ABI, static linking, aligned memory ownership, consistency/version checks, parameter metadata and owned mesh output |
 | `aria-desktop` | Rig UI/import, wgpu renderer/PNG export, process metrics/priority/hotkeys, three output viewports and Spout GPU senders |
 | `aria-cli` | Simulator, JSON sender, headless receiver and manifest inspector |
 
@@ -287,7 +287,7 @@ extension point, not a general plugin host.
 The desktop uses eframe 0.36.2 and wgpu 30.0.1, resolved in Cargo.lock. Windows defaults
 to Direct3D 12; `WGPU_BACKEND=vulkan` selects the available fallback. The toolchain
 is pinned in rust-toolchain.toml. CI builds on Windows MSVC without proprietary
-assets. Core and model files are supplied at runtime under their separate licenses.
+assets. Purism Core is bundled under MIT; user-supplied model files retain their own licenses.
 
 ## Input configuration and pose boundary
 

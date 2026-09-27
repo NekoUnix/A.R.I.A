@@ -1,6 +1,6 @@
 # Native platforms and the Cubism runtime host
 
-The v0.36.0-alpha.1 release provides Windows x64, Linux x64, macOS Apple Silicon
+The v0.37.0-alpha.1 release provides Windows x64, Linux x64, macOS Apple Silicon
 and macOS Intel packages. Every app and archive is labeled **Alpha**. Native builds
 and protocol tests do not replace acceptance testing on physical GPUs, webcams,
 phones and every model. See [validation](validation.md) for the tested boundary.
@@ -10,7 +10,7 @@ phones and every model. See [validation](validation.md) for the tested boundary.
 | Component | Windows | Linux | macOS |
 | --- | --- | --- | --- |
 | Main Rust application | DX12; Vulkan fallback | Vulkan | Metal |
-| Cubism Core runtime process | Official x64 `.dll` | Official x86_64 `.so` | Official `.dylib`/`.bundle` matching the Mac |
+| Purism Core runtime process | Built in | Built in | Built in |
 | PNG/GIF and VRM | Implemented and Windows-tested | Native implementation; hardware validation pending | Native implementation; hardware validation pending |
 | iPhone/JSON tracking protocol | Tested with local sender | Portable UDP implementation | Portable UDP implementation |
 | Native OBS canvas output | Spout2 GPU sharing | ARIA Canvas plugin; asynchronous readback/shared memory | Syphon Metal GPU sharing |
@@ -23,7 +23,7 @@ phones and every model. See [validation](validation.md) for the tested boundary.
 ```mermaid
 flowchart LR
     UI[ARIA: tracking, settings and GPU rendering] -->|Bounded parameter messages| Host[Cubism runtime process]
-    Host --> Core[Official native Core library]
+    Host --> Core[Bundled MIT Purism Core]
     Host -->|Mesh positions and appearance| UI
 ```
 
@@ -39,36 +39,15 @@ timeout; a stopped frame has a two-second timeout. On failure the worker is stop
 and the affected model reports an error. Reload the model to start a new worker.
 Unloading a model closes its worker and owned resources.
 
-This process container provides crash isolation, **not Windows emulation or an OS
-security sandbox**. A Windows DLL cannot run natively in a Linux/macOS process or
-become portable by placing it in a folder or ordinary container. Use the matching
-Core library from the official SDK. Wine-based Windows DLL execution is not included.
-Only load a trusted official SDK; the child runs under your user account.
+Workers provide crash isolation, not an OS security sandbox. They run under
+your user account. Purism Core is built from pinned MIT source for the target
+platform; no external Core library is loaded.
 
-## Select the SDK
+## Built-in runtime
 
-In guided Live2D import choose **Cubism Core library** or **Choose extracted SDK
-folder**. ARIA finds the library for its OS and architecture. If a saved Windows
-path still points into an intact cross-platform SDK, ARIA can find its native
-sibling. A copied Windows DLL alone is insufficient.
-
-The download button opens the same official Native SDK license/download page on
-each OS, with an OS-specific label. The linked library list documents architecture
-folders. Typical SDK paths are:
-
-- Windows: `Core/dll/windows/x86_64/Live2DCubismCore.dll`
-- Linux: `Core/dll/linux/x86_64/libLive2DCubismCore.so`
-- macOS: `Core/dll/macos/libLive2DCubismCore.dylib`, or an architecture subfolder
-  in newer SDK layouts. ARIA suggests `macos/arm64` on Apple Silicon and
-  `macos/x86_64` on Intel.
-
-The newer SDK also lists experimental Linux ARM64 under
-`Core/dll/experimental/linux/ARM64`; ARIA can find that library when built for
-ARM64 Linux, but that hardware target has not been validated.
-
-Check the SDK's [official platform file list](https://github.com/Live2D/CubismNativeSamples/blob/develop/Core/README.md)
-for your download. ARIA does not bundle the proprietary library. A `.lib`/`.a`
-static archive or Android `.so` is not the desktop runtime library.
+All builds use the same vendored Purism Core revision with the v6 API. No SDK
+selection or platform-specific DLL copying is required. Old saved Core paths
+are ignored. See [runtime distribution notes](purism-core.md).
 
 ## Build on Linux or macOS
 
@@ -80,7 +59,7 @@ On Ubuntu 24.04 install native build dependencies first:
 ```sh
 sudo apt-get update
 sudo apt-get install -y build-essential cmake pkg-config libasound2-dev libudev-dev libssl-dev libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libgl1-mesa-dev
-git clone --branch v0.36.0-alpha.1 https://github.com/NekoUnix/A.R.I.A.git
+git clone --branch v0.37.0-alpha.1 https://github.com/NekoUnix/A.R.I.A.git
 cd A.R.I.A
 cargo build --locked --release --workspace
 ./target/release/aria-desktop
@@ -104,10 +83,10 @@ repository packages. Cubism Core and private avatar files are not included.
 
 | System | Artifact | Launch |
 | --- | --- | --- |
-| Windows x64 | `aria-0.36.0-alpha.1-windows-x64.zip` | Extract, run `aria-desktop.exe` |
-| Linux x64 | `aria-0.36.0-alpha.1-linux-x64.tar.gz` | Extract, run `./aria-desktop` |
-| macOS Apple Silicon | `aria-0.36.0-alpha.1-macos-arm64.zip` | Extract, open `ARIA Alpha.app` |
-| macOS Intel | `aria-0.36.0-alpha.1-macos-x64.zip` | Extract, open `ARIA Alpha.app` |
+| Windows x64 | `aria-0.37.0-alpha.1-windows-x64.zip` | Extract, run `aria-desktop.exe` |
+| Linux x64 | `aria-0.37.0-alpha.1-linux-x64.tar.gz` | Extract, run `./aria-desktop` |
+| macOS Apple Silicon | `aria-0.37.0-alpha.1-macos-arm64.zip` | Extract, open `ARIA Alpha.app` |
+| macOS Intel | `aria-0.37.0-alpha.1-macos-x64.zip` | Extract, open `ARIA Alpha.app` |
 | Fedora x64 | `aria-alpha-0.35.0.alpha.1-1.x86_64.rpm` | Install with DNF; launch ARIA Alpha |
 | Arch x64 | `aria-alpha-0.35.0alpha.1-1-x86_64.pkg.tar.zst` | Install with pacman; launch ARIA Alpha |
 

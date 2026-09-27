@@ -226,11 +226,11 @@ mod tests {
     use super::*;
     #[test]
     #[cfg(windows)]
-    #[ignore = "requires ARIA_TEST_MODEL_FOLDER, Cubism Core and DX12"]
+    #[ignore = "requires ARIA_TEST_MODEL_FOLDER and DX12; uses bundled Purism Core"]
     fn nested_model_library_renders_full_geometry() {
         let state = crate::spout::tests::gpu_state();
         let root = std::env::var_os("ARIA_TEST_MODEL_FOLDER").unwrap();
-        let core = std::env::var_os("ARIA_CUBISM_CORE").unwrap();
+        let core = std::ffi::OsString::new();
         let models = aria_model::discover_models(Path::new(&root)).unwrap();
         assert!(!models.is_empty());
         for (index, path) in models.iter().enumerate() {
@@ -281,13 +281,288 @@ mod tests {
             assert!(rgba.as_chunks::<4>().0.iter().any(|p| p[3] > 0));
         }
     }
+
+    #[test]
+    #[ignore = "requires local ARIA_TEST_MODEL_FOLDER; source artwork stays in place"]
+    fn local_model_library_expressive_physics_is_finite_and_frame_rate_independent() {
+        use aria_core::physics::{MotionStyle, PhysicsSettings};
+        let root = std::env::var_os("ARIA_TEST_MODEL_FOLDER").unwrap();
+        let models = aria_model::discover_models(Path::new(&root)).unwrap();
+        assert!(!models.is_empty());
+        let mut reports = Vec::new();
+        for path in models {
+            let files = aria_model::load_files(&path).unwrap();
+            let bytes =
+                aria_model::read_bounded(&files.moc, aria_core::asset_limits::MOC_FILE).unwrap();
+            let mut model = CubismModel::load(Path::new(""), &bytes, files.textures.len()).unwrap();
+            let Some(physics_file) = files.physics else {
+                continue;
+            };
+            let physics_bytes =
+                aria_model::read_bounded(&physics_file, aria_core::asset_limits::MODEL_JSON)
+                    .unwrap();
+            let base = model.parameters().to_vec();
+            let run = |style, fps: usize| {
+                let mut physics = Physics::load(&physics_bytes, &base).unwrap();
+                physics.configure(&PhysicsSettings {
+                    motion_style: style,
+                    ..Default::default()
+                });
+                let mut values = base.clone();
+                let inputs: std::collections::BTreeSet<_> = physics
+                    .groups()
+                    .into_iter()
+                    .flat_map(|g| g.inputs)
+                    .collect();
+                let driven: Vec<_> = base
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, p)| inputs.contains(&p.id) && !physics.controls_parameter(*i))
+                    .map(|(i, _)| i)
+                    .collect();
+                let outputs: Vec<_> = (0..base.len())
+                    .filter(|i| physics.controls_parameter(*i))
+                    .collect();
+                physics.update(&mut values, 1.0 / 120.0);
+                let mut trace = Vec::new();
+                for frame in 1..=fps * 4 {
+                    for (p, original) in values.iter_mut().zip(&base) {
+                        p.value = original.default;
+                    }
+                    let t = frame as f32 / fps as f32;
+                    for &i in &driven {
+                        let p = &mut values[i];
+                        p.value = (p.default + (t * 3.0).sin() * (p.max - p.min) * 0.15)
+                            .clamp(p.min, p.max);
+                    }
+                    physics.update(&mut values, 1.0 / fps as f32);
+                    assert!(
+                        values
+                            .iter()
+                            .all(|p| p.value.is_finite() && p.value >= p.min && p.value <= p.max)
+                    );
+                    if frame % (fps / 30) == 0 {
+                        trace.extend(outputs.iter().map(|&i| {
+                            (values[i].value - base[i].default)
+                                / (base[i].max - base[i].min).max(1e-6)
+                        }));
+                    }
+                }
+                (trace, values, physics.group_count(), outputs.len())
+            };
+            let (reference, final_values, groups, outputs) = run(MotionStyle::Bouncy, 120);
+            let mut errors = Vec::new();
+            for fps in [30, 60] {
+                let (trace, _, _, _) = run(MotionStyle::Bouncy, fps);
+                assert_eq!(reference.len(), trace.len());
+                let rms = (reference
+                    .iter()
+                    .zip(&trace)
+                    .map(|(a, b)| (a - b).powi(2))
+                    .sum::<f32>()
+                    / reference.len().max(1) as f32)
+                    .sqrt();
+                assert!(
+                    rms < 0.05,
+                    "Physics diverged with FPS in {}: {rms}",
+                    files.source.file_name().unwrap().to_string_lossy()
+                );
+                errors.push(rms);
+            }
+            for style in [MotionStyle::Authored, MotionStyle::Natural] {
+                let (_, values, _, _) = run(style, 60);
+                for p in values {
+                    model.set_parameter(&p.id, p.value);
+                }
+                model.update().unwrap();
+            }
+            for p in final_values {
+                model.set_parameter(&p.id, p.value);
+            }
+            model.update().unwrap();
+            assert!(
+                model
+                    .drawables
+                    .iter()
+                    .flat_map(|d| &d.positions)
+                    .flatten()
+                    .all(|v| v.is_finite())
+            );
+            println!(
+                "{}: {groups} groups, {outputs} outputs; normalized 30/60-vs-120 FPS RMS {errors:?}",
+                files.source.file_name().unwrap().to_string_lossy()
+            );
+            reports.push(serde_json::json!({"model":files.source.file_name().unwrap().to_string_lossy(),"groups":groups,"outputs":outputs,"normalized_rms_30_60_vs_120":errors}));
+        }
+        assert!(!reports.is_empty(), "No physics exports found");
+        if let Some(path) = std::env::var_os("ARIA_TEST_PHYSICS_REPORT") {
+            std::fs::write(path, serde_json::to_vec_pretty(&reports).unwrap()).unwrap();
+        }
+    }
+    #[test]
+    #[ignore = "requires ARIA_TEST_MODEL_FOLDER and ARIA_CUBISM_HOST; private assets stay in place"]
+    fn local_model_library_stress_physics_and_hosted_geometry() {
+        use aria_core::physics::{GroupSettings, MotionStyle, PhysicsSettings};
+        let root = std::env::var_os("ARIA_TEST_MODEL_FOLDER").unwrap();
+        let host = std::env::var_os("ARIA_CUBISM_HOST").unwrap();
+        let mut reports = Vec::new();
+        for path in aria_model::discover_models(Path::new(&root)).unwrap() {
+            let files = aria_model::load_files(&path).unwrap();
+            let Some(physics_file) = &files.physics else {
+                continue;
+            };
+            let bytes =
+                aria_model::read_bounded(&files.moc, aria_core::asset_limits::MOC_FILE).unwrap();
+            let physics_bytes =
+                aria_model::read_bounded(physics_file, aria_core::asset_limits::MODEL_JSON)
+                    .unwrap();
+            let mut native =
+                CubismModel::load(Path::new(""), &bytes, files.textures.len()).unwrap();
+            let mut hosted = aria_live2d::host::HostedModel::load_with_host(
+                Path::new(&host),
+                Path::new(""),
+                &files.moc,
+                files.textures.len(),
+            )
+            .unwrap();
+            let base = native.parameters().to_vec();
+            let mut durations = Vec::new();
+            let mut samples = 0;
+            for style in [
+                MotionStyle::Authored,
+                MotionStyle::Natural,
+                MotionStyle::Bouncy,
+            ] {
+                let mut physics = Physics::load(&physics_bytes, &base).unwrap();
+                let groups = physics.groups();
+                let inputs: std::collections::BTreeSet<_> =
+                    groups.iter().flat_map(|g| &g.inputs).collect();
+                let mut values = base.clone();
+                for frame in 0..2400 {
+                    let regime = (frame / 200) % 4;
+                    let tuning = match regime {
+                        1 => GroupSettings {
+                            strength: 2.0,
+                            inertia: 2.0,
+                            response: 2.0,
+                            gravity: 2.0,
+                            wind: 1.0,
+                            enabled: true,
+                        },
+                        2 => GroupSettings {
+                            strength: 0.0,
+                            inertia: 0.0,
+                            response: 0.25,
+                            gravity: 0.0,
+                            wind: -1.0,
+                            enabled: true,
+                        },
+                        _ => GroupSettings::default(),
+                    };
+                    let settings = PhysicsSettings {
+                        motion_style: if regime == 3 && frame % 2 == 0 {
+                            MotionStyle::Natural
+                        } else {
+                            style
+                        },
+                        enabled: frame % 137 != 0,
+                        strength: tuning.strength,
+                        inertia: tuning.inertia,
+                        response: tuning.response,
+                        gravity: tuning.gravity,
+                        wind: tuning.wind,
+                        groups: groups
+                            .iter()
+                            .enumerate()
+                            .map(|(i, g)| {
+                                (
+                                    g.id.clone(),
+                                    GroupSettings {
+                                        enabled: (frame + i) % 101 != 0,
+                                        ..tuning
+                                    },
+                                )
+                            })
+                            .collect(),
+                    };
+                    settings.validate().unwrap();
+                    physics.configure(&settings);
+                    for (i, p) in values.iter_mut().enumerate() {
+                        p.value = p.default;
+                        if inputs.contains(&p.id) && !physics.controls_parameter(i) {
+                            p.value = match frame % 4 {
+                                0 => p.min,
+                                1 => p.max,
+                                _ => (p.default
+                                    + (frame as f32 * 0.17 + i as f32).sin()
+                                        * (p.max - p.min)
+                                        * 0.4)
+                                    .clamp(p.min, p.max),
+                            };
+                        }
+                    }
+                    let dt = if frame % 113 == 0 {
+                        2.0
+                    } else {
+                        [
+                            1.0 / 15.0,
+                            1.0 / 30.0,
+                            1.0 / 60.0,
+                            1.0 / 120.0,
+                            1.0 / 144.0,
+                            1.0 / 240.0,
+                        ][frame % 6]
+                    };
+                    let start = std::time::Instant::now();
+                    physics.update(&mut values, dt);
+                    durations.push(start.elapsed().as_secs_f64() * 1000.0);
+                    assert!(
+                        values
+                            .iter()
+                            .all(|p| p.value.is_finite() && (p.min..=p.max).contains(&p.value)),
+                        "Invalid output in {} frame {frame}",
+                        path.display()
+                    );
+                    if frame % 30 == 0 || frame == 2399 {
+                        for p in &values {
+                            native.set_parameter(&p.id, p.value);
+                            hosted.set_parameter(&p.id, p.value);
+                        }
+                        native.update().unwrap();
+                        hosted.update().unwrap();
+                        assert_eq!(native.drawables.len(), hosted.drawables.len());
+                        for (a, b) in native.drawables.iter().zip(&hosted.drawables) {
+                            assert_eq!(a.positions, b.positions);
+                            assert_eq!(a.opacity, b.opacity);
+                            assert_eq!(a.order, b.order);
+                            assert!(a.positions.iter().flatten().all(|v| v.is_finite()));
+                        }
+                        samples += 1;
+                    }
+                }
+            }
+            durations.sort_by(f64::total_cmp);
+            let p99 = durations[durations.len() * 99 / 100];
+            println!(
+                "{}: {} stress frames, {samples} identical native/host geometry samples; debug physics p99 {p99:.3} ms",
+                path.display(),
+                durations.len()
+            );
+            reports.push(serde_json::json!({"model":path.file_name().unwrap().to_string_lossy(), "frames":durations.len(), "geometry_samples":samples, "physics_debug_p99_ms":p99}));
+        }
+        assert!(!reports.is_empty());
+        if let Some(path) = std::env::var_os("ARIA_TEST_STRESS_REPORT") {
+            std::fs::write(path, serde_json::to_vec_pretty(&reports).unwrap()).unwrap();
+        }
+    }
+
     #[test]
     #[cfg(windows)]
-    #[ignore = "requires local Cubism Core, test model and DX12 GPU"]
+    #[ignore = "requires local test model and DX12 GPU"]
     fn frozen_avatar_skips_core_and_gpu_work_but_edits_refresh_it() {
         let state = crate::spout::tests::gpu_state();
         let path = std::env::var_os("ARIA_TEST_MODEL").unwrap();
-        let core = std::env::var_os("ARIA_CUBISM_CORE").unwrap();
+        let core = std::ffi::OsString::new();
         let mut avatar = Avatar::load(
             &state,
             Path::new(&core),
@@ -389,12 +664,12 @@ mod tests {
         assert_eq!(avatar.renderer.vertex_staging_capacity(), before);
     }
     #[test]
-    #[ignore = "requires local ARIA_CUBISM_CORE and ARIA_TEST_MODEL with expression files"]
+    #[ignore = "requires local ARIA_TEST_MODEL with expression files"]
     fn local_expressions_toggle_native_avatar_and_restore_after_release() {
         use crate::{hotkeys::Action, input_monitor::InputMonitor};
         use aria_core::{MappingSettings, movement::SavedRig, shortcuts::Shortcut};
         let path = std::env::var_os("ARIA_TEST_MODEL").unwrap();
-        let core = std::env::var_os("ARIA_CUBISM_CORE").unwrap();
+        let core = std::ffi::OsString::new();
         let files = aria_model::load_files(Path::new(&path)).unwrap();
         assert!(!files.expressions.is_empty());
         let mut model = CubismModel::load(
@@ -519,10 +794,10 @@ mod tests {
         );
     }
     #[test]
-    #[ignore = "requires local ARIA_CUBISM_CORE and ARIA_TEST_MODEL with VTS and physics sidecars"]
+    #[ignore = "requires local ARIA_TEST_MODEL with VTS and physics sidecars"]
     fn local_rig_assignments_and_physics_drive_native_parameters() {
         let path = std::env::var_os("ARIA_TEST_MODEL").unwrap();
-        let core = std::env::var_os("ARIA_CUBISM_CORE").unwrap();
+        let core = std::ffi::OsString::new();
         let files = aria_model::load_files(Path::new(&path)).unwrap();
         let mut model = CubismModel::load(
             Path::new(&core),
