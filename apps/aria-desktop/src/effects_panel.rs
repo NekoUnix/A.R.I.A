@@ -32,6 +32,7 @@ impl Effects {
                 self.editor = Some(Box::new(crate::effect_editor::Editor::new(Design {
                     id,
                     name: format!("Throw {id}"),
+                    momentum_bounce: true,
                     deformation: aria_core::deformation::Settings::gentle(),
                     fade_out: Some(0.7),
                     ..Default::default()
@@ -65,6 +66,7 @@ impl Effects {
             self.simulation.particles.len(),
             aria_core::effects::MAX_ACTIVE
         ));
+        ui.small(format!("{} objects queued", self.simulation.queued_count()));
         if let Some(message) = &self.message {
             ui.colored_label(theme::mint(), message);
         }

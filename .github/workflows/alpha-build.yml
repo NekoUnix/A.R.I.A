@@ -35,6 +35,9 @@ jobs:
     timeout-minutes: 60
     env:
       MACOSX_DEPLOYMENT_TARGET: '13.0'
+      ARIA_TWITCH_CLIENT_ID: ${{ vars.ARIA_TWITCH_CLIENT_ID }}
+      ARIA_GOOGLE_CLIENT_ID: ${{ vars.ARIA_GOOGLE_CLIENT_ID }}
+      ARIA_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.ARIA_GOOGLE_DESKTOP_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

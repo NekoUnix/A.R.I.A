@@ -1,5 +1,29 @@
 # ARIA changelog
 
+## Unreleased
+
+- Connect opt-in live Twitch/YouTube !commands to event rules, with bounded queues, backlog suppression, duplicate protection and pending-command moderation removal.
+
+- Extend gesture rules with up to eight All/Any input conditions, upper/lower thresholds and release hysteresis; clear partial holds after disabling or editing a rule.
+
+- Add a Windows Studio browser window using WebView2, with tabs, local bookmarks/history, per-tab zoom and prompted downloads. Isolate the browser in a separate ARIA process with no web-to-avatar command bridge.
+- Add persistent music output selection, including installed virtual audio devices, with explicit missing-device errors and release of the previous endpoint on route changes.
+
+- Add named scene layouts with smooth movement transitions, capture/update controls, stable IDs and hotkey/action integration. Preserve output resolution and sender state when recalling a layout.
+- Add streaming local music, multiple playlists, seek/pause/next, repeat/shuffle, missing-file repair and speech ducking. Keep file opening off the UI thread and prevent cancelled loads from restarting playback.
+- Add opt-in stream-event mappings, simulation, duplicate protection and cooldowns; add avatar-scoped held-input gestures. Direct native provider event subscriptions remain pending.
+- Extend action graphs with per-run variables, arithmetic, tracking-input reads and stop conditions.
+- Add Bouncy/Natural styles for VRM and GLB spring chains; retain legacy behavior on older profiles. Add gradient panel shading and popup shadows while retaining solid/high-contrast themes.
+- Add an experimental bounded VMC/OSC head and facial-input receiver. Full-body/finger retargeting is not yet implemented.
+
+- Introduce a studio workspace with persistent navigation, Home readiness links, contextual controls, searchable tools, focus mode, local notes and a session timer. Preserve existing profiles, saved themes and output settings.
+- Add Neko Studio as the default palette, with pink, mint and lavender colors, workspace tabs, an icon sidebar and an original studio backdrop. Retain Midnight Studio and existing saved palettes.
+- Replace end-user chat API setup with website Connect buttons. Supply publisher-owned OAuth registrations during release builds; clearly identify builds where sign-in is not yet enabled.
+- Add timed and parallel action recipes with explicit target assignment.
+- Add optional momentum-based throw rebounds and authored/left/right/alternating/random directions. Preserve legacy motion for existing designs.
+- Prevent emission timing debt from producing catch-up barrages after the particle budget is full; show remaining queued objects.
+- Document the reference-app audit and [workspace guide](docs/studio-workspace.md).
+
 ## 0.37.0-alpha.1 — 2026-09-27
 
 - Bundle pinned MIT Purism Core 1.1.0 so compatible models load without downloading

@@ -129,6 +129,39 @@ pub fn presets() -> Vec<NamedTheme> {
                 ..light
             },
         ),
+        (
+            "Midnight Studio",
+            Palette {
+                glass: false,
+                background: [13, 16, 31],
+                panel: [19, 23, 43],
+                card: [27, 32, 54],
+                border: [55, 63, 92],
+                accent: [178, 161, 255],
+                text: [240, 242, 255],
+                muted: [172, 184, 207],
+                teal: [104, 217, 208],
+                ..Palette::DARK
+            },
+        ),
+        (
+            "Neko Studio",
+            Palette {
+                glass: true,
+                background: [16, 12, 30],
+                panel: [27, 19, 46],
+                card: [39, 29, 60],
+                border: [83, 61, 109],
+                accent: [244, 169, 216],
+                text: [252, 243, 252],
+                muted: [198, 181, 212],
+                teal: [133, 232, 209],
+                purple: [190, 168, 248],
+                pink: [244, 169, 216],
+                orange: [247, 199, 168],
+                light: false,
+            },
+        ),
     ]
     .into_iter()
     .map(|(name, colors)| NamedTheme {
@@ -146,7 +179,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            active: presets().remove(6),
+            active: presets().remove(9),
             custom: vec![],
         }
     }
@@ -227,7 +260,7 @@ impl Settings {
                 }
             }
             if ui.button("Reset").clicked() {
-                self.active = presets().remove(6);
+                self.active = Self::default().active;
             }
         });
         if let Some(e) = ui
@@ -333,6 +366,50 @@ pub fn workspace_backdrop(ui: &egui::Ui) {
     ui.painter().add(egui::Shape::mesh(mesh));
 }
 
+/// Lightweight editor scenery; the avatar output keeps its own background setting.
+pub fn studio_stage(painter: &egui::Painter, rect: egui::Rect) {
+    let mut mesh = egui::Mesh::default();
+    for (pos, color) in [
+        (rect.left_top(), bg().lerp_to_gamma(purple(), 0.17)),
+        (rect.right_top(), bg().lerp_to_gamma(pink(), 0.12)),
+        (rect.right_bottom(), bg().lerp_to_gamma(teal(), 0.13)),
+        (rect.left_bottom(), bg().lerp_to_gamma(pink(), 0.19)),
+    ] {
+        mesh.colored_vertex(pos, color);
+    }
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    painter.add(egui::Shape::mesh(mesh));
+    let frame = rect.shrink2(egui::vec2(rect.width() * 0.075, 25.));
+    for (width, alpha) in [(10., 0.035), (5., 0.07), (1., 0.45)] {
+        painter.rect_stroke(
+            frame,
+            22,
+            Stroke::new(width, pink().gamma_multiply(alpha)),
+            egui::StrokeKind::Inside,
+        );
+    }
+    // A few static pendant lights recall a cozy studio without obscuring the avatar.
+    for (fraction, length) in [(0.17, 30.), (0.32, 18.), (0.71, 23.), (0.84, 38.)] {
+        let x = frame.left() + frame.width() * fraction;
+        let point = egui::pos2(x, frame.top() + length);
+        painter.line_segment(
+            [egui::pos2(x, frame.top()), point],
+            Stroke::new(1., muted().gamma_multiply(0.25)),
+        );
+        painter.circle_filled(point, 7., pink().gamma_multiply(0.08));
+        painter.line_segment(
+            [point - egui::vec2(4., 0.), point + egui::vec2(4., 0.)],
+            Stroke::new(1., pink().gamma_multiply(0.65)),
+        );
+        painter.line_segment(
+            [point - egui::vec2(0., 4.), point + egui::vec2(0., 4.)],
+            Stroke::new(1., pink().gamma_multiply(0.65)),
+        );
+    }
+    painter.rect_stroke(rect, 12, surface_edge(), egui::StrokeKind::Inside);
+}
+
 /// Solid category accents; no blur, extra render targets or animated decoration.
 pub fn accent(title: &str) -> Color32 {
     let title = title.to_ascii_lowercase();
@@ -434,8 +511,18 @@ pub fn apply(ctx: &egui::Context, palette: Palette) {
     style.visuals.widgets.active.bg_stroke = Stroke::new(1.0, mint());
     style.visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, border());
     style.animation_time = 0.0;
-    style.visuals.window_shadow = egui::epaint::Shadow::NONE;
-    style.visuals.popup_shadow = egui::epaint::Shadow::NONE;
+    let shadow = if palette.glass {
+        egui::epaint::Shadow {
+            offset: [0, 6],
+            blur: 20,
+            spread: 0,
+            color: Color32::from_black_alpha(65),
+        }
+    } else {
+        egui::epaint::Shadow::NONE
+    };
+    style.visuals.window_shadow = shadow;
+    style.visuals.popup_shadow = shadow;
     style.spacing.item_spacing = egui::vec2(7.0, 6.0);
     style.spacing.button_padding = egui::vec2(9.0, 5.0);
     style.spacing.interact_size.y = 26.0;
@@ -455,10 +542,70 @@ pub fn apply(ctx: &egui::Context, palette: Palette) {
 }
 
 pub fn card(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
-    glass_card().show(ui, |ui| {
-        ui.set_width(ui.available_width());
-        add(ui);
-    });
+    let layer = ui.painter().add(egui::Shape::Noop);
+    let response = glass_card()
+        .fill(if glass_enabled() {
+            Color32::TRANSPARENT
+        } else {
+            card_color()
+        })
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            add(ui);
+        });
+    if glass_enabled() {
+        let rect = response.response.rect;
+        ui.painter().set(layer, rounded_gradient(rect));
+        let inset = rect.shrink(12.);
+        ui.painter().line_segment(
+            [
+                egui::pos2(inset.left(), rect.top() + 1.),
+                egui::pos2(inset.right(), rect.top() + 1.),
+            ],
+            Stroke::new(1., text_color().gamma_multiply(0.10)),
+        );
+    }
+}
+
+fn rounded_gradient(rect: egui::Rect) -> egui::Shape {
+    let mut mesh = egui::Mesh::default();
+    let radius = 14_f32.min(rect.width() / 2.).min(rect.height() / 2.);
+    let top = card_color().lerp_to_gamma(purple(), 0.10);
+    let bottom = card_color().lerp_to_gamma(bg(), 0.24);
+    let color = |p: egui::Pos2| {
+        top.lerp_to_gamma(
+            bottom,
+            ((p.y - rect.top()) / rect.height().max(1.)).clamp(0., 1.),
+        )
+    };
+    mesh.colored_vertex(rect.center(), color(rect.center()));
+    let corners = [
+        (
+            rect.right_top() + egui::vec2(-radius, radius),
+            -std::f32::consts::FRAC_PI_2,
+        ),
+        (rect.right_bottom() + egui::vec2(-radius, -radius), 0.),
+        (
+            rect.left_bottom() + egui::vec2(radius, -radius),
+            std::f32::consts::FRAC_PI_2,
+        ),
+        (
+            rect.left_top() + egui::vec2(radius, radius),
+            std::f32::consts::PI,
+        ),
+    ];
+    for (center, start) in corners {
+        for step in 0..=8 {
+            let angle = start + step as f32 / 8. * std::f32::consts::FRAC_PI_2;
+            let p = center + egui::vec2(angle.cos(), angle.sin()) * radius;
+            mesh.colored_vertex(p, color(p));
+        }
+    }
+    let count = mesh.vertices.len() as u32;
+    for i in 1..count {
+        mesh.add_triangle(0, i, if i + 1 == count { 1 } else { i + 1 });
+    }
+    egui::Shape::mesh(mesh)
 }
 
 pub fn sync(ctx: &egui::Context, palette: Palette) {

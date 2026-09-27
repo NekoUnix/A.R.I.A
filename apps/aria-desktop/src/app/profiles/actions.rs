@@ -126,6 +126,24 @@ impl AriaApp {
                 }
             }
         }
+        choices.extend(self.settings.scenes.scenes.iter().map(|s| Choice {
+            target: Target::Scene(s.id),
+            label: format!("Scene · {}", s.name),
+            shortcut: None,
+            legacy_label: None,
+        }));
+        for (command, label) in [
+            (crate::actions::MusicCommand::PlayPause, "Play / pause"),
+            (crate::actions::MusicCommand::Stop, "Stop"),
+            (crate::actions::MusicCommand::Next, "Next track"),
+        ] {
+            choices.push(Choice {
+                target: Target::Music(command),
+                label: format!("Music · {label}"),
+                shortcut: None,
+                legacy_label: None,
+            });
+        }
         choices.extend(self.settings.actions.graphs.iter().map(|g| Choice {
             target: Target::Graph(g.id),
             label: format!("Action graph · {}", g.name),
@@ -408,12 +426,25 @@ impl AriaApp {
                         Step::Action { target: None, .. } => {
                             Err(anyhow::anyhow!("No target selected"))
                         }
+                        Step::Variable { .. } | Step::Input { .. } | Step::Require { .. } => {
+                            match run.compute(&step, &self.live_inputs) {
+                                Ok(false) => {
+                                    run.finish_without_actions(now);
+                                    Ok(true)
+                                }
+                                Ok(true) => Ok(true),
+                                Err(error) => Err(error),
+                            }
+                        }
                         _ => Ok(true),
                     };
                     match result {
                         Ok(true) => {
                             run.complete(id, now);
                             progressed = true;
+                            if run.finished() {
+                                break;
+                            }
                         }
                         Ok(false) if !run.wait_expired(id, now) => {}
                         result => {
@@ -465,6 +496,24 @@ impl AriaApp {
         mode: Mode,
         origin: Option<u64>,
     ) -> Result<bool> {
+        if let Target::Scene(id) = target {
+            ensure!(mode == Mode::Toggle, "Scene recall is a one-shot action");
+            self.scenes
+                .recall(*id, &self.settings.scenes, &mut self.outputs)?;
+            self.input_monitor.save_requested = true;
+            return Ok(true);
+        }
+        if let Target::Music(command) = target {
+            ensure!(mode == Mode::Toggle, "Music controls are one-shot actions");
+            match command {
+                crate::actions::MusicCommand::PlayPause => {
+                    self.music.toggle(&self.settings.music)?
+                }
+                crate::actions::MusicCommand::Stop => self.music.stop(),
+                crate::actions::MusicCommand::Next => self.music.next(&self.settings.music)?,
+            }
+            return Ok(true);
+        }
         let Target::Avatar { profile, command } = target else {
             anyhow::bail!("Graphs cannot call other graphs");
         };

@@ -264,10 +264,14 @@ impl Service {
     }
     fn secret(&self) -> Result<String> {
         if self.account.sealed_secret.is_empty() {
-            return Ok(String::new());
+            return Ok(
+                super::publisher::google_desktop_secret(&self.account.client_id)
+                    .unwrap_or("")
+                    .into(),
+            );
         }
         String::from_utf8(auth::unseal(&self.account.sealed_secret)?)
-            .context("Google desktop client secret is invalid. Import the credentials JSON again.")
+            .context("Saved sign-in configuration could not be unlocked. Use an official ARIA build and sign in again.")
     }
     fn refresh(&self, client: &Client, session: &mut Session, force: bool) -> Result<()> {
         if !force && session.expires_at > auth::now() + 90 {
@@ -598,7 +602,7 @@ impl Service {
                             });
                         }
                         if let Some(change) = protocol::irc(line) {
-                            self.edit(|f| protocol::apply(&mut f.messages, change));
+                            self.edit(|f| f.apply_change(change, true));
                         }
                     }
                 }
@@ -743,7 +747,7 @@ impl Service {
                 f.connected = true;
                 f.status = "Live · YouTube chat".into();
                 for change in changes {
-                    protocol::apply(&mut f.messages, change);
+                    f.apply_change(change, !page.is_empty());
                 }
             });
             if value["offlineAt"].is_string() {

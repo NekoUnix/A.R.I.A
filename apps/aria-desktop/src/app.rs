@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod performance_tests;
 mod profiles;
+mod studio;
 
 use crate::avatar::{self, Sprite};
 use crate::input_monitor::{InputMonitor, Tab};
@@ -30,6 +31,7 @@ enum Source {
     Vts,
     IFacial,
     Json,
+    Vmc,
     Local,
     Webcam,
     Rtx,
@@ -55,6 +57,9 @@ impl Default for IFacialSettings {
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 struct Settings {
+    events: crate::event_rules::Settings,
+    music: crate::music::Settings,
+    scenes: crate::scenes::Library,
     actions: crate::actions::Library,
     profiles: profiles::Workspace,
     ifacial: IFacialSettings,
@@ -87,6 +92,9 @@ struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            music: Default::default(),
+            events: Default::default(),
+            scenes: Default::default(),
             profiles: Default::default(),
             actions: Default::default(),
             ifacial: IFacialSettings::default(),
@@ -240,8 +248,13 @@ impl ModelPreferences {
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Hash, Debug)]
 enum ControlsPage {
-    Profiles,
     #[default]
+    Home,
+    Stage,
+    Profiles,
+    Scenes,
+    Music,
+    Events,
     Avatar,
     Tracking,
     Output,
@@ -257,6 +270,10 @@ struct PendingImage {
     job: crate::media::LoadJob,
 }
 pub struct AriaApp {
+    events: crate::event_rules::Events,
+    music: crate::music::Music,
+    scenes: crate::scenes::Scenes,
+    studio: studio::Studio,
     profiles: profiles::Sessions,
     support_refresh: Instant,
     support: crate::diagnostics::Panel,
@@ -363,6 +380,7 @@ impl AriaApp {
                 .unwrap_or_default()
         };
         theme::apply(&cc.egui_ctx, settings.theme.active.colors);
+        settings.music.sanitize();
         settings.migrate_vts_pitch();
         settings.migrate_vts_roll();
         if settings.profiles.entries.is_empty()
@@ -395,6 +413,14 @@ impl AriaApp {
             OutputSettings::from_legacy(settings.background, settings.zoom, settings.always_on_top)
         }));
         let app = Self {
+            music: Default::default(),
+            scenes: Default::default(),
+            events: Default::default(),
+            studio: studio::Studio::new(if crate::smoke_mode() {
+                None
+            } else {
+                cc.storage
+            }),
             profiles: Default::default(),
             support_refresh: Instant::now(),
             support: Default::default(),
@@ -487,6 +513,9 @@ impl AriaApp {
             app.begin_vrm(&path);
         }
         app.queue_profile_restore();
+        if !app.settings.profiles.entries.is_empty() || std::env::args_os().nth(1).is_some() {
+            app.controls_page = ControlsPage::Stage;
+        }
         #[cfg(feature = "screenshots")]
         let app = {
             let mut app = app;
@@ -511,6 +540,9 @@ impl AriaApp {
                     app.begin_vrm(Path::new(&path));
                 }
                 let scenario = std::env::var("ARIA_SMOKE_SCENARIO").unwrap_or_default();
+                if scenario.starts_with("studio-") {
+                    app.input_monitor.vts.open = false;
+                }
                 if ["vts-import", "vts-repair"].contains(&scenario.as_str())
                     && let Some(avatar) = &mut app.live2d
                 {
@@ -521,7 +553,7 @@ impl AriaApp {
                     );
                 }
 
-                app.controls_page = if scenario.starts_with("chat") {
+                app.controls_page = if scenario.starts_with("chat") || scenario == "studio-chat" {
                     ControlsPage::Chat
                 } else if scenario.starts_with("output") || scenario == "capture-controls" {
                     ControlsPage::Output
@@ -530,9 +562,50 @@ impl AriaApp {
                     "inputs" | "microphone" | "vts" | "responsiveness" | "performance-details"
                 ) {
                     ControlsPage::Tracking
+                } else if scenario == "studio-music" {
+                    ControlsPage::Music
+                } else if scenario == "studio-scenes" {
+                    let _ = app
+                        .settings
+                        .scenes
+                        .capture("Chat".into(), app.outputs.snapshot());
+                    let mut game = app.outputs.snapshot();
+                    game.canvases[0].position = [0.3, 0.2];
+                    game.canvases[0].zoom = 0.6;
+                    let _ = app.settings.scenes.capture("Game".into(), game);
+                    ControlsPage::Scenes
+                } else if scenario == "studio-events" {
+                    app.settings.events.rules.push(crate::event_rules::Rule {
+                        below: false,
+                        conditions: vec![],
+                        any_condition: false,
+                        release_margin: 0.,
+                        id: 1,
+                        name: "Cheer reaction · preview".into(),
+                        enabled: false,
+                        kind: crate::event_rules::Kind::Bits,
+                        match_name: String::new(),
+                        minimum: 100,
+                        cooldown: 2.,
+                        target: Some(crate::actions::Target::Music(
+                            crate::actions::MusicCommand::Next,
+                        )),
+                        profile: app.profiles.current,
+                        threshold: 0.5,
+                        hold_seconds: 0.3,
+                    });
+                    ControlsPage::Events
+                } else if scenario == "studio-home" {
+                    ControlsPage::Home
                 } else {
-                    ControlsPage::Avatar
+                    ControlsPage::Stage
                 };
+                if scenario == "studio-focus" {
+                    app.studio.focus = true;
+                }
+                if scenario == "studio-search" {
+                    app.studio.search_open = true;
+                }
                 if scenario == "streamerbot-setup" {
                     app.controls_page = ControlsPage::Settings;
                     app.streamerbot.open = true;
@@ -911,6 +984,15 @@ impl AriaApp {
         use anyhow::ensure;
         let parameters = self.current_parameters();
         match action {
+            Action::StreamEvent { event } => {
+                for target in self.events.receive(
+                    &event,
+                    &self.settings.events,
+                    self.started.elapsed().as_secs_f64(),
+                )? {
+                    self.trigger_target(target);
+                }
+            }
             Action::Workspace { .. } => {
                 anyhow::bail!("Workspace actions require a result ticket")
             }
@@ -1125,6 +1207,7 @@ impl AriaApp {
             protocol: match self.settings.source {
                 Source::Vts => Protocol::VTubeStudio,
                 Source::IFacial => Protocol::IFacialMocap,
+                Source::Vmc => Protocol::Vmc,
                 _ => Protocol::AriaJson,
             },
         };
@@ -1146,63 +1229,33 @@ impl AriaApp {
         }
     }
 
-    fn controls_header(&mut self, ui: &mut egui::Ui) {
-        section(ui, "WORKSPACE");
-        ui.label(RichText::new("EDITING AVATAR").small().color(mint()));
-        ui.horizontal(|ui| {
-            let name = self.profile_name();
-            ui.add_sized(
-                [(ui.available_width() - 112.0).max(60.0), 26.0],
-                egui::Label::new(RichText::new(&name).strong()).truncate(),
-            )
-            .on_hover_text(name);
-            if crate::help::control(ui, "profiles", |ui| ui.small_button("Save profile")).clicked()
-            {
-                self.input_monitor.save_requested = true;
-                self.input_monitor.message =
-                    Some("This model's complete profile was saved locally.".into());
-            }
-        });
-        theme::caption(
-            ui,
-            if matches!(
-                self.controls_page,
-                ControlsPage::Profiles
-                    | ControlsPage::Output
-                    | ControlsPage::Chat
-                    | ControlsPage::Settings
-            ) {
-                "Shared workspace settings."
-            } else {
-                "Avatar & tracking controls edit this stage only."
-            },
-        );
-        let loaded = self.profiles.parked.len() + usize::from(self.profiles.current.is_some());
-        if ui
-            .add_sized(
-                [ui.available_width(), 30.],
-                egui::Button::new(format!("Profiles · {loaded} loaded"))
-                    .selected(self.controls_page == ControlsPage::Profiles),
-            )
-            .clicked()
-        {
-            self.controls_page = ControlsPage::Profiles;
-        }
-        ui.add_space(5.);
-        theme::segments(
-            ui,
-            &mut self.controls_page,
-            &[
-                (ControlsPage::Avatar, "Avatar"),
-                (ControlsPage::Tracking, "Tracking"),
-                (ControlsPage::Output, "Output"),
-                (ControlsPage::Chat, "Chat"),
-                (ControlsPage::Settings, "Settings"),
-            ],
-        );
-        ui.add_space(4.0);
-    }
     fn controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if self.controls_page == ControlsPage::Events {
+            let choices = self.action_choices();
+            let (dirty, targets) = self.events.ui(
+                ui,
+                &mut self.settings.events,
+                &choices,
+                self.profiles.current,
+                &self.live_inputs,
+                self.started.elapsed().as_secs_f64(),
+            );
+            self.input_monitor.save_requested |= dirty;
+            for target in targets {
+                self.trigger_target(target);
+            }
+            return;
+        }
+        if self.controls_page == ControlsPage::Music {
+            self.input_monitor.save_requested |= self.music.ui(ui, &mut self.settings.music);
+            return;
+        }
+        if self.controls_page == ControlsPage::Scenes {
+            self.input_monitor.save_requested |=
+                self.scenes
+                    .ui(ui, &mut self.settings.scenes, &mut self.outputs);
+            return;
+        }
         if self.controls_page == ControlsPage::Profiles {
             self.profiles_ui(ui);
             return;
@@ -1261,10 +1314,16 @@ impl AriaApp {
                             Source::Vts => "iPhone · VTube Studio",
                             Source::IFacial => "iPhone · iFacialMocap",
                             Source::Json => "External tool · ARIA JSON",
+                            Source::Vmc => "VMC / OSC · face & head",
                             Source::Local => "Microphone / manual · no tracker",
                         })
                         .width(230.0)
                         .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut self.settings.source,
+                                Source::Vmc,
+                                "VMC / OSC · face & head",
+                            );
                             ui.selectable_value(
                                 &mut self.settings.source,
                                 Source::Webcam,
@@ -1302,6 +1361,9 @@ impl AriaApp {
                             );
                         });
                     if old != self.settings.source {
+                        if self.settings.source == Source::Vmc {
+                            self.settings.listen_port = 39539;
+                        }
                         self.input_monitor.vbridger_runtime.reset();
                         self.camera.stop();
                         self.receiver = None;
@@ -1312,6 +1374,9 @@ impl AriaApp {
                     }
                     if self.settings.source == Source::Json {
                         crate::help::label(ui, "Packet format & external tools", "json");
+                    }
+                    if self.settings.source == Source::Vmc {
+                        ui.label("VMC face/head input · experimental. Configure the sender to send OSC to this PC on port 39539. ARKit blendshape names are supported; full-body and finger retargeting are not yet available.");
                     }
                     if self.settings.source == Source::IFacial {
                         crate::help::label(
@@ -1337,7 +1402,7 @@ impl AriaApp {
                         if self.settings.source == Source::Local
                             && ui.button("Configure microphone").clicked()
                         {
-                            self.input_monitor.tab = Tab::Microphone;
+                            self.show_tool(Tab::Microphone);
                         }
                         ui.label(
                             RichText::new(if self.settings.source == Source::Local {
@@ -1624,10 +1689,10 @@ impl AriaApp {
                             ));
                         }
                         if ui.button("Artwork, actions & transitions").clicked() {
-                            self.input_monitor.tab = Tab::Images;
+                            self.show_tool(Tab::Images);
                         }
                         if ui.button("Microphone & talking").clicked() {
-                            self.input_monitor.tab = Tab::Microphone;
+                            self.show_tool(Tab::Microphone);
                         }
                         if ui.button("Choose talking image…").clicked() {
                             self.load_image(ctx, true);
@@ -1686,16 +1751,16 @@ impl AriaApp {
                             ));
                         }
                         if ui.button("Tracking & parameters").clicked() {
-                            self.input_monitor.tab = Tab::Inputs;
+                            self.show_tool(Tab::Inputs);
                         }
                         if ui.button("Avatar physics").clicked() {
-                            self.input_monitor.tab = Tab::Physics;
+                            self.show_tool(Tab::Physics);
                         }
                         if ui.button("Import VTube Studio · Experimental…").clicked() {
                             self.input_monitor.vts.open = true;
                         }
                         if ui.button("Expressions & hotkeys").clicked() {
-                            self.input_monitor.tab = Tab::Expressions;
+                            self.show_tool(Tab::Expressions);
                         }
                         if let Some(avatar) = &self.live2d {
                             ui.collapsing("Model details", |ui| {
@@ -3020,6 +3085,20 @@ impl eframe::App for AriaApp {
         self.finish_profile_load();
         self.input_monitor.save_requested |=
             self.chats.update(&mut self.settings.chat_accounts, ctx);
+        let chat_events = self
+            .chats
+            .take_commands(self.settings.events.enabled && self.settings.events.chat_commands);
+        for event in chat_events {
+            if let Ok(targets) = self.events.receive(
+                &event,
+                &self.settings.events,
+                self.started.elapsed().as_secs_f64(),
+            ) {
+                for target in targets {
+                    self.trigger_target(target);
+                }
+            }
+        }
         #[cfg(feature = "screenshots")]
         if crate::smoke_mode()
             && std::env::var("ARIA_SMOKE_SCENARIO").is_ok_and(|s| s.starts_with("chat"))
@@ -3097,6 +3176,26 @@ impl eframe::App for AriaApp {
             };
         }
         self.sample_profile_tracking(dt);
+        let speaking = (self.settings.source != Source::Demo && self.params.0[5] > 0.18)
+            || (self.input_monitor.saved.microphone.enabled && self.microphone.raw_db > -35.);
+        self.music.update(&self.settings.music, speaking, dt);
+        let live_gestures = self.settings.source == Source::Local
+            || (self.settings.source != Source::Demo
+                && self
+                    .raw
+                    .as_ref()
+                    .is_some_and(|f| f.face_found && f.is_finite()));
+        for target in self.events.gestures(
+            &self.settings.events,
+            self.profiles.current,
+            &self.live_inputs,
+            dt,
+            self.started.elapsed().as_secs_f64(),
+            live_gestures,
+        ) {
+            self.trigger_target(target);
+        }
+        self.input_monitor.save_requested |= self.scenes.update(&mut self.outputs, dt);
         if self.settings.effect_api.enabled
             && self.api_snapshot_at.elapsed() >= Duration::from_millis(100)
         {
@@ -3211,105 +3310,63 @@ impl eframe::App for AriaApp {
             self.metrics
                 .record_graphs(&self.snapshot, self.render_fps, frame.info().cpu_usage);
         }
+        self.studio_shortcuts(ctx);
         theme::workspace_backdrop(root_ui);
         egui::Panel::top("header")
-            .frame(theme::chrome(10.0))
-            .show(root_ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new("A.R.I.A.")
-                            .size(21.0)
-                            .strong()
-                            .color(theme::text_color()),
-                    );
-                    ui.label(RichText::new("AVATAR STUDIO").size(12.0).color(muted()));
-                    crate::help::button(ui, "welcome");
-                    if ui.small_button("Help & documentation").clicked() {
-                        crate::help::open(ctx, "welcome", String::new());
-                    }
-                    if ui.small_button("Diagnostics / export logs").clicked() {
-                        self.support.open = true;
-                    }
-                    crate::actions::hotkey_button(ui);
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(
-                            RichText::new(format!(
-                                "v{} · {}",
-                                env!("CARGO_PKG_VERSION"),
-                                if cfg!(windows) {
-                                    "WINDOWS"
-                                } else if cfg!(target_os = "macos") {
-                                    "MACOS"
-                                } else {
-                                    "LINUX"
-                                }
-                            ))
-                            .small()
-                            .color(muted()),
-                        );
-                    });
-                });
-            });
+            .frame(theme::chrome(12.0))
+            .show(root_ui, |ui| self.studio_header(ui));
         egui::Panel::bottom("status")
-            .frame(theme::chrome(10.0))
-            .show(root_ui, |ui| {
-                ui.horizontal(|ui| {
-                    let width =
-                        (ui.available_width() - crate::socials::WIDTH - crate::bread::WIDTH - 8.0)
-                            .max(400.0);
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(width, 57.0),
-                        egui::Layout::left_to_right(egui::Align::Center),
-                        |ui| {
-                            ui.set_min_width(width);
-                            self.metrics.footer(ui, &self.gpu);
-                        },
-                    );
-                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                        if crate::bread::button(ui) {
-                            self.effects.throw_bread(ctx, self.render_state.as_ref());
-                        }
-                        crate::socials::show(ui);
-                    });
-                });
-            });
-        egui::Panel::left("controls")
-            .exact_size(302.0)
-            .resizable(false)
-            .frame(theme::chrome(12.0))
-            .show(root_ui, |ui| {
-                self.controls_header(ui);
-                let area = egui::ScrollArea::vertical()
-                    .id_salt(("controls-scroll-v17", self.controls_page));
-                area.show(ui, |ui| self.controls(ui, ctx));
-            });
-        egui::Panel::right("diagnostics")
-            .default_size(380.0)
-            .size_range(330.0..=700.0)
-            .resizable(true)
-            .frame(theme::chrome(12.0))
-            .show(root_ui, |ui| {
-                section(ui, "INSPECTOR");
-                ui.label(RichText::new(self.profile_name()).strong().color(mint()));
-                let kind = self.avatar_kind();
-                self.input_monitor.navigation(ui, kind);
-                let area = egui::ScrollArea::vertical()
-                    .id_salt(("inspector-scroll-v17", self.input_monitor.tab));
-                #[cfg(feature = "screenshots")]
-                let area = if crate::smoke_mode()
-                    && std::env::var_os("ARIA_SMOKE_IMAGE_CONTROLS").is_some()
-                {
-                    area.vertical_scroll_offset(650.0)
+            .frame(theme::chrome(8.0))
+            .show(root_ui, |ui| self.studio_footer(ui));
+        if !self.studio.focus {
+            let rail_width = if ctx.content_rect().width() < 1100. {
+                166.
+            } else {
+                184.
+            };
+            egui::Panel::left("studio-navigation")
+                .exact_size(rail_width)
+                .resizable(false)
+                .frame(theme::chrome(12.0))
+                .show(root_ui, |ui| self.studio_rail(ui));
+            if !matches!(
+                self.controls_page,
+                ControlsPage::Profiles
+                    | ControlsPage::Music
+                    | ControlsPage::Scenes
+                    | ControlsPage::Events
+            ) {
+                let home = self.controls_page == ControlsPage::Home;
+                let max_width = (ctx.content_rect().width() - rail_width - 340.).clamp(300., 600.);
+                egui::Panel::right(if home {
+                    "studio-utilities"
                 } else {
-                    area
-                };
-                area.show(ui, |ui| self.diagnostics(ui));
-            });
+                    "studio-inspector"
+                })
+                .default_size(if home { 300. } else { 370. })
+                .size_range(300.0..=max_width)
+                .resizable(true)
+                .frame(theme::chrome(14.0))
+                .show(root_ui, |ui| self.studio_context(ui, ctx));
+            }
+        }
         let output_settings = self.outputs.snapshot();
         let stage_output = output_settings.canvas(output_settings.selected);
         egui::CentralPanel::default()
             .frame(Frame::new().fill(egui::Color32::TRANSPARENT).inner_margin(14.0))
             .show(root_ui, |ui| {
+                if self.controls_page == ControlsPage::Home {
+                    self.studio_home(ui);
+                    return;
+                }
+                if matches!(self.controls_page, ControlsPage::Music | ControlsPage::Scenes | ControlsPage::Events) {
+                    egui::ScrollArea::vertical().id_salt("studio-production").show(ui, |ui| self.controls(ui, ctx));
+                    return;
+                }
+                if self.controls_page == ControlsPage::Profiles {
+                    egui::ScrollArea::vertical().id_salt("studio-library").show(ui, |ui| self.profiles_ui(ui));
+                    return;
+                }
                 self.profile_tabs(ui);
                 if self.profiles.current.is_none() && !self.settings.profiles.entries.is_empty() {
                     ui.centered_and_justified(|ui| { ui.label("No avatars loaded. Open Profiles and check an avatar, or choose + Add avatar."); });
@@ -3321,7 +3378,7 @@ impl eframe::App for AriaApp {
                     crate::help::button(ui, "stage");
                     ui.label(
                         RichText::new(if self.live2d.is_some() {
-                            "LIVE2D / CUBISM"
+                            "LIVE2D · PURISM CORE"
                         } else if let Some(avatar) = &self.vrm {
                             if avatar.asset.summary.is_glb() { "VRC / GLB HUMANOID" } else { "VRM / 3D HUMANOID" }
                         } else if self.idle.is_some() {
@@ -3471,18 +3528,7 @@ impl eframe::App for AriaApp {
                     },
                 );
                 if stage_output.background == Background::Studio {
-                    for i in 1..12 {
-                        let x = rect.left() + rect.width() * i as f32 / 12.0;
-                        painter.line_segment(
-                            [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
-                            Stroke::new(1.0_f32, theme::border().gamma_multiply(0.35)),
-                        );
-                    }
-                    painter.circle_stroke(
-                        rect.center(),
-                        rect.width().min(rect.height()) * 0.38,
-                        Stroke::new(1.0_f32, theme::border().gamma_multiply(0.6)),
-                    );
+                    theme::studio_stage(&painter, rect);
                 }
                 scene.paint_subject(&painter, rect, self.settings.zoom);
                 if selecting_layers && let Some(avatar) = &self.live2d {
@@ -3558,6 +3604,7 @@ impl eframe::App for AriaApp {
                 Err(e) => format!("PNG export failed: {e:#}"),
             });
         }
+        self.studio_search(ctx);
         self.model_window(ctx);
         self.bare_import_window(ctx);
         self.import_tour(ctx);
@@ -3747,6 +3794,7 @@ impl eframe::App for AriaApp {
                 self.remember_current_rig();
                 if let Some(storage) = frame.storage_mut() {
                     eframe::set_value(storage, "aria-settings-v1", &self.settings);
+                    self.studio.save(storage);
                     storage.flush();
                 }
             }

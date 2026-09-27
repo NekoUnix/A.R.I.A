@@ -4,14 +4,14 @@
 
 ![Glass Light workspace with the supplied avatars](images/glass-light-v33.png)
 
-Open **Settings → Appearance & themes**. The eight built-in palettes are **Glass
-Dark, Glass Light, Sonoma Dark, Sonoma Light, Sakura, Ocean, Forest and High Contrast**. Selection applies
+Open **Settings → Appearance & themes**. The ten built-in palettes are **Glass
+Dark, Glass Light, Sonoma Dark, Sonoma Light, Sakura, Ocean, Forest, High Contrast, Midnight Studio and Neko Studio**. Selection applies
 immediately to panels, cards, controls, headings, help and category accents.
 Themes are global UI preferences; switching avatars preserves the selected palette.
 
-Glass Dark is the default for a new installation. Existing installations keep
-their saved colors. **Glass surfaces** adds translucent cards, a quiet color wash,
-rounded controls and fine edges. The current profile has an accent outline and
+Neko Studio is the default for a new installation, combining pink highlights, mint accents and lavender shadows. Existing installations keep
+their saved colors. **Glass surfaces** adds translucent chrome, gradient-shaded cards,
+subtle top-edge highlights, popup shadows, rounded controls and fine edges. The current profile has an accent outline and
 an **Editing** label so you can identify the avatar you are changing.
 
 Turn **Glass surfaces** off for solid panels, cards and an opaque workspace background. The stage controls keep the chosen theme colors instead of exposing a black window clear color. **High Contrast** always
@@ -27,7 +27,7 @@ main text against cards falls below a 4.5:1 ratio; check other surfaces visually
 **Save custom theme** creates or updates the named reusable palette. Up to 32 custom
 palettes are stored. Unsaved edits to the active palette also persist through normal
 app autosave. **Delete saved custom theme** removes its saved library entry without
-surprising you by changing the active colors. **Reset** selects Glass Dark.
+surprising you by changing the active colors. **Reset** selects Neko Studio.
 
 **Export theme…** writes a small JSON file. **Import theme…** applies a validated
 theme; save it to add it to the picker. Names contain 1–64 characters; files are

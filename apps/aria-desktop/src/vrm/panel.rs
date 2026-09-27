@@ -259,7 +259,7 @@ pub fn physics(ui: &mut egui::Ui, avatar: &mut Avatar, monitor: &mut InputMonito
     let secondary = &mut monitor.saved.config.vrm.secondary;
     theme::caption(
         ui,
-        "Medium is the starting setting for every VRM / GLB avatar. Hair, tails, ears and clothing follow tracking and idle motion. Changes save automatically with this avatar; Save profile and movement presets keep them too.",
+        "New VRM / GLB avatars use Bouncy motion. Existing avatars retain their saved behavior. Hair, tails, ears and clothing follow tracking and idle motion; settings and presets stay with this avatar.",
     );
     theme::category(
         ui,
@@ -269,6 +269,21 @@ pub fn physics(ui: &mut egui::Ui, avatar: &mut Avatar, monitor: &mut InputMonito
         |ui| {
             help::button(ui, "vrm-physics");
             ui.checkbox(&mut settings.enabled, "Enable spring bones");
+            ui.horizontal_wrapped(|ui| {
+                use aria_core::physics::MotionStyle;
+                for (value, label) in [
+                    (MotionStyle::Bouncy, "Bouncy"),
+                    (MotionStyle::Natural, "Natural"),
+                    (MotionStyle::Authored, "Legacy"),
+                ] {
+                    if ui
+                        .selectable_value(&mut secondary.motion_style, value, label)
+                        .changed()
+                    {
+                        monitor.reset_motion = true;
+                    }
+                }
+            });
             ui.horizontal_wrapped(|ui| {
             for (name, damping, swing, response) in [("Soft", 0.08, 65., 0.65), ("Medium", 0.15, 45., 1.), ("Firm", 0.35, 25., 1.5)] {
                 if ui.button(name).on_hover_text("Apply this preset to overall physics and all groups. Detection and manual roots are kept.").clicked() {

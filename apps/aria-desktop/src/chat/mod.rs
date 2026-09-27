@@ -2,6 +2,7 @@
 mod auth;
 mod network;
 mod protocol;
+mod publisher;
 use crate::{help, output::OutputWindows, theme};
 use eframe::egui::{self, Color32, RichText};
 use serde::{Deserialize, Serialize};
@@ -107,6 +108,8 @@ impl Appearance {
     }
 }
 struct Feed {
+    commands_enabled: bool,
+    pending_commands: VecDeque<(Instant, protocol::Message)>,
     messages: VecDeque<protocol::Message>,
     status: String,
     account_name: String,
@@ -119,8 +122,10 @@ struct Feed {
 impl Default for Feed {
     fn default() -> Self {
         Self {
+            commands_enabled: false,
+            pending_commands: VecDeque::new(),
             messages: VecDeque::new(),
-            status: "Not connected · configure sign-in in Streaming chat".into(),
+            status: "Not connected · connect with your website account".into(),
             account_name: String::new(),
             connected: false,
             auth_url: None,
@@ -130,13 +135,47 @@ impl Default for Feed {
         }
     }
 }
+fn action_command(text: &str) -> Option<String> {
+    let command = text.split_whitespace().next()?;
+    let name = command.strip_prefix('!')?;
+    (!name.is_empty()
+        && name.len() <= 64
+        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'))
+    .then(|| format!("!{}", name.to_ascii_lowercase()))
+}
+impl Feed {
+    fn apply_change(&mut self, change: protocol::Change, live: bool) {
+        match &change {
+            protocol::Change::Add(message) => {
+                if live
+                    && self.commands_enabled
+                    && !message.id.is_empty()
+                    && message.id.len() <= 110
+                    && action_command(&message.text).is_some()
+                    && !self.messages.iter().any(|old| old.id == message.id)
+                {
+                    if self.pending_commands.len() == 64 {
+                        self.pending_commands.pop_front();
+                    }
+                    self.pending_commands
+                        .push_back((Instant::now(), message.clone()));
+                }
+            }
+            protocol::Change::Delete(id) => self.pending_commands.retain(|(_, m)| &m.id != id),
+            protocol::Change::ClearUser(id) => {
+                self.pending_commands.retain(|(_, m)| &m.user_id != id)
+            }
+            protocol::Change::Clear => self.pending_commands.clear(),
+        }
+        protocol::apply(&mut self.messages, change);
+    }
+}
 pub struct Chats {
     feeds: [Arc<Mutex<Feed>>; 2],
     workers: [Option<network::Worker>; 2],
     open: Arc<AtomicBool>,
     hex: [String; 2],
     last_auth_url: [String; 2],
-    secret_draft: String,
     dirty: bool,
 }
 impl Default for Chats {
@@ -147,12 +186,40 @@ impl Default for Chats {
             open: Arc::new(AtomicBool::new(false)),
             hex: std::array::from_fn(|_| "#121720".into()),
             last_auth_url: [String::new(), String::new()],
-            secret_draft: String::new(),
             dirty: false,
         }
     }
 }
 impl Chats {
+    /// Drain only newly received messages, never the visible history or initial YouTube backlog.
+    pub fn take_commands(&mut self, enabled: bool) -> Vec<crate::event_rules::Event> {
+        let mut commands = Vec::new();
+        for (service, feed) in self.feeds.iter().enumerate() {
+            let mut feed = feed.lock().unwrap_or_else(|e| e.into_inner());
+            feed.commands_enabled = enabled;
+            if !enabled {
+                feed.pending_commands.clear();
+                continue;
+            }
+            for _ in 0..8 {
+                let Some((at, message)) = feed.pending_commands.pop_front() else {
+                    break;
+                };
+                if at.elapsed().as_secs_f32() > 5. {
+                    continue;
+                }
+                if let Some(name) = action_command(&message.text) {
+                    commands.push(crate::event_rules::Event {
+                        id: format!("chat-{service}-{}", message.id),
+                        kind: crate::event_rules::Kind::Command,
+                        name,
+                        amount: 1,
+                    });
+                }
+            }
+        }
+        commands
+    }
     fn stop(&mut self, index: usize, account: &Account, logout: bool) {
         let session = self.feeds[index].lock().unwrap().sealed_session.clone();
         self.workers[index] = None; // Cancel before replacing the feed; stale events cannot reach the UI.
@@ -180,14 +247,13 @@ impl Chats {
                 "Chat login currently requires Windows.".into();
             return;
         }
-        if account.client_id.trim().is_empty()
-            || account.client_id.len() > 256
-            || account.client_id.chars().any(char::is_whitespace)
-        {
-            self.feeds[index].lock().unwrap().status =
-                "Configure a valid OAuth client ID in Account setup first.".into();
-            return;
-        }
+        let mut account = match publisher::resolve(index, account) {
+            Ok(account) => account,
+            Err(error) => {
+                self.feeds[index].lock().unwrap().status = error.to_string();
+                return;
+            }
+        };
         if !account.target.trim().is_empty() {
             let result = if index == 0 {
                 protocol::channel(&account.target)
@@ -199,7 +265,6 @@ impl Chats {
                 return;
             }
         }
-        let mut account = account.clone();
         // A session-only login remains usable until Sign out or app exit.
         if !login && account.sealed_session.is_empty() {
             account.sealed_session = self.feeds[index].lock().unwrap().sealed_session.clone();
@@ -285,13 +350,17 @@ impl Chats {
                 help::label(ui,if i==0{"Channel name / Twitch URL · blank = your channel"}else{"Live video URL / ID · blank = your active broadcast"},"chat-account");
                 self.dirty|=ui.add(egui::TextEdit::singleline(&mut account.target).char_limit(512).desired_width(f32::INFINITY)).changed();
                 let busy=self.workers[i].as_ref().is_some_and(|w|!w.finished());
+                let configured=publisher::available(i,account);
+                let saved=!sealed.is_empty()||!account.sealed_session.is_empty();
+                theme::caption(ui,format!("Connect through {name}'s website. Your password stays in your browser."));
+                if !configured { theme::caption(ui,"Website sign-in is not enabled in this build yet. This is an ARIA publisher setup task; no API setup is required from you."); }
                 ui.horizontal_wrapped(|ui|{
-                    if help::control(ui,"chat-account",|ui|ui.add_enabled(!busy,egui::Button::new(format!("Sign in to {name}")))).clicked(){
-                        self.start(i,account,true,ui.ctx());self.open.store(true,Ordering::Relaxed);outputs.set_open(1,true);style.visible=true;
-                    }
-                    if ui.add_enabled(!busy&&(!sealed.is_empty()||!account.sealed_session.is_empty()),egui::Button::new("Connect")).clicked(){
+                    if help::control(ui,"chat-account",|ui|ui.add_enabled(!busy&&configured,egui::Button::new(format!("Connect {name}")))).clicked(){
                         let mut connection=account.clone();if connection.sealed_session.is_empty(){connection.sealed_session=sealed;}
-                        self.start(i,&connection,false,ui.ctx());self.open.store(true,Ordering::Relaxed);outputs.set_open(1,true);style.visible=true;
+                        self.start(i,&connection,!saved,ui.ctx());self.open.store(true,Ordering::Relaxed);outputs.set_open(1,true);style.visible=true;
+                    }
+                    if saved && ui.add_enabled(!busy&&configured,egui::Button::new("Switch account")).clicked(){
+                        self.start(i,account,true,ui.ctx());
                     }
                     if ui.add_enabled(busy,egui::Button::new("Disconnect / cancel")).clicked(){self.stop(i,account,false);}
                     if ui.button("Sign out").clicked(){account.sealed_session.clear();self.stop(i,account,true);self.dirty=true;}
@@ -300,35 +369,6 @@ impl Chats {
                 if help::control(ui,"chat-account",|ui|ui.checkbox(&mut account.remember,"Remember login")).changed(){
                     if !account.remember{account.sealed_session.clear();}self.dirty=true;
                 }
-                ui.collapsing("Account setup",|ui|{
-                    help::button(ui,"chat-account");
-                    theme::caption(ui,if i==0{"Create a Public Twitch application, then paste its client ID. ARIA requests chat read access; your password stays with Twitch."}else{"Enable YouTube Data API v3 and create a Desktop app OAuth client. Import its downloaded JSON below. Add your Google account as a test user while the consent screen is in Testing."});
-                    let link=if i==0{"https://dev.twitch.tv/console/apps"}else{"https://console.cloud.google.com/apis/credentials"};
-                    ui.hyperlink_to("Open developer console ↗",link);
-                    help::label(ui,"OAuth client ID","chat-account");
-                    if ui.add_enabled(!busy,egui::TextEdit::singleline(&mut account.client_id).char_limit(256).desired_width(f32::INFINITY)).changed(){
-                        account.sealed_session.clear();account.sealed_secret.clear();self.stop(i,account,true);self.dirty=true;
-                    }
-                    if i==1 {
-                        if ui.add_enabled(!busy,egui::Button::new("Import Google Desktop credentials JSON…")).clicked()
-                            && let Some(path)=rfd::FileDialog::new().add_filter("Google OAuth client JSON",&["json"]).pick_file(){
-                            match import_google(&path){
-                                Ok((id,secret))=>{account.client_id=id;account.sealed_secret=secret;account.sealed_session.clear();self.stop(i,account,true);self.dirty=true;}
-                                Err(error)=>self.feeds[i].lock().unwrap().status=error.to_string(),
-                            }
-                        }
-                        if !account.sealed_secret.is_empty(){theme::caption(ui,"Desktop client secret protected by Windows.");}
-                        ui.collapsing("Enter Desktop client secret manually",|ui|{
-                            ui.add(egui::TextEdit::singleline(&mut self.secret_draft).password(true).char_limit(512));
-                            if ui.add_enabled(!busy&&!self.secret_draft.is_empty(),egui::Button::new("Protect and save secret")).clicked(){
-                                match auth::seal(self.secret_draft.as_bytes()){
-                                    Ok(value)=>{account.sealed_secret=value;self.secret_draft.clear();self.dirty=true;}
-                                    Err(error)=>self.feeds[i].lock().unwrap().status=error.to_string(),
-                                }
-                            }
-                        });
-                    }
-                });
                 egui::CollapsingHeader::new("Transparency & colors").open(crate::smoke_mode().then_some(true)).show(ui,|ui|{
                     help::button(ui,"chat-style");
                     help::label(ui,"Whole chat opacity","chat-style");
@@ -576,34 +616,60 @@ impl Chats {
         ctx.data_mut(|d| d.insert_temp(key, (phase + 1, Instant::now())));
     }
 }
-fn import_google(path: &std::path::Path) -> anyhow::Result<(String, String)> {
-    use anyhow::{Context, bail};
-    use std::io::Read;
-    let mut bytes = Vec::new();
-    std::fs::File::open(path)?
-        .take(65_537)
-        .read_to_end(&mut bytes)?;
-    if bytes.len() > 65_536 {
-        bail!("OAuth credentials JSON must be smaller than 64 KiB.");
-    }
-    let value: serde_json::Value =
-        serde_json::from_slice(&bytes).context("Invalid credentials JSON.")?;
-    let installed = value
-        .get("installed")
-        .context("Choose Google OAuth credentials of type Desktop app, not Web application.")?;
-    let id = installed["client_id"]
-        .as_str()
-        .filter(|v| v.ends_with(".apps.googleusercontent.com") && v.len() <= 256)
-        .context("Desktop client ID is missing or invalid.")?;
-    let secret = installed["client_secret"]
-        .as_str()
-        .filter(|v| !v.is_empty() && v.len() <= 512)
-        .context("Desktop client secret is missing.")?;
-    Ok((id.into(), auth::seal(secret.as_bytes())?))
-}
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn commands_are_opt_in_live_bounded_and_removed_by_moderation() {
+        use super::*;
+        let mut chats = Chats::default();
+        let message = |id: &str, text: &str| protocol::Message {
+            id: id.into(),
+            user_id: "viewer".into(),
+            author: "Viewer".into(),
+            text: text.into(),
+            color: None,
+        };
+        chats.feeds[0]
+            .lock()
+            .unwrap()
+            .apply_change(protocol::Change::Add(message("old", "!bonk")), true);
+        assert!(chats.take_commands(true).is_empty());
+        {
+            let mut feed = chats.feeds[0].lock().unwrap();
+            feed.apply_change(protocol::Change::Add(message("backlog", "!bonk")), false);
+            feed.apply_change(
+                protocol::Change::Add(message("live", "!BONK ignored arguments")),
+                true,
+            );
+            feed.apply_change(
+                protocol::Change::Add(message("live", "!BONK ignored arguments")),
+                true,
+            );
+            feed.apply_change(protocol::Change::Add(message("delete", "!bonk")), true);
+            feed.apply_change(protocol::Change::Delete("delete".into()), true);
+        }
+        let commands = chats.take_commands(true);
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0].name, "!bonk");
+        assert_eq!(commands[0].id, "chat-0-live");
+        assert!(action_command("hello !bonk").is_none());
+        assert!(action_command("!run.exe").is_none());
+        assert!(action_command("!foo;shutdown").is_none());
+        {
+            let mut feed = chats.feeds[0].lock().unwrap();
+            for n in 0..100 {
+                feed.apply_change(
+                    protocol::Change::Add(message(&format!("flood{n}"), "!bonk")),
+                    true,
+                );
+            }
+            assert_eq!(feed.pending_commands.len(), 64);
+        }
+        assert_eq!(chats.take_commands(true).len(), 8);
+        assert!(chats.take_commands(false).is_empty());
+        assert!(chats.take_commands(true).is_empty());
+    }
     use super::*;
     #[test]
     fn appearance_is_bounded_and_old_profiles_get_defaults() {

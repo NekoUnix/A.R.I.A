@@ -16,6 +16,12 @@ required third-party tracking app or runtime are supplied separately.
 
 ## What's new
 
+**In development:** the [Studio workspace](docs/studio-workspace.md) adds a
+Stella-inspired layout with Neko pink, mint and lavender colors, searchable tools,
+session notes/timer, action recipes and expressive throw rebounds.
+[Website chat sign-in](docs/streaming-chat.md) replaces user API setup; publisher
+registration is still required before new-account sign-in can be enabled.
+
 **v0.37 Alpha includes Purism Core and expressive Bouncy physics.**
 
 - Import compatible Live2D models immediately: the MIT-licensed Purism Core runtime

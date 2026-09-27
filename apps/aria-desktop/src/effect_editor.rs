@@ -1,7 +1,7 @@
 //! Draft-based visual authoring. Preview playback owns separate effects; Save commits to this avatar.
 use crate::{effects::Effects, effects_panel, help, output::Scene, theme};
 use aria_core::{
-    effects::{Design, Kind, Library, Liquid, Route, Selection},
+    effects::{Design, Direction, Kind, Library, Liquid, Route, Selection},
     movement::{PoseMode, SavedRig},
     shortcuts::Shortcut,
 };
@@ -528,6 +528,22 @@ impl Editor {
         Ok(count)
     }
     fn motion(&mut self, ui: &mut egui::Ui) {
+        ui.checkbox(&mut self.draft.momentum_bounce, "Momentum rebound")
+            .on_hover_text("Rebound follows incoming speed and arc, with continuous gravity and air resistance. Turn off for legacy motion.");
+        egui::ComboBox::from_id_salt("throw-direction")
+            .selected_text(format!("Direction: {:?}", self.draft.direction))
+            .show_ui(ui, |ui| {
+                for (value, label) in [
+                    (Direction::Authored, "Use drawn paths"),
+                    (Direction::Left, "From the left"),
+                    (Direction::Right, "From the right"),
+                    (Direction::Alternate, "Alternate sides"),
+                    (Direction::Random, "Random side (50 / 50)"),
+                ] {
+                    ui.selectable_value(&mut self.draft.direction, value, label);
+                }
+            });
+        ui.small("Side modes mirror each path around its aim point. The path editor shows the authored path.");
         help::label(
             ui,
             "Speed, bounce, attachment and lifetime",

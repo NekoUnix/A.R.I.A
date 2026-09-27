@@ -27,7 +27,15 @@ pub enum Command {
 #[serde(deny_unknown_fields)]
 pub enum Target {
     Avatar { profile: u64, command: Command },
+    Scene(u64),
+    Music(MusicCommand),
     Graph(u64),
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum MusicCommand {
+    PlayPause,
+    Stop,
+    Next,
 }
 #[derive(Clone)]
 pub struct Choice {
@@ -106,9 +114,49 @@ pub enum Mode {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Step {
     Start,
-    Action { target: Option<Target>, mode: Mode },
-    Delay { seconds: f32 },
+    Action {
+        target: Option<Target>,
+        mode: Mode,
+    },
+    Delay {
+        seconds: f32,
+    },
+    Variable {
+        name: String,
+        operation: Math,
+        value: f64,
+    },
+    Input {
+        name: String,
+        channel: String,
+    },
+    Require {
+        name: String,
+        comparison: Compare,
+        value: f64,
+    },
     End,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Math {
+    Set,
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Minimum,
+    Maximum,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Compare {
+    AtLeast,
+    AtMost,
+    Equal,
+}
+fn variable_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 64
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Node {
@@ -124,6 +172,55 @@ pub struct Graph {
     pub edges: Vec<[u64; 2]>,
 }
 impl Graph {
+    /// Starter layouts contain no workspace IDs; users explicitly assign actions.
+    pub fn recipe(id: u64, parallel: bool) -> Self {
+        let action = || Step::Action {
+            target: None,
+            mode: Mode::Toggle,
+        };
+        let (name, steps, edges) = if parallel {
+            (
+                "Together",
+                vec![Step::Start, action(), action(), Step::End],
+                vec![[1, 2], [1, 3], [2, 4], [3, 4]],
+            )
+        } else {
+            (
+                "Timed sequence",
+                vec![
+                    Step::Start,
+                    action(),
+                    Step::Delay { seconds: 2.0 },
+                    action(),
+                    Step::End,
+                ],
+                vec![[1, 2], [2, 3], [3, 4], [4, 5]],
+            )
+        };
+        Self {
+            id,
+            name: name.into(),
+            nodes: steps
+                .into_iter()
+                .enumerate()
+                .map(|(i, step)| Node {
+                    id: i as u64 + 1,
+                    position: if parallel {
+                        match i {
+                            0 => [30., 120.],
+                            1 => [280., 40.],
+                            2 => [280., 230.],
+                            _ => [560., 120.],
+                        }
+                    } else {
+                        [30. + (i % 3) as f32 * 250., 40. + (i / 3) as f32 * 210.]
+                    },
+                    step,
+                })
+                .collect(),
+            edges,
+        }
+    }
     pub fn new(id: u64) -> Self {
         Self {
             id,
@@ -173,6 +270,21 @@ impl Graph {
             "Add an End node"
         );
         for node in &self.nodes {
+            match &node.step {
+                Step::Variable { name, value, .. } | Step::Require { name, value, .. } => {
+                    ensure!(
+                        variable_name(name) && value.is_finite() && value.abs() <= 1e12,
+                        "Use a valid variable name and a finite value within ±1e12"
+                    );
+                }
+                Step::Input { name, channel } => {
+                    ensure!(
+                        variable_name(name) && !channel.is_empty() && channel.len() <= 128,
+                        "Name a variable and tracking input"
+                    );
+                }
+                _ => {}
+            }
             ensure!(
                 node.position
                     .iter()
@@ -251,8 +363,11 @@ impl Graph {
         for node in &self.nodes {
             if let Step::Action { target, .. } = &node.step {
                 ensure!(
-                    matches!(target, Some(Target::Avatar { .. })),
-                    "Choose an avatar action for node {}. Graph nesting is not supported",
+                    matches!(
+                        target,
+                        Some(Target::Avatar { .. } | Target::Scene(_) | Target::Music(_))
+                    ),
+                    "Choose an action for node {}. Graph nesting is not supported",
                     node.id
                 );
             }
@@ -290,6 +405,7 @@ impl Graph {
     }
 }
 pub struct Run {
+    pub variables: BTreeMap<String, f64>,
     pub receipt: Option<crate::effect_api::Receipt>,
     pub graph: Graph,
     order: Vec<u64>,
@@ -301,6 +417,7 @@ pub struct Run {
 impl Run {
     pub fn new(graph: &Graph, now: f64) -> Result<Self> {
         Ok(Self {
+            variables: BTreeMap::new(),
             receipt: None,
             graph: graph.clone(),
             order: graph.validate()?,
@@ -338,6 +455,68 @@ impl Run {
     pub fn complete(&mut self, id: u64, now: f64) {
         self.done.insert(id, now);
         self.waiting.remove(&id);
+    }
+    pub fn compute(&mut self, step: &Step, inputs: &aria_core::rig::Inputs) -> Result<bool> {
+        let (name, value) =
+            match step {
+                Step::Variable {
+                    name,
+                    operation,
+                    value,
+                } => {
+                    let current = self.variables.get(name).copied().unwrap_or(0.);
+                    let next = match operation {
+                        Math::Set => *value,
+                        Math::Add => current + value,
+                        Math::Subtract => current - value,
+                        Math::Multiply => current * value,
+                        Math::Divide => {
+                            ensure!(*value != 0., "Division by zero");
+                            current / value
+                        }
+                        Math::Minimum => current.min(*value),
+                        Math::Maximum => current.max(*value),
+                    };
+                    (name, next)
+                }
+                Step::Input { name, channel } => (
+                    name,
+                    f64::from(*inputs.get(channel).ok_or_else(|| {
+                        anyhow::anyhow!("Tracking input {channel} is unavailable")
+                    })?),
+                ),
+                Step::Require {
+                    name,
+                    comparison,
+                    value,
+                } => {
+                    let current = *self
+                        .variables
+                        .get(name)
+                        .ok_or_else(|| anyhow::anyhow!("Variable {name} has not been set"))?;
+                    return Ok(match comparison {
+                        Compare::AtLeast => current >= *value,
+                        Compare::AtMost => current <= *value,
+                        Compare::Equal => (current - value).abs() <= 1e-9,
+                    });
+                }
+                _ => return Ok(true),
+            };
+        ensure!(
+            value.is_finite() && value.abs() <= 1e12,
+            "Variable overflow"
+        );
+        ensure!(
+            self.variables.len() < 128 || self.variables.contains_key(name),
+            "At most 128 variables per action run"
+        );
+        self.variables.insert(name.clone(), value);
+        Ok(true)
+    }
+    pub fn finish_without_actions(&mut self, now: f64) {
+        for node in &self.graph.nodes {
+            self.done.insert(node.id, now);
+        }
     }
     pub fn finished(&self) -> bool {
         self.done.len() == self.graph.nodes.len()
@@ -382,6 +561,98 @@ pub fn key_pressed(ctx: &egui::Context, shortcut: Shortcut) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn variables_are_run_local_and_conditions_cancel_remaining_steps() {
+        let mut graph = Graph::new(1);
+        graph.nodes[1].step = Step::Variable {
+            name: "score".into(),
+            operation: Math::Set,
+            value: 2.,
+        };
+        let mut run = Run::new(&graph, 0.).unwrap();
+        let mut other = Run::new(&graph, 0.).unwrap();
+        let inputs = BTreeMap::from([("MouthOpen".into(), 0.75)]);
+        run.compute(&graph.nodes[1].step, &inputs).unwrap();
+        run.compute(
+            &Step::Variable {
+                name: "score".into(),
+                operation: Math::Multiply,
+                value: 3.,
+            },
+            &inputs,
+        )
+        .unwrap();
+        assert_eq!(run.variables["score"], 6.);
+        assert!(other.variables.is_empty());
+        run.compute(
+            &Step::Input {
+                name: "mouth".into(),
+                channel: "MouthOpen".into(),
+            },
+            &inputs,
+        )
+        .unwrap();
+        assert!(
+            !run.compute(
+                &Step::Require {
+                    name: "mouth".into(),
+                    comparison: Compare::AtLeast,
+                    value: 1.
+                },
+                &inputs
+            )
+            .unwrap()
+        );
+        run.finish_without_actions(1.);
+        assert!(run.finished());
+        assert!(run.ready(10.).is_empty());
+        assert!(
+            other
+                .compute(
+                    &Step::Variable {
+                        name: "score".into(),
+                        operation: Math::Divide,
+                        value: 0.
+                    },
+                    &inputs
+                )
+                .is_err()
+        );
+        graph.nodes[1].step = Step::Variable {
+            name: "invalid name".into(),
+            operation: Math::Set,
+            value: 0.,
+        };
+        assert!(graph.validate().is_err());
+    }
+    #[test]
+    fn recipes_require_binding_and_preserve_branch_timing() {
+        for parallel in [false, true] {
+            let mut graph = Graph::recipe(1, parallel);
+            graph.structure().unwrap();
+            assert!(graph.validate().is_err());
+            for node in &mut graph.nodes {
+                if let Step::Action { target, .. } = &mut node.step {
+                    *target = Some(Target::Avatar {
+                        profile: 1,
+                        command: Command::Focus,
+                    });
+                }
+            }
+            graph.validate().unwrap();
+            let mut run = Run::new(&graph, 0.).unwrap();
+            run.complete(1, 0.);
+            assert_eq!(run.ready(0.).len(), if parallel { 2 } else { 1 });
+            run.complete(2, 0.);
+            if !parallel {
+                assert!(
+                    !run.ready(1.)
+                        .iter()
+                        .any(|(_, s)| matches!(s, Step::Action { .. }))
+                );
+            }
+        }
+    }
     fn action() -> Graph {
         let mut g = Graph::new(7);
         g.nodes[1].step = Step::Action {

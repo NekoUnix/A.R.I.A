@@ -2,15 +2,22 @@
 
 ![Odette in the Live2D appearance workspace](images/customization-v30.png)
 
-Next release in development: [recorded hotkeys and visual actions](actions.md),
-clear stage tabs, shared stage/profile names, individual preview locks and
-[Experimental VRC / GLB humanoid avatars](glb-avatars.md) using the existing tracking pipeline.
+Next release in development: a [Neko-colored Studio workspace](studio-workspace.md),
+searchable tools, timed/parallel action recipes, momentum rebounds and
+[website chat sign-in](streaming-chat.md). The [reference audit](studio-research.md)
+separates observed features, implementation and remaining verification. The
+[feature checklist](studio-feature-matrix.md) tracks the full reference scope,
+including systems that are not implemented yet.
+
+Development additions also include the [Studio browser](studio-browser.md) and
+[scene layouts, music routing and event rules](studio-production.md).
 
 New to ARIA? Start with the [beginner setup walkthrough](../README.md#first-time-setup)
 and [changelog](../CHANGELOG.md). For system-specific steps use [Windows setup](windows.md), [Linux installation](linux.md) or
 [macOS package setup](platforms.md#install-an-alpha-release), import your avatar, then follow
-[personal tracking setup](tracking-setup.md). The left navigation is **Avatar /
-Tracking / Output / Chat / Settings**. Inspector tools stay grouped by tracking,
+[personal tracking setup](tracking-setup.md). The released version's left navigation is **Avatar /
+Tracking / Output / Chat / Settings**; the development Studio workspace adds Home,
+Stage, Avatar library and Avatar settings. Inspector tools stay grouped by tracking,
 avatar, stage and poses. Hover or click any circled **?** for offline explanations.
 
 v0.30 adds [drag layer selection and customizable Live2D controls](live2d-customization.md),
@@ -129,3 +136,5 @@ camera connection. [Artwork provenance and reproduction notes](images/README.md)
 
 These features remain included in v0.27.0-alpha.1. Download the matching package from
 [Releases](https://github.com/NekoUnix/A.R.I.A/releases/tag/v0.27.0-alpha.1).
+
+Development: [Studio workspace guide](studio-workspace.md) and [reference-app research audit](studio-research.md).

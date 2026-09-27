@@ -1,6 +1,7 @@
 //! One socket worker, a bounded latest-frame mailbox, and explicit connection ownership.
 pub mod ifacial;
 pub mod protocol;
+pub mod vmc;
 pub use protocol::Protocol;
 
 use anyhow::{Context, Result, ensure};
@@ -84,7 +85,8 @@ impl Receiver {
             "Enter the sender's unicast IPv4 address"
         );
         ensure!(
-            config.protocol == Protocol::AriaJson || config.request_port > 0,
+            matches!(config.protocol, Protocol::AriaJson | Protocol::Vmc)
+                || config.request_port > 0,
             "Request port must be 1-65535"
         );
         // Loopback tests/tools never open a LAN listener. An explicit LAN peer enables LAN binding.
@@ -138,7 +140,7 @@ fn run(
     let request = match config.protocol {
         Protocol::VTubeStudio => protocol::subscription(local_port),
         Protocol::IFacialMocap => ifacial::START.to_vec(),
-        Protocol::AriaJson => Vec::new(),
+        Protocol::AriaJson | Protocol::Vmc => Vec::new(),
     };
     let peer = SocketAddrV4::new(config.sender_ip, config.request_port);
     // Full UDP maximum buffer avoids treating a truncated datagram as a valid packet.
@@ -146,6 +148,8 @@ fn run(
     let mut next_request = Instant::now();
     let mut rate_start = Instant::now();
     let mut rate_count = 0;
+    let mut vmc = vmc::Decoder::default();
+    let mut vmc_packet_at: Option<Instant> = None;
     while !stop.load(Ordering::Acquire) {
         let needs_request = match config.protocol {
             Protocol::VTubeStudio => true,
@@ -154,7 +158,7 @@ fn run(
                 .unwrap_or_else(|p| p.into_inner())
                 .fresh_frame()
                 .is_none(),
-            Protocol::AriaJson => false,
+            Protocol::AriaJson | Protocol::Vmc => false,
         };
         if needs_request && Instant::now() >= next_request {
             let result = socket.send_to(&request, peer);
@@ -178,10 +182,22 @@ fn run(
                     state.lock().unwrap_or_else(|p| p.into_inner()).ignored += 1;
                     continue;
                 }
-                let decoded = protocol::decode(&buffer[..len], config.protocol);
+                let decoded = if config.protocol == Protocol::Vmc {
+                    let now = Instant::now();
+                    if vmc_packet_at.is_some_and(|at| now.duration_since(at) > STALE_AFTER) {
+                        vmc = vmc::Decoder::default();
+                    }
+                    vmc_packet_at = Some(now);
+                    vmc.decode(&buffer[..len])
+                } else {
+                    protocol::decode(&buffer[..len], config.protocol).map(Some)
+                };
                 let mut s = state.lock().unwrap_or_else(|p| p.into_inner());
                 match decoded {
-                    Ok(frame) => {
+                    Ok(None) => {
+                        s.ignored += 1;
+                    }
+                    Ok(Some(frame)) => {
                         // Ignore old UDP frames while live; allow a restarted sender after a gap.
                         if s.fresh_frame().is_some_and(|last| {
                             frame.timestamp > 0 && frame.timestamp < last.timestamp
@@ -228,6 +244,37 @@ fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn vmc_udp_frames_respect_sender_and_release_listener() {
+        let sender = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let receiver = Receiver::start(ReceiverConfig {
+            protocol: Protocol::Vmc,
+            listen_port: 0,
+            request_port: 0,
+            ..Default::default()
+        })
+        .unwrap();
+        let port = receiver.local_port;
+        let mut frame = aria_core::demo_frame(1.);
+        frame.rotation = aria_core::Vec3 {
+            x: 12.,
+            y: -24.,
+            z: 8.,
+        };
+        sender
+            .send_to(&vmc::encode(&frame).unwrap(), ("127.0.0.1", port))
+            .unwrap();
+        wait_until(|| receiver.snapshot().packets == 1);
+        let result = receiver.snapshot();
+        let actual = result.frame.unwrap();
+        assert!((actual.rotation.x - 12.).abs() < 0.001);
+        assert!((actual.rotation.y + 24.).abs() < 0.001);
+        assert!((actual.rotation.z - 8.).abs() < 0.001);
+        assert_eq!(result.requests, 0);
+        assert_eq!(actual.hotkey, -1);
+        drop(receiver);
+        assert!(UdpSocket::bind(("127.0.0.1", port)).is_ok());
+    }
 
     fn wait_until(mut f: impl FnMut() -> bool) {
         let deadline = Instant::now() + Duration::from_secs(3);

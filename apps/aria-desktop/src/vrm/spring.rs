@@ -1,7 +1,7 @@
 //! VRM/GLB spring joints with time-scaled inertia, bounded substeps and contact recovery.
 use super::asset::{Node, array, index, number, vector};
 use anyhow::{Context, Result, ensure};
-use aria_core::physics::PhysicsSettings;
+use aria_core::physics::{MotionStyle, PhysicsSettings};
 use glam::{Mat4, Quat, Vec3};
 use serde_json::Value;
 
@@ -459,7 +459,14 @@ impl Simulation {
                     let force =
                         (j.stiffness * settings.response * tuning.response * 120.).min(1800.);
                     let wind = Vec3::X * (settings.wind + tuning.wind) * 0.5;
-                    let damping = inertia.min(0.98).powf(step * 60.);
+                    // Apply style to damping rate, not frame count. Retain the authored
+                    // stiffness, constraints and collision solver for every VRM / GLB group.
+                    let decay = match secondary.motion_style {
+                        MotionStyle::Authored => 1.,
+                        MotionStyle::Natural => 1.25,
+                        MotionStyle::Bouncy => 0.55,
+                    };
+                    let damping = inertia.clamp(0., 0.98).powf(step * 60. * decay);
                     let velocity = (tail.velocity * damping
                         + (target - current) * force * step
                         + (j.gravity * j.power * settings.gravity * tuning.gravity + wind)

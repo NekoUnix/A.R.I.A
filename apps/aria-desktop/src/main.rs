@@ -6,6 +6,8 @@ mod avatar;
 mod avatar_import;
 mod bread;
 mod broadcast;
+#[cfg(windows)]
+mod browser;
 mod chat;
 mod chroma;
 mod controller;
@@ -18,6 +20,7 @@ mod effect_audio;
 mod effect_editor;
 mod effects;
 mod effects_panel;
+mod event_rules;
 mod expressions_panel;
 mod help;
 mod hotkeys;
@@ -38,12 +41,14 @@ mod mesh_asset;
 mod metrics;
 mod microphone;
 mod model_mount;
+mod music;
 mod native_output;
 mod object_models;
 mod output;
 mod performance;
 mod physics_panel;
 mod prop_render;
+mod scenes;
 #[cfg(feature = "screenshots")]
 mod screenshot;
 mod socials;
@@ -79,6 +84,13 @@ fn smoke_mode() -> bool {
 }
 
 fn main() -> eframe::Result {
+    #[cfg(windows)]
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "--studio-browser")
+    {
+        return browser::run();
+    }
     // Reuse this executable as the worker so `cargo run -p aria-desktop` and
     // portable bundles do not depend on a separately installed helper binary.
     if std::env::args_os()
@@ -103,7 +115,13 @@ fn main() -> eframe::Result {
                 env!("CARGO_PKG_VERSION")
             ))
             .with_app_id("com.nekounix.aria")
-            .with_inner_size([1280.0, 820.0])
+            .with_inner_size(
+                if smoke_mode() && std::env::var("ARIA_SMOKE_SMALL").as_deref() == Ok("1") {
+                    [960.0, 640.0]
+                } else {
+                    [1280.0, 820.0]
+                },
+            )
             .with_min_inner_size([960.0, 640.0]),
         renderer: eframe::Renderer::Wgpu,
         wgpu_options,

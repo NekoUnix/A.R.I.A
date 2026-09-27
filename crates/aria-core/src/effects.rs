@@ -5,6 +5,17 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, path::PathBuf};
 
 pub const MAX_ACTIVE: usize = 256;
+
+/// Authored routes remain the default for existing saved designs.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Direction {
+    #[default]
+    Authored,
+    Left,
+    Right,
+    Alternate,
+    Random,
+}
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Kind {
     #[default]
@@ -48,6 +59,8 @@ impl Default for Liquid {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Design {
+    pub direction: Direction,
+    pub momentum_bounce: bool,
     pub deformation: crate::deformation::Settings,
     /// Empty vectors preserve the v0.12 pool/count and single-origin behavior.
     pub routes: Vec<Route>,
@@ -89,6 +102,8 @@ pub struct Design {
 impl Default for Design {
     fn default() -> Self {
         Self {
+            direction: Direction::Authored,
+            momentum_bounce: false,
             deformation: crate::deformation::Settings::default(),
             routes: Vec::new(),
             route_selection: Selection::Cycle,
@@ -363,6 +378,7 @@ impl Library {
 }
 #[derive(Clone, Debug)]
 pub struct Particle {
+    pub momentum_bounce: bool,
     pub deformation: crate::deformation::Settings,
     pub contact: bool,
     pub wants_stick: bool,
@@ -448,6 +464,29 @@ impl Particle {
         } else {
             let dx = self.target[0] - self.origin[0];
             let dy = self.target[1] - self.origin[1];
+            if self.momentum_bounce {
+                // Reflect the incoming arc tangent. Solve linear drag analytically,
+                // so flight speed, gravity and drag have consistent units at any FPS.
+                let velocity = [
+                    -dx / self.flight * self.bounce,
+                    -(dy + 4.0 * self.arc) / self.flight * self.bounce,
+                ];
+                let (travel, fall) = if self.drag > 0.001 {
+                    let travel = -(-self.drag * after).exp_m1() / self.drag;
+                    (travel, (after - travel) / self.drag)
+                } else {
+                    (after, after * after * 0.5)
+                };
+                return (
+                    [
+                        self.target[0] + velocity[0] * travel,
+                        self.target[1] + velocity[1] * travel + 1.3 * self.gravity * fall,
+                    ],
+                    self.size,
+                    self.spin * self.age,
+                    fade,
+                );
+            }
             let distance = (dx * dx + dy * dy).sqrt().max(0.001);
             let recoil = after * 0.38 * self.bounce / (1.0 + self.drag * after);
             (
@@ -483,6 +522,9 @@ pub struct Sound {
     pub volume: f32,
 }
 impl Simulation {
+    pub fn queued_count(&self) -> u32 {
+        self.queue.iter().map(|b| b.remaining).sum()
+    }
     pub fn asset_paths(&self) -> BTreeSet<PathBuf> {
         self.particles
             .iter()
@@ -546,6 +588,9 @@ impl Simulation {
             burst.wait -= dt;
             while burst.remaining > 0 && burst.wait <= 0.0 {
                 if self.particles.len() >= MAX_ACTIVE {
+                    // Do not accumulate timing debt while capacity is exhausted.
+                    // Resume at the authored cadence when a slot becomes available.
+                    burst.wait = 0.0;
                     break;
                 }
                 let d = &burst.design;
@@ -580,8 +625,19 @@ impl Simulation {
                     _ => burst.emitted % d.routes.len().max(1),
                 };
                 let route = d.routes.get(route_index);
-                let origin = route.map_or(d.origin, |r| r.origin);
+                let mut origin = route.map_or(d.origin, |r| r.origin);
                 let target = route.map_or(d.target, |r| r.target);
+                let from_left = match d.direction {
+                    Direction::Authored => None,
+                    Direction::Left => Some(true),
+                    Direction::Right => Some(false),
+                    Direction::Alternate => Some(burst.emitted % 2 == 0),
+                    Direction::Random => Some(self.random() < 0.5),
+                };
+                if let Some(left) = from_left {
+                    let distance = (origin[0] - target[0]).abs().max(0.2);
+                    origin[0] = target[0] + if left { -distance } else { distance };
+                }
                 let jitter = [
                     (self.random() - 0.5) * 2.0 * d.spread,
                     (self.random() - 0.5) * 2.0 * d.spread,
@@ -592,6 +648,7 @@ impl Simulation {
                         .unwrap_or(if d.kind == Kind::Spray { 1.0 } else { 0.0 });
                 let wants_stick = probability >= 1.0 || self.random() < probability;
                 self.particles.push(Particle {
+                    momentum_bounce: d.momentum_bounce,
                     deformation: d.deformation.clone(),
                     contact: false,
                     wants_stick,
@@ -673,6 +730,114 @@ impl Simulation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn saturated_queue_resumes_cadence_without_a_catchup_barrage() {
+        let mut sim = Simulation::default();
+        sim.trigger(&Design {
+            count: MAX_ACTIVE as u32,
+            interval: 0.,
+            lifetime: 120.,
+            ..Default::default()
+        })
+        .unwrap();
+        sim.tick(0.25);
+        sim.tick(0.25);
+        assert_eq!(sim.particles.len(), MAX_ACTIVE);
+        sim.trigger(&Design {
+            count: 3,
+            interval: 0.1,
+            ..Default::default()
+        })
+        .unwrap();
+        for _ in 0..8 {
+            sim.tick(0.25);
+        }
+        assert_eq!(sim.queued_count(), 3);
+        sim.particles.clear();
+        sim.tick(1. / 240.);
+        assert_eq!(sim.particles.len(), 1);
+        sim.tick(0.05);
+        assert_eq!(sim.particles.len(), 1);
+        sim.tick(0.06);
+        assert_eq!(sim.particles.len(), 2);
+        sim.clear();
+        assert_eq!(sim.queued_count(), 0);
+    }
+
+    #[test]
+    fn side_modes_preserve_aim_and_alternate_per_emitted_object() {
+        for direction in [
+            Direction::Left,
+            Direction::Right,
+            Direction::Alternate,
+            Direction::Random,
+        ] {
+            let mut sim = Simulation::default();
+            sim.trigger(&Design {
+                direction,
+                count: 10,
+                interval: 0.,
+                spread: 0.,
+                ..Default::default()
+            })
+            .unwrap();
+            sim.tick(0.05);
+            assert_eq!(sim.particles.len(), 10);
+            for (i, p) in sim.particles.iter().enumerate() {
+                assert_eq!(p.target, Design::default().target);
+                let left = p.origin[0] < p.target[0];
+                match direction {
+                    Direction::Left => assert!(left),
+                    Direction::Right => assert!(!left),
+                    Direction::Alternate => assert_eq!(left, i % 2 == 0),
+                    _ => (),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn momentum_rebound_scales_with_flight_speed_and_drag() {
+        let mut sim = Simulation::default();
+        sim.trigger(&Design {
+            momentum_bounce: true,
+            count: 1,
+            spread: 0.,
+            arc: 0.,
+            gravity: 0.,
+            drag: 0.,
+            ..Default::default()
+        })
+        .unwrap();
+        sim.tick(0.01);
+        let mut p = sim.particles[0].clone();
+        p.hit = true;
+        p.age = p.flight;
+        assert_eq!(p.pose().0, p.target); // Continuous at impact.
+        p.age += 0.2;
+        let travel = (p.pose().0[0] - p.target[0]).abs();
+        p.flight *= 0.5;
+        p.age = p.flight + 0.2;
+        assert!(((p.pose().0[0] - p.target[0]).abs() - travel * 2.).abs() < 1e-5);
+        p.drag = 2.;
+        assert!((p.pose().0[0] - p.target[0]).abs() < travel * 2.);
+        let without_gravity = p.pose().0[1];
+        p.gravity = 1.;
+        assert!(p.pose().0[1] > without_gravity);
+        p.drag = 0.00101;
+        let near_zero = p.pose().0;
+        p.drag = 0.;
+        for (a, b) in near_zero.into_iter().zip(p.pose().0) {
+            assert!((a - b).abs() < 0.001);
+        }
+        let mut old = serde_json::to_value(Design::default()).unwrap();
+        old.as_object_mut().unwrap().remove("direction");
+        old.as_object_mut().unwrap().remove("momentum_bounce");
+        let old: Design = serde_json::from_value(old).unwrap();
+        assert_eq!(old.direction, Direction::Authored);
+        assert!(!old.momentum_bounce);
+    }
     fn routed() -> Design {
         Design {
             assets: vec!["a.png".into(), "b.moc3".into(), "unused.obj".into()],
@@ -829,6 +994,8 @@ mod tests {
     #[test]
     fn all_selection_and_timing_are_independent_of_render_rate() {
         let d = Design {
+            momentum_bounce: true,
+            direction: Direction::Alternate,
             count: 3,
             selection: Selection::All,
             assets: vec!["a.png".into(), "b.obj".into()],
@@ -850,6 +1017,14 @@ mod tests {
         for (p, q) in a.particles.iter().zip(&b.particles) {
             assert_eq!(p.asset, q.asset);
             assert!((p.age - q.age).abs() < 0.005);
+            assert_eq!(p.origin, q.origin);
+            assert_eq!(p.hit, q.hit);
+            for (x, y) in p.pose().0.into_iter().zip(q.pose().0) {
+                assert!(
+                    (x - y).abs() < 0.005,
+                    "rebound must not depend on render FPS"
+                );
+            }
         }
         assert!((a.impulse[0] - b.impulse[0]).abs() < 0.001);
     }

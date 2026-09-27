@@ -81,21 +81,13 @@ Choose 64, 128, 256, 512 or 1024 MiB per GIF in Avatar & appearance or PNG/GIF a
 
 Changing the budget reloads the action library in the background. Only one image import worker decodes at a time; cancellation stops at a frame boundary. Playback, fading, pinning and throws reuse immutable fitted frame textures. They do not decode or resize the original GIF every frame. An invalid file reports its error beside the action. Save profile and image-action presets retain this avatar's chosen playback budget.
 
-## workspace | Finding controls in the workspace | Left: Profiles, Avatar, Tracking, Output and Chat setup. Right: Tracking, Avatar, Stage and Poses tools. Category buttons remain visible while their settings scroll.
+## workspace | Finding controls in the workspace | Persistent navigation, a central stage and contextual settings keep your tools close.
 
-### Studio setup on the left
+Use Home for readiness links and session tools. Avatar library manages loaded profiles; Avatar settings edits the current avatar. Tracking contains source selection, phone/network connection, calibration and movement mapping. Outputs & OBS contains landscape, portrait and freeform canvases, native capture and chroma settings. Streaming chat contains Twitch and YouTube setup. Settings contains appearance and shared workspace options.
 
-Avatar opens PNG/GIF artwork or Live2D exports and contains Cubism runtime, model details and stage zoom. Tracking contains phone/network connection, source selection, calibration and movement mapping. Output contains landscape, portrait and freeform canvases, OBS/Spout settings, chroma color, frame rate and Windows priority. Chat contains Twitch and YouTube account setup and chat appearance.
+On Stage, the inspector's Tracking category contains Inputs, Microphone, Controller and Diagnostics. Avatar contains Physics, Expressions and format-specific controls. Stage contains Objects and Throws & sprays. Poses contains pose controls and presets. Pages scroll separately; drag the inspector's inner edge to resize it.
 
-### Inspector on the right
-
-Tracking → Inputs edits ranges, steps, smoothing and parameter mappings. Tracking → Microphone sets the audio device and talking gate. Tracking → Diagnostics shows raw packets and exports mapped values. Avatar → Physics contains overall and per-group simulation settings. Avatar → Expressions contains exp3 files and hotkeys. Avatar → PNG / GIF contains image actions, artwork, triggers, fades and animation.
-
-Stage → Objects contains pinned PNG/GIF and independent Live2D accessories, input toggles and object settings. Stage → Throws & sprays contains reusable throw/liquid designs, assets and the visual aim/physics editor. Poses → Pose controls freezes or manually positions the avatar. Poses → Presets saves named movement and screenshot configurations with shortcuts.
-
-Each page scrolls separately and remembers its scroll position. The navigation stays at the top so you can change pages without scrolling back. The Inspector's inner edge can be dragged to change its width. Collapsible sections keep detailed configuration close to the feature it controls. Save profile is always at the top left. All model-specific settings still belong to the loaded avatar; changing categories does not reset them.
-
-The graphite palette, blue accent and compact controls use the existing native renderer and installed Windows font. There are no blur passes, animated interface transitions, new font downloads or decorative image textures. Only the selected page's controls are laid out.
+Find a tool searches tool names and common terms. Focus stage hides both side panels until Exit focus or Escape. Save profile remains in the header. All model-specific settings still belong to the selected avatar; changing pages does not reset them. New installations use pink, mint and lavender Neko Studio; existing saved palettes are retained.
 
 ## asset-limits | Large PNG, GIF and Live2D imports | Import size ceilings are 10× larger. PNG/GIF: 512 MiB files and 40960px source edges. Live2D: 1280 MiB moc3 files and 81920px atlas edges. Oversized textures are fitted once to your GPU.
 
@@ -1210,7 +1202,7 @@ Follow portrait preview places the chat window immediately below the actual port
 
 ### Connect and read
 
-Complete Account setup for each service, then Sign in to Twitch or Sign in to YouTube. Your normal browser opens the service's official sign-in page. Finish consent there and return to ARIA. Both services can connect simultaneously. Connect resumes a remembered login without asking for consent again when its tokens remain valid. After editing the channel/video target, disconnect and reconnect to apply it. Disconnect / cancel also stops a pending browser login. Sign out clears that service's local login and messages.
+Click Connect Twitch or Connect YouTube. Your normal browser opens the service's official sign-in page. Finish consent there and return to ARIA. Both services can connect simultaneously. Connect resumes a remembered login when its tokens remain valid; Switch account requests a new sign-in. After editing the channel/video target, disconnect and reconnect to apply it. Disconnect / cancel also stops a pending browser login. Sign out clears that service's local login and messages.
 
 Messages show their author and plain text. Each service retains the latest 200 messages in memory and scrolls to new messages when already at the bottom. Scroll upward to read older retained messages. Moderation deletion and user-ban events remove matching retained messages. Chat text is not executed as HTML, commands, avatar actions or hyperlinks. Native emote images, badges, polls and moderation controls are not rendered; use Open official chat to type / moderate in the platform's browser chat.
 
@@ -1218,29 +1210,29 @@ Messages show their author and plain text. Each service retains the latest 200 m
 
 The chat window is a viewing companion, separate from the avatar's Spout texture. Opening chat does not change the portrait canvas resolution or add chat text to the avatar output. To broadcast this chat window, add it as a separate OBS Window Capture source. The native window title bar remains visible on the desktop; crop it in OBS if necessary. Capture-method alpha support varies; test it in your OBS scene. Closing or hiding the chat window keeps connected services receiving messages until Disconnect or app exit. Chat services keep running while the avatar pose is frozen.
 
-Account setup and logins belong to the Windows user and are shared across avatars. Chat colors, sizes, visibility and docking preference are saved in each avatar's output layout. Switching models restores that model's layout without signing you out.
+Logins belong to the Windows user and are shared across avatars. Chat colors, sizes, visibility and docking preference are saved in each avatar's output layout. Switching models restores that model's layout without signing you out.
 
-## chat-account | Streaming account sign-in & setup | ARIA uses browser OAuth with read-only chat permissions. Set up a Twitch Public application or Google Desktop OAuth client before the first login.
+## chat-account | Streaming account sign-in | Connect through the service's official website. No API application, client ID or credentials file is required from streamers.
 
 ### Twitch setup
 
-Open the Twitch developer console from Account setup, register an application, and select Public client type. Copy its Client ID into ARIA. If the console requires a redirect URI, use http://localhost; this device authorization flow does not use that redirect. Twitch may require two-factor authentication on the developer account. ARIA does not need a Twitch client secret.
+Choose Connect Twitch. ARIA's publisher supplies its app registration with the build. If website sign-in is unavailable, the panel explains this publisher dependency instead of requesting API settings from you.
 
-Click Sign in to Twitch. ARIA shows a short device code and opens Twitch's activation page in your browser. Confirm the account and chat-read permission. If the browser does not open, use Continue sign-in in browser and the displayed code. Only approve a code generated by your own sign-in click. Codes expire; request a new one if necessary. A blank channel uses the signed-in account's Twitch channel. You can also enter another channel name or its HTTPS Twitch URL. ARIA requests chat:read and uses Twitch's secure IRC WebSocket service.
+ARIA shows a short device code and opens Twitch's activation page in your browser. Confirm the account and chat-read permission. If the browser does not open, use Continue sign-in in browser and the displayed code. Codes expire; request a new one if necessary. A blank channel uses the signed-in account's Twitch channel. You can also enter another channel name or its HTTPS Twitch URL. ARIA requests chat:read and uses Twitch's secure IRC WebSocket service.
 
 ### YouTube setup
 
-In Google Cloud, create or choose a project and enable YouTube Data API v3. Configure Google Auth Platform consent, create an OAuth client of type Desktop app, and download its credentials JSON. Import that file using Import Google Desktop credentials JSON. ARIA reads its client ID and protects its desktop client secret using Windows. Web application credentials do not work with this flow. When the consent app is in Testing, add the Google account you will use as a test user. Public distribution may require Google verification; this build includes no publisher-owned OAuth client.
+Choose Connect YouTube. ARIA's publisher handles Google app registration and consent configuration. No Google Cloud setup or downloaded credentials are required from streamers. Testing builds may be limited to accounts approved by the publisher until Google's consent requirements are complete.
 
-Click Sign in to YouTube and choose the account/channel in your normal browser. ARIA requests youtube.readonly. A temporary callback listener binds only to 127.0.0.1 on an available port, checks a random state, and exchanges the authorization code using PKCE. The listener closes after completion, cancellation or five minutes. Google passwords and browser cookies never enter ARIA.
+Choose the account/channel in your normal browser. ARIA requests youtube.readonly. A temporary callback listener binds only to 127.0.0.1 on an available port, checks a random state, and exchanges the authorization code using PKCE. The listener closes after completion, cancellation or five minutes. Google passwords and browser cookies never enter ARIA.
 
 Leave Live video URL / ID blank to select your single active broadcast, or paste a live video's watch URL, youtu.be URL, /live/ URL, or eleven-character ID. Channel URLs are not video URLs. If several broadcasts are active, choose one explicitly. The video must have an active chat. Ended broadcasts and disabled chat produce a visible status instead of a fake connection.
 
 ### Remember, revoke and recover
 
-Remember login stores only Windows DPAPI-protected token data in local app settings, tied to the current Windows account. Access and refresh tokens never appear in ordinary UI, templates or exported model presets. Google desktop client secrets are protected separately. Disable Remember login to remove the persisted token while keeping the current session usable. Connect is still required after restarting ARIA; opening a model alone does not contact the streaming services. Sign out cancels the worker and removes the local session. To revoke the app's permission at the provider as well, use Twitch Connections or Google's third-party connections page in your browser.
+Remember login stores only Windows DPAPI-protected token data in local app settings, tied to the current Windows account. Access and refresh tokens never appear in ordinary UI, templates or exported model presets. Existing installations keep their separately protected registration settings; new builds supply ARIA's public desktop registration automatically. Disable Remember login to remove the persisted token while keeping the current session usable. Connect is still required after restarting ARIA; opening a model alone does not contact the streaming services. Sign out cancels the worker and removes the local session. To revoke the app's permission at the provider as well, use Twitch Connections or Google's third-party connections page in your browser.
 
-Expired access tokens refresh on the worker thread; rotating Twitch refresh tokens are saved immediately. Invalid or revoked permissions require Sign in again. A different PC or Windows account cannot reuse these saved protected tokens. Each account's connection and sign-out state is independent. Changing the OAuth client ID clears its old login. Do not paste passwords into Client ID or into chat; authenticate on the service's own page.
+Expired access tokens refresh on the worker thread; rotating Twitch refresh tokens are saved immediately. Invalid or revoked permissions require a fresh website sign-in. A different PC or Windows account cannot reuse these saved protected tokens. Each account's connection and sign-out state is independent. Authenticate only on the service's own page.
 
 YouTube chat requests consume the selected Cloud project's API quota. ARIA follows the server's polling interval with a minimum five-second gap and stops on quota/permission errors. Slow connections retry with backoff; persistent failures require Connect. Test-account restrictions, API enablement, expired testing credentials, quota and live-chat availability are controlled by the provider. Twitch validates its token on connection and at least hourly. Sign-in against real accounts requires valid registered client credentials and user consent; offline preview examples are explicitly labeled.
 
@@ -1645,3 +1637,13 @@ Scripts wait for an applied or rejected ticket, and set ariaSuccess, ariaStatus,
 The key is stored separately in Streamer.bot globals, never in generated scripts. Rotating it in ARIA requires updating ariaApiKey; it also invalidates old results and pending authenticated runs. Do not share global-variable backups containing the key. This uses the same listener as Developer API; turning it off disables both.
 
 For HTTP 409 wait for avatar changes to finish; for 429 reduce trigger frequency; for 503 wait for loading. Missing actions need a fresh selection or avatar repair. Logs can be exported from ARIA's Diagnostics button; include the connector's error and ticket without your key. See docs/streamerbot.md in the package for the full illustrated-flow instructions, examples and error table. This controls existing actions; importing assets and editing rigs stay in ARIA.
+
+## studio-workspace | Studio workspace | Find tools, focus your stage and prepare a session.
+
+Use the left navigation for Home, Stage, Avatar library, Avatar settings, Tracking, Outputs & OBS, Streaming chat and Settings. Stage shows a contextual inspector; drag its divider to resize it. Home offers setup links, local notes, a pauseable timer and session health. Notes stay in local app storage and are not part of support exports. The timer never controls broadcasting.
+
+Find a tool opens with Ctrl+K or Cmd+K, unless an existing custom shortcut owns that combination. Search common terms, use arrows and Enter, or click a result. Escape closes search. Focus stage hides side panels; Exit focus restores them. The footer reports tracking and open output windows, not whether a streaming platform is live.
+
+## throw-momentum | Momentum rebounds | Use flight speed and air resistance to shape rebounds.
+
+In the throw editor's motion controls, Momentum rebound follows incoming speed and arc. Gravity bends the outgoing trajectory and air resistance slows it. New throws enable this; existing saved designs retain legacy motion until you turn it on. Direction can retain authored routes, force left or right, alternate sides or randomly choose a side. Side modes mirror the launch around each aim point. Preview shows actual motion; drawn paths remain the authored paths. Queue counts appear in Effects. At capacity, throws wait and resume their interval instead of accumulating a catch-up barrage.

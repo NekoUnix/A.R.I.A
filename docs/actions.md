@@ -2,7 +2,7 @@
 
 Available in v0.34 Alpha. Older downloads keep their previous hotkey interface.
 
-Open **Hotkeys & actions…** in ARIA's top bar. **Keyboard shortcuts** records keys;
+Open **Hotkeys & actions…** in the workspace navigation. **Keyboard shortcuts** records keys;
 **Action nodes** combines avatar controls. The same window is linked from
 expressions, layer groups, objects, images, effects and presets.
 
@@ -101,3 +101,11 @@ Limits: 128 saved graphs; 256 nodes and 1,024 connections per graph; 300 seconds
 Delay; 16 simultaneous runs; 1 MiB imported JSON. Graphs cannot call other graphs.
 The editor uses ARIA's existing egui renderer with no new rendering dependency.
 Developers can trigger `run_action` and `stop_actions` through the [local API](api.md).
+
+## Starter recipes (development)
+
+Use **Start from a recipe** for a timed action/wait/action sequence or two parallel actions. Assign each Action node before running; the initial targets are intentionally empty. Targets include avatar actions, saved scene layouts and music controls. The normal graph validation, run limits and Stop all actions apply.
+
+Development builds also add per-run variables, arithmetic, tracking-input reads
+and conditions. See [production tools](studio-production.md#variables-and-conditions-in-graphs)
+for execution semantics and limits.

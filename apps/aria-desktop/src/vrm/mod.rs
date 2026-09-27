@@ -185,6 +185,7 @@ impl Avatar {
             });
         }
         let mut initial_config = RigConfig::from_parameters(&parameters);
+        initial_config.vrm.secondary.motion_style = aria_core::physics::MotionStyle::Bouncy;
         if asset.summary.is_glb() {
             initial_config
                 .bindings

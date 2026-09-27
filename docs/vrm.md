@@ -91,7 +91,9 @@ names and weights from 0 to 1. Existing expression blending fades toggles over
 can block/reduce automatic blinking, mouth opening or gaze.
 
 **Avatar → Spring physics / Springs** keeps exported chains and adds suitable
-missing hair/accessory chains. Medium is the starting preset. Tune damping,
+missing hair/accessory chains. Medium is the base tuning preset. Development builds
+add Bouncy/Natural motion styles across authored and generated VRM/GLB chains;
+new avatars start Bouncy, while older saved profiles retain Legacy behavior. Tune damping,
 bend limits and inherited per-group settings; saved custom settings survive
 reopening. [Physics guide](secondary-motion.md) explains all controls and limits.
 **Avatar lighting** supplies direction/color or even light. [Lighting guide](lighting.md).

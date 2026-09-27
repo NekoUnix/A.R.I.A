@@ -11,6 +11,7 @@ pub enum Protocol {
     VTubeStudio,
     AriaJson,
     IFacialMocap,
+    Vmc,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -52,6 +53,9 @@ pub fn decode(bytes: &[u8], protocol: Protocol) -> Result<TrackingFrame> {
         "Packet exceeds 16 KiB limit"
     );
     let mut frame = match protocol {
+        Protocol::Vmc => super::vmc::Decoder::default()
+            .decode(bytes)?
+            .ok_or_else(|| anyhow::anyhow!("VMC packet does not publish a frame"))?,
         Protocol::IFacialMocap => super::ifacial::decode(bytes)?,
         Protocol::VTubeStudio => {
             let p: VtsPacket = serde_json::from_slice(bytes)?;
@@ -113,6 +117,7 @@ pub fn subscription(listen_port: u16) -> Vec<u8> {
 /// Simulator output uses the same documented wire schema, including PascalCase VTS keys.
 pub fn encode(frame: &TrackingFrame, protocol: Protocol) -> Result<Vec<u8>> {
     match protocol {
+        Protocol::Vmc => super::vmc::encode(frame),
         Protocol::IFacialMocap => super::ifacial::encode(frame),
         Protocol::AriaJson => Ok(serde_json::to_vec(&AriaPacket {
             version: 1,

@@ -5,6 +5,63 @@
 This file records checks for the development builds. The Windows CI workflow
 is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
+## Browser, routing and event follow-up — 2026-09-27 (unreleased)
+
+- 314 standard workspace tests passed: 96 core, 186 desktop, 5 Live2D,
+  9 model and 18 tracking tests; 36 opt-in tests omitted. Strict workspace
+  all-target/all-feature Clippy passed. Repository/path and runtime-distribution
+  contracts passed.
+- Native Windows browser: start page, keyboard address entry, HTTPS page rendering,
+  local page navigation, Back, new-window links becoming tabs, bookmarks surviving
+  restart, and a real text-file download were checked interactively. Fixed native
+  focus theft from hidden webviews and explicit return of focus to the address
+  field. Verified the downloaded fixture's exact contents. The save picker now
+  prefers the runtime's Downloads directory over unrelated picker history.
+- A native silent-audio test passed for a persisted explicit output ID, pause,
+  seek, resume, route change releasing the old endpoint, stop and cancelled loads.
+- Composite gesture tests cover All/Any matching, missing/nonfinite values,
+  upper/lower thresholds, release hysteresis, old-rule migration and disabled
+  rules discarding partial holds. Chat-command tests cover opt-in behavior,
+  initial-backlog suppression, duplicates, pending moderation deletion, queue
+  bounds and disabling without replay.
+- Live Twitch/YouTube account acceptance, download cancel/resume, long-session
+  browser resource use and additional audio-device unplug/replug cases remain
+  unverified. Native VST3 hosting and remote guests remain planned systems; see
+  [system plan](studio-system-plan.md). No claim of complete reference parity.
+
+## Studio production expansion — 2026-09-27 (unreleased)
+
+Local Windows x64, Rust 1.98.1 GNU LLVM; this is not a claim of complete parity
+with Stella, VNyan or KarasuBonk. See the [feature matrix](studio-feature-matrix.md).
+
+- 308 standard workspace tests passed, with 36 opt-in tests omitted from that
+  standard run. Strict all-target/all-feature Clippy, formatting, repository
+  contracts and runtime/model distribution guards passed.
+- Additional native audio-device test passed for a silent generated WAV:
+  asynchronous open, pause/resume, seek, stop and cancellation. Audible mix quality
+  and OBS audio capture have not been auditioned in this pass.
+- All five VRM files in the supplied model folder passed native DX12 rendering,
+  expression, finite spring and frozen-pose checks: NekoUnity2, Donut, both
+  Alcealoid versions and NeiruVR01. Representative Neko and VRM1 renders were
+  visually inspected. New Bouncy/Natural styles also passed generated VRM0/VRM1
+  comparisons at 15/30/60/120 FPS. No blanket arbitrary-model guarantee follows.
+- Scene recall passed scheduler and save/reload tests; transitions preserve output
+  resolution and sender state. Music tests cover queue exhaustion, cancellation,
+  streaming decode and time-based ducking. Event tests cover deduplication,
+  thresholds, cooldowns and held-gesture release. Graph variables are isolated
+  between runs; false conditions finish remaining work without firing it.
+- VMC bundled facial input passed malformed-packet checks, quaternion roundtrip
+  and real local UDP receipt/port-release tests. External VMC sender apps, body
+  retargeting and hardware have not been validated.
+- Home, Stage, Music, Scenes, Events and Search were rendered at the minimum
+  960×640 logical window with the supplied Neko Live2D model and visually checked.
+  The music and populated event editors were checked again after their final
+  layout changes. Screenshots and private model artifacts stay local.
+- Publisher OAuth registration remains absent. Website sign-in and direct native
+  service event subscriptions are not live-account verified. Full browser,
+  remote guests, VST routing, additional device adapters and advanced effects
+  remain implementation work, not passing checks.
+
 ## Purism Core and expressive physics — 2026-09-27
 
 This update was tested locally on Windows x64 with Rust 1.98.1 using the

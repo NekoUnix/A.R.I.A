@@ -283,6 +283,67 @@ fn spring_step_is_finite_frame_rate_independent_and_freezes() {
     assert!(!at60[2].abs_diff_eq(Quat::IDENTITY, 1e-4));
 }
 #[test]
+fn expressive_springs_cover_both_vrm_versions_across_refresh_rates() {
+    use aria_core::physics::MotionStyle;
+    let dir = tempfile::tempdir().unwrap();
+    for old in [false, true] {
+        let path = dir.path().join(if old { "old.vrm" } else { "new.vrm" });
+        let (json, bin) = fixture(old);
+        write(&path, &json, &bin);
+        let asset = asset::load(&path, &|_| Ok(())).unwrap();
+        let run = |style, fps| {
+            let mut simulation = spring::Simulation::default();
+            let mut rotations: Vec<_> = asset.nodes.iter().map(|n| n.rotation).collect();
+            let mut world: Vec<_> = asset.nodes.iter().map(|n| n.world).collect();
+            let settings = aria_core::physics::PhysicsSettings {
+                wind: 0.4,
+                ..Default::default()
+            };
+            let secondary = aria_core::vrm::Secondary {
+                motion_style: style,
+                ..Default::default()
+            };
+            for _ in 0..fps * 2 {
+                for (r, n) in rotations.iter_mut().zip(&asset.nodes) {
+                    *r = n.rotation;
+                }
+                spring::world_matrices(&asset.nodes, &asset.order, &rotations, &mut world);
+                simulation.update(
+                    &asset.nodes,
+                    &asset.order,
+                    &asset.springs,
+                    &mut rotations,
+                    &mut world,
+                    &settings,
+                    &secondary,
+                    1. / fps as f32,
+                    false,
+                );
+                assert!(world.iter().all(|m| m.is_finite()));
+                assert!(
+                    rotations
+                        .iter()
+                        .all(|q| q.is_finite() && (q.length() - 1.).abs() < 1e-4)
+                );
+            }
+            rotations
+        };
+        for style in [MotionStyle::Natural, MotionStyle::Bouncy] {
+            let reference = run(style, 120);
+            for fps in [15, 30, 60] {
+                let actual = run(style, fps);
+                assert!(
+                    actual
+                        .iter()
+                        .zip(&reference)
+                        .all(|(a, b)| a.abs_diff_eq(*b, 2e-4)),
+                    "VRM old={old}, {style:?}, fps={fps}"
+                );
+            }
+        }
+    }
+}
+#[test]
 #[cfg(windows)]
 #[ignore = "requires a DX12 GPU; uses only generated fixture geometry"]
 fn both_versions_render_and_morph_on_gpu() {

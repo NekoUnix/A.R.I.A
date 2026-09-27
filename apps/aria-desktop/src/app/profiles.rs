@@ -1180,6 +1180,42 @@ mod tests {
         assert_eq!(restored.actions.bindings[0].target, target);
     }
     #[test]
+    fn scenes_execute_through_graph_scheduler_and_survive_workspace_serialization() {
+        use crate::actions::{Graph, Mode, Step, Target};
+        let (ctx, mut app) = app();
+        let mut layout = app.outputs.snapshot();
+        layout.canvases[0].position = [0.4, -0.2];
+        let id = app
+            .settings
+            .scenes
+            .capture("Gameplay".into(), layout)
+            .unwrap();
+        let mut graph = Graph::new(1);
+        graph.nodes[1].step = Step::Action {
+            target: Some(Target::Scene(id)),
+            mode: Mode::Toggle,
+        };
+        app.settings.actions.graphs.push(graph);
+        app.trigger_target(Target::Graph(1));
+        app.update_actions(&ctx);
+        assert!(app.action_runs.is_empty());
+        assert_eq!(app.outputs.snapshot().canvases[0].position, [0.4, -0.2]);
+        let json = serde_json::to_string(&app.settings).unwrap();
+        let restored: Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.scenes.scenes[0].id, id);
+        restored.actions.graphs[0].validate().unwrap();
+        app.settings.scenes.scenes.clear();
+        app.trigger_target(Target::Scene(id));
+        app.update_actions(&ctx);
+        assert!(
+            app.action_editor
+                .message
+                .as_ref()
+                .unwrap()
+                .contains("Scene no longer exists")
+        );
+    }
+    #[test]
     fn streamerbot_targets_profiles_not_focus_and_rejects_missing_targets() {
         use crate::actions::{Command, Mode, Target};
         let (ctx, mut app) = app();

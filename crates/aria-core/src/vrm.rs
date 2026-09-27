@@ -107,6 +107,8 @@ impl Settings {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Secondary {
+    /// Missing in saved avatars means preserve the previous spring solver tuning.
+    pub motion_style: crate::physics::MotionStyle,
     pub auto_detect: bool,
     pub manual_roots: std::collections::BTreeSet<usize>,
     /// Keep these generated bones and their descendants rigid. Authored springs use group controls.
@@ -118,6 +120,7 @@ pub struct Secondary {
 impl Default for Secondary {
     fn default() -> Self {
         Self {
+            motion_style: crate::physics::MotionStyle::Authored,
             auto_detect: true,
             manual_roots: Default::default(),
             excluded_roots: Default::default(),

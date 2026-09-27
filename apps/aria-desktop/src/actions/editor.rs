@@ -233,6 +233,23 @@ impl Editor {
     fn graphs(&mut self, ui: &mut egui::Ui, library: &mut Library, choices: &[Choice]) -> bool {
         let mut changed = false;
         ui.small("Connect output dots to input dots. Drag cards to arrange them. Branches run together; a joined node waits for every incoming branch. Saved actions can be run with a button or recorded hotkey.");
+        ui.add_enabled_ui(library.graphs.len() < 128, |ui| {
+            ui.menu_button("Start from a recipe", |ui| {
+                ui.label("Choose avatar actions after adding the recipe.");
+                for (label, parallel) in [("Timed sequence: action, wait, action", false), ("Together: two actions, then finish", true)] {
+                    if ui.button(label).clicked() {
+                        let graph = Graph::recipe(library.next_id(), parallel);
+                        self.selected = Some(graph.id);
+                        self.node = Some(2);
+                        self.linking = None;
+                        library.graphs.push(graph);
+                        self.message = Some("Recipe added. Select each Action node and choose its avatar action before running.".into());
+                        changed = true;
+                        ui.close();
+                    }
+                }
+            });
+        });
         ui.horizontal_wrapped(|ui| {
             egui::ComboBox::from_id_salt("action-graph").selected_text(library.graphs.iter().find(|g| Some(g.id) == self.selected).map_or("Choose an action", |g| &g.name)).show_ui(ui, |ui| {
                 for graph in &library.graphs {
@@ -287,6 +304,29 @@ impl Editor {
                     },
                 ),
                 ("+ Delay", Step::Delay { seconds: 1. }),
+                (
+                    "+ Variable",
+                    Step::Variable {
+                        name: "value".into(),
+                        operation: Math::Set,
+                        value: 0.,
+                    },
+                ),
+                (
+                    "+ Read input",
+                    Step::Input {
+                        name: "value".into(),
+                        channel: "MouthOpen".into(),
+                    },
+                ),
+                (
+                    "+ Condition",
+                    Step::Require {
+                        name: "value".into(),
+                        comparison: Compare::AtLeast,
+                        value: 0.5,
+                    },
+                ),
                 ("+ End", Step::End),
             ] {
                 if ui
@@ -342,7 +382,7 @@ impl Editor {
                             .show_ui(ui, |ui| {
                                 for choice in choices
                                     .iter()
-                                    .filter(|c| matches!(c.target, Target::Avatar { .. }))
+                                    .filter(|c| !matches!(c.target, Target::Graph(_)))
                                 {
                                     ui.selectable_value(
                                         target,
@@ -352,6 +392,12 @@ impl Editor {
                                 }
                             });
                         changed |= *target != before;
+                        if target
+                            .as_ref()
+                            .is_none_or(|t| !crate::streamerbot::supports_mode(t))
+                        {
+                            *mode = Mode::Toggle;
+                        }
                         if matches!(
                             target,
                             Some(Target::Avatar {
@@ -383,6 +429,83 @@ impl Editor {
                                     .suffix(" seconds"),
                             )
                             .changed();
+                    }
+                    Step::Variable {
+                        name,
+                        operation,
+                        value,
+                    } => {
+                        changed |= ui
+                            .add(
+                                egui::TextEdit::singleline(name)
+                                    .char_limit(64)
+                                    .desired_width(120.),
+                            )
+                            .changed();
+                        egui::ComboBox::from_id_salt("math-operation")
+                            .selected_text(format!("{operation:?}"))
+                            .show_ui(ui, |ui| {
+                                for op in [
+                                    Math::Set,
+                                    Math::Add,
+                                    Math::Subtract,
+                                    Math::Multiply,
+                                    Math::Divide,
+                                    Math::Minimum,
+                                    Math::Maximum,
+                                ] {
+                                    changed |= ui
+                                        .selectable_value(operation, op, format!("{op:?}"))
+                                        .changed();
+                                }
+                            });
+                        changed |= ui
+                            .add(egui::DragValue::new(value).speed(0.1).range(-1e12..=1e12))
+                            .changed();
+                    }
+                    Step::Input { name, channel } => {
+                        changed |= ui
+                            .add(
+                                egui::TextEdit::singleline(name)
+                                    .hint_text("Variable")
+                                    .char_limit(64)
+                                    .desired_width(120.),
+                            )
+                            .changed();
+                        changed |= ui
+                            .add(
+                                egui::TextEdit::singleline(channel)
+                                    .hint_text("Tracking input")
+                                    .char_limit(128)
+                                    .desired_width(160.),
+                            )
+                            .changed();
+                    }
+                    Step::Require {
+                        name,
+                        comparison,
+                        value,
+                    } => {
+                        changed |= ui
+                            .add(
+                                egui::TextEdit::singleline(name)
+                                    .char_limit(64)
+                                    .desired_width(120.),
+                            )
+                            .changed();
+                        egui::ComboBox::from_id_salt("comparison")
+                            .selected_text(format!("{comparison:?}"))
+                            .show_ui(ui, |ui| {
+                                for op in [Compare::AtLeast, Compare::AtMost, Compare::Equal] {
+                                    changed |= ui
+                                        .selectable_value(comparison, op, format!("{op:?}"))
+                                        .changed();
+                                }
+                            });
+                        changed |= ui
+                            .add(egui::DragValue::new(value).speed(0.1).range(-1e12..=1e12))
+                            .changed();
+                        ui.small("If false, stop all remaining steps in this run.");
                     }
                     Step::Start => {
                         ui.label("Run button or assigned hotkey starts here.");
@@ -480,6 +603,11 @@ impl Editor {
                         Step::Start => "Start".into(),
                         Step::End => "End".into(),
                         Step::Delay { seconds } => format!("Wait {seconds:.1}s"),
+                        Step::Variable {
+                            name, operation, ..
+                        } => format!("{name} · {operation:?}"),
+                        Step::Input { channel, .. } => format!("Read {channel}"),
+                        Step::Require { name, .. } => format!("Require {name}"),
                         Step::Action { .. } => format!("Action {}", node.id),
                     };
                     painter.text(
