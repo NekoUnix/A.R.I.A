@@ -565,7 +565,7 @@ fn choose_pad<'a>(
 mod tests {
     use super::*;
     #[test]
-    #[ignore = "native SDL devices and local ARIA_TEST_MODEL / ARIA_CUBISM_CORE; runs without physical hardware"]
+    #[ignore = "native SDL devices and local ARIA_TEST_MODEL; runs without physical hardware"]
     fn controller_events_drive_native_live2d_and_clear_on_disconnect() {
         use aria_core::{movement::RigConfig, rig};
         use std::path::Path;
@@ -625,7 +625,7 @@ mod tests {
         ))
         .unwrap();
         let mut model = aria_live2d::CubismModel::load(
-            Path::new(&std::env::var_os("ARIA_CUBISM_CORE").expect("Cubism Core")),
+            Path::new(&std::ffi::OsString::new()),
             &aria_model::read_bounded(&files.moc, aria_core::asset_limits::MOC_FILE).unwrap(),
             files.textures.len(),
         )

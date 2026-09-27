@@ -1,8 +1,7 @@
-//! Owned, single-threaded Cubism Core runtime. Rendering consumes plain Rust mesh data.
-//! Core must be supplied separately under Live2D's license.
+//! Owned, single-threaded Purism Core runtime. Rendering consumes plain Rust mesh data.
+//! The MIT runtime is compiled in; no proprietary SDK or external library is loaded.
 mod ffi;
 pub mod host;
-pub mod platform;
 use anyhow::{Context, Result, ensure};
 use ffi::{Aligned, Api, V2, array, count};
 use std::{collections::BTreeMap, ffi::CStr, marker::PhantomData, path::Path, rc::Rc};
@@ -46,7 +45,7 @@ pub struct Canvas {
 
 pub struct CubismModel {
     model: *mut ffi::Model,
-    // Field drop order: model storage before moc storage, then the DLL.
+    // Field drop order: model storage before the MOC storage it references.
     _model_memory: Aligned,
     _moc_memory: Aligned,
     api: Api,
@@ -60,7 +59,8 @@ pub struct CubismModel {
 }
 
 impl CubismModel {
-    pub fn load(core_path: &Path, bytes: &[u8], texture_count: usize) -> Result<Self> {
+    /// The legacy path argument is ignored; retained for source compatibility.
+    pub fn load(_legacy_core_path: &Path, bytes: &[u8], texture_count: usize) -> Result<Self> {
         ensure!(
             bytes.len() >= 64
                 && bytes.len() <= aria_core::asset_limits::MOC_FILE
@@ -68,12 +68,12 @@ impl CubismModel {
             "Invalid .moc3 header/size (maximum 1280 MiB)"
         );
         ensure!((1..=32).contains(&texture_count), "Expected 1–32 textures");
-        let api = Api::load(core_path)?;
+        let api = Api::bundled();
         let mut moc_memory = Aligned::new(bytes.len(), 64)?;
         moc_memory.copy_from(bytes);
         // SAFETY: Calls use the documented ABI, aligned owned storage, checked sizes and
         // a model initialized by Core. All returned arrays are copied before any mutation.
-        // A genuine, current Core DLL is a trust boundary, not a sandbox for arbitrary DLLs.
+        // Native parsing runs in the isolated host in desktop use; it is not an OS sandbox.
         unsafe {
             let version = (api.version)();
             ensure!(
@@ -83,18 +83,21 @@ impl CubismModel {
             let moc_version = (api.moc_version)(moc_memory.ptr(), bytes.len() as u32);
             ensure!(
                 moc_version != 0 && moc_version <= (api.latest_moc)(),
-                "This .moc3 requires a newer Cubism Core SDK"
+                "This .moc3 requires a newer Purism Core; update ARIA"
             );
             ensure!(
                 (api.consistent)(moc_memory.ptr(), bytes.len() as u32) == 1,
-                "Cubism rejected this .moc3: consistency check failed"
+                "Purism Core rejected this .moc3: consistency check failed"
             );
             let moc = (api.revive)(moc_memory.ptr(), bytes.len() as u32);
-            ensure!(!moc.is_null(), "Cubism could not revive .moc3");
+            ensure!(!moc.is_null(), "Purism Core could not revive .moc3");
             let size = (api.model_size)(moc);
             let model_memory = Aligned::new(size as usize, 16)?;
             let model = (api.initialize)(moc, model_memory.ptr(), size);
-            ensure!(!model.is_null(), "Cubism could not initialize the model");
+            ensure!(
+                !model.is_null(),
+                "Purism Core could not initialize the model"
+            );
             if let Some(offscreens) = api.offscreens {
                 ensure!(
                     offscreens(model) == 0,
@@ -176,7 +179,7 @@ impl CubismModel {
                     pixels_per_unit: ppu,
                 },
                 version: format!(
-                    "{}.{}.{}",
+                    "Purism Core 1.1.0 (ABI {}.{}.{})",
                     version >> 24,
                     (version >> 16) & 255,
                     version & 65535
@@ -356,6 +359,27 @@ impl CubismModel {
 mod tests {
     use super::*;
     #[test]
+    fn bundled_purism_api_is_linked_without_a_runtime_path() {
+        let api = Api::bundled();
+        // SAFETY: These statically linked queries have no pointer arguments.
+        unsafe {
+            assert_eq!((api.version)(), 0x06000001);
+            assert!((api.latest_moc)() >= 5);
+        }
+    }
+
+    #[test]
+    fn truncated_moc_is_rejected_by_bundled_runtime_with_legacy_path_ignored() {
+        let mut bytes = [0_u8; 64];
+        bytes[..4].copy_from_slice(b"MOC3");
+        bytes[4] = 3;
+        let error = CubismModel::load(Path::new("never-load-this.dll"), &bytes, 1)
+            .err()
+            .expect("truncated model must fail");
+        assert!(error.to_string().contains("consistency"), "{error:#}");
+    }
+
+    #[test]
     fn invalid_moc_is_rejected_before_loading_native_code() {
         assert!(
             CubismModel::load(Path::new("missing.dll"), &[0; 64], 1)
@@ -375,9 +399,9 @@ mod tests {
     }
     /// Opt-in integration test, using locally supplied licensed assets. No fixture is redistributed.
     #[test]
-    #[ignore = "requires ARIA_CUBISM_CORE and ARIA_TEST_MOC paths"]
+    #[ignore = "requires ARIA_TEST_MOC paths"]
     fn real_core_deforms_model_and_reloads() {
-        let dll = std::env::var_os("ARIA_CUBISM_CORE").expect("ARIA_CUBISM_CORE");
+        let dll = std::ffi::OsString::new();
         let path = std::env::var_os("ARIA_TEST_MOC").expect("ARIA_TEST_MOC");
         let bytes = std::fs::read(path).unwrap();
         for _ in 0..3 {

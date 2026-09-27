@@ -196,10 +196,10 @@ fn candidates(
 mod tests {
     use super::*;
     #[test]
-    #[ignore = "requires local ARIA_TEST_VBRIDGER, ARIA_TEST_MODEL and ARIA_CUBISM_CORE"]
+    #[ignore = "requires local ARIA_TEST_VBRIDGER, ARIA_TEST_MODEL"]
     fn experimental_import_drives_native_model_and_preserves_frozen_pose() {
         let path = std::env::var_os("ARIA_TEST_MODEL").unwrap();
-        let core = std::env::var_os("ARIA_CUBISM_CORE").unwrap();
+        let core = std::ffi::OsString::new();
         let source = std::env::var_os("ARIA_TEST_VBRIDGER").unwrap();
         let files = aria_model::load_files(Path::new(&path)).unwrap();
         let mut model = aria_live2d::CubismModel::load(

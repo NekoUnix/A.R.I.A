@@ -529,13 +529,13 @@ mod tests {
 
     #[test]
     #[cfg(windows)]
-    #[ignore = "requires ARIA_TEST_MODEL, ARIA_TEST_APPEARANCE_PARAMETER, Cubism Core and GPU"]
+    #[ignore = "requires ARIA_TEST_MODEL, ARIA_TEST_APPEARANCE_PARAMETER, bundled runtime and GPU"]
     fn native_frozen_preview_is_independent_of_live_tracking_and_visibility() {
         use aria_core::rig::Inputs;
         use std::path::Path;
         let state = crate::spout::tests::gpu_state();
         let path = std::env::var_os("ARIA_TEST_MODEL").unwrap();
-        let core = std::env::var_os("ARIA_CUBISM_CORE").unwrap();
+        let core = std::ffi::OsString::new();
         let mut avatar = Avatar::load(
             &state,
             Path::new(&core),

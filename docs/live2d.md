@@ -33,43 +33,21 @@ the in-app **?** for the detailed workflow and resource limits. To replace
 the main avatar, use **Avatar & appearance → Import Live2D avatar** (or
 **Change avatar / type → Live2D** when an avatar is already loaded).
 
-ARIA evaluates real `.moc3` models through a separate Cubism Core runtime process
-and renders their ArtMeshes with wgpu (Direct3D 12 on Windows). You need **the model, its texture images, and the
-official Cubism Core DLL**. A moc3 contains the rig, not the texture artwork.
+ARIA evaluates `.moc3` models through **Purism Core**, compiled into its separate
+runtime process, and renders ArtMeshes with wgpu. You need the exported model
+and its texture images. A moc3 contains the rig, not the texture artwork.
 
-## 1. Install the runtime
+## 1. Built-in runtime
 
-1. Visit the official [Cubism SDK for Native download page](https://www.live2d.com/en/sdk/download/native/),
-   review its terms, download the SDK, and extract it to a stable folder such as
-   `C:\Tools\CubismSdkForNative-5-r.5`.
-2. Run ARIA. Choose **Avatar & appearance → Import Live2D avatar**.
-   The guided importer asks for the export and runtime together.
-3. Click **Choose Cubism Core library…** and select:
+Purism Core is included on Windows, Linux and macOS. No SDK download, DLL picker,
+or runtime path is required. Old saved Core paths and `ARIA_CUBISM_CORE` do not
+select or load code. Update ARIA itself to update the runtime.
 
-   ```text
-   C:\Tools\CubismSdkForNative-5-r.5\Core\dll\windows\x86_64\Live2DCubismCore.dll
-   ```
-
-Use **x86_64**, not x86. Select the `.dll`, not a `.lib` in `Core/lib`. ARIA loads
-the DLL inside a separate native worker; no SDK compilation, Unity, or desktop
-VTube Studio is required. The DLL path is saved in ARIA's local preferences. Changes take effect
-on the next avatar import. Keep the SDK folder in place.
-
-The SDK used for local verification was Native **5-r.5**, whose Core reports
-**6.0.1**; SDK and Core version numbers are different. The loader supports both
-the older drawable render-order API and the newer combined render-order API.
-It requires the Core consistency-check and multiply/screen-color APIs. Prefer the
-current official SDK when an older DLL reports missing symbols or a newer moc version.
-
-Core is executable native software. Select an official SDK DLL, not an arbitrary
-DLL received with an avatar. ARIA only loads the explicitly selected absolute path;
-it does not search the model folder for executable code. Neither Core nor licensed
-model artwork is included in ARIA's ZIP or MIT source license.
-
-Linux and macOS use their official `.so` / `.dylib` Core libraries in the same
-worker architecture. Select the extracted SDK folder in guided import to discover
-the native library. A Windows DLL alone cannot run on those systems. See
-[native platform setup and limitations](platforms.md).
+Each model still runs in a hidden worker, providing crash isolation rather than
+an OS security sandbox. The pinned implementation uses the v6 compatibility API;
+this does not add offscreen or advanced blending support to ARIA's renderer.
+See [runtime provenance and distribution](purism-core.md) and
+[native platform limitations](platforms.md).
 
 ## 2. Open the avatar
 
@@ -170,10 +148,9 @@ Use green screen plus OBS Chroma Key when your capture method does not retain al
 
 ## Command-line launch
 
-You can set the DLL for the current PowerShell session and pass the model path:
+Pass the model path directly:
 
 ```powershell
-$env:ARIA_CUBISM_CORE = 'C:\Tools\CubismSdkForNative-5-r.5\Core\dll\windows\x86_64\Live2DCubismCore.dll'
 .\aria-desktop.exe 'C:\Avatars\MyAvatar\MyAvatar.model3.json'
 ```
 
@@ -183,9 +160,8 @@ From source:
 cargo run --locked --release -p aria-desktop -- 'C:\Avatars\MyAvatar\MyAvatar.moc3'
 ```
 
-`ARIA_CUBISM_CORE` takes precedence over the saved DLL path. Launching with a model
-argument does not automatically connect to a phone. The app builds and its demo
-works without the SDK installed.
+Launching with a model argument does not automatically connect to a phone.
+The built-in Purism Core runtime is used for every Live2D import.
 
 ## Compatibility and limits
 
@@ -215,9 +191,8 @@ Large models can briefly pause the UI while importing; use a release build for n
 
 ## Troubleshooting
 
-- **Choose Core first / missing symbol / wrong architecture:** select the official
-  current x64 DLL above. Install the [Microsoft Visual C++ x64 runtime](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
-  if Windows reports a missing runtime dependency. Restart after replacing a loaded DLL.
+- **Unsupported moc version:** update ARIA. External SDK libraries cannot change
+  the bundled runtime or renderer capabilities.
 - **Consistency check failed:** re-export the avatar with Cubism Editor or obtain a
   valid export from its author. ARIA does not attempt to revive rejected files.
 - **Missing texture or unexpected artwork:** retain the manifest's subfolders;
@@ -234,12 +209,6 @@ Large models can briefly pause the UI while importing; use a release build for n
 
 See [validation](validation.md) for the actual model and GPU checks performed.
 
-
-The SDK download button names your current OS and its library extension. All desktop
-variants intentionally open the same official Native SDK page, which contains the
-license form and SDK download. After extraction, choose the SDK folder so ARIA
-resolves the native library; the official library-list link shows architecture paths.
-This is not a direct DLL download, and the Unity/Web SDK downloads are different products.
 
 ## Bringing existing VTube Studio customizations
 

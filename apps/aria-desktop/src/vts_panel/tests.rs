@@ -13,10 +13,10 @@ fn asset_resolution_rejects_escape_and_ambiguity() {
 }
 #[test]
 #[cfg(windows)]
-#[ignore = "local model collection, Core and GPU; no artwork redistributed"]
+#[ignore = "local model collection, bundled runtime and GPU; no artwork redistributed"]
 fn local_collection_import_apply_undo_and_render() {
     let state = crate::spout::tests::gpu_state();
-    let core = std::env::var_os("ARIA_CUBISM_CORE").unwrap();
+    let core = std::ffi::OsString::new();
     let inventory = std::env::var_os("ARIA_VTS_INVENTORY").unwrap();
     let rows: serde_json::Value =
         serde_json::from_slice(&std::fs::read(inventory).unwrap()).unwrap();

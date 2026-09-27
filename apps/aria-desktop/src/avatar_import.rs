@@ -152,7 +152,6 @@ impl Wizard {
     pub fn show(
         &mut self,
         ctx: &egui::Context,
-        core: &mut String,
         progress: Option<(usize, usize)>,
         vrm_progress: Option<String>,
     ) -> Option<Request> {
@@ -259,21 +258,14 @@ impl Wizard {
                         }
                         theme::caption(ui,"Nested folders, spaces and Unicode names are supported. Extract ZIP/RAR downloads first. For OneDrive, choose Always keep on this device before importing.");
                         if let Some(path)=&self.model {ui.label(path.display().to_string());}
-                        help::label(ui,"Cubism Core runtime","runtime");
-                        ui.label(aria_live2d::platform::guidance());
-                        ui.small("Core runs in a separate runtime process. Select the library for this operating system; no SDK binaries are bundled.");
-                        ui.text_edit_singleline(core);
-                        if ui.button("Choose Cubism Core library…").clicked()&&let Some(path)=rfd::FileDialog::new().add_filter("Cubism Core",aria_live2d::platform::extensions()).pick_file(){*core=path.display().to_string();}
-                        if ui.button("Choose extracted SDK folder…").clicked() && let Some(folder)=rfd::FileDialog::new().pick_folder() { match aria_live2d::platform::resolve(&folder) { Ok(path)=>*core=path.display().to_string(), Err(error)=>self.error=Some(error.to_string()) } }
-                        ui.hyperlink_to(aria_live2d::platform::download_label(),aria_live2d::platform::DOWNLOAD_URL);
-                        theme::caption(ui,aria_live2d::platform::download_hint());
-                        ui.hyperlink_to("Official library list by OS / architecture",aria_live2d::platform::LIBRARY_LIST_URL);
+                        help::label(ui,"Purism Core · built in","runtime");
+                        theme::caption(ui,"Ready to import. No separate runtime download is needed.");
                     }
                     ui.horizontal(|ui| {
                         if ui.button("Back").clicked(){self.step=0;}
                         let ready = if self.kind==Some(Kind::Images) {
                             !self.artwork.is_empty()&&self.artwork.len()<=128&&self.artwork.iter().all(|a|a.info.is_ok())&&self.artwork.iter().filter(|a|a.trigger==Trigger::Idle).count()==1
-                        }else{self.model.as_ref().is_some_and(|p|p.is_file())&&(self.kind.is_some_and(Kind::is_3d)||aria_live2d::platform::resolve(Path::new(core.trim())).is_ok())};
+                        }else{self.model.as_ref().is_some_and(|p|p.is_file())};
                         if ui.add_enabled(ready,egui::Button::new("Review import →")).clicked(){self.step=2;self.error=None;}
                     });
                 } else {

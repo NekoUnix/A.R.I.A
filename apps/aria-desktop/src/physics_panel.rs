@@ -1,5 +1,5 @@
 use crate::theme;
-use aria_core::physics::{GroupInfo, GroupSettings, PhysicsSettings};
+use aria_core::physics::{GroupInfo, GroupSettings, MotionStyle, PhysicsSettings};
 use eframe::egui;
 
 #[derive(Default)]
@@ -56,6 +56,26 @@ impl PhysicsPanel {
                 crate::help::control(ui, "physics", |ui| {
                     ui.checkbox(&mut settings.enabled, "Enable avatar physics")
                 });
+                ui.add_enabled_ui(settings.enabled, |ui| {
+                    let before = settings.motion_style;
+                    egui::ComboBox::from_id_salt("physics-motion-style")
+                        .selected_text(match settings.motion_style {
+                            MotionStyle::Authored => "Authored · legacy ARIA",
+                            MotionStyle::Natural => "Natural · smooth settling",
+                            MotionStyle::Bouncy => "Bouncy · expressive rebound",
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut settings.motion_style, MotionStyle::Bouncy, "Bouncy · expressive rebound");
+                            ui.selectable_value(&mut settings.motion_style, MotionStyle::Natural, "Natural · smooth settling");
+                            ui.selectable_value(&mut settings.motion_style, MotionStyle::Authored, "Authored · legacy ARIA");
+                        });
+                    actions.settle |= before != settings.motion_style;
+                    theme::caption(ui, match settings.motion_style {
+                        MotionStyle::Bouncy => "Longer swings and clearer rebound. Lower Inertia to settle faster; lower Strength if the rig reaches its limits.",
+                        MotionStyle::Natural => "Smoother secondary motion with faster settling and stable playback across frame rates.",
+                        MotionStyle::Authored => "Preserves ARIA's previous solver and the export's physics rate. This is not the Live2D SDK solver.",
+                    });
+                });
                 tuning(
                     ui,
                     settings.enabled,
@@ -66,7 +86,7 @@ impl PhysicsPanel {
                     &mut settings.wind,
                 );
                 ui.horizontal_wrapped(|ui| {
-                    actions.settle =
+                    actions.settle |=
                         crate::help::control(ui, "physics", |ui| ui.button("Settle motion"))
                             .clicked();
                     if crate::help::control(ui, "physics", |ui| ui.button("Reset overall"))

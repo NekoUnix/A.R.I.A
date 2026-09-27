@@ -14,16 +14,12 @@ use std::{
 };
 
 const MAGIC: &[u8; 8] = b"ARIACORE";
-const VERSION: u16 = 3;
+const VERSION: u16 = 4;
 const MAX_PACKET: usize = 128 * 1024 * 1024;
 
 #[derive(Serialize, Deserialize)]
 enum Request {
-    Load {
-        core: PathBuf,
-        moc: PathBuf,
-        textures: usize,
-    },
+    Load { moc: PathBuf, textures: usize },
     Update(Vec<f32>, Vec<f32>),
 }
 #[derive(Serialize, Deserialize)]
@@ -83,25 +79,21 @@ fn read_packet<T: DeserializeOwned>(reader: &mut impl Read) -> Result<Option<T>>
     Ok(Some(value))
 }
 
-/// Worker entry point. Only the worker loads executable Core code; meshes are Rust data.
+/// Worker entry point. The worker evaluates models using bundled Purism Core.
 pub fn serve(reader: impl Read, writer: impl Write) -> Result<()> {
     let (mut reader, mut writer) = (BufReader::new(reader), BufWriter::new(writer));
     let mut model: Option<CubismModel> = None;
     while let Some(request) = read_packet(&mut reader)? {
         let response = (|| -> Result<Response> {
             match request {
-                Request::Load {
-                    core,
-                    moc,
-                    textures,
-                } => {
+                Request::Load { moc, textures } => {
                     ensure!(model.is_none(), "A Cubism host owns exactly one model");
                     let mut bytes = Vec::new();
                     std::fs::File::open(&moc)
                         .with_context(|| format!("Cannot open {}", moc.display()))?
                         .take(aria_core::asset_limits::MOC_FILE as u64 + 1)
                         .read_to_end(&mut bytes)?;
-                    let loaded = CubismModel::load(&core, &bytes, textures)?;
+                    let loaded = CubismModel::load(Path::new(""), &bytes, textures)?;
                     let response = Response::Loaded {
                         canvas: loaded.canvas,
                         version: loaded.version.clone(),
@@ -275,19 +267,20 @@ impl HostedModel {
     pub fn process_id(&self) -> u32 {
         self.connection.child.id()
     }
+    /// The legacy Core path is ignored; all workers use statically linked Purism Core.
     pub fn load(core: &Path, moc: &Path, textures: usize) -> Result<Self> {
         let executable = std::env::var_os("ARIA_CUBISM_HOST")
             .map(PathBuf::from)
             .map_or_else(std::env::current_exe, Ok)?;
         Self::load_with_host(&executable, core, moc, textures)
     }
+    /// Use an explicit ARIA worker executable; the legacy Core path is ignored.
     pub fn load_with_host(
         executable: &Path,
-        core: &Path,
+        _legacy_core_path: &Path,
         moc: &Path,
         textures: usize,
     ) -> Result<Self> {
-        let core = crate::platform::resolve(core)?;
         let moc = moc.canonicalize().context("Cannot find the moc3 file")?;
         ensure!((1..=32).contains(&textures), "Expected 1–32 textures");
         let mut connection = Connection::start(executable)?;
@@ -297,14 +290,7 @@ impl HostedModel {
             parameters,
             parts,
             draws,
-        } = connection.request(
-            Request::Load {
-                core,
-                moc,
-                textures,
-            },
-            Duration::from_secs(30),
-        )?
+        } = connection.request(Request::Load { moc, textures }, Duration::from_secs(30))?
         else {
             bail!("Cubism host returned an unexpected load response");
         };
@@ -415,10 +401,10 @@ mod tests {
         ));
     }
     #[test]
-    #[ignore = "requires ARIA_TEST_HOST, ARIA_CUBISM_CORE and ARIA_TEST_MOC; no artwork is redistributed"]
+    #[ignore = "requires ARIA_TEST_HOST, ARIA_TEST_MOC; no artwork is redistributed"]
     fn isolated_core_matches_native_frames_and_handles_worker_exit() {
         let host = PathBuf::from(std::env::var_os("ARIA_TEST_HOST").unwrap());
-        let core = PathBuf::from(std::env::var_os("ARIA_CUBISM_CORE").unwrap());
+        let core = PathBuf::from(std::ffi::OsString::new());
         let moc = PathBuf::from(std::env::var_os("ARIA_TEST_MOC").unwrap());
         let bytes = std::fs::read(&moc).unwrap();
         let mut native = CubismModel::load(&core, &bytes, 32).unwrap();

@@ -113,11 +113,14 @@ is optional; neither replaces the compiler/linker.
    cloning again. A folder name containing spaces is supported; quote it when
    using `cd`. This workspace may already be named `Live2D Alternative`.
 
+Portable packaging with `scripts/build-windows.ps1` also requires Python 3 on PATH
+for its runtime distribution check.
+
 The compiler version is pinned in `rust-toolchain.toml`; rustup will download it
 when first needed. `Cargo.lock` pins dependency resolution. Internet access is
 needed on the initial build; cached dependencies can be used offline afterward.
 The v0.24 dependency set requires Rust 1.95 or newer; the pinned toolchain is newer.
-The demo, PNG puppet and tracking work without an SDK. Live2D avatars require the official Cubism Core DLL; see [Live2D setup](live2d.md).
+Live2D-compatible avatars use the bundled Purism Core runtime; no SDK download is needed. See [Live2D setup](live2d.md).
 
 For a quicker edit/compile loop:
 
@@ -226,7 +229,7 @@ Import/export action configurations and editable artwork are supplied in
 all units, priority rules, GIF limits and microphone troubleshooting offline.
 
 **Import Live2D avatar…** guides you through selecting an exported .model3.json
-or .moc3 and the official Cubism Core x64 DLL. Review the detected atlas textures,
+or .moc3; Purism Core is built in. Review the detected atlas textures,
 physics and expressions, then import. Follow the [Live2D guide](live2d.md) for details.
 
 After import, **Model details** summarizes the current Live2D export. Live2D
@@ -242,8 +245,7 @@ From a Rust-enabled PowerShell in the repository, run:
 ```powershell
 .\scripts\test-local-assets.ps1 `
   -GifDirectory 'C:\Avatars\My GIF Tuber' `
-  -Live2DModel 'C:\Avatars\My Live2D\Avatar.model3.json' `
-  -CubismCore 'C:\Tools\CubismSdkForNative-5-r.5\Core\dll\windows\x86_64\Live2DCubismCore.dll'
+  -Live2DModel 'C:\Avatars\My Live2D\Avatar.model3.json'
 ```
 
 Use the actual export directory. VTube Studio normally stores it under
@@ -252,7 +254,7 @@ directory before `_Data`. The script loads every GIF in place on the Windows GPU
 checks retained texture budgets and timing, tests a temporary copy padded to ten
 times the largest GIF's file size, then checks the selected Live2D model through
 the native Core and renderer. Padding tests byte-size handling, not extra image
-detail. Sources and the SDK remain local. These optional tests require enough
+detail. Source artwork remains local. These optional tests require enough
 RAM/VRAM for the selected assets and are excluded from ordinary CI.
 
 ## 4. Connect iPhone tracking

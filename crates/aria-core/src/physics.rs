@@ -1,10 +1,20 @@
 //! Rust particle-chain solver for authored physics3 rigs. Evaluates fixed steps
-//! before Cubism Core; retains momentum and interpolates outputs between steps.
+//! before Purism Core; retains momentum and interpolates outputs between steps.
 //! This implements the data format, not VTube Studio's proprietary physics modes.
 use crate::rig::RigParameter;
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+
+/// Independent motion styles, not implementations of any third-party solver.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub enum MotionStyle {
+    /// Preserve ARIA's previous authored-rate solver for saved profiles.
+    #[default]
+    Authored,
+    Natural,
+    Bouncy,
+}
 
 /// Multipliers on the avatar's authored particle properties, never file edits.
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
@@ -48,6 +58,10 @@ impl GroupSettings {
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct PhysicsSettings {
+    // Missing fields in existing profiles retain the old solver. New avatars
+    // use PhysicsSettings::default(), which selects expressive motion.
+    #[serde(default)]
+    pub motion_style: MotionStyle,
     // Keep the v0.4 fields at their original JSON/RON locations.
     pub enabled: bool,
     pub strength: f32,
@@ -60,6 +74,7 @@ pub struct PhysicsSettings {
 impl Default for PhysicsSettings {
     fn default() -> Self {
         Self {
+            motion_style: MotionStyle::Bouncy,
             enabled: true,
             strength: 1.0,
             wind: 0.0,
@@ -301,9 +316,13 @@ struct Chain {
 
 pub struct Physics {
     chains: Vec<Chain>,
+    authored_step: f64,
     step: f64,
     accumulator: f64,
     previous_inputs: Vec<f32>,
+    input_values: Vec<f32>,
+    working: Vec<RigParameter>,
+    motion_style: MotionStyle,
     rest_gravity: V2,
     wind: V2,
     initialized: bool,
@@ -333,16 +352,21 @@ impl Physics {
             doc.meta.effective_forces.gravity.valid() && doc.meta.effective_forces.wind.valid(),
             "Invalid physics forces"
         );
+        let authored_step = 1.0
+            / if doc.meta.fps >= 1.0 {
+                doc.meta.fps as f64
+            } else {
+                60.0
+            };
         let mut runtime = Self {
             chains: Vec::new(),
-            step: 1.0
-                / if doc.meta.fps >= 1.0 {
-                    doc.meta.fps as f64
-                } else {
-                    60.0
-                },
+            authored_step,
+            step: authored_step,
             accumulator: 0.0,
             previous_inputs: Vec::new(),
+            input_values: Vec::with_capacity(parameters.len()),
+            working: parameters.to_vec(),
+            motion_style: MotionStyle::Authored,
             rest_gravity: doc.meta.effective_forces.gravity.mul(-1.0).unit(),
             wind: doc.meta.effective_forces.wind,
             initialized: false,
@@ -477,6 +501,17 @@ impl Physics {
             .collect()
     }
     pub fn configure(&mut self, settings: &PhysicsSettings) {
+        if self.motion_style != settings.motion_style {
+            self.motion_style = settings.motion_style;
+            self.step = if self.motion_style == MotionStyle::Authored {
+                self.authored_step
+            } else {
+                1.0 / 120.0
+            };
+            // Authored velocity uses response-scaled units; enhanced velocity
+            // uses units/second. Never carry one into the other on a mode change.
+            self.reset();
+        }
         self.enabled = settings.enabled;
         self.strength = settings.strength;
         self.wind_strength = settings.wind;
@@ -515,6 +550,10 @@ impl Physics {
     }
 
     pub fn update(&mut self, parameters: &mut [RigParameter], dt: f32) {
+        if parameters.len() != self.working.len() {
+            self.reset();
+            return;
+        }
         if !self.enabled {
             self.reset();
             return;
@@ -522,49 +561,79 @@ impl Physics {
         if !dt.is_finite() || dt <= 0.0 {
             return;
         }
-        if dt > 0.5 {
+        let enhanced = self.motion_style != MotionStyle::Authored;
+        let resume = enhanced && dt > 0.25;
+        if dt > 0.5 || resume {
             self.reset();
         }
-        let dt = dt.min(0.25) as f64;
-        let values: Vec<_> = parameters.iter().map(|p| p.value).collect();
+        // A suspended window must not replay a quarter-second of imaginary motion.
+        let dt = if resume { 0.0 } else { dt.min(0.25) as f64 };
+        self.input_values.clear();
+        self.input_values.extend(parameters.iter().map(|p| {
+            if p.value.is_finite() {
+                p.value.clamp(p.min, p.max)
+            } else {
+                p.default.clamp(p.min, p.max)
+            }
+        }));
+        for (p, value) in parameters.iter_mut().zip(&self.input_values) {
+            p.value = *value;
+        }
         if !self.initialized || self.previous_inputs.len() != parameters.len() {
-            let mut initial = parameters.to_vec();
+            self.working.clone_from_slice(parameters);
+            for (p, value) in self.working.iter_mut().zip(&self.input_values) {
+                p.value = *value;
+            }
             for c in &mut self.chains {
                 if !c.tuning.enabled {
                     continue;
                 }
-                initialize_chain(c, &initial, self.rest_gravity);
-                apply(c, &mut initial, 1.0, self.strength);
+                initialize_chain(c, &self.working, self.rest_gravity);
+                apply(c, &mut self.working, 1.0, self.strength);
             }
-            self.previous_inputs = values.clone();
+            self.previous_inputs.clone_from(&self.input_values);
             self.initialized = true;
         }
         let carried = self.accumulator;
         self.accumulator += dt;
         let mut elapsed = self.step - carried;
-        // At most 60 steps after a bounded frame gap, independent of UI FPS.
+        // At most 30 enhanced steps (60 authored), independent of render FPS.
         while self.accumulator + 1e-9 >= self.step {
             let t = (elapsed / dt).clamp(0.0, 1.0) as f32;
-            let mut working = parameters.to_vec();
-            for (i, p) in working.iter_mut().enumerate() {
-                p.value = self.previous_inputs[i] + (values[i] - self.previous_inputs[i]) * t;
+            for (i, p) in self.working.iter_mut().enumerate() {
+                p.value =
+                    self.previous_inputs[i] + (self.input_values[i] - self.previous_inputs[i]) * t;
             }
             for c in &mut self.chains {
                 if !c.tuning.enabled {
                     continue;
                 }
                 if c.reset_pending {
-                    initialize_chain(c, &working, self.rest_gravity);
+                    initialize_chain(c, &self.working, self.rest_gravity);
                 }
                 let wind = self.wind.add(V2 {
                     x: (self.wind_strength.clamp(-1.0, 1.0) + c.tuning.wind.clamp(-1.0, 1.0)) * 0.1,
                     y: 0.0,
                 });
-                let (translation, gravity) = drivers(c, &working, self.rest_gravity);
+                let (translation, gravity) = drivers(c, &self.working, self.rest_gravity);
                 c.particles[0].pos = translation;
+                let dynamics = enhanced.then(|| {
+                    EnhancedStep::new(
+                        self.step as f32,
+                        &c.tuning,
+                        self.inertia,
+                        self.response,
+                        self.gravity,
+                        self.motion_style,
+                    )
+                });
                 for i in 1..c.particles.len() {
                     let parent = c.particles[i - 1].pos;
                     let p = &mut c.particles[i];
+                    if let Some(dynamics) = &dynamics {
+                        step_enhanced(p, parent, gravity, wind, dynamics);
+                        continue;
+                    }
                     let delay = p.spec.delay
                         * self.step as f32
                         * 30.0
@@ -599,17 +668,85 @@ impl Physics {
                 }
                 outputs(c, self.rest_gravity);
                 // Preserve authored group order: later chains can use earlier outputs.
-                apply(c, &mut working, 1.0, self.strength);
+                apply(c, &mut self.working, 1.0, self.strength);
             }
             self.accumulator = (self.accumulator - self.step).max(0.0);
             elapsed += self.step;
         }
-        self.previous_inputs = values;
+        self.previous_inputs.clone_from(&self.input_values);
         let alpha = (self.accumulator / self.step).clamp(0.0, 1.0) as f32;
         for c in &self.chains {
             apply(c, parameters, alpha, self.strength);
         }
     }
+}
+
+struct EnhancedStep {
+    dt: f32,
+    response: f32,
+    inertia: f32,
+    gravity: f32,
+    decay_exponent: f32,
+    drag: f32,
+    follow: f32,
+}
+impl EnhancedStep {
+    fn new(
+        dt: f32,
+        tuning: &GroupSettings,
+        inertia: f32,
+        response: f32,
+        gravity: f32,
+        style: MotionStyle,
+    ) -> Self {
+        Self {
+            dt,
+            response: 30.0 * response.clamp(0.25, 2.0) * tuning.response.clamp(0.25, 2.0),
+            inertia: inertia.clamp(0.0, 2.0) * tuning.inertia.clamp(0.0, 2.0),
+            gravity: gravity.clamp(0.0, 2.0) * tuning.gravity.clamp(0.0, 2.0),
+            decay_exponent: dt
+                * 60.0
+                * if style == MotionStyle::Bouncy {
+                    0.35
+                } else {
+                    1.0
+                },
+            drag: (-0.6 * dt).exp(),
+            follow: 1.0 - 0.8_f32.powf(dt * 60.0),
+        }
+    }
+}
+
+/// Projected particle integration in world units/second. Authored mobility is
+/// interpreted as retention per 1/60 second, so more substeps do not add damping.
+/// Bouncy reduces damping, not the spring's force or the exported chain lengths.
+fn step_enhanced(p: &mut Particle, parent: V2, gravity: V2, wind: V2, step: &EnhancedStep) {
+    let dt = step.dt;
+    let speed = p.spec.delay * step.response;
+    let mobility = (p.spec.mobility * step.inertia).clamp(0.0, 1.0);
+    // Even maximum inertia dissipates energy rather than ringing indefinitely.
+    let retention = mobility.powf(step.decay_exponent) * step.drag;
+    let before = p.pos;
+    let direction = before
+        .sub(parent)
+        .rotate(p.gravity.angle(gravity) * step.follow);
+    let force = gravity.mul(p.spec.acceleration * step.gravity).add(wind);
+    let predicted = direction
+        .add(p.velocity.mul(dt))
+        .add(force.mul((dt * speed).powi(2)));
+    p.pos = parent.add(predicted.unit().mul(p.spec.radius));
+    p.velocity = if speed > 1e-6 {
+        p.pos.sub(before).mul(retention / dt)
+    } else {
+        V2::default()
+    };
+    // Bound kinetic energy after abrupt tracking jumps without stretching the rig.
+    let velocity = p.velocity.x.hypot(p.velocity.y);
+    let limit = p.spec.radius * 20.0;
+    if velocity > limit {
+        p.velocity = p.velocity.mul(limit / velocity);
+    }
+    p.gravity = gravity;
 }
 
 fn initialize_chain(c: &mut Chain, parameters: &[RigParameter], rest: V2) {
@@ -703,6 +840,159 @@ mod tests {
                 value: 0.0,
             })
             .to_vec()
+    }
+
+    fn impulse_trace(style: MotionStyle) -> Vec<f32> {
+        let mut p = parameters();
+        let mut physics = Physics::load(FIXTURE, &p).unwrap();
+        physics.configure(&PhysicsSettings {
+            motion_style: style,
+            ..Default::default()
+        });
+        (0..1200)
+            .map(|n| {
+                p[0].value = if n < 30 { 0.0 } else { 0.03 };
+                p[1].value = 0.0;
+                physics.update(&mut p, 1.0 / 120.0);
+                p[1].value
+            })
+            .collect()
+    }
+
+    #[test]
+    fn expressive_motion_rebounds_more_and_still_settles() {
+        let authored = impulse_trace(MotionStyle::Authored);
+        let natural = impulse_trace(MotionStyle::Natural);
+        let bouncy = impulse_trace(MotionStyle::Bouncy);
+        let rebound = |trace: &[f32]| -trace[60..360].iter().copied().fold(0.0_f32, f32::min);
+        eprintln!(
+            "Rebound peaks: authored={}, natural={}, bouncy={}",
+            rebound(&authored),
+            rebound(&natural),
+            rebound(&bouncy)
+        );
+        assert!(bouncy[30..60].iter().any(|v| *v > 0.03), "initial hair lag");
+        assert!(rebound(&bouncy) > rebound(&natural) * 1.5 + 0.005);
+        assert!(rebound(&bouncy) > rebound(&authored) * 1.5 + 0.005);
+        assert!(
+            bouncy[1000..].iter().all(|v| v.abs() < 0.002),
+            "rebound must decay"
+        );
+        assert!(
+            bouncy.iter().all(|v| v.is_finite() && v.abs() < 0.5),
+            "no clipping in this fixture"
+        );
+    }
+
+    #[test]
+    fn expressive_trajectory_is_consistent_at_30_60_120_and_jittery_fps() {
+        let run = |schedule: &[f32]| {
+            let mut p = parameters();
+            let mut physics = Physics::load(FIXTURE, &p).unwrap();
+            physics.configure(&PhysicsSettings::default());
+            physics.update(&mut p, 1.0 / 120.0);
+            let mut time = 0.0;
+            let mut trace = Vec::new();
+            for _ in 0..120 {
+                for dt in schedule {
+                    time += dt;
+                    p[0].value = (time * 3.0_f32).sin() * 0.03;
+                    p[1].value = 0.0;
+                    physics.update(&mut p, *dt);
+                }
+                trace.push(p[1].value);
+            }
+            trace
+        };
+        let reference = run(&[1.0 / 120.0; 4]);
+        for schedule in [
+            &[1.0 / 30.0][..],
+            &[1.0 / 60.0; 2],
+            &[1.0 / 240.0, 1.0 / 80.0, 1.0 / 120.0, 1.0 / 120.0],
+        ] {
+            let other = run(schedule);
+            let rms = (reference
+                .iter()
+                .zip(&other)
+                .map(|(a, b)| (a - b).powi(2))
+                .sum::<f32>()
+                / reference.len() as f32)
+                .sqrt();
+            eprintln!("Expressive frame-rate RMS error: {rms}");
+            assert!(rms < 0.003, "frame cadence changed motion: {rms}");
+        }
+    }
+
+    #[test]
+    fn enhanced_chain_preserves_lengths_and_bounds_energy_under_extreme_inputs() {
+        let mut doc: serde_json::Value = serde_json::from_slice(FIXTURE).unwrap();
+        let vertex = doc["PhysicsSettings"][0]["Vertices"][1].clone();
+        doc["PhysicsSettings"][0]["Vertices"]
+            .as_array_mut()
+            .unwrap()
+            .extend([vertex.clone(), vertex]);
+        let mut p = parameters();
+        let mut physics = Physics::load(&serde_json::to_vec(&doc).unwrap(), &p).unwrap();
+        let settings = PhysicsSettings {
+            inertia: 2.0,
+            response: 2.0,
+            gravity: 2.0,
+            wind: 1.0,
+            ..Default::default()
+        };
+        physics.configure(&settings);
+        for frame in 0..3600 {
+            p[0].value = if frame % 19 == 0 {
+                f32::NAN
+            } else {
+                (frame as f32 * 0.7).sin() * 5.0
+            };
+            p[1].value = 0.0;
+            physics.update(
+                &mut p,
+                if frame % 3 == 0 {
+                    1.0 / 15.0
+                } else {
+                    1.0 / 144.0
+                },
+            );
+            assert!(p[1].value.is_finite() && p[1].value.abs() <= 1.0);
+            for chain in &physics.chains {
+                for pair in chain.particles.windows(2) {
+                    let d = pair[1].pos.sub(pair[0].pos);
+                    assert!((d.x.hypot(d.y) - pair[1].spec.radius).abs() < 0.0001);
+                    let v = pair[1].velocity;
+                    assert!(v.x.is_finite() && v.y.is_finite());
+                    assert!(v.x.hypot(v.y) <= pair[1].spec.radius * 20.001);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn pause_and_style_changes_discard_old_momentum_without_replaying_time() {
+        let mut p = parameters();
+        let mut physics = Physics::load(FIXTURE, &p).unwrap();
+        let mut settings = PhysicsSettings::default();
+        physics.configure(&settings);
+        physics.update(&mut p, 1.0 / 120.0);
+        p[0].value = 0.3;
+        physics.update(&mut p, 1.0 / 60.0);
+        assert!(p[1].value.abs() > 0.01);
+        physics.update(&mut p, 5.0);
+        assert!(p[1].value.abs() < 1e-6);
+        assert_eq!(physics.accumulator, 0.0);
+        for style in [
+            MotionStyle::Authored,
+            MotionStyle::Bouncy,
+            MotionStyle::Natural,
+        ] {
+            settings.motion_style = style;
+            physics.configure(&settings);
+            physics.update(&mut p, 1.0 / 120.0);
+            assert!(p[1].value.abs() < 1e-6);
+        }
+        physics.update(&mut [], 1.0 / 120.0); // Stale parameter layout cannot index invalid memory.
     }
     #[test]
     fn movement_produces_inertia_then_settles_and_disable_removes_it() {
@@ -865,6 +1155,7 @@ mod tests {
             assert!(base.iter().zip(&tuned).all(|(a, b)| a[1] == b[1]));
         }
         let settings = PhysicsSettings {
+            motion_style: MotionStyle::Bouncy,
             strength: 2.0,
             inertia: 2.0,
             gravity: 2.0,
@@ -914,6 +1205,8 @@ mod tests {
     fn saved_physics_migrates_and_rejects_invalid_groups() {
         let legacy: PhysicsSettings =
             serde_json::from_str(r#"{"enabled":false,"strength":0.6,"wind":-0.3}"#).unwrap();
+        assert_eq!(legacy.motion_style, MotionStyle::Authored);
+        assert_eq!(PhysicsSettings::default().motion_style, MotionStyle::Bouncy);
         assert!(!legacy.enabled && legacy.inertia == 1.0 && legacy.groups.is_empty());
         legacy.validate().unwrap();
         let mut settings = legacy;
@@ -934,5 +1227,111 @@ mod tests {
         let mut doc: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         doc["PhysicsSettings"][1]["Id"] = "Hair".into();
         assert!(Physics::load(&serde_json::to_vec(&doc).unwrap(), &p).is_err());
+    }
+
+    #[test]
+    fn enhanced_settings_corner_matrix_keeps_long_chains_bounded() {
+        let mut doc: serde_json::Value = serde_json::from_slice(FIXTURE).unwrap();
+        let vertex = doc["PhysicsSettings"][0]["Vertices"][1].clone();
+        doc["PhysicsSettings"][0]["Vertices"]
+            .as_array_mut()
+            .unwrap()
+            .extend(std::iter::repeat_n(vertex, 62));
+        let bytes = serde_json::to_vec(&doc).unwrap();
+        for style in [MotionStyle::Natural, MotionStyle::Bouncy] {
+            for bits in 0..64 {
+                let high = |bit| bits & (1 << bit) != 0;
+                let tuning = GroupSettings {
+                    strength: if high(0) { 2.0 } else { 0.0 },
+                    inertia: if high(1) { 2.0 } else { 0.0 },
+                    response: if high(2) { 2.0 } else { 0.25 },
+                    gravity: if high(3) { 2.0 } else { 0.0 },
+                    wind: if high(4) { 1.0 } else { -1.0 },
+                    enabled: true,
+                };
+                let mut settings = PhysicsSettings {
+                    motion_style: style,
+                    strength: tuning.strength,
+                    inertia: tuning.inertia,
+                    response: tuning.response,
+                    gravity: tuning.gravity,
+                    wind: tuning.wind,
+                    groups: BTreeMap::from([("Hair".into(), tuning)]),
+                    ..Default::default()
+                };
+                settings.validate().unwrap();
+                let mut p = parameters();
+                let mut physics = Physics::load(&bytes, &p).unwrap();
+                for frame in 0..600 {
+                    settings.enabled = !high(5) || frame % 11 != 0;
+                    settings.groups.get_mut("Hair").unwrap().enabled = !high(5) || frame % 7 != 0;
+                    physics.configure(&settings);
+                    p[0].value = if frame % 2 == 0 { -1.0 } else { 1.0 };
+                    p[1].value = 0.0;
+                    let dt = [1.0 / 240.0, 1.0 / 30.0, 0.25, 3.0][frame % 4];
+                    physics.update(&mut p, dt);
+                    assert!(
+                        p.iter()
+                            .all(|p| p.value.is_finite() && (p.min..=p.max).contains(&p.value))
+                    );
+                    if !physics.initialized {
+                        continue;
+                    }
+                    for pair in physics.chains[0].particles.windows(2) {
+                        let d = pair[1].pos.sub(pair[0].pos);
+                        assert!(
+                            (d.x.hypot(d.y) - pair[1].spec.radius).abs() < 0.001,
+                            "stretched chain: {style:?}, corner {bits}, frame {frame}"
+                        );
+                        let v = pair[1].velocity;
+                        assert!(v.x.is_finite() && v.y.is_finite());
+                        assert!(v.x.hypot(v.y) <= pair[1].spec.radius * 20.001);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_time_is_noop_and_nonfinite_values_recover_deterministically() {
+        for style in [
+            MotionStyle::Authored,
+            MotionStyle::Natural,
+            MotionStyle::Bouncy,
+        ] {
+            let run = || {
+                let mut p = parameters();
+                let mut physics = Physics::load(FIXTURE, &p).unwrap();
+                physics.configure(&PhysicsSettings {
+                    motion_style: style,
+                    ..Default::default()
+                });
+                let mut trace = Vec::new();
+                for frame in 0..1200 {
+                    p[0].value = (frame as f32 * 0.13).sin();
+                    p[1].value = 0.0;
+                    for dt in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+                        let before = p.iter().map(|p| p.value).collect::<Vec<_>>();
+                        physics.update(&mut p, dt);
+                        assert_eq!(before, p.iter().map(|p| p.value).collect::<Vec<_>>());
+                    }
+                    if frame % 17 == 0 {
+                        p[0].value = f32::INFINITY;
+                        p[1].value = f32::NAN;
+                    }
+                    if frame % 43 == 0 {
+                        physics.reset();
+                    }
+                    physics.update(&mut p, 1.0 / 144.0);
+                    assert!(
+                        p.iter()
+                            .all(|p| p.value.is_finite() && (p.min..=p.max).contains(&p.value))
+                    );
+                    trace.push(p[1].value);
+                }
+                trace
+            };
+            assert_eq!(run(), run(), "replay must be deterministic: {style:?}");
+        }
     }
 }

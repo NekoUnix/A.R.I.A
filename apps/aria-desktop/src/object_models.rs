@@ -101,7 +101,6 @@ impl ObjectModels {
             let loaded = (|| -> Result<Loaded> {
                 ensure!(self.entries.len() < aria_core::items::MAX_MODEL_ITEMS, "Maximum four Live2D objects");
                 let state = state.ok_or_else(|| anyhow::anyhow!("GPU renderer unavailable"))?;
-                let native_core = aria_live2d::platform::resolve(core)?;
                 let files = object_files(item)?;
                 let mut estimate = 0_u64;
                 for path in &files.textures {
@@ -110,7 +109,7 @@ impl ObjectModels {
                     estimate += u64::from(w)*u64::from(h)*4;
                     ensure!(estimate.saturating_add(used) <= ATLAS_BUDGET, "Live2D object atlases exceed the combined 10 GiB budget; use smaller atlases or remove another object");
                 }
-                let avatar = Avatar::load(state, &native_core, files)?;
+                let avatar = Avatar::load(state, core, files)?;
                 ensure!((avatar.atlas_mib()*1048576.0) as u64 + used <= ATLAS_BUDGET, "Live2D object atlas budget exceeded");
                 let rig = avatar.initial_config.clone();
                 Ok(Loaded { avatar,rig,expressions:Default::default(),revision:0,error:None })
@@ -428,11 +427,11 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires a GPU, ARIA_CUBISM_CORE and ARIA_TEST_MODEL"]
+    #[ignore = "requires a GPU, ARIA_TEST_MODEL"]
     fn local_objects_preserve_main_avatar_and_freeze_independently() {
         use aria_live2d::CubismModel;
         let path = PathBuf::from(std::env::var_os("ARIA_TEST_MODEL").unwrap());
-        let core = PathBuf::from(std::env::var_os("ARIA_CUBISM_CORE").unwrap());
+        let core = PathBuf::from(std::ffi::OsString::new());
         let files = aria_model::load_files(&path).unwrap();
         let main = CubismModel::load(
             &core,

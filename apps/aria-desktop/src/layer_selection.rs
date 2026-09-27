@@ -580,12 +580,12 @@ mod tests {
     }
     #[test]
     #[cfg(windows)]
-    #[ignore = "requires ARIA_TEST_MODEL, Cubism Core and GPU"]
+    #[ignore = "requires ARIA_TEST_MODEL, bundled runtime and GPU"]
     fn native_marquee_selection_hides_and_restores_rendered_model_layers() {
         use std::path::Path;
         let state = crate::spout::tests::gpu_state();
         let path = std::env::var_os("ARIA_TEST_MODEL").unwrap();
-        let core = std::env::var_os("ARIA_CUBISM_CORE").unwrap();
+        let core = std::ffi::OsString::new();
         let mut avatar = crate::live2d::Avatar::load(
             &state,
             Path::new(&core),

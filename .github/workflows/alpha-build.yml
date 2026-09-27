@@ -63,6 +63,8 @@ jobs:
         run: |
           cargo fmt --all --check
           python scripts/check-repository.py
+          python scripts/check-runtime-distribution.py
+          python scripts/test-runtime-distribution.py
           python -m unittest discover -s tracking -v
       - name: Linux OBS plugin and protocol tests
         if: runner.os == 'Linux'
@@ -80,7 +82,7 @@ jobs:
       - name: Native lint and regression tests
         run: |
           cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-          cargo test --locked --workspace
+          cargo test --locked --workspace --all-features
       - name: Linux asynchronous GPU readback
         if: runner.os == 'Linux'
         run: cargo test --locked -p aria-desktop gpu_readback_preserves_canvas_pixels_without_blocking_send -- --ignored --nocapture
@@ -94,6 +96,9 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/build-windows.ps1 -SkipTests
+      - name: Optimized profile handoff benchmark
+        if: runner.os == 'Windows'
+        run: cargo test --locked --release -p aria-desktop profile_settings_handoff_benchmark -- --ignored --nocapture
       - name: Fedora package installation check
         if: runner.os == 'Linux'
         run: |

@@ -846,7 +846,7 @@ mod tests {
         assert!(guide.profile().is_none());
     }
     #[test]
-    #[ignore = "requires local ARIA_TEST_MODEL and ARIA_CUBISM_CORE; no phone required"]
+    #[ignore = "requires local ARIA_TEST_MODEL; no phone required"]
     fn learned_tracking_drives_native_model_with_imported_assignments() {
         use std::path::Path;
         let files = aria_model::load_files(Path::new(
@@ -854,7 +854,7 @@ mod tests {
         ))
         .unwrap();
         let mut model = aria_live2d::CubismModel::load(
-            Path::new(&std::env::var_os("ARIA_CUBISM_CORE").expect("Cubism Core")),
+            Path::new(&std::ffi::OsString::new()),
             &aria_model::read_bounded(&files.moc, aria_core::asset_limits::MOC_FILE).unwrap(),
             files.textures.len(),
         )

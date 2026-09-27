@@ -5,3 +5,6 @@
 *.yml text eol=lf
 *.json text eol=lf
 *.ps1 text eol=crlf
+crates/aria-live2d/vendor/purism-core/PurismCoreBundle.h text eol=lf
+crates/aria-live2d/vendor/purism-core/LICENSE text eol=lf
+docs/licenses/purism-core.txt text eol=lf

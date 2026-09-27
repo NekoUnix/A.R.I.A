@@ -118,7 +118,7 @@ fn native_glb_profile_uses_shared_tracking_and_renders_workspace() {
 
 #[test]
 #[cfg(windows)]
-#[ignore = "requires Cubism Core, ARIA_TEST_MODEL, ARIA_TEST_SECOND_MODEL, ARIA_TEST_GIF and ARIA_TEST_VRM"]
+#[ignore = "requires ARIA_TEST_MODEL, ARIA_TEST_SECOND_MODEL, ARIA_TEST_GIF and ARIA_TEST_VRM"]
 fn native_mixed_workspace_keeps_four_avatars_live_and_composes_all_outputs() {
     let ctx = egui::Context::default();
     let state = crate::spout::tests::gpu_state();

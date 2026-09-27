@@ -5,6 +5,59 @@
 This file records checks for the development builds. The Windows CI workflow
 is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
+## Purism Core and expressive physics — 2026-09-27
+
+This update was tested locally on Windows x64 with Rust 1.98.1 using the
+`x86_64-pc-windows-gnullvm` toolchain and LLVM MinGW. MSVC, Linux and macOS execution
+of this update remains for CI/target hardware validation. Earlier entries below
+describe earlier builds, including the retired proprietary Core setup.
+
+- 288 standard workspace tests passed with all features enabled; nine additional
+  opt-in model/GPU/worker tests passed separately. Strict all-target/all-feature
+  Clippy, formatting, 54-document/10-JSON repository checks and two distribution
+  guard regression tests passed. The Windows desktop/CLI/worker build succeeded.
+- Purism Core 1.1.0 is compiled from pinned MIT source with the v6 ABI. Runtime
+  symbol calls, malformed MOC rejection, real model deformation/reload, worker
+  equivalence and worker-exit handling passed without a Core library path.
+- All 11 user-authorized local VTube Studio model exports loaded and passed DX12
+  rendering, extreme head/body parameter, bounds and nonempty-pixel checks. Local
+  preview images were inspected. Source artwork and model exports stay outside
+  the repository and release packages.
+- Eight of those exports contain physics: 174 groups and 774 output parameters
+  passed finite/range checks with Authored, Natural and Bouncy. Across sampled
+  four-second trajectories, the largest normalized RMS difference between 30 and
+  120 FPS was 0.001021 (0.103% of parameter range); 60-vs-120 was at most 0.000125.
+- An additional 57,600-frame stress run covered those eight rigs in all three
+  motion styles, abrupt min/max tracking, 15–240 FPS, two-second stalls,
+  extreme global/group tuning, enable/disable and repeated style changes.
+  Every output stayed finite and within its parameter range. All 1,944 sampled
+  native/worker geometry pairs matched exactly. The slowest model's observed
+  physics-update p99 was 0.321 ms in this debug run; this excludes deformation,
+  IPC and rendering and is not a portable performance guarantee.
+- A 64-particle synthetic chain passed 128 corner cases across Natural/Bouncy
+  (76,800 update calls) with length and velocity bounds checked. Invalid time
+  inputs leave state unchanged; NaN/Infinity parameter recovery and repeated
+  reset/replay are deterministic in all three styles.
+- Native desktop checks passed for frozen-pose caching/edit refresh, five
+  expression hotkeys and exact restoration, 17 imported tracking assignments,
+  36 moving physics parameters and DX12-to-independent-DX11 Spout transfer
+  including alpha and sender cleanup. The desktop was launched with an isolated
+  test profile; the Bouncy selector and tuning controls were visually checked.
+- Synthetic regressions check increased rebound followed by settling, 30/60/120
+  and irregular frame cadence, chain-length preservation, bounded velocity under
+  extreme/invalid inputs, pause recovery, style transitions and old-profile migration.
+  In the step-response fixture, Bouncy's opposite-direction rebound reaches about
+  0.0216 versus less than 0.000001 for the previous solver and Natural. These are
+  comparisons with ARIA's previous solver, not a benchmark against Live2D's SDK.
+- The source/notice checksum gate and negative release-content tests pass; the
+  checked model worker's PE imports contain no proprietary Core dependency.
+  Complete release archives have not been built in this local LLVM test setup.
+
+Repeat the opt-in library tests with `scripts/test-model-library.ps1 -Folder <folder>`.
+They use existing local files and the built-in runtime; do not commit the models
+or local reports/previews. Full animation aesthetics, live phone tracking and
+all GPU/OS combinations still require user/hardware acceptance testing.
+
 ## Paired body physics development update — 2026-09-15
 
 - Found a small-angle dead zone in repeated direction-to-rotation conversion.
