@@ -1216,6 +1216,54 @@ mod tests {
         );
     }
     #[test]
+    fn graph_branches_repeat_real_actions_and_stop_cancels_remaining_iterations() {
+        use crate::actions::{Command, Graph, Mode, Step, Target};
+        let (ctx, mut app) = app();
+        let profile = add(&mut app, &ctx, "branch-avatar.png");
+        app.input_monitor.saved.config.pose.mode = PoseMode::Live;
+        let mut graph = Graph::branch_recipe(42);
+        graph.nodes[3].step = Step::RepeatAction {
+            target: Some(Target::Avatar {
+                profile,
+                command: Command::Pose,
+            }),
+            mode: Mode::Toggle,
+            count: 3,
+            interval: 10.,
+        };
+        graph.nodes[4].step = Step::Action {
+            target: Some(Target::Scene(u64::MAX)),
+            mode: Mode::Toggle,
+        };
+        app.settings.actions.graphs.push(graph);
+        app.live_inputs.insert("MouthOpen".into(), 1.);
+        app.trigger_target(Target::Graph(42));
+        app.update_actions(&ctx);
+        assert_eq!(app.input_monitor.saved.config.pose.mode, PoseMode::Frozen);
+        assert_eq!(app.action_runs.len(), 1);
+        app.started -= std::time::Duration::from_secs(11);
+        app.update_actions(&ctx);
+        assert_eq!(app.input_monitor.saved.config.pose.mode, PoseMode::Live);
+        assert_eq!(app.action_runs.len(), 1);
+        app.stop_actions();
+        app.started -= std::time::Duration::from_secs(100);
+        app.update_actions(&ctx);
+        assert!(app.action_runs.is_empty());
+        assert_eq!(app.input_monitor.saved.config.pose.mode, PoseMode::Live);
+        app.live_inputs.insert("MouthOpen".into(), 0.);
+        app.trigger_target(Target::Graph(42));
+        app.update_actions(&ctx);
+        assert!(app.action_runs.is_empty());
+        assert!(
+            app.action_editor
+                .message
+                .as_ref()
+                .unwrap()
+                .contains("Scene no longer exists")
+        );
+        assert_eq!(app.input_monitor.saved.config.pose.mode, PoseMode::Live);
+    }
+    #[test]
     fn streamerbot_targets_profiles_not_focus_and_rejects_missing_targets() {
         use crate::actions::{Command, Mode, Target};
         let (ctx, mut app) = app();

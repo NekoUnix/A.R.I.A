@@ -29,7 +29,7 @@ builds and [release status](README.md#current-and-planned-features) for platform
 | Custom pendulum and stretch-bone editors | Not equivalent to VNyan's arbitrary chains/outputs | General object bindings, chain graph, stretch mappings and preview |
 | Props and attachments | Images/GIF/Live2D/3D assets and pins | Browser/NDI/Spout texture props and animated imported prop behavior |
 | Postprocessing | Lighting exists | Reference bloom, grading, AO, distortion and glitch effects are not all implemented |
-| Logic graphs | Bounded graphs, recipes, per-run variables/math, input reads and stop conditions | Two-output branching, loops and VNyan's full callback/node library remain |
+| Logic graphs | Bounded graphs, recipes, per-run variables/math, input reads, stop conditions, True/False branching and timed action repetition | Whole-subgraph loops and VNyan's full callback/node library remain |
 | Stream events | Matching, amounts, cooldowns, deduplication and simulation; opt-in live Twitch/YouTube !command bridge with backlog suppression | Native provider rewards/subscription event authorization and live-account command acceptance remain |
 | Throws and projectiles | Existing designer/assets/sounds/deformation; new side modes and momentum rebound | Additional event presets and visual tuning; no blanket superiority claim |
 | Throw queue reliability | Capacity bound, cadence recovery and queue count | Expanded long-session/asset-failure acceptance |

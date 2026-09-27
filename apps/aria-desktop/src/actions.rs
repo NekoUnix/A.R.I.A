@@ -118,6 +118,18 @@ pub enum Step {
         target: Option<Target>,
         mode: Mode,
     },
+    RepeatAction {
+        target: Option<Target>,
+        mode: Mode,
+        count: u16,
+        interval: f32,
+    },
+    Branch {
+        name: String,
+        comparison: Compare,
+        value: f64,
+        true_next: Option<u64>,
+    },
     Delay {
         seconds: f32,
     },
@@ -172,6 +184,61 @@ pub struct Graph {
     pub edges: Vec<[u64; 2]>,
 }
 impl Graph {
+    pub fn branch_recipe(id: u64) -> Self {
+        Self {
+            id,
+            name: "Choose and repeat".into(),
+            nodes: vec![
+                Node {
+                    id: 1,
+                    position: [30., 40.],
+                    step: Step::Start,
+                },
+                Node {
+                    id: 2,
+                    position: [30., 210.],
+                    step: Step::Input {
+                        name: "mouth".into(),
+                        channel: "MouthOpen".into(),
+                    },
+                },
+                Node {
+                    id: 3,
+                    position: [280., 120.],
+                    step: Step::Branch {
+                        name: "mouth".into(),
+                        comparison: Compare::AtLeast,
+                        value: 0.5,
+                        true_next: Some(4),
+                    },
+                },
+                Node {
+                    id: 4,
+                    position: [530., 40.],
+                    step: Step::RepeatAction {
+                        target: None,
+                        mode: Mode::Toggle,
+                        count: 3,
+                        interval: 1.,
+                    },
+                },
+                Node {
+                    id: 5,
+                    position: [530., 210.],
+                    step: Step::Action {
+                        target: None,
+                        mode: Mode::Toggle,
+                    },
+                },
+                Node {
+                    id: 6,
+                    position: [780., 120.],
+                    step: Step::End,
+                },
+            ],
+            edges: vec![[1, 2], [2, 3], [3, 4], [3, 5], [4, 6], [5, 6]],
+        }
+    }
     /// Starter layouts contain no workspace IDs; users explicitly assign actions.
     pub fn recipe(id: u64, parallel: bool) -> Self {
         let action = || Step::Action {
@@ -271,7 +338,9 @@ impl Graph {
         );
         for node in &self.nodes {
             match &node.step {
-                Step::Variable { name, value, .. } | Step::Require { name, value, .. } => {
+                Step::Variable { name, value, .. }
+                | Step::Require { name, value, .. }
+                | Step::Branch { name, value, .. } => {
                     ensure!(
                         variable_name(name) && value.is_finite() && value.abs() <= 1e12,
                         "Use a valid variable name and a finite value within ±1e12"
@@ -296,6 +365,30 @@ impl Graph {
                 ensure!(
                     seconds.is_finite() && (0. ..=300.).contains(&seconds),
                     "Delay must be 0–300 seconds"
+                );
+            }
+            if let Step::RepeatAction {
+                count, interval, ..
+            } = node.step
+            {
+                ensure!(
+                    (1..=100).contains(&count)
+                        && interval.is_finite()
+                        && (0.05..=300.).contains(&interval),
+                    "Repeat an action 1–100 times with 0.05–300 seconds between successes"
+                );
+            }
+            if let Step::Branch { true_next, .. } = node.step {
+                let outputs: Vec<_> = self
+                    .edges
+                    .iter()
+                    .filter(|e| e[0] == node.id)
+                    .map(|e| e[1])
+                    .collect();
+                ensure!(
+                    outputs.len() == 2 && true_next.is_some_and(|id| outputs.contains(&id)),
+                    "Branch {} needs two outgoing connections and an assigned True path",
+                    node.id
                 );
             }
         }
@@ -361,7 +454,7 @@ impl Graph {
     pub fn validate(&self) -> Result<Vec<u64>> {
         let order = self.structure()?;
         for node in &self.nodes {
-            if let Step::Action { target, .. } = &node.step {
+            if let Step::Action { target, .. } | Step::RepeatAction { target, .. } = &node.step {
                 ensure!(
                     matches!(
                         target,
@@ -390,6 +483,16 @@ impl Graph {
         if self.edges.contains(&[from, to]) {
             return Ok(());
         }
+        if self
+            .nodes
+            .iter()
+            .any(|n| n.id == from && matches!(n.step, Step::Branch { .. }))
+        {
+            ensure!(
+                self.edges.iter().filter(|e| e[0] == from).count() < 2,
+                "A Branch has exactly two outputs; disconnect one before replacing it"
+            );
+        }
         // A new edge may not create a cycle, even while the draft is incomplete.
         let mut seen = BTreeSet::new();
         let mut queue = vec![to];
@@ -401,6 +504,14 @@ impl Graph {
         }
         ensure!(self.edges.len() < 1024, "Connection limit reached");
         self.edges.push([from, to]);
+        if let Some(Node {
+            step: Step::Branch { true_next, .. },
+            ..
+        }) = self.nodes.iter_mut().find(|n| n.id == from)
+            && true_next.is_none_or(|id| !self.edges.contains(&[from, id]))
+        {
+            *true_next = Some(to);
+        }
         Ok(())
     }
 }
@@ -410,6 +521,9 @@ pub struct Run {
     pub graph: Graph,
     order: Vec<u64>,
     done: BTreeMap<u64, f64>,
+    skipped: BTreeSet<u64>,
+    branches: BTreeMap<u64, u64>,
+    repeats: BTreeMap<u64, (u16, f64)>,
     pub started: f64,
     waiting: BTreeMap<u64, f64>,
     pub origins: BTreeMap<u64, Option<u64>>,
@@ -422,6 +536,9 @@ impl Run {
             graph: graph.clone(),
             order: graph.validate()?,
             done: BTreeMap::new(),
+            skipped: BTreeSet::new(),
+            branches: BTreeMap::new(),
+            repeats: BTreeMap::new(),
             started: now,
             waiting: BTreeMap::new(),
             origins: BTreeMap::new(),
@@ -432,6 +549,9 @@ impl Run {
             .iter()
             .filter_map(|&id| {
                 if self.done.contains_key(&id) {
+                    return None;
+                }
+                if self.repeats.get(&id).is_some_and(|(_, due)| now < *due) {
                     return None;
                 }
                 let incoming: Vec<_> = self.graph.edges.iter().filter(|e| e[1] == id).collect();
@@ -453,8 +573,74 @@ impl Run {
             .collect()
     }
     pub fn complete(&mut self, id: u64, now: f64) {
-        self.done.insert(id, now);
         self.waiting.remove(&id);
+        if let Some(Node {
+            step: Step::RepeatAction {
+                count, interval, ..
+            },
+            ..
+        }) = self.graph.nodes.iter().find(|n| n.id == id)
+        {
+            let repeat = self.repeats.entry(id).or_insert((0, now));
+            repeat.0 += 1;
+            if repeat.0 < *count {
+                repeat.1 = now + f64::from(*interval);
+                return;
+            }
+        }
+        self.done.insert(id, now);
+        if self.branches.is_empty() {
+            return;
+        }
+        // Resolve inactive paths topologically. A join waits for all predecessors
+        // to resolve, then runs if any incoming path was selected.
+        for &next in &self.order {
+            if self.done.contains_key(&next) {
+                continue;
+            }
+            let incoming: Vec<_> = self.graph.edges.iter().filter(|e| e[1] == next).collect();
+            if !incoming.is_empty()
+                && incoming.iter().all(|e| self.done.contains_key(&e[0]))
+                && incoming.iter().all(|e| {
+                    self.skipped.contains(&e[0])
+                        || self
+                            .branches
+                            .get(&e[0])
+                            .is_some_and(|chosen| *chosen != next)
+                })
+            {
+                self.skipped.insert(next);
+                self.done.insert(next, now);
+            }
+        }
+    }
+    pub fn choose_branch(&mut self, id: u64, inputs: &aria_core::rig::Inputs) -> Result<()> {
+        let step = self
+            .graph
+            .nodes
+            .iter()
+            .find(|n| n.id == id)
+            .ok_or_else(|| anyhow::anyhow!("Missing branch"))?
+            .step
+            .clone();
+        let Step::Branch {
+            true_next: Some(yes),
+            ..
+        } = &step
+        else {
+            anyhow::bail!("Unassigned branch");
+        };
+        let chosen = if self.compute(&step, inputs)? {
+            *yes
+        } else {
+            self.graph
+                .edges
+                .iter()
+                .find(|e| e[0] == id && e[1] != *yes)
+                .ok_or_else(|| anyhow::anyhow!("Missing False path"))?[1]
+        };
+        self.branches.insert(id, chosen);
+        Ok(())
     }
     pub fn compute(&mut self, step: &Step, inputs: &aria_core::rig::Inputs) -> Result<bool> {
         let (name, value) =
@@ -489,6 +675,12 @@ impl Run {
                     name,
                     comparison,
                     value,
+                }
+                | Step::Branch {
+                    name,
+                    comparison,
+                    value,
+                    ..
                 } => {
                     let current = *self
                         .variables
@@ -561,6 +753,130 @@ pub fn key_pressed(ctx: &egui::Context, shortcut: Shortcut) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn branching() -> Graph {
+        let mut graph = Graph::branch_recipe(9);
+        for node in &mut graph.nodes {
+            if let Step::Action { target, .. } | Step::RepeatAction { target, .. } = &mut node.step
+            {
+                *target = Some(Target::Music(MusicCommand::Stop));
+            }
+        }
+        graph
+    }
+    #[test]
+    fn conditional_paths_repeat_without_catchup_and_join_only_after_selected_work() {
+        for mouth in [0.1, 0.9] {
+            let graph = branching();
+            let restored: Graph =
+                serde_json::from_slice(&serde_json::to_vec(&graph).unwrap()).unwrap();
+            let mut run = Run::new(&restored, 0.).unwrap();
+            run.complete(1, 0.);
+            run.compute(
+                &graph.nodes[1].step,
+                &BTreeMap::from([("MouthOpen".into(), mouth)]),
+            )
+            .unwrap();
+            run.complete(2, 0.);
+            run.choose_branch(3, &BTreeMap::new()).unwrap();
+            run.complete(3, 0.);
+            let selected = if mouth > 0.5 { 4 } else { 5 };
+            assert_eq!(
+                run.ready(0.).iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+                [selected]
+            );
+            run.complete(selected, 0.);
+            if selected == 4 {
+                assert!(run.ready(0.9).is_empty());
+                assert_eq!(run.ready(100.).len(), 1);
+                run.complete(4, 100.);
+                assert!(
+                    run.ready(100.).is_empty(),
+                    "A stalled frame must not catch up repeats"
+                );
+                assert_eq!(run.ready(101.)[0].0, 4);
+                run.complete(4, 101.);
+            }
+            assert_eq!(
+                run.ready(101.)
+                    .iter()
+                    .map(|(id, _)| *id)
+                    .collect::<Vec<_>>(),
+                [6]
+            );
+            run.complete(6, 101.);
+            assert!(run.finished());
+        }
+    }
+    #[test]
+    fn inactive_nested_branches_skip_delays_but_shared_live_paths_still_join() {
+        let mut graph = branching();
+        graph.nodes[3].step = Step::Branch {
+            name: "unset".into(),
+            comparison: Compare::Equal,
+            value: 0.,
+            true_next: Some(7),
+        };
+        graph.nodes.push(Node {
+            id: 7,
+            position: [0., 0.],
+            step: Step::Delay { seconds: 300. },
+        });
+        graph.edges.retain(|e| *e != [4, 6]);
+        graph.edges.extend([[4, 7], [4, 6], [7, 6]]);
+        let mut run = Run::new(&graph, 0.).unwrap();
+        run.complete(1, 0.);
+        run.variables.insert("mouth".into(), 0.);
+        run.complete(2, 0.);
+        run.choose_branch(3, &BTreeMap::new()).unwrap();
+        run.complete(3, 0.);
+        assert!(run.skipped.contains(&4) && run.skipped.contains(&7));
+        run.complete(5, 0.);
+        assert_eq!(run.ready(0.)[0].0, 6);
+        graph.edges.push([5, 7]); // The same node is also reachable through the live path.
+        let mut run = Run::new(&graph, 0.).unwrap();
+        run.complete(1, 0.);
+        run.variables.insert("mouth".into(), 0.);
+        run.complete(2, 0.);
+        run.choose_branch(3, &BTreeMap::new()).unwrap();
+        run.complete(3, 0.);
+        run.complete(5, 0.);
+        assert!(!run.skipped.contains(&7));
+        assert!(run.ready(299.).is_empty());
+        assert_eq!(run.ready(300.)[0].0, 7);
+        run.complete(7, 300.);
+        assert_eq!(run.ready(300.)[0].0, 6);
+    }
+    #[test]
+    fn branches_and_repeats_reject_invalid_drafts_and_remain_run_local() {
+        let graph = branching();
+        let mut run = Run::new(&graph, 0.).unwrap();
+        assert!(run.choose_branch(3, &BTreeMap::new()).is_err());
+        for (count, interval) in [(0, 1.), (101, 1.), (3, 0.), (3, f32::NAN)] {
+            let mut bad = graph.clone();
+            bad.nodes[3].step = Step::RepeatAction {
+                target: Some(Target::Music(MusicCommand::Stop)),
+                mode: Mode::Toggle,
+                count,
+                interval,
+            };
+            assert!(bad.validate().is_err());
+        }
+        let mut bad = graph.clone();
+        bad.edges.push([3, 6]);
+        assert!(bad.validate().is_err());
+        let mut bad = graph.clone();
+        bad.edges.retain(|e| *e != [3, 4]);
+        assert!(bad.validate().is_err());
+        let mut bad = graph.clone();
+        assert!(bad.connect(3, 6).is_err());
+        assert!(bad.connect(5, 3).is_err());
+        run.complete(4, 0.);
+        assert_eq!(run.repeats[&4].0, 1);
+        let other = Run::new(&graph, 0.).unwrap();
+        assert!(other.repeats.is_empty() && other.branches.is_empty());
+        run.finish_without_actions(0.);
+        assert!(run.ready(1000.).is_empty());
+    }
     #[test]
     fn variables_are_run_local_and_conditions_cancel_remaining_steps() {
         let mut graph = Graph::new(1);

@@ -419,12 +419,21 @@ impl AriaApp {
                         Step::Action {
                             target: Some(target),
                             mode,
+                        }
+                        | Step::RepeatAction {
+                            target: Some(target),
+                            mode,
+                            ..
                         } => {
                             let origin = *run.origins.entry(id).or_insert(self.profiles.current);
                             self.execute_action(ctx, &target, mode, origin)
                         }
-                        Step::Action { target: None, .. } => {
+                        Step::Action { target: None, .. }
+                        | Step::RepeatAction { target: None, .. } => {
                             Err(anyhow::anyhow!("No target selected"))
+                        }
+                        Step::Branch { .. } => {
+                            run.choose_branch(id, &self.live_inputs).map(|()| true)
                         }
                         Step::Variable { .. } | Step::Input { .. } | Step::Require { .. } => {
                             match run.compute(&step, &self.live_inputs) {

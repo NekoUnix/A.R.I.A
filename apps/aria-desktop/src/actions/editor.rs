@@ -17,6 +17,13 @@ pub struct Editor {
     captured: Option<Shortcut>,
 }
 impl Editor {
+    #[cfg(feature = "screenshots")]
+    pub fn preview_branch(&mut self, id: u64) {
+        self.open = true;
+        self.graph_page = true;
+        self.selected = Some(id);
+        self.node = Some(3);
+    }
     #[cfg(all(test, windows))]
     pub fn edit_graph(&mut self, id: u64) {
         self.open = true;
@@ -232,7 +239,7 @@ impl Editor {
     }
     fn graphs(&mut self, ui: &mut egui::Ui, library: &mut Library, choices: &[Choice]) -> bool {
         let mut changed = false;
-        ui.small("Connect output dots to input dots. Drag cards to arrange them. Branches run together; a joined node waits for every incoming branch. Saved actions can be run with a button or recorded hotkey.");
+        ui.small("Connect output dots to input dots and drag cards to arrange them. Ordinary forks run together; Branch nodes choose True or False. Joins wait for all active incoming paths. Saved actions also support hotkeys.");
         ui.add_enabled_ui(library.graphs.len() < 128, |ui| {
             ui.menu_button("Start from a recipe", |ui| {
                 ui.label("Choose avatar actions after adding the recipe.");
@@ -247,6 +254,13 @@ impl Editor {
                         changed = true;
                         ui.close();
                     }
+                }
+                if ui.button("Choose and repeat: tracking condition, two paths").clicked() {
+                    let graph = Graph::branch_recipe(library.next_id());
+                    self.selected = Some(graph.id); self.node = Some(3); self.linking = None;
+                    library.graphs.push(graph); changed = true;
+                    self.message = Some("Choose actions for both paths. True repeats three times; False runs once. Both join at End.".into());
+                    ui.close();
                 }
             });
         });
@@ -265,7 +279,7 @@ impl Editor {
                     ensure!(library.graphs.len() < 128, "Action library is full");
                     let mut graph: Graph = serde_json::from_slice(&aria_model::read_bounded(&path, 1_048_576)?)?;
                     graph.structure()?;
-                    for node in &mut graph.nodes { if let Step::Action { target, .. } = &mut node.step { *target = None; } }
+                    for node in &mut graph.nodes { if let Step::Action { target, .. } | Step::RepeatAction { target, .. } = &mut node.step { *target = None; } }
                     graph.id = library.next_id(); Ok(graph)
                 })();
                 match result {
@@ -304,6 +318,24 @@ impl Editor {
                     },
                 ),
                 ("+ Delay", Step::Delay { seconds: 1. }),
+                (
+                    "+ Repeat action",
+                    Step::RepeatAction {
+                        target: None,
+                        mode: Mode::Toggle,
+                        count: 3,
+                        interval: 1.,
+                    },
+                ),
+                (
+                    "+ Branch",
+                    Step::Branch {
+                        name: "value".into(),
+                        comparison: Compare::AtLeast,
+                        value: 0.5,
+                        true_next: None,
+                    },
+                ),
                 (
                     "+ Variable",
                     Step::Variable {
@@ -362,12 +394,18 @@ impl Editor {
         if let Err(error) = graph.validate() {
             ui.colored_label(crate::theme::orange(), error.to_string());
         }
+        let outgoing: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| Some(e[0]) == self.node)
+            .map(|e| e[1])
+            .collect();
         if let Some(node) = graph.nodes.iter_mut().find(|n| Some(n.id) == self.node) {
             ui.separator();
             ui.horizontal_wrapped(|ui| {
                 ui.strong(format!("Node {}", node.id));
                 match &mut node.step {
-                    Step::Action { target, mode } => {
+                    Step::Action { target, mode } | Step::RepeatAction { target, mode, .. } => {
                         let before = target.clone();
                         egui::ComboBox::from_id_salt("node-target")
                             .width(350.)
@@ -485,7 +523,7 @@ impl Editor {
                         name,
                         comparison,
                         value,
-                    } => {
+                    } | Step::Branch { name, comparison, value, .. } => {
                         changed |= ui
                             .add(
                                 egui::TextEdit::singleline(name)
@@ -505,7 +543,6 @@ impl Editor {
                         changed |= ui
                             .add(egui::DragValue::new(value).speed(0.1).range(-1e12..=1e12))
                             .changed();
-                        ui.small("If false, stop all remaining steps in this run.");
                     }
                     Step::Start => {
                         ui.label("Run button or assigned hotkey starts here.");
@@ -513,6 +550,21 @@ impl Editor {
                     Step::End => {
                         ui.label("This branch finishes here.");
                     }
+                }
+                if let Step::Require { .. } = node.step {
+                    ui.small("If false, stop all remaining steps in this run.");
+                }
+                if let Step::Branch { true_next, .. } = &mut node.step {
+                    egui::ComboBox::from_id_salt("branch-true-target").selected_text(true_next.map_or("Assign True path".into(), |id| format!("True → node {id}"))).show_ui(ui, |ui| {
+                        for &id in &outgoing { changed |= ui.selectable_value(true_next, Some(id), format!("True → node {id}")).changed(); }
+                    });
+                    if let Some(no) = outgoing.iter().find(|id| Some(**id) != *true_next) { ui.label(format!("False → node {no}")); }
+                    ui.small("Connect two outputs. First is True; second is False. Joins wait for the selected paths.");
+                }
+                if let Step::RepeatAction { count, interval, .. } = &mut node.step {
+                    changed |= ui.add(egui::DragValue::new(count).range(1..=100).suffix(" times")).changed();
+                    changed |= ui.add(egui::DragValue::new(interval).range(0.05..=300.).speed(0.05).suffix(" seconds apart")).changed();
+                    ui.small("First action runs immediately. Each success starts the next wait; downstream nodes wait for the last repeat.");
                 }
             });
         }
@@ -608,16 +660,40 @@ impl Editor {
                         } => format!("{name} · {operation:?}"),
                         Step::Input { channel, .. } => format!("Read {channel}"),
                         Step::Require { name, .. } => format!("Require {name}"),
-                        Step::Action { .. } => format!("Action {}", node.id),
+                        Step::Branch { name, .. } => format!("Branch: {name}"),
+                        Step::RepeatAction {
+                            count, interval, ..
+                        } => format!("Repeat {count} · {interval:.2}s"),
+                        Step::Action { .. } => "Action".into(),
                     };
-                    painter.text(
+                    painter.with_clip_rect(rect.shrink(10.)).text(
                         rect.min + Vec2::new(14., 16.),
                         egui::Align2::LEFT_TOP,
-                        title,
+                        format!("#{} · {title}", node.id),
                         egui::FontId::proportional(14.),
                         crate::theme::text_color(),
                     );
-                    if let Step::Action { target, .. } = &node.step {
+                    if let Step::Branch { true_next, .. } = &node.step {
+                        let no = graph
+                            .edges
+                            .iter()
+                            .find(|e| e[0] == node.id && Some(e[1]) != *true_next)
+                            .map(|e| e[1]);
+                        painter.with_clip_rect(rect.shrink(10.)).text(
+                            rect.min + Vec2::new(14., 45.),
+                            egui::Align2::LEFT_TOP,
+                            format!(
+                                "True → {}   False → {}",
+                                true_next.map_or("?".into(), |id| id.to_string()),
+                                no.map_or("?".into(), |id| id.to_string())
+                            ),
+                            egui::FontId::proportional(11.),
+                            crate::theme::mint(),
+                        );
+                    }
+                    if let Step::Action { target, .. } | Step::RepeatAction { target, .. } =
+                        &node.step
+                    {
                         let label = target
                             .as_ref()
                             .and_then(|t| choices.iter().find(|c| &c.target == t))

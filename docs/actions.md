@@ -65,8 +65,11 @@ manual hold; automatic talking/blinking rules resume when no hold remains.
 
 ## Branches, timing and avatar changes
 
-Connect one output to several inputs to run branches together. A node with several
-incoming connections waits for all of them. Each node executes once per run. Delays
+Connect an ordinary output to several inputs to run paths together. A node with several
+incoming connections waits for all of them to finish or be skipped. Branch nodes
+choose True or False; Repeat action runs one action a bounded number of times.
+See [conditions and repetition](studio-production.md#variables-and-conditions-in-graphs)
+for the new development controls and Choose and repeat recipe. Other nodes execute once per run. Delays
 start after preceding steps finish and never block tracking or rendering. A trigger
 finishes when applied; a throw or animation may continue playing afterward. Add a
 Delay if the next step should wait for it.

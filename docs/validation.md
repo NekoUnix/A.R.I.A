@@ -5,6 +5,22 @@
 This file records checks for the development builds. The Windows CI workflow
 is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
+## Conditional graphs and repeated actions — 2026-09-27 (unreleased)
+
+- 322 standard workspace tests passed: 96 core, 194 desktop, 5 Live2D,
+  9 model and 18 tracking; 39 opt-in tests omitted. Strict all-target/all-feature
+  Clippy passed. Additional focused checks passed after the scheduler optimization.
+- Scheduler checks cover both branch outcomes, nested inactive branches, skipped
+  delays, shared active paths, joins, independent runs, graph serialization,
+  invalid counts/intervals and rejected cycles. A long frame does not release
+  catch-up repetitions; joins wait for the last successful repetition.
+- An app-level test drives real pose actions through the scheduler, verifies two
+  timed toggles, cancels the third and confirms an unavailable scene fails only
+  when its branch is selected. This complements isolated graph tests.
+- The native recipe/branch controls were visually inspected with the supplied
+  NekoUnity2.vrm successfully loaded in a separate test profile. No live stream
+  events were dispatched. Whole-subgraph loops remain unsupported.
+
 ## VST3 music worker — 2026-09-27 (unreleased)
 
 - 318 standard workspace tests passed (96 core, 190 desktop, 5 Live2D,

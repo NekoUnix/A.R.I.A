@@ -85,8 +85,10 @@ Implement postprocessing as an output pass with alpha preservation and a bypass;
 start with grading/bloom before distortion/glitch and scene-depth-dependent AO.
 Compare premultiplied-alpha edges in OBS, not only an opaque preview.
 
-Extend graphs with explicitly labelled branches and bounded repetition; test joins,
-cancel/restart, delays and concurrent variables. Add native provider event clients
+Graphs now include labelled True/False paths and bounded timed repetition of one
+action, with tests for inactive paths, joins, cancellation and independent runs.
+Whole-subgraph repetition still needs an explicit iteration boundary and join
+semantics; arbitrary cycles remain rejected. Add native provider event clients
 only after publisher OAuth registration, scopes and reconnect/replay handling are
 verified. Then expand chat badges/emotes, moderation and composition.
 

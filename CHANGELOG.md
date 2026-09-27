@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add True/False action-graph branches, inactive-path-aware joins, timed repetition of a single action and a Choose and repeat recipe. Bound repeats, preserve cancellation and prevent catch-up bursts after delayed frames.
+
 - Add an experimental Windows VST3 music effect with separate-process probing and processing, mono/stereo negotiation, saved normalized controls, bounded buffering and visible timeout/crash recovery. Preserve bounded reported tails; keep native editors, effect chains and shared audio routing marked unfinished.
 
 - Connect opt-in live Twitch/YouTube !commands to event rules, with bounded queues, backlog suppression, duplicate protection and pending-command moderation removal.

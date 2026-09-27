@@ -874,6 +874,12 @@ Start → Expression On → Wait 2 seconds → Expression Off → End. Click Run
 
 ### Avatar changes and repair
 
+### Choose a path and repeat
+
+In development builds, Branch compares a run-local variable and chooses True or False. Connect two outputs; the first is True, and the inspector can swap them. Cards show destination numbers. Skipped paths execute no actions or delays; joins wait for active paths and run once. Repeat action performs one action 1–100 times, 0.05–300 seconds apart, without catching up after a delayed frame. Stop all actions cancels remaining repetitions. The Choose and repeat recipe demonstrates these controls. Whole-subgraph loops remain unsupported.
+
+### Avatar changes and repair
+
 Load avatar waits for a saved profile to load before following nodes run. Switch current avatar loads the replacement first and then unloads the previously edited avatar, preserving other loaded profiles. Edit stage selects that avatar's editor; Unload removes it from the live scene while retaining its settings. Rename stage/profile keeps its action references. Deleted targets stop the run with a node-specific repair message. Load the avatar, choose its replacement target in the node editor and retry. Avatar loads time out after a 60-second wait.
 
 ### Save, cancel and share

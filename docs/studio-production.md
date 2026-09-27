@@ -130,6 +130,26 @@ variables per run.
 
 A Condition compares a variable with a number. When false, it finishes the run
 without executing remaining steps. Put a condition before the actions it guards;
-already completed parallel actions are not undone. This is a stop condition, not
-a two-output branching node. Loops, arbitrary scripts and VNyan graph imports
-remain unsupported.
+already completed parallel actions are not undone.
+
+Use **Branch** to choose a path without stopping the whole run. Connect two
+outputs; the first connection becomes **True**, the other **False**. Select the
+node to swap the True destination. Each card displays both destination IDs.
+The comparison reads the current run's variable at that node. A skipped path
+does not execute its actions or delays. Joins wait for every incoming path to
+finish or be skipped, then run once if any incoming path is active. A node shared
+with an independent active path still runs. Missing variables stop with an error.
+
+**Repeat action** runs one selected action 1–100 times, with 0.05–300 seconds
+between successful executions. The first execution is immediate. Later waits
+start after each success, so a delayed frame does not release a catch-up burst.
+Downstream nodes wait for the last repetition. **Stop all actions** cancels
+remaining repetitions; actions already completed are not undone. Each repetition
+uses the same captured avatar origin, and asynchronous avatar loads retain their
+existing timeout handling. Runs retain the shared 32-step-per-frame budget.
+
+The **Choose and repeat** recipe demonstrates a tracking input, a True/False
+branch and a repeated action. Assign both action targets before running. Saved
+and imported graphs retain the layout, comparisons and repeat counts; imported
+action targets must be reassigned, including repeated actions. Whole-subgraph
+loops, arbitrary scripts and VNyan graph imports remain unsupported.

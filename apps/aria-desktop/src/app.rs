@@ -562,6 +562,20 @@ impl AriaApp {
                     "inputs" | "microphone" | "vts" | "responsiveness" | "performance-details"
                 ) {
                     ControlsPage::Tracking
+                } else if scenario == "studio-branches" {
+                    let mut graph = crate::actions::Graph::branch_recipe(1);
+                    for node in &mut graph.nodes {
+                        if let crate::actions::Step::Action { target, .. }
+                        | crate::actions::Step::RepeatAction { target, .. } = &mut node.step
+                        {
+                            *target = Some(crate::actions::Target::Music(
+                                crate::actions::MusicCommand::Stop,
+                            ));
+                        }
+                    }
+                    app.settings.actions.graphs.push(graph);
+                    app.action_editor.preview_branch(1);
+                    ControlsPage::Home
                 } else if scenario == "studio-music" || scenario == "studio-vst" {
                     if scenario == "studio-vst" {
                         app.settings.music.vst.path =
