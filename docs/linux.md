@@ -16,8 +16,8 @@ of whether your desktop uses Wayland or X11.
 | Environment | Application | Optional native OBS plugin |
 | --- | --- | --- |
 | Ubuntu 24.04 | `aria-0.37.0-alpha.1-linux-x64.tar.gz` | Included in the archive; install separately with its script |
-| Fedora 44 | `aria-alpha-0.35.0.alpha.1-1.x86_64.rpm` | `aria-obs-canvas-0.35.0.alpha.1-1.x86_64.rpm` |
-| Current Arch Linux | `aria-alpha-0.35.0alpha.1-1-x86_64.pkg.tar.zst` | `aria-obs-canvas-0.35.0alpha.1-1-x86_64.pkg.tar.zst` |
+| Fedora 44 | `aria-alpha-0.37.0.alpha.1-1.x86_64.rpm` | `aria-obs-canvas-0.37.0.alpha.1-1.x86_64.rpm` |
+| Current Arch Linux | `aria-alpha-0.37.0alpha.1-1-x86_64.pkg.tar.zst` | `aria-obs-canvas-0.37.0alpha.1-1-x86_64.pkg.tar.zst` |
 
 Also download **SHA256SUMS.txt** from that same release. OBS is optional: you can
 install and run ARIA without installing its OBS plugin. These are downloadable
@@ -26,7 +26,7 @@ step in this release.
 
 The Fedora download names above contain **`.alpha.1`**. GitHub replaces the `~`
 in the original RPM filenames with a dot during upload. The internal RPM version
-is still `0.30.0~alpha.1`, and the package contents are unchanged. Use the actual
+is still `0.37.0~alpha.1`, and the package contents are unchanged. Use the actual
 download names above when following the commands below.
 
 ## Verify the files
@@ -93,7 +93,7 @@ Fedora installations. From your verified download
 folder, install the application with DNF so its dependencies are resolved:
 
 ```sh
-sudo dnf install ./aria-alpha-0.35.0.alpha.1-1.x86_64.rpm
+sudo dnf install ./aria-alpha-0.37.0.alpha.1-1.x86_64.rpm
 aria-cli --version
 aria-desktop
 ```
@@ -104,7 +104,7 @@ under `/opt/aria-alpha`, with launch links in `/usr/bin`.
 To add native OBS output, close OBS and install the optional source package:
 
 ```sh
-sudo dnf install ./aria-obs-canvas-0.35.0.alpha.1-1.x86_64.rpm
+sudo dnf install ./aria-obs-canvas-0.37.0.alpha.1-1.x86_64.rpm
 ```
 
 DNF also installs the native `obs-studio` dependency if needed. The source is
@@ -122,7 +122,7 @@ installing the downloaded local package; do not perform a partial upgrade with
 
 ```sh
 sudo pacman -Syu
-sudo pacman -U ./aria-alpha-0.35.0alpha.1-1-x86_64.pkg.tar.zst
+sudo pacman -U ./aria-alpha-0.37.0alpha.1-1-x86_64.pkg.tar.zst
 aria-cli --version
 aria-desktop
 ```
@@ -131,7 +131,7 @@ The app installs under `/opt/aria-alpha` and adds an **ARIA Alpha** menu entry a
 launch links in `/usr/bin`. To add native OBS output, close OBS and install:
 
 ```sh
-sudo pacman -U ./aria-obs-canvas-0.35.0alpha.1-1-x86_64.pkg.tar.zst
+sudo pacman -U ./aria-obs-canvas-0.37.0alpha.1-1-x86_64.pkg.tar.zst
 ```
 
 Pacman resolves dependencies, including native `obs-studio`. The plugin installs

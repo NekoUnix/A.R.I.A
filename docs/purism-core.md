@@ -37,6 +37,13 @@ ARIA is not affiliated with or endorsed by Live2D Inc.
 
 ## Build and validation
 
+When upgrading from v0.36 or earlier, extract the complete new package into its
+own folder and launch its application. Keep the matching worker with it: protocol
+v4 is incompatible with an old worker executable. Remove a custom
+`ARIA_CUBISM_HOST` override if it still points at an older ARIA installation.
+Saved external Core paths are ignored. Existing avatar physics stays in Authored;
+select Bouncy or Natural in Avatar → Physics and save to adopt the new solver.
+
 Use the pinned Rust toolchain and a C11 compiler (MSVC, Clang or GCC), then run:
 
 ```sh

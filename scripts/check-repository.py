@@ -87,6 +87,20 @@ def check():
         errors.append("Package version differs from Cargo workspace version")
     if f"aria-{version}-windows-x64.zip" not in workflow:
         errors.append("Windows artifact path differs from Cargo workspace version")
+    # Current installation guides must name downloads from this release, including
+    # GitHub's RPM '~' -> '.' upload normalization and Arch's dash-free version.
+    package_prefixes = (f"aria-{version}-",) + tuple(
+        f"{name}-{release}-"
+        for name in ("aria-alpha", "aria-obs-canvas")
+        for release in (version.replace("-", "."), version.replace("-", ""))
+    )
+    for name in ("README.md", "docs/linux.md", "docs/platforms.md", "docs/windows.md"):
+        text = (ROOT / name).read_text(encoding="utf-8")
+        downloads = re.findall(
+            r"\b(aria(?:-alpha|-obs-canvas)?-[0-9][0-9A-Za-z.~_-]*\.(?:zip|tar\.gz|rpm|pkg\.tar\.zst))", text)
+        for download in downloads:
+            if not download.startswith(package_prefixes):
+                errors.append(f"{name}: stale release filename: {download}")
     locked = {}
     for line in (ROOT / "tracking/requirements-lock.txt").read_text().splitlines():
         if "==" in line:

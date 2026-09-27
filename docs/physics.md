@@ -2,7 +2,7 @@
 
 ![ Avatar-specific physics in the current build](images/physics-v23.png)
 
-ARIA v0.6 provides the same studio tools for every supported avatar. The Inputs,
+ARIA provides the same studio tools for every supported avatar. The Inputs,
 Pose, Physics, Expressions, Presets and Raw tabs are shared UI; their parameter lists, limits,
 names and physics groups come from the currently loaded model. No group list or
 parameter mapping is hardcoded to the development test model.
