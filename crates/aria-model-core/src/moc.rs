@@ -125,6 +125,39 @@ pub struct CompiledMesh {
     keyforms: Vec<MeshKeyform>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GlueVertexPair {
+    pub left: usize,
+    pub right: usize,
+    pub left_weight: f32,
+    pub right_weight: f32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GlueLayout {
+    pub left_mesh: usize,
+    pub right_mesh: usize,
+    pub binding: usize,
+    pub intensities: Vec<f32>,
+    pub pairs: Vec<GlueVertexPair>,
+}
+
+impl GlueLayout {
+    pub fn intensity(&self, weights: &[KeyformWeight]) -> Result<f32> {
+        ensure!(!weights.is_empty(), "Glue binding has no active keyforms");
+        let mut intensity = 0.0_f32;
+        for key in weights {
+            let source = *self
+                .intensities
+                .get(key.index)
+                .context("Glue binding exceeds its keyforms")?;
+            intensity += source * key.weight;
+        }
+        ensure!(intensity.is_finite(), "Glue intensity is not finite");
+        Ok(intensity)
+    }
+}
+
 impl CompiledMesh {
     pub fn decoded_position_bytes(&self) -> usize {
         self.keyforms
@@ -744,7 +777,7 @@ impl<'a> Moc<'a> {
     /// geometry. These require additional evaluation after warp deformation.
     pub fn secondary_meshes(&self) -> Result<Vec<bool>> {
         let mesh_count = self.counts()?.art_meshes as usize;
-        let mut secondary = vec![false; mesh_count];
+        let mut secondary = self.blend_shape_meshes()?;
         let glues = self.nonnegative(0, 20)?;
         ensure!(glues <= 1_000_000, "Too many glue relationships");
         for glue in 0..glues {
@@ -754,19 +787,101 @@ impl<'a> Moc<'a> {
                 secondary[mesh] = true;
             }
         }
+        Ok(secondary)
+    }
+
+    pub fn blend_shape_meshes(&self) -> Result<Vec<bool>> {
+        let mesh_count = self.counts()?.art_meshes as usize;
+        let mut affected = vec![false; mesh_count];
         if self.version >= 4 {
             let blend_meshes = self.nonnegative(0, 28)?;
             ensure!(blend_meshes <= 1_000_000, "Too many ArtMesh blend shapes");
             for shape in 0..blend_meshes {
                 let mesh = self.nonnegative(128, shape)?;
-                ensure!(
-                    mesh < mesh_count,
-                    "Blend shape references an invalid ArtMesh"
-                );
-                secondary[mesh] = true;
+                ensure!(mesh < mesh_count, "Blend shape has an invalid ArtMesh");
+                affected[mesh] = true;
             }
         }
-        Ok(secondary)
+        Ok(affected)
+    }
+
+    pub fn glue_layouts(&self) -> Result<Vec<GlueLayout>> {
+        let counts = self.counts()?;
+        let glue_count = self.nonnegative(0, 20)?;
+        let info_count = self.nonnegative(0, 21)?;
+        let keyform_count = self.nonnegative(0, 22)?;
+        let binding_count = self.nonnegative(0, 12)?;
+        ensure!(
+            glue_count <= 1_000_000 && info_count <= 4_000_000,
+            "Glue data exceeds ARIA limits"
+        );
+        let mut layouts = Vec::with_capacity(glue_count);
+        for glue in 0..glue_count {
+            let left_mesh = self.nonnegative(94, glue)?;
+            let right_mesh = self.nonnegative(95, glue)?;
+            ensure!(
+                left_mesh < counts.art_meshes as usize
+                    && right_mesh < counts.art_meshes as usize
+                    && left_mesh != right_mesh,
+                "Glue references invalid or identical ArtMeshes"
+            );
+            let binding = self.nonnegative(91, glue)?;
+            ensure!(binding < binding_count, "Glue binding is invalid");
+            let key_start = self.nonnegative(92, glue)?;
+            let key_len = self.nonnegative(93, glue)?;
+            ensure!(
+                key_len > 0
+                    && key_start
+                        .checked_add(key_len)
+                        .is_some_and(|end| end <= keyform_count),
+                "Glue keyform range is invalid"
+            );
+            let mut intensities = Vec::with_capacity(key_len);
+            for index in key_start..key_start + key_len {
+                let value = f32::from_bits(self.word(100, index)?);
+                ensure!(value.is_finite(), "Glue intensity is non-finite");
+                intensities.push(value);
+            }
+            let info_start = self.nonnegative(96, glue)?;
+            let info_len = self.nonnegative(97, glue)?;
+            ensure!(
+                info_len % 2 == 0
+                    && info_start
+                        .checked_add(info_len)
+                        .is_some_and(|end| end <= info_count),
+                "Glue vertex-pair range is invalid"
+            );
+            let left_vertices = self.nonnegative(43, left_mesh)?;
+            let right_vertices = self.nonnegative(43, right_mesh)?;
+            let mut pairs = Vec::with_capacity(info_len / 2);
+            for info in (info_start..info_start + info_len).step_by(2) {
+                let left = self.short(99, info)? as usize;
+                let right = self.short(99, info + 1)? as usize;
+                let left_weight = f32::from_bits(self.word(98, info)?);
+                let right_weight = f32::from_bits(self.word(98, info + 1)?);
+                ensure!(
+                    left < left_vertices
+                        && right < right_vertices
+                        && left_weight.is_finite()
+                        && right_weight.is_finite(),
+                    "Glue vertex pair is invalid"
+                );
+                pairs.push(GlueVertexPair {
+                    left,
+                    right,
+                    left_weight,
+                    right_weight,
+                });
+            }
+            layouts.push(GlueLayout {
+                left_mesh,
+                right_mesh,
+                binding,
+                intensities,
+                pairs,
+            });
+        }
+        Ok(layouts)
     }
 
     /// Blend local deformer keyforms before hierarchy transforms and blend
@@ -1449,6 +1564,10 @@ mod tests {
             let deformers = moc.deformer_layouts().unwrap();
             assert_eq!(deformers.len(), counts.deformers as usize);
             assert_eq!(moc.secondary_meshes().unwrap().len(), meshes.len());
+            assert_eq!(
+                moc.glue_layouts().unwrap().len(),
+                moc.nonnegative(0, 20).unwrap()
+            );
             let values = moc
                 .parameters()
                 .unwrap()

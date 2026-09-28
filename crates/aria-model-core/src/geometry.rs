@@ -1,12 +1,13 @@
 //! Model-scoped normal-parameter geometry evaluation.
 //!
 //! Static binding and hierarchy metadata are decoded once. A frame computes
-//! each deformer once before transforming its child ArtMeshes. Glue and blend
-//! shape targets are represented as `None` until their geometry is supported.
+//! each deformer once before transforming its child ArtMeshes, then applies
+//! glue constraints. Blend-shape targets are represented as `None` until their
+//! geometry is supported.
 
 use crate::moc::{
-    BindingGraph, CompiledMesh, DeformerKind, DeformerLayout, LocalDeformerFrame, LocalMeshFrame,
-    Moc, ParameterSpec,
+    BindingGraph, CompiledMesh, DeformerKind, DeformerLayout, GlueLayout, LocalDeformerFrame,
+    LocalMeshFrame, Moc, ParameterSpec,
 };
 use crate::rig::{Point, RotationTransform, WarpGrid};
 use anyhow::{Context, Result, ensure};
@@ -38,11 +39,26 @@ pub struct GeometryEvaluator<'model, 'bytes> {
     deformers: Vec<DeformerLayout>,
     secondary: Vec<bool>,
     meshes: Vec<Option<CompiledMesh>>,
+    glues: Vec<GlueLayout>,
 }
 
 impl<'model, 'bytes> GeometryEvaluator<'model, 'bytes> {
     pub fn new(moc: &'model Moc<'bytes>) -> Result<Self> {
-        let secondary = moc.secondary_meshes()?;
+        let glues = moc.glue_layouts()?;
+        let mut secondary = moc.blend_shape_meshes()?;
+        for _ in 0..glues.len() {
+            let mut changed = false;
+            for glue in &glues {
+                if secondary[glue.left_mesh] || secondary[glue.right_mesh] {
+                    changed |= !secondary[glue.left_mesh] || !secondary[glue.right_mesh];
+                    secondary[glue.left_mesh] = true;
+                    secondary[glue.right_mesh] = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
         let mut decoded_bytes = 0_usize;
         let mut meshes = Vec::with_capacity(secondary.len());
         for (index, &unsupported) in secondary.iter().enumerate() {
@@ -67,6 +83,7 @@ impl<'model, 'bytes> GeometryEvaluator<'model, 'bytes> {
             deformers: moc.deformer_layouts()?,
             secondary,
             meshes,
+            glues,
         })
     }
 
@@ -231,6 +248,35 @@ impl<'model, 'bytes> GeometryEvaluator<'model, 'bytes> {
                 frame.opacity *= state.opacity;
             }
             frames.push(Some(frame));
+        }
+        for glue in &self.glues {
+            if self.secondary[glue.left_mesh] || self.secondary[glue.right_mesh] {
+                continue;
+            }
+            let intensity = glue.intensity(&weights[glue.binding])?;
+            let (low, high) = if glue.left_mesh < glue.right_mesh {
+                (glue.left_mesh, glue.right_mesh)
+            } else {
+                (glue.right_mesh, glue.left_mesh)
+            };
+            let (first, rest) = frames.split_at_mut(high);
+            let (Some(low_frame), Some(high_frame)) = (&mut first[low], &mut rest[0]) else {
+                continue;
+            };
+            let (left_frame, right_frame) = if glue.left_mesh < glue.right_mesh {
+                (low_frame, high_frame)
+            } else {
+                (high_frame, low_frame)
+            };
+            for pair in &glue.pairs {
+                let left = &mut left_frame.positions[pair.left];
+                let right = &mut right_frame.positions[pair.right];
+                let delta = [right[0] - left[0], right[1] - left[1]];
+                left[0] += delta[0] * intensity * pair.left_weight;
+                left[1] += delta[1] * intensity * pair.left_weight;
+                right[0] -= delta[0] * intensity * pair.right_weight;
+                right[1] -= delta[1] * intensity * pair.right_weight;
+            }
         }
         Ok(frames)
     }

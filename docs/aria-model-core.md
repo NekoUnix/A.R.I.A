@@ -14,8 +14,9 @@ ArtMesh and deformer keyforms, and warp/rotation parent hierarchies. The Rust
 geometry evaluator interpolates parameter keyforms and transforms mesh vertices
 through mixed warp and rotation chains, including grid extrapolation. A
 model-scoped evaluator decodes static bindings and mesh keyforms into RAM once,
-then computes each parent deformer once per frame. Decoded mesh keyform positions
-have a 512 MiB budget. Unsupported secondary-geometry meshes are returned as
+then computes each parent deformer once per frame and applies decoded glue
+constraints. Decoded mesh keyform positions have a 512 MiB budget. Unsupported
+blend-shape geometry meshes are returned as
 empty slots so they cannot accidentally be rendered as complete geometry. It does
 not run C code, relocate pointers in model bytes, load an SDK, or include
 copied Purism source. The crate is in the workspace for development and
@@ -89,16 +90,17 @@ It found zero mismatched frames across 27 of the 28 locally supplied MOC3
 exports; the largest absolute coordinate difference observed was below
 `0.0000015` model units. `Ditto Eevees.moc3` remains rejected by the existing
 runtime's loader, so there is no comparison result for it. This parity test
-intentionally excludes ArtMeshes directly targeted by glue or blend-shape
-geometry and does not exercise nondefault blend-shape parameter values.
+now includes glue-constrained ArtMeshes when neither side requires blend-shape
+geometry. It excludes blend-shape targets and does not exercise nondefault
+blend-shape parameter values.
 Opacity, draw order, visibility, color, offscreen behavior and final rendered
 pixels are not covered by this geometry result. A test passing on these frames
 does not make the evaluator production-ready or prove a performance gain.
 
 An optimized local diagnostic on the OILBUN export measured the current
 runtime's deformation-only path at roughly `0.7 ms/frame` and the Rust
-normal-geometry path at roughly `2.7 ms/frame`. The Rust path currently handles
-210 of that export's 284 ArtMeshes and omits secondary geometry, so these are
+normal-geometry path at roughly `2.65 ms/frame`. The Rust path currently handles
+231 of that export's 284 ArtMeshes and omits blend-shape geometry, so these are
 not equal workloads. The Rust implementation is currently slower at this
 stage; the measurement gives a baseline for eliminating remaining keyform,
 transform and output-allocation costs. It excludes render, GPU upload, capture
@@ -106,11 +108,11 @@ and desktop composition time.
 
 The developer-only official Core comparison now includes Rust normal-geometry
 vertices directly. Across five animated frames, maximum Rust-to-official
-coordinate differences were about `0.00000035` on OILBUN, `0.0000056` on
-Hiyori, and `0.0000024` on a supplied NekoUnix outfit export. Those tests
-covered 991, 493, and 3,639 supported visible mesh frames respectively.
+coordinate differences were about `0.0000021` on OILBUN, `0.0000056` on
+Hiyori, and `0.0000079` on a supplied NekoUnix outfit export. Those tests
+covered 1,096, 648, and 3,741 supported visible mesh frames respectively.
 The official DLL remains local and is never linked into the application.
-This still excludes glue and blend-shape geometry.
+This still excludes blend-shape geometry.
 
 The already-Rust ARIA physics solver was also adjusted with an explicit
 frequency-controlled return torque for Natural and Bouncy modes. This gives
