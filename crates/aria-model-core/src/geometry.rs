@@ -11,6 +11,56 @@ use crate::moc::{
 };
 use crate::rig::{Point, RotationTransform, WarpGrid};
 use anyhow::{Context, Result, ensure};
+use std::{
+    sync::{Mutex, OnceLock},
+    time::{Duration, Instant},
+};
+
+#[derive(Default)]
+struct StageTiming {
+    frames: usize,
+    axes: Duration,
+    deformers: Duration,
+    deformer_keyforms: Duration,
+    deformer_resolve: Duration,
+    meshes: Duration,
+    glue: Duration,
+}
+
+fn record_stage_timing(
+    axes: Duration,
+    deformers: Duration,
+    deformer_keyforms: Duration,
+    deformer_resolve: Duration,
+    meshes: Duration,
+    glue: Duration,
+) {
+    static STAGES: OnceLock<Mutex<StageTiming>> = OnceLock::new();
+    let mut timings = STAGES
+        .get_or_init(|| Mutex::new(StageTiming::default()))
+        .lock()
+        .unwrap();
+    timings.frames += 1;
+    timings.axes += axes;
+    timings.deformers += deformers;
+    timings.deformer_keyforms += deformer_keyforms;
+    timings.deformer_resolve += deformer_resolve;
+    timings.meshes += meshes;
+    timings.glue += glue;
+    if timings.frames >= 120 {
+        let ms = |duration: Duration| duration.as_secs_f64() * 1000.0 / timings.frames as f64;
+        eprintln!(
+            "ARIA_RUST_CORE_STAGES axes_ms={:.3} deformers_ms={:.3} keyforms_ms={:.3} resolve_ms={:.3} meshes_ms={:.3} glue_ms={:.3}",
+            ms(timings.axes),
+            ms(timings.deformers),
+            ms(timings.deformer_keyforms),
+            ms(timings.deformer_resolve),
+            ms(timings.meshes),
+            ms(timings.glue)
+        );
+        *timings = StageTiming::default();
+    }
+}
 
 enum Transform {
     Warp(WarpGrid, bool),
@@ -33,6 +83,12 @@ struct DeformerState {
     color: ColorPair,
 }
 
+#[derive(Default)]
+struct DeformerCache {
+    values: Vec<f32>,
+    states: Vec<Option<DeformerState>>,
+}
+
 pub struct GeometryEvaluator {
     parameters: Vec<ParameterSpec>,
     graph: BindingGraph,
@@ -51,6 +107,8 @@ pub struct GeometryEvaluator {
     blend_rotations: Vec<Vec<CompiledBlendRotation>>,
     blend_glues: Vec<Vec<CompiledBlendScalar>>,
     glues: Vec<GlueLayout>,
+    deformer_dependencies: Vec<Vec<usize>>,
+    deformer_cache: Mutex<DeformerCache>,
 }
 
 impl GeometryEvaluator {
@@ -160,8 +218,65 @@ impl GeometryEvaluator {
                 && glues.iter().all(|glue| glue.binding < binding_count),
             "Model object references an invalid normal-parameter binding"
         );
+        let parameters = moc.parameters()?;
+        let mut deformer_dependencies = Vec::with_capacity(deformers.len());
+        for node in &deformers {
+            let mut dependencies = Vec::new();
+            for &table in &graph.bindings[node.binding] {
+                dependencies.push(
+                    graph
+                        .tables
+                        .get(table)
+                        .context("Deformer binding references a missing key table")?
+                        .parameter,
+                );
+            }
+            let blends = if matches!(node.kind, DeformerKind::Warp { .. }) {
+                blend_warps
+                    .get(node.local_index)
+                    .context("Deformer references a missing warp")?
+                    .iter()
+                    .flat_map(|blend| blend.bindings.iter().map(|binding| binding.binding))
+                    .collect::<Vec<_>>()
+            } else {
+                blend_rotations
+                    .get(node.local_index)
+                    .context("Deformer references a missing rotation")?
+                    .iter()
+                    .flat_map(|blend| blend.bindings.iter().map(|binding| binding.binding))
+                    .collect::<Vec<_>>()
+            };
+            for binding in blends {
+                let source = blend_graph
+                    .bindings
+                    .get(binding)
+                    .context("Deformer blend references a missing binding")?;
+                dependencies.push(
+                    blend_graph
+                        .tables
+                        .get(source.table)
+                        .context("Deformer blend references a missing key table")?
+                        .parameter,
+                );
+                dependencies.extend(
+                    source
+                        .constraints
+                        .iter()
+                        .map(|constraint| constraint.parameter),
+                );
+            }
+            dependencies.sort_unstable();
+            dependencies.dedup();
+            ensure!(
+                dependencies
+                    .iter()
+                    .all(|&parameter| parameter < parameters.len()),
+                "Deformer dependency references a missing parameter"
+            );
+            deformer_dependencies.push(dependencies);
+        }
         Ok(Self {
-            parameters: moc.parameters()?,
+            parameters,
             graph,
             blend_graph,
             deformers,
@@ -178,6 +293,8 @@ impl GeometryEvaluator {
             blend_rotations,
             blend_glues,
             glues,
+            deformer_dependencies,
+            deformer_cache: Mutex::new(DeformerCache::default()),
         })
     }
 
@@ -205,6 +322,10 @@ impl GeometryEvaluator {
         values: &[f32],
         part_values: &[f32],
     ) -> Result<Vec<Option<LocalMeshFrame>>> {
+        static PROFILE: OnceLock<bool> = OnceLock::new();
+        let timing_start = PROFILE
+            .get_or_init(|| std::env::var("ARIA_PERF_RUST_CORE").as_deref() == Ok("1"))
+            .then(Instant::now);
         ensure!(
             values.len() == self.parameters.len(),
             "Parameter count differs from the model"
@@ -239,12 +360,21 @@ impl GeometryEvaluator {
         let weights = (0..self.graph.bindings.len())
             .map(|binding| self.graph.weights(binding, &values))
             .collect::<Result<Vec<_>>>()?;
+        let axes_done = timing_start.map(|_| Instant::now());
+        let mut keyform_time = Duration::ZERO;
+        let mut resolve_time = Duration::ZERO;
+        let mut cache = self.deformer_cache.lock().unwrap();
+        let cache_ready =
+            cache.values.len() == values.len() && cache.states.len() == self.deformers.len();
+        let mut previous_states = std::mem::take(&mut cache.states);
         let mut states: Vec<Option<DeformerState>> = Vec::with_capacity(self.deformers.len());
+        let mut changed = Vec::with_capacity(self.deformers.len());
         for (index, node) in self.deformers.iter().enumerate() {
             if !node.enabled
                 || !binding_active[node.binding]
                 || node.parent_part.is_some_and(|part| !part_active[part])
             {
+                changed.push(previous_states.get(index).is_some_and(Option::is_some));
                 states.push(None);
                 continue;
             }
@@ -256,9 +386,25 @@ impl GeometryEvaluator {
                 None => None,
             };
             if node.parent_deformer.is_some() && parent.is_none() {
+                changed.push(previous_states.get(index).is_some_and(Option::is_some));
                 states.push(None);
                 continue;
             }
+            let parent_changed = node.parent_deformer.is_some_and(|parent| changed[parent]);
+            let input_changed = !cache_ready
+                || self.deformer_dependencies[index]
+                    .iter()
+                    .any(|&parameter| cache.values[parameter] != values[parameter]);
+            if !parent_changed
+                && !input_changed
+                && let Some(previous) = previous_states.get_mut(index).and_then(Option::take)
+            {
+                changed.push(false);
+                states.push(Some(previous));
+                continue;
+            }
+            changed.push(true);
+            let keyform_start = timing_start.map(|_| Instant::now());
             let mut local = self.compiled_deformers[index].frame(&weights[node.binding])?;
             let color = self.deformer_colors[index]
                 .frame(&weights[node.binding])?
@@ -272,6 +418,10 @@ impl GeometryEvaluator {
                     blend.apply(&mut local, &self.blend_graph, &values)?;
                 }
             }
+            if let Some(start) = keyform_start {
+                keyform_time += start.elapsed();
+            }
+            let resolve_start = timing_start.map(|_| Instant::now());
             let state = match (&node.kind, local) {
                 (
                     DeformerKind::Warp {
@@ -362,7 +512,12 @@ impl GeometryEvaluator {
                 _ => anyhow::bail!("Deformer layout and frame types differ"),
             };
             states.push(Some(state));
+            if let Some(start) = resolve_start {
+                resolve_time += start.elapsed();
+            }
         }
+
+        let deformers_done = timing_start.map(|_| Instant::now());
 
         let mut frames = Vec::with_capacity(self.secondary.len());
         for (index, &secondary) in self.secondary.iter().enumerate() {
@@ -411,6 +566,7 @@ impl GeometryEvaluator {
             }
             frames.push(Some(frame));
         }
+        let meshes_done = timing_start.map(|_| Instant::now());
         for (glue_index, glue) in self.glues.iter().enumerate() {
             if self.secondary[glue.left_mesh] || self.secondary[glue.right_mesh] {
                 continue;
@@ -451,6 +607,67 @@ impl GeometryEvaluator {
                 .all(|value| value.is_finite())),
             "Non-finite ArtMesh vertex"
         );
+        cache.values = values;
+        cache.states = states;
+        if let (Some(start), Some(axes), Some(deformers), Some(meshes)) =
+            (timing_start, axes_done, deformers_done, meshes_done)
+        {
+            record_stage_timing(
+                axes - start,
+                deformers - axes,
+                keyform_time,
+                resolve_time,
+                meshes - deformers,
+                meshes.elapsed(),
+            );
+        }
         Ok(frames)
+    }
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+    use crate::moc::ParameterKind;
+
+    #[test]
+    #[ignore = "requires ARIA_TEST_MOC; private model remains on the local machine"]
+    fn cached_deformers_match_a_fresh_evaluation_across_parameter_and_part_changes() {
+        let path = std::env::var_os("ARIA_TEST_MOC").unwrap();
+        let bytes = std::fs::read(path).unwrap();
+        let moc = Moc::parse(&bytes).unwrap();
+        let cached = GeometryEvaluator::new(&moc).unwrap();
+        let reference = GeometryEvaluator::new(&moc).unwrap();
+        let parameters = moc.parameters().unwrap();
+        let parts = moc.part_layouts().unwrap();
+        for frame in 0..20 {
+            let values = parameters
+                .iter()
+                .enumerate()
+                .map(|(index, parameter)| {
+                    let phase = ((frame * 17 + index * 13) % 23) as f32 / 22.0;
+                    if index < 32 || parameter.kind == ParameterKind::BlendShape {
+                        parameter.minimum + (parameter.maximum - parameter.minimum) * phase
+                    } else {
+                        parameter.default
+                    }
+                })
+                .collect::<Vec<_>>();
+            let part_values = parts
+                .iter()
+                .enumerate()
+                .map(|(index, part)| {
+                    if part.visible {
+                        ((frame * 7 + index * 5) % 13) as f32 / 12.0
+                    } else {
+                        0.0
+                    }
+                })
+                .collect::<Vec<_>>();
+            let output = cached.frame_with_parts(&values, &part_values).unwrap();
+            *reference.deformer_cache.lock().unwrap() = DeformerCache::default();
+            let expected = reference.frame_with_parts(&values, &part_values).unwrap();
+            assert_eq!(output, expected, "Cached geometry changed on frame {frame}");
+        }
     }
 }

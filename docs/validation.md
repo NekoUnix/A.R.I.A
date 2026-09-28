@@ -7,6 +7,18 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## GPU morph and Rust model-core checks — 2026-09-28 (unreleased)
 
+- The independent Rust evaluator now caches deformer states by normal and
+  blend/constraint parameter dependencies, invalidating descendants when a
+  parent changes. A 20-frame cached-versus-forced-fresh sweep passed on all 28
+  supplied MOC3 exports, including changing part opacity and blend-shape
+  parameters. The seven-frame direct official-Core sweep also passed on all
+  28. On the large 90s outfit, the optimized single-axis hosted benchmark
+  improved from roughly 8.74 to 1.98 ms/frame; three 32-axis Rust samples
+  ranged 8.9–9.4 ms against 5.3–5.4 ms for the current runtime. This is CPU
+  caching, not GPU deformation or a blanket 120 FPS result. A same-binary
+  optimized desktop physics smoke settled near 42.3 FPS for the cached direct
+  Rust path versus 53.9 FPS for the default path on this large asset, so the
+  default was not switched.
 - The opt-in in-process Rust core passed a two-avatar independence test using
   Ditto Eevees, and the large 90s outfit's default-pose GPU render matched its
   Rust-worker render pixel for pixel at 1,357 × 2,048. The position buffers now

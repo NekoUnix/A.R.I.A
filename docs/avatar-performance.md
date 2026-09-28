@@ -74,6 +74,25 @@ desktop result remained near 43 FPS. The next performance work needs to reduce
 Rust keyform/deformer evaluation and mask pass costs; simply changing thread or
 process boundaries does not meet the 8.33 ms whole-frame budget.
 
+The next Rust-core change caches deformer states by their normal and blend
+parameter dependencies. In optimized large-outfit tests, alternating one
+parameter fell from roughly 8.74 to 1.98 ms per hosted update. Three 32-axis
+samples measured about 8.9–9.4 ms for Rust versus 5.3–5.4 ms for the current
+runtime's direct update. With stage profiling enabled, roughly 5.8 ms of the
+Rust 32-axis frame remained in deformers (about 2.0 ms keyform/blend work and
+3.7 ms hierarchy resolution), 2.4 ms in meshes and 0.5 ms in glue. The
+profiling itself adds overhead; the uninstrumented totals above are the
+performance comparison. This change reduces CPU work but does not execute MOC3
+deformation on the GPU. A matching desktop FPS check is recorded separately.
+
+In matched 20-second hidden Studio physics smokes on the same optimized
+executable, the cached direct Rust path settled near 42.3 FPS by the last six
+sampled intervals, versus 53.9 FPS for the default runtime. The Rust sample's
+host wall times ranged roughly 11–23 ms in the sampled intervals; the default
+was usually about 8–15 ms. Rendering was around 3–6 ms on both. The single-axis
+gain therefore does not solve broad physics-driven updates or the whole-frame
+120 FPS target. The default renderer remains unchanged.
+
 The supplied NekoUnity2 VRM spent about 1–1.3 ms in model update at its saved
 60 FPS target. With the smoke cap held at 120 after import, it subsequently ran
 at 120.1–120.3 FPS in three sampled intervals, with 0.8–1.4 ms model updates.

@@ -37,6 +37,17 @@ copied Purism source. The model-scoped path still allocates per frame and is
 slower than the current runtime on the measured large export. It is not a
 measured 120 FPS implementation.
 
+The evaluator now retains completed deformer states in RAM. It tracks the
+normal key tables and blend-shape/constraint parameters that can affect each
+deformer, then recomputes a node only when one of those inputs or its parent
+state changes. Part activation is checked every frame. Disabled or newly
+enabled deformers invalidate their descendants; parameter values are compared
+after range and repeat handling. A failed frame leaves the cache incomplete,
+forcing full evaluation on the next attempt. Mesh keyforms, glue and final
+render ordering are still evaluated each frame. `ARIA_PERF_RUST_CORE=1` prints
+120-frame averages for axes, deformer keyforms/resolution, meshes and glue to
+stderr for local profiling.
+
 `resident::ResidentModel` is the first production connection to this core.
 On avatar load, it reads the complete MOC3 source and every declared encoded
 texture atlas into bounded, immutable system RAM. The desktop renderer decodes

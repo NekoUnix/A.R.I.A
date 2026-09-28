@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reuse unchanged Rust MOC3 deformer states across frames with explicit normal-key and blend-shape parameter dependencies, propagating changes through parent deformers. This reduces large-model CPU evaluation for narrow parameter updates while preserving official-Core output across all 28 supplied exports. A broad 32-axis animation remains slower than the transitional runtime; GPU MOC3 deformation is still pending.
+
 - Add an opt-in in-process ARIA Rust MOC3 path for profiling without worker serialization. Adopt evaluated mesh position buffers directly in the Rust adapter and decoded worker frames instead of copying every vertex into an older buffer. Its large-model default-pose GPU render matched the Rust worker pixel for pixel, but a 120-FPS-target desktop run was slower than the current runtime, so the default remains unchanged.
 
 - Match the official Core directly on all 28 supplied MOC3 exports, including an export the transitional Purism loader rejects. Reduce Rust geometry time by recognizing affine warp grids while retaining full interpolation for bent grids. Validate draw-group graph ownership and cycles before rendering; the large-model worker remains slower than the current runtime.
