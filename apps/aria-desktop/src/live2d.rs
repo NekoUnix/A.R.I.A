@@ -91,8 +91,9 @@ impl GpuModelPath {
         Ok(false)
     }
 
-    fn evaluate(
+    fn encode(
         &mut self,
+        encoder: &mut wgpu::CommandEncoder,
         model: &HostedModel,
         layers: &aria_core::layers::Config,
         geometry_changed: bool,
@@ -100,10 +101,6 @@ impl GpuModelPath {
         for (target, drawable) in self.visible.iter_mut().zip(&model.drawables) {
             *target = drawable.visible && drawable.opacity * layers.opacity(&drawable.id) > 0.01;
         }
-        let mut encoder = self
-            .state
-            .device
-            .create_command_encoder(&Default::default());
         if geometry_changed || !self.positions_ready {
             for (target, parameter) in self.values.iter_mut().zip(model.parameters()) {
                 *target = parameter.value;
@@ -113,15 +110,13 @@ impl GpuModelPath {
             }
             self.positions.encode_with_parts(
                 &self.state.queue,
-                &mut encoder,
+                encoder,
                 &self.values,
                 Some(&self.parts),
             )?;
         }
         self.bounds
-            .encode(&self.state.queue, &mut encoder, &self.visible)?;
-        self.state.queue.submit([encoder.finish()]);
-        self.bounds.begin_readback();
+            .encode(&self.state.queue, encoder, &self.visible)?;
         self.positions_ready = true;
         Ok(())
     }
@@ -238,6 +233,24 @@ impl Avatar {
     pub fn image(&self) -> ModelImage {
         self.renderer.image
     }
+    pub fn runtime_label(&self) -> &'static str {
+        if self.gpu.is_some() {
+            "LIVE2D · ARIA RUST + GPU · EXPERIMENTAL"
+        } else if self.model.uses_direct_rust() {
+            "LIVE2D · ARIA RUST · EXPERIMENTAL"
+        } else {
+            "LIVE2D · PURISM CORE"
+        }
+    }
+    pub fn runtime_description(&self) -> &'static str {
+        if self.gpu.is_some() {
+            "ARIA's experimental Rust core evaluates model geometry on the GPU."
+        } else if self.model.uses_direct_rust() {
+            "ARIA's experimental Rust core evaluates model geometry on the CPU."
+        } else {
+            "Purism Core is built in. No separate runtime download is needed."
+        }
+    }
     pub fn frozen_preview_renderer(&self) -> ModelRenderer {
         self.renderer.fork_preview()
     }
@@ -343,8 +356,16 @@ impl Avatar {
         }
         let host_updated = Instant::now();
         if let Some(gpu) = &mut self.gpu {
+            let mut encoder = gpu.state.device.create_command_encoder(&Default::default());
+            let mut evaluated_gpu = false;
             if pose_changed || parts_changed || self.last_layers != *render_layers {
-                gpu.evaluate(&self.model, &render_layers, pose_changed || parts_changed)?;
+                gpu.encode(
+                    &mut encoder,
+                    &self.model,
+                    &render_layers,
+                    pose_changed || parts_changed,
+                )?;
+                evaluated_gpu = true;
             }
             let (view, bounds) = if let Some(extents) = gpu.latest_bounds {
                 let view = fit_canvas_from_model_extents(
@@ -356,13 +377,18 @@ impl Avatar {
             } else {
                 (self.renderer.view_canvas, self.renderer.bounds)
             };
-            self.renderer.render_layers_gpu_positions(
+            self.renderer.render_layers_gpu_positions_encoded(
                 view,
                 &self.model.drawables,
                 &render_layers,
                 gpu.positions.positions(),
                 bounds,
+                &mut encoder,
             )?;
+            gpu.state.queue.submit([encoder.finish()]);
+            if evaluated_gpu {
+                gpu.bounds.begin_readback();
+            }
         } else {
             self.renderer.render_layers(
                 self.model.canvas,
@@ -457,7 +483,10 @@ mod tests {
             cpu_model.update().unwrap();
             gpu_model.update_metadata().unwrap();
             let layers = aria_core::layers::Config::default();
-            gpu.evaluate(&gpu_model, &layers, true).unwrap();
+            let mut encoder = state.device.create_command_encoder(&Default::default());
+            gpu.encode(&mut encoder, &gpu_model, &layers, true).unwrap();
+            state.queue.submit([encoder.finish()]);
+            gpu.bounds.begin_readback();
             state
                 .device
                 .poll(wgpu::PollType::wait_indefinitely())

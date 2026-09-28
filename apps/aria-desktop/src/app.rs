@@ -1919,10 +1919,12 @@ impl AriaApp {
                                 }
                             });
                         }
-                        ui.collapsing("Avatar runtime", |ui| {
-                            crate::help::label(ui, "Purism Core · built in", "runtime");
-                            ui.small("Ready to use. No separate runtime download is needed.");
-                        });
+                        if let Some(avatar) = &self.live2d {
+                            ui.collapsing("Avatar runtime", |ui| {
+                                crate::help::label(ui, avatar.runtime_label(), "runtime");
+                                ui.small(avatar.runtime_description());
+                            });
+                        }
                     }
                 }
                 if kind.is_some() {
@@ -3522,8 +3524,8 @@ impl eframe::App for AriaApp {
                     self.rename_stage_button(ui);
                     crate::help::button(ui, "stage");
                     ui.label(
-                        RichText::new(if self.live2d.is_some() {
-                            "LIVE2D · PURISM CORE"
+                        RichText::new(if let Some(avatar) = &self.live2d {
+                            avatar.runtime_label()
                         } else if let Some(avatar) = &self.vrm {
                             if avatar.asset.summary.is_glb() { "VRC / GLB HUMANOID" } else { "VRM / 3D HUMANOID" }
                         } else if self.idle.is_some() {

@@ -218,6 +218,12 @@ substantially reduces the CPU bottleneck but does not hold 120 FPS on that
 model. The renderer still issues about 60 mask and 61 color passes per changing
 frame; GPU-mode render work sampled about 4–7 ms, leaving little room for UI,
 capture and frame pacing inside an 8.33 ms budget.
+The experimental path now encodes compute, bounds reduction and rendering
+before one queue submission on a changing frame. A separate optimized smoke
+after closing two older ARIA instances averaged 109.4 sampled FPS over eight
+steady intervals (98.8–120.6). The earlier run had different background
+conditions, so this comparison does not prove a performance improvement. The
+mask/color passes and submission wall time remain the next measured costs.
 An optimized 120-frame alternating-parameter microbenchmark on the large
 outfit measured 3.015 ms/frame for full direct Rust updates and 0.085
 ms/frame for metadata-only updates after warmup. These figures exclude GPU

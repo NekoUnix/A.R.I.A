@@ -716,13 +716,14 @@ impl ModelRenderer {
         drawables: &[Drawable],
         layers: &aria_core::layers::Config,
     ) -> Result<()> {
-        self.render_layers_inner(canvas, drawables, layers, None)
+        self.render_layers_inner(canvas, drawables, layers, None, None)
     }
 
     /// Draw GPU-evaluated positions without downloading them or uploading a
     /// CPU position vector. The source must be a VERTEX buffer containing
     /// one tightly packed vec2 per vertex in drawable order. The caller also
     /// supplies the already-fitted view and normalized visible bounds.
+    #[cfg(test)]
     pub fn render_layers_gpu_positions(
         &mut self,
         view_canvas: Canvas,
@@ -760,6 +761,27 @@ impl ModelRenderer {
             drawables,
             layers,
             Some((gpu_positions, bounds)),
+            None,
+        )
+    }
+
+    /// Encode rendering after the caller's GPU geometry work, so both stages
+    /// can be submitted together in order.
+    pub fn render_layers_gpu_positions_encoded(
+        &mut self,
+        view_canvas: Canvas,
+        drawables: &[Drawable],
+        layers: &aria_core::layers::Config,
+        gpu_positions: &wgpu::Buffer,
+        bounds: egui::Rect,
+        encoder: &mut wgpu::CommandEncoder,
+    ) -> Result<()> {
+        self.render_layers_inner(
+            view_canvas,
+            drawables,
+            layers,
+            Some((gpu_positions, bounds)),
+            Some(encoder),
         )
     }
 
@@ -769,6 +791,7 @@ impl ModelRenderer {
         drawables: &[Drawable],
         layers: &aria_core::layers::Config,
         gpu: Option<(&wgpu::Buffer, egui::Rect)>,
+        external_encoder: Option<&mut wgpu::CommandEncoder>,
     ) -> Result<()> {
         let started = Instant::now();
         ensure!(
@@ -854,11 +877,16 @@ impl ModelRenderer {
             .write_buffer(&self.uniforms, 0, uniform_bytes);
         let uploaded = Instant::now();
         let vertex_buffer = gpu.map_or(&self.vertices, |(positions, _)| positions);
-        let mut encoder = self
-            .state
-            .device
-            .create_command_encoder(&Default::default());
-        drop(begin_pass(&mut encoder, &self.output, true));
+        let mut owned_encoder = external_encoder.is_none().then(|| {
+            self.state
+                .device
+                .create_command_encoder(&Default::default())
+        });
+        let encoder = match external_encoder {
+            Some(encoder) => encoder,
+            None => owned_encoder.as_mut().expect("owned render encoder"),
+        };
+        drop(begin_pass(encoder, &self.output, true));
         self.order.clear();
         self.order.extend((0..drawables.len()).filter(|&i| {
             drawables[i].visible && drawables[i].opacity * self.layer_opacities[i] > 0.0
@@ -873,7 +901,7 @@ impl ModelRenderer {
             let d = &drawables[sorted[cursor]];
             if d.masked {
                 mask_passes += 1;
-                let mut pass = begin_pass(&mut encoder, &self.mask, true);
+                let mut pass = begin_pass(encoder, &self.mask, true);
                 self.bind_geometry(&mut pass, vertex_buffer);
                 for &index in &d.masks {
                     let mask = &drawables[index];
@@ -881,7 +909,7 @@ impl ModelRenderer {
                     self.draw_mesh(&mut pass, index, mask, false);
                 }
             }
-            let mut pass = begin_pass(&mut encoder, &self.output, false);
+            let mut pass = begin_pass(encoder, &self.output, false);
             color_passes += 1;
             self.bind_geometry(&mut pass, vertex_buffer);
             loop {
@@ -905,7 +933,9 @@ impl ModelRenderer {
             }
         }
         let encoded = Instant::now();
-        self.state.queue.submit([encoder.finish()]);
+        if let Some(encoder) = owned_encoder {
+            self.state.queue.submit([encoder.finish()]);
+        }
         let submitted = Instant::now();
         static PERF_LOG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         if *PERF_LOG.get_or_init(|| std::env::var("ARIA_PERF_LOG").as_deref() == Ok("1")) {

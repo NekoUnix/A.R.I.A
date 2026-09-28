@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Submit experimental GPU MOC3 compute, bounds reduction and ArtMesh rendering in one ordered command buffer per changed frame. A clean optimized 20-second large-outfit smoke produced a valid image and sampled 98.8–120.6 FPS in its steady intervals (109.4 average); this single run does not establish a repeatable FPS gain or sustained 120 FPS. The Studio and import panels now report the actual Rust/GPU, Rust/CPU or Purism runtime rather than labeling every loaded Live2D avatar as Purism.
+
 - Validate the experimental GPU hierarchy and visible bounds on all 28 supplied local MOC3 file paths across three poses. A deeply nested warp export exposed float32 extrapolation differences up to 0.000275 model units; its CPU/GPU fitted canvas differed by under 0.05 pixels, and native image comparisons stayed within 0.25% of pixels beyond two color levels and 0.02% beyond sixteen. The test tolerance now covers this measured numerical case. This is local geometry and render evidence, not full Cubism conformance or a default-runtime switch.
 
 - Measure the experimental GPU MOC3 path in optimized Studio smokes on the large 90s outfit at a 120-FPS cap: sampled FPS averaged 106.1 (100.5–114.7), versus 44.5 for direct Rust CPU geometry and 53.9 for the current Purism worker in separate matched 20-second runs. GPU mode cut sampled avatar-update times from roughly 17–24 ms on direct Rust CPU to 4–8 ms. It still did not sustain 120 FPS, and broad model compatibility remains before changing the default or removing Purism.
