@@ -163,6 +163,13 @@ passed with CPU vertex coordinates deliberately poisoned. The full MOC3
 deformation pipeline is not yet connected to it, so current desktop FPS and
 CPU-use figures should not be interpreted as gains from this entry point.
 
+Normal mesh and warp key positions now use a resident GPU plan in native
+parity checks. On the large outfit, the static key and work buffers total
+39.97 MiB, while parameter changes upload about 41 KiB per pose. This
+removes a planned full-frame geometry upload for that stage, but whole-frame
+GPU timing and active Studio FPS have not been measured because later
+deformation stages and metadata are still on the CPU path.
+
 The developing Rust `aria-model-core` now retains MOC3 source bytes and all
 declared encoded atlas files in system RAM. The current desktop renderer reads
 these resident bytes, but still uploads every atlas to the GPU. RAM residency

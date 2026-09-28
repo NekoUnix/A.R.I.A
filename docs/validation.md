@@ -7,6 +7,14 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## GPU morph and Rust model-core checks — 2026-09-28 (unreleased)
 
+- A reusable Rust GPU key plan and desktop compute evaluator matched decoded
+  mesh and warp keyframe positions across three poses on the large 90s outfit,
+  OILBUN and Ditto. The large model held 24.03 MiB source positions and
+  15.94 MiB per-vertex work resident; pose changes uploaded 41.34 KiB of
+  selected keys and counts. OILBUN's dynamic upload was 10.95 KiB and
+  Ditto's 6.43 KiB. The largest observed coordinate difference was
+  0.000244 model units, within the coordinate-relative parity tolerance.
+  This validates normal-key blending only, not a complete live GPU frame.
 - A native DX12 renderer fixture wrote masked-mesh vertices in a compute
   shader, then bound that buffer directly for mask and color passes. The
   resulting image matched the CPU-position path pixel for pixel despite

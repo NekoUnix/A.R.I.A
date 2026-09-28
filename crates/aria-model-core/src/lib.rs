@@ -7,6 +7,7 @@
 pub mod draw_order;
 pub mod geometry;
 pub mod glue_schedule;
+pub mod gpu_key_plan;
 pub mod moc;
 pub mod resident;
 pub mod rig;

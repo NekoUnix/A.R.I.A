@@ -231,6 +231,18 @@ CPU drawable coordinates were deliberately wrong. This verifies the
 compute-to-render buffer contract, not a live MOC3 model update: the full
 GPU evaluator and its bounds calculation still need to call this path.
 
+The normal-key GPU stage now has a reusable load-time Rust plan and desktop
+compute evaluator. Mesh positions occupy the start of its output buffer for
+the renderer's direct vertex binding; warp points follow. Static source keys
+and per-vertex work remain GPU-resident across poses. Only selected key
+offsets/weights and one count per node change each frame. Native DX12 checks
+matched the Rust decoder across default, interior and varied poses on the
+large 90s outfit, OILBUN and Ditto. For the large model, source keys use
+24.03 MiB, static work 15.94 MiB and dynamic keys/counts 41.34 KiB per pose.
+This is still one stage of the full GPU evaluator. Blend deltas, hierarchical
+deformer transforms, glue, metadata and bounds must be composed before the
+renderer can use the buffer for a real avatar frame.
+
 A test-only WGPU compute primitive now samples multiple warp grids in a single
 dispatch. It implements the Rust evaluator's affine shortcut, bent-grid quad
 or triangular cells and exterior continuation. Native DX12 comparisons passed

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Replace the pose-specific GPU keyframe test packing with a reusable Rust load-time plan and desktop compute evaluator. Mesh positions lead the output buffer for direct vertex binding; resident key positions and per-vertex work remain fixed while only active offsets, weights and counts upload per pose. Three-pose DX12 parity passed on the large outfit, OILBUN and Ditto. The large outfit uses 24.03 MiB static keys, 15.94 MiB static work and about 41 KiB changing data per pose. Production blend shapes, hierarchy, glue and renderer hookup remain unfinished.
+
 - Add a renderer entry point that binds GPU-computed MOC3 positions directly as the vertex source, skipping the per-frame CPU position upload and any GPU readback. A native masked-mesh fixture generated its vertices in compute and matched the CPU-rendered image pixel for pixel, even with deliberately incorrect CPU coordinates. The full GPU evaluator is not yet connected to this entry point.
 
 - Add a conflict-aware Rust glue scheduler and test-only GPU glue pass. The scheduler runs independent pairs together, preserves source order where glues share vertices, and signals a CPU fallback for within-glue overlap. GPU parity passed on the large outfit's 1,365 pairs in one pass and OILBUN's 2,298 pairs in two ordered passes. This is not yet wired into the live renderer.

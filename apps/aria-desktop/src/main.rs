@@ -25,6 +25,9 @@ mod expressions_panel;
 #[cfg(test)]
 mod gpu_glue;
 #[cfg(test)]
+mod gpu_key_plan;
+pub mod gpu_position_evaluator;
+#[cfg(test)]
 mod gpu_warp;
 mod help;
 mod hotkeys;
