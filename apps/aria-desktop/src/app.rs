@@ -239,7 +239,7 @@ impl ModelPreferences {
         settings.listen_port = self.listen_port;
         settings.mapping = self.mapping.clone();
         settings.background = self.background;
-        settings.fps = self.fps.clamp(15, 120);
+        settings.fps = self.fps.clamp(15, crate::performance::MAX_TARGET_FPS);
         settings.zoom = if self.zoom.is_finite() {
             self.zoom.clamp(0.5, 1.5)
         } else {
@@ -394,7 +394,7 @@ impl AriaApp {
         {
             preferences.restore(&mut settings);
         }
-        settings.fps = settings.fps.clamp(15, 120);
+        settings.fps = settings.fps.clamp(15, crate::performance::MAX_TARGET_FPS);
         settings.zoom = if settings.zoom.is_finite() {
             settings.zoom.clamp(0.5, 1.5)
         } else {
@@ -1015,7 +1015,7 @@ impl AriaApp {
             && let Ok(target) = std::env::var("ARIA_SMOKE_TARGET_FPS")
             && let Ok(target) = target.parse::<u32>()
         {
-            app.settings.fps = target.clamp(15, 120);
+            app.settings.fps = target.clamp(15, crate::performance::MAX_TARGET_FPS);
         }
         if crate::smoke_mode() {
             app.started = Instant::now();
@@ -2000,7 +2000,7 @@ impl AriaApp {
                 egui::ComboBox::from_id_salt("fps")
                     .selected_text(format!("{} FPS target", self.settings.fps))
                     .show_ui(ui, |ui| {
-                        for fps in [30, 60, 120] {
+                        for fps in [30, 60, 120, 240] {
                             if ui
                                 .selectable_value(&mut self.settings.fps, fps, format!("{fps} FPS"))
                                 .changed()
@@ -2024,7 +2024,7 @@ impl AriaApp {
                 }
                 theme::caption(ui, "Gives ARIA CPU scheduling preference over normal-priority apps when Windows is busy. It may reduce CPU scheduling hitches, but cannot fix GPU overload or guarantee smooth frames. High is the strongest priority offered here; Realtime can starve Windows, input and OBS. Turn High off if other apps become less responsive. This preference applies to ARIA on this PC.");
                 if let Some(status) = &self.priority_status { ui.label(RichText::new(status).small().color(mint())); }
-                theme::caption(ui, "The FPS target limits model simulation and rendering even while dragging UI controls. Static poses reuse the last model texture. Closed outputs release their capture textures.");
+                theme::caption(ui, "The FPS target limits model simulation and rendering even while dragging UI controls. 240 FPS allows only 4.17 ms per frame; actual speed depends on model, hardware and outputs. Static poses reuse the last model texture. Closed outputs release their capture textures.");
             });
                 ui.hyperlink_to(
                     "Windows setup & troubleshooting ↗",
@@ -3231,7 +3231,7 @@ impl eframe::App for AriaApp {
             && let Ok(target) = std::env::var("ARIA_SMOKE_TARGET_FPS")
             && let Ok(target) = target.parse::<u32>()
         {
-            self.settings.fps = target.clamp(15, 120);
+            self.settings.fps = target.clamp(15, crate::performance::MAX_TARGET_FPS);
         }
         self.input_monitor.save_requested |=
             self.chats.update(&mut self.settings.chat_accounts, ctx);
@@ -4396,7 +4396,7 @@ mod tests {
         settings.sender_ip = "127.0.0.1".into();
         settings.zoom = 0.7;
         settings.background = Background::Transparent;
-        settings.fps = 120;
+        settings.fps = 240;
         settings.mapping.head_gain = 0.6;
         settings
             .model_preferences
@@ -4514,7 +4514,7 @@ mod tests {
                 restored.source == Source::Json && restored.background == Background::Transparent
             );
             assert_eq!(restored.sender_ip, "127.0.0.1");
-            assert_eq!(restored.fps, 120);
+            assert_eq!(restored.fps, 240);
             assert_eq!(
                 restored.chat_accounts.services[0].client_id,
                 "global-test-client"

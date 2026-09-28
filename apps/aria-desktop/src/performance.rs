@@ -1,6 +1,8 @@
 //! App-local Windows scheduling and a frame gate independent of UI repaints.
 use std::time::{Duration, Instant};
 
+pub const MAX_TARGET_FPS: u32 = 240;
+
 pub struct FrameClock {
     last: Instant,
     next: Instant,
@@ -47,7 +49,7 @@ impl FrameClock {
     }
 }
 fn interval(fps: u32) -> Duration {
-    Duration::from_secs_f64(1.0 / f64::from(fps.clamp(15, 120)))
+    Duration::from_secs_f64(1.0 / f64::from(fps.clamp(15, MAX_TARGET_FPS)))
 }
 
 #[cfg(windows)]
@@ -90,6 +92,21 @@ mod tests {
         assert_eq!(clock.tick(start + Duration::from_secs(10), 60, true), 0.25);
         assert_eq!(clock.tick(start + Duration::from_secs(10), 60, true), 0.0);
         assert!(clock.remaining(start + Duration::from_secs(10), 60) <= interval(60));
+    }
+    #[test]
+    fn frame_clock_allows_240_fps_without_catching_up_after_a_stall() {
+        let start = Instant::now();
+        let mut clock = FrameClock::new(start);
+        let mut ticks = 0;
+        for us in (0..1_000_000).step_by(100) {
+            let now = start + Duration::from_micros(us);
+            ticks += usize::from(clock.tick(now, 240, true) > 0.0);
+            assert_eq!(clock.tick(now, 240, false), 0.0);
+        }
+        assert!((239..=240).contains(&ticks));
+        assert_eq!(clock.tick(start + Duration::from_secs(2), 240, true), 0.25);
+        assert_eq!(clock.tick(start + Duration::from_secs(2), 240, true), 0.0);
+        assert!(clock.remaining(start + Duration::from_secs(2), 240) <= interval(240));
     }
     #[test]
     #[cfg(windows)]

@@ -601,7 +601,7 @@ Personal ranges, authored inversion, gain, response curves, limits, expressions,
 
 ### Packet rate is separate
 
-VTube Studio's phone stream sends a packet each phone frame, typically around 60 Hz. Its subscription controls how long packets are sent, not a requested frame rate. ARIA consumes the latest available packet on each model update. A 60 or 120 FPS model target can help display fresh data; it cannot invent faster camera samples. The footer shows received Hz and packet age measured on this computer. Age is not end-to-end latency. If Hz is low or age jumps, check phone load, tracking quality and Wi-Fi. If packets are timely but mouth motion lags, inspect this setting and the rig's mouth mapping, expressions and physics.
+VTube Studio's phone stream sends a packet each phone frame, typically around 60 Hz. Its subscription controls how long packets are sent, not a requested frame rate. ARIA consumes the latest available packet on each model update. A 60, 120 or 240 FPS model target can help display fresh data; it cannot invent faster camera samples. The footer shows received Hz and packet age measured on this computer. Age is not end-to-end latency. If Hz is low or age jumps, check phone load, tracking quality and Wi-Fi. If packets are timely but mouth motion lags, inspect this setting and the rig's mouth mapping, expressions and physics.
 
 ## gain | Head & mouth gain | Gain multiplies tracking intensity before avatar mapping. 1 is unchanged, below 1 reduces movement, and above 1 amplifies it within supported limits.
 
@@ -1116,11 +1116,11 @@ Minimize a preview to keep the full-resolution sender active without occupying y
 
 ### Choosing a target
 
-Choose 30, 60 or 120 FPS. Start at 60 for smooth motion and reduce to 30 if resource use is too high. A 120 target is useful only if your hardware and capture pipeline can sustain it. This is a target, not a guarantee. The footer reports measured model FPS separately from the selected limit.
+Choose 30, 60, 120 or 240 FPS. Start at 60 for smooth motion and reduce to 30 if resource use is too high. The 240 target allows a 4.17 ms frame interval only when the model, GPU, CPU, display and capture pipeline can sustain it. This is a target, not a guarantee. The footer reports measured model FPS separately from the selected limit.
 
 ### Where work goes
 
-Large avatar texture atlases use GPU memory even when the preview is small. High canvas resolutions and several simultaneous outputs add compositing work. ARIA limits simulation independently of UI events, reuses buffers, skips unchanged model updates and caches static canvas results. A frozen pose can therefore reduce model work even though UI windows remain responsive.
+Large avatar texture atlases use GPU memory even when the preview is small. High canvas resolutions and several simultaneous outputs add compositing work. ARIA limits simulation independently of UI events, reuses buffers, skips unchanged model updates and caches static canvas results. A frozen pose can therefore reduce model work even though UI windows remain responsive. VRAM allocation is capacity use, not GPU activity or memory bandwidth: low GPU utilization beside high VRAM usage does not establish a VRAM bottleneck. Compare frame time, CPU work and GPU engine activity before changing quality settings.
 
 If FPS is low, inspect CPU, RAM and VRAM, reduce output resolution or close unused outputs, and check other GPU-heavy apps. Smaller preview windows mainly save desktop space; they do not shrink the full-resolution sender. High process priority addresses CPU scheduling contention and cannot fix a saturated GPU. Save profile retains the FPS target for this avatar.
 

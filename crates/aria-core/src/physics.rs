@@ -967,7 +967,7 @@ mod tests {
     }
 
     #[test]
-    fn expressive_trajectory_is_consistent_at_30_60_120_and_jittery_fps() {
+    fn expressive_trajectory_is_consistent_through_240_fps_and_jitter() {
         let run = |schedule: &[f32]| {
             let mut p = parameters();
             let mut physics = Physics::load(FIXTURE, &p).unwrap();
@@ -990,6 +990,7 @@ mod tests {
         for schedule in [
             &[1.0 / 30.0][..],
             &[1.0 / 60.0; 2],
+            &[1.0 / 240.0; 8],
             &[1.0 / 240.0, 1.0 / 80.0, 1.0 / 120.0, 1.0 / 120.0],
         ] {
             let other = run(schedule);

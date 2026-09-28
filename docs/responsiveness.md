@@ -36,7 +36,7 @@ with synthetic inputs, not a measured phone-to-screen latency guarantee.
 The [official VTube Studio UDP example](https://github.com/DenchiSoft/VTubeStudioBlendshapeUDPReceiverTest)
 specifies one packet per phone frame, typically around 60 Hz. Its subscription
 `time` field is a duration, not FPS. ARIA cannot request a higher phone sampling
-rate through that protocol. A 60 or 120 FPS model target reduces opportunities to
+rate through that protocol. A 60, 120 or 240 FPS model target reduces opportunities to
 wait for the next model update, provided the computer can sustain it.
 Set that target under **Output → Capture & performance → FPS target**.
 

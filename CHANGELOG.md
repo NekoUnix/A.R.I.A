@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Allow an opt-in 240 FPS Studio target across the frame scheduler, saved model
+  profiles, smoke runs and slow-frame diagnostics. This removes the 120 FPS cap;
+  sustained 240 FPS still depends on the model, GPU, CPU and output pipeline.
+  Clarify that VRAM allocation does not measure GPU utilization or bandwidth.
+
 - Make ARIA's Rust MOC3 evaluator the default desktop path and try its GPU
   geometry evaluator automatically. Model MOC3 and encoded atlases are loaded
   into RAM before renderer setup; the evaluator consumes those resident bytes.

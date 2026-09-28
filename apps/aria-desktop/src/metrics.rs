@@ -56,7 +56,7 @@ impl Metrics {
             self.frame_intervals.pop_front();
         }
         self.frame_intervals.push_back(seconds * 1000.0);
-        if seconds > 1.5 / f64::from(fps.clamp(15, 120)) {
+        if seconds > 1.5 / f64::from(fps.clamp(15, crate::performance::MAX_TARGET_FPS)) {
             self.usage.slow_frames = self.usage.slow_frames.saturating_add(1);
         }
     }
@@ -331,6 +331,14 @@ mod tests {
         assert_eq!(m.frame_intervals.len(), 120);
         assert_eq!(m.usage.slow_frames, 1);
         assert!((m.usage.frame_p95_ms.unwrap() - 1000.0 / 60.0).abs() < 0.01);
+    }
+    #[test]
+    fn slow_frame_threshold_uses_240_fps_target() {
+        let mut metrics = Metrics::default();
+        metrics.record_frame(0.007, 240);
+        assert_eq!(metrics.usage.slow_frames, 1);
+        metrics.record_frame(0.004, 240);
+        assert_eq!(metrics.usage.slow_frames, 1);
     }
     #[test]
     #[cfg(windows)]
