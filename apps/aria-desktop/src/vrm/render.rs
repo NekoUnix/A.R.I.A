@@ -33,6 +33,71 @@ struct MorphInfo {
     morph_count: u32,
     padding: [u32; 2],
 }
+
+/// Limit each geometry by its own vertex cost, the device binding limit and
+/// the remaining model budget. A small mesh can keep more expressions on the
+/// GPU without forcing a large mesh over the memory limit.
+fn gpu_morph_slots(
+    morph_count: usize,
+    vertex_count: usize,
+    remaining_budget: usize,
+    max_binding: usize,
+    max_buffer: usize,
+) -> usize {
+    let Some(bytes_per_morph) = vertex_count.checked_mul(std::mem::size_of::<MorphDelta>()) else {
+        return 0;
+    };
+    if bytes_per_morph == 0 {
+        return 0;
+    }
+    morph_count
+        .min(32)
+        .min(remaining_budget / bytes_per_morph)
+        .min(max_binding / bytes_per_morph)
+        .min(max_buffer / bytes_per_morph)
+}
+
+#[cfg(test)]
+mod morph_slot_tests {
+    use super::*;
+
+    #[test]
+    fn slots_follow_gpu_limits_and_keep_more_than_eight_small_morphs() {
+        let bytes = 100 * std::mem::size_of::<MorphDelta>();
+        assert_eq!(
+            gpu_morph_slots(12, 100, bytes * 16, bytes * 16, bytes * 16),
+            12
+        );
+        assert_eq!(
+            gpu_morph_slots(100, 100, bytes * 64, bytes * 64, bytes * 64),
+            32
+        );
+        assert_eq!(
+            gpu_morph_slots(12, 100, bytes * 3, bytes * 16, bytes * 16),
+            3
+        );
+        assert_eq!(
+            gpu_morph_slots(12, 100, bytes * 16, bytes * 2, bytes * 16),
+            2
+        );
+        assert_eq!(
+            gpu_morph_slots(12, 100, bytes * 16, bytes * 16, bytes * 4),
+            4
+        );
+        assert_eq!(
+            gpu_morph_slots(0, 100, bytes * 16, bytes * 16, bytes * 16),
+            0
+        );
+        assert_eq!(
+            gpu_morph_slots(12, 0, bytes * 16, bytes * 16, bytes * 16),
+            0
+        );
+        assert_eq!(
+            gpu_morph_slots(12, usize::MAX, bytes * 16, bytes * 16, bytes * 16),
+            0
+        );
+    }
+}
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Frame {
@@ -92,10 +157,12 @@ impl Geometry {
                     let morph = &source.morphs[index];
                     ensure!(
                         morph.position.len() == source.vertices.len()
-                            && morph.normal.len() == source.vertices.len(),
+                            && (morph.normal.is_empty()
+                                || morph.normal.len() == source.vertices.len()),
                         "VRM morph vertex count differs from geometry"
                     );
-                    for (position, normal) in morph.position.iter().zip(&morph.normal) {
+                    for (vertex, position) in morph.position.iter().enumerate() {
+                        let normal = morph.normal.get(vertex).copied().unwrap_or(Vec3::ZERO);
                         packed.push(MorphDelta {
                             position: [position.x, position.y, position.z, 0.0],
                             normal: [normal.x, normal.y, normal.z, 0.0],
@@ -422,16 +489,16 @@ impl Renderer {
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             });
             let vertex_count = g.vertices.len();
-            let slot_count = g.morphs.len().min(8);
-            let morph_bytes = slot_count
-                .checked_mul(vertex_count)
-                .and_then(|count| count.checked_mul(std::mem::size_of::<MorphDelta>()))
-                .ok_or_else(|| anyhow::anyhow!("VRM morph storage size overflow"))?;
             let max_binding = device.limits().max_storage_buffer_binding_size as usize;
-            let gpu_morph = !g.morphs.is_empty()
-                && morph_bytes <= max_binding
-                && morph_bytes <= gpu_morph_budget
-                && (morph_bytes as u64) <= device.limits().max_buffer_size;
+            let slot_count = gpu_morph_slots(
+                g.morphs.len(),
+                vertex_count,
+                gpu_morph_budget,
+                max_binding,
+                usize::try_from(device.limits().max_buffer_size).unwrap_or(usize::MAX),
+            );
+            let morph_bytes = slot_count * vertex_count * std::mem::size_of::<MorphDelta>();
+            let gpu_morph = slot_count > 0;
             if gpu_morph {
                 gpu_morph_budget -= morph_bytes;
             }

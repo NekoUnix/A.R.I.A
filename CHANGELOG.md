@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Let VRM/GLB meshes run up to 32 simultaneous expression morphs in the GPU vertex shader when the shared 64 MiB budget and device limits permit, instead of falling back after eight. Handle valid position-only morphs by supplying zero normal deltas. Generated DX12 twelve-morph and local NekoUnity2 render checks pass. A model survey found that simple unparented-mesh GPU interpolation would cover none of the large 90s outfit's 225,448 vertices, so Live2D needs a hierarchical GPU evaluator.
+
 - Reuse unchanged Rust MOC3 deformer states across frames with explicit normal-key and blend-shape parameter dependencies, propagating changes through parent deformers. This reduces large-model CPU evaluation for narrow parameter updates while preserving official-Core output across all 28 supplied exports. A broad 32-axis animation remains slower than the transitional runtime; GPU MOC3 deformation is still pending.
 
 - Add an opt-in in-process ARIA Rust MOC3 path for profiling without worker serialization. Adopt evaluated mesh position buffers directly in the Rust adapter and decoded worker frames instead of copying every vertex into an older buffer. Its large-model default-pose GPU render matched the Rust worker pixel for pixel, but a 120-FPS-target desktop run was slower than the current runtime, so the default remains unchanged.

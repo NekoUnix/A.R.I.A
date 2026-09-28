@@ -113,6 +113,16 @@ rendered tracking/pose tests passed. A matching before/after full-frame sample
 has not yet been recorded, so the earlier FPS figures above are baselines,
 not measured gains from this change.
 
+VRM/GLB morph allocation now selects up to 32 active slots per mesh according
+to vertex count, the remaining 64 MiB model budget and the device's storage
+buffer limits. That extends GPU execution beyond the former eight-morph cutoff
+for models that fit, while larger active sets still use the CPU fallback.
+Position-only morphs supply zero normal deltas on the GPU, matching their CPU
+behavior. A generated 12-active-morph DX12 render matched the CPU fallback to
+within 1% of image channels; NekoUnity2 also passed its native render, tracking
+and spring check. This is more GPU work for 3D expressions, not a measured FPS
+gain or a GPU solution for Live2D deformation.
+
 The supplied ICHIGO VRC/GLB export rendered successfully but settled around
 113 FPS in this short native sample, with roughly 5 ms model updates. It uses
 the VRM/GLB renderer, not Purism Core. `PERF_VRM` separates parameter/pose,

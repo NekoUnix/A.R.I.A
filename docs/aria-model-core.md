@@ -163,6 +163,16 @@ host also adopts the decoded worker frame vector. These changes reduce CPU
 memory copying but do not move MOC3 geometry or physics evaluation onto the
 GPU. The direct adapter is a profiling path, not a production switch.
 
+A local topology survey also bounded a tempting but insufficient GPU shortcut:
+the large 90s outfit has 1,210 ArtMeshes and 225,448 vertices, but no ArtMesh
+is both unparented and free of glue. It has 740 deformers, a maximum parent
+depth of 19 and 819,275 warp control points. OILBUN has only 92 of 74,580
+vertices in the equivalent unparented/glue-free set. Sending only those simple
+meshes to a shader would not address the measured CPU bottleneck. The GPU
+replacement must evaluate normal and blend keyforms, parent warp/rotation
+chains, mesh deformation and glue without a synchronous full-frame GPU readback;
+the current renderer-facing CPU geometry contract still needs to be evolved.
+
 Optimized 120-frame worker tests measured OILBUN at about 2.58 ms/frame with
 the current runtime and 4.09 ms/frame with Rust. The large 90s outfit measured
 about 10.20 ms/frame current and 18.38 ms/frame Rust. These figures include

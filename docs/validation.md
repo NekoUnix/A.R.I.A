@@ -7,6 +7,18 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## GPU morph and Rust model-core checks — 2026-09-28 (unreleased)
 
+- A generated DX12 VRM fixture with 12 simultaneously active morph targets
+  stayed on the GPU and rendered within 1% of the CPU fallback image channels.
+  The GPU path now accepts position-only morphs, treating absent normal deltas
+  as zero. Both generated VRM versions passed the existing native morph render
+  check; the supplied NekoUnity2 VRM passed its tracking, expression, spring
+  and freeze render check. Slot allocation is bounded by 32 active targets per
+  mesh, 64 MiB across the model and GPU buffer limits; a larger active set
+  retains the CPU fallback. No comparative FPS result is claimed.
+- A local MOC3 topology diagnostic found zero unparented/glue-free vertices in
+  the 225,448-vertex 90s outfit, with 740 deformers and a maximum parent depth
+  of 19. Simple-mesh GPU interpolation therefore cannot solve that model's
+  CPU bottleneck; the hierarchical GPU evaluator remains open.
 - The independent Rust evaluator now caches deformer states by normal and
   blend/constraint parameter dependencies, invalidating descendants when a
   parent changes. A 20-frame cached-versus-forced-fresh sweep passed on all 28

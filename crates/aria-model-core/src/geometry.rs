@@ -631,6 +631,50 @@ mod cache_tests {
     use crate::moc::ParameterKind;
 
     #[test]
+    #[ignore = "requires ARIA_TEST_MOC; reports local GPU eligibility without redistributing art"]
+    fn local_unparented_mesh_gpu_eligibility() {
+        let path = std::env::var_os("ARIA_TEST_MOC").unwrap();
+        let bytes = std::fs::read(path).unwrap();
+        let moc = Moc::parse(&bytes).unwrap();
+        let layouts = moc.mesh_layouts().unwrap();
+        let glued = moc
+            .glue_layouts()
+            .unwrap()
+            .into_iter()
+            .flat_map(|glue| [glue.left_mesh, glue.right_mesh])
+            .collect::<std::collections::BTreeSet<_>>();
+        let total_vertices: usize = layouts.iter().map(|mesh| mesh.uvs.len()).sum();
+        let eligible = layouts
+            .iter()
+            .enumerate()
+            .filter(|(index, mesh)| mesh.parent_deformer.is_none() && !glued.contains(index))
+            .collect::<Vec<_>>();
+        let eligible_vertices: usize = eligible.iter().map(|(_, mesh)| mesh.uvs.len()).sum();
+        eprintln!(
+            "GPU direct-mesh eligibility: {}/{} meshes, {}/{} vertices",
+            eligible.len(),
+            layouts.len(),
+            eligible_vertices,
+            total_vertices
+        );
+        let deformers = moc.deformer_layouts().unwrap();
+        let mut depth = vec![0_usize; deformers.len()];
+        let mut warp_points = 0_usize;
+        for (index, node) in deformers.iter().enumerate() {
+            depth[index] = node.parent_deformer.map_or(1, |parent| depth[parent] + 1);
+            if let DeformerKind::Warp { points, .. } = node.kind {
+                warp_points += points;
+            }
+        }
+        eprintln!(
+            "GPU hierarchy: {} deformers, max depth {}, {} warp control points",
+            deformers.len(),
+            depth.iter().copied().max().unwrap_or(0),
+            warp_points
+        );
+    }
+
+    #[test]
     #[ignore = "requires ARIA_TEST_MOC; private model remains on the local machine"]
     fn cached_deformers_match_a_fresh_evaluation_across_parameter_and_part_changes() {
         let path = std::env::var_os("ARIA_TEST_MOC").unwrap();
