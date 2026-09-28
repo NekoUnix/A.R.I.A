@@ -255,9 +255,21 @@ same output buffer as normal keys and blend deltas, without an intermediate
 readback. Native DX12 parity passed at three poses on the large outfit
 (276,025 hierarchy points, 118 supported warps and 480 meshes), OILBUN
 (112,068 points) and Ditto (2,309 points). Eligible, non-glued mesh vertices
-also matched the full Rust geometry evaluator. Rotation-containing branches
-still need the GPU rotation stage, and glue, visibility, bounds and rendering
-integration are pending.
+also matched the full Rust geometry evaluator. This warp-only pass remains as
+an isolated parity check for the more complete stage below.
+
+The resident evaluator now also has a complete depth-ordered warp/rotation
+hierarchy and source-ordered GPU glue stage. Rust prepares local rotation
+origin, angle, scale and reflection plus glue intensities each pose; GPU
+compute resolves inherited transforms (including warp-to-rotation and
+rotation-to-warp links), mesh vertices and glue in the same position buffer.
+Native DX12 comparisons with the full Rust geometry evaluator passed at three
+poses on the large outfit (740 deformers, 19 depths, 1,365 glue pairs and
+676,344 active vertex-poses), OILBUN (271 deformers, 11 depths, 2,298 glue
+pairs and 223,740 vertex-poses) and Ditto (109 deformers, 13 depths and 1,980
+vertex-poses). Maximum observed errors were below 0.000015 model units. This
+validates geometry math, not live rendering: per-mesh metadata, visibility,
+dynamic bounds, renderer hookup and frame-time measurements remain.
 
 A test-only WGPU compute primitive now samples multiple warp grids in a single
 dispatch. It implements the Rust evaluator's affine shortcut, bent-grid quad

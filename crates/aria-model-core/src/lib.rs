@@ -8,6 +8,8 @@ pub mod draw_order;
 pub mod geometry;
 pub mod glue_schedule;
 pub mod gpu_blend_plan;
+pub mod gpu_glue_plan;
+pub mod gpu_hierarchy_plan;
 pub mod gpu_key_plan;
 pub mod gpu_warp_plan;
 pub mod moc;

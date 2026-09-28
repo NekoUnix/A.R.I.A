@@ -7,6 +7,13 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## GPU morph and Rust model-core checks — 2026-09-28 (unreleased)
 
+- The resident evaluator now chains normal keys, blend-shape deltas, mixed
+  warp/rotation hierarchy and ordered glue on one GPU position buffer. Native
+  DX12 versus full Rust geometry at three poses passed for the large outfit
+  (676,344 active vertex-poses, 1,365 glue pairs), OILBUN (223,740, 2,298
+  pairs), and Ditto (1,980, no glue). Maximum error was below 0.000015 model
+  units. This establishes final geometry parity on these models only;
+  metadata, bounds, live rendering and comparative timing are unverified.
 - The resident GPU evaluator now resolves warp-only hierarchy branches after
   normal keys and blend deltas. Native DX12 parity passed at three poses on
   the large outfit (276,025 hierarchy points), OILBUN (112,068) and Ditto

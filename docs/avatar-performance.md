@@ -175,9 +175,13 @@ measured because later deformation stages and metadata are still on the CPU path
 
 The resident path now also transforms warp-only hierarchy branches in GPU
 storage, using fixed depth-ordered work and no intermediate readback. It
-covered 276,025 control/mesh points on the large outfit. Rotation branches,
-glue, metadata and renderer connection are still required before live FPS
-can benefit from this path.
+covered 276,025 control/mesh points on the large outfit. The newer full GPU
+evaluator also resolves mixed warp/rotation branches and glue, with full-Rust
+final-position parity on three local models. Only compact rotation frames,
+active keys and glue intensities upload per pose; the large source arrays and
+final mesh positions stay GPU-resident. The active Studio renderer is still on
+its existing path, so no FPS gain is claimed until metadata, bounds and
+renderer integration are measured.
 
 The developing Rust `aria-model-core` now retains MOC3 source bytes and all
 declared encoded atlas files in system RAM. The current desktop renderer reads

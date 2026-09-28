@@ -3,6 +3,8 @@
 use aria_model_core::{
     geometry::GeometryEvaluator,
     gpu_blend_plan::GpuBlendDeltaPlan,
+    gpu_glue_plan::GpuGluePlan,
+    gpu_hierarchy_plan::GpuHierarchyPlan,
     gpu_key_plan::GpuPositionKeyPlan,
     gpu_warp_plan::{GpuWarpHierarchyPlan, WarpSample},
     moc::{DeformerKind, LocalDeformerFrame, Moc},
@@ -42,6 +44,99 @@ fn apply_warp_work(
         let output = grid.sample_extended(local, desc.flags & 1 != 0).unwrap();
         positions[index] = [output.x, output.y];
     }
+}
+
+#[test]
+#[cfg(windows)]
+#[ignore = "requires ARIA_TEST_MOC and DX12; compares full GPU warp/rotation hierarchy"]
+fn local_moc3_full_gpu_hierarchy_matches_rust_meshes() {
+    let bytes = std::fs::read(std::env::var_os("ARIA_TEST_MOC").unwrap()).unwrap();
+    let moc = Moc::parse(&bytes).unwrap();
+    let positions = GpuPositionKeyPlan::new(&moc).unwrap();
+    let blend = GpuBlendDeltaPlan::new(&moc, &positions).unwrap();
+    let hierarchy = GpuHierarchyPlan::new(&moc, &positions).unwrap();
+    let glue = GpuGluePlan::new(&moc, &positions).unwrap();
+    let nodes = (hierarchy.warp_count, hierarchy.rotation_count);
+    let levels = hierarchy.levels.len();
+    let glue_stats = (glue.glue_count(), glue.pair_count, glue.levels.len());
+    let state = crate::spout::tests::gpu_state();
+    let device = &state.device;
+    let mut evaluator = crate::gpu_position_evaluator::GpuPositionEvaluator::new(device, positions)
+        .unwrap()
+        .with_blends(device, blend)
+        .unwrap()
+        .with_hierarchy(device, hierarchy)
+        .unwrap()
+        .with_glue(device, glue)
+        .unwrap();
+    let cpu = GeometryEvaluator::new(&moc).unwrap();
+    let output_bytes = evaluator.positions().size();
+    let readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("ARIA full GPU hierarchy parity readback"),
+        size: output_bytes,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+    let parameters = moc.parameters().unwrap();
+    let (mut checked, mut max_error) = (0_usize, 0.0_f32);
+    for pose in 0..3 {
+        let values = parameters
+            .iter()
+            .enumerate()
+            .map(|(index, parameter)| match pose {
+                0 => parameter.default,
+                1 => parameter.minimum + (parameter.maximum - parameter.minimum) * 0.37,
+                _ => {
+                    let phase = ((index * 17 + 3) % 23) as f32 / 22.0;
+                    parameter.minimum + (parameter.maximum - parameter.minimum) * phase
+                }
+            })
+            .collect::<Vec<_>>();
+        let mut encoder = device.create_command_encoder(&Default::default());
+        evaluator
+            .encode(&state.queue, &mut encoder, &values)
+            .unwrap();
+        encoder.copy_buffer_to_buffer(evaluator.positions(), 0, &readback, 0, output_bytes);
+        state.queue.submit([encoder.finish()]);
+        let (tx, rx) = std::sync::mpsc::channel();
+        readback
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                tx.send(result).unwrap();
+            });
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        rx.recv().unwrap().unwrap();
+        let bytes = readback.slice(..).get_mapped_range().unwrap().to_vec();
+        readback.unmap();
+        let gpu = bytemuck::cast_slice::<u8, [f32; 2]>(&bytes);
+        let frames = cpu.frame(&values).unwrap();
+        for (index, (range, frame)) in evaluator.plan().mesh_ranges.iter().zip(frames).enumerate() {
+            let Some(frame) = frame else { continue };
+            for (vertex, (cpu, gpu)) in frame
+                .positions
+                .iter()
+                .zip(&gpu[range.start as usize..range.end as usize])
+                .enumerate()
+            {
+                let error = (cpu[0] - gpu[0]).abs().max((cpu[1] - gpu[1]).abs());
+                max_error = max_error.max(error);
+                let tolerance = 0.0001_f32.max(cpu[0].abs().max(cpu[1].abs()) * 0.000002);
+                assert!(
+                    error <= tolerance,
+                    "pose {pose}, mesh {index}, vertex {vertex}: {cpu:?} vs {gpu:?}, error {error}, tolerance {tolerance}"
+                );
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked > 0, "No active meshes were compared");
+    eprintln!(
+        "ARIA full GPU geometry parity: {} warp/rotation nodes across {levels} depths, {} glues, {} pairs in {} levels, {checked} mesh vertex-poses, max error {max_error}",
+        nodes.0 + nodes.1,
+        glue_stats.0,
+        glue_stats.1,
+        glue_stats.2,
+    );
 }
 
 fn apply_warp_hierarchy(plan: &GpuWarpHierarchyPlan, positions: &mut [[f32; 2]]) {

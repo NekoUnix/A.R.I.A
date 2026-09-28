@@ -5,6 +5,8 @@
 
 use anyhow::{Result, ensure};
 use aria_model_core::gpu_blend_plan::GpuBlendDeltaPlan;
+use aria_model_core::gpu_glue_plan::GpuGluePlan;
+use aria_model_core::gpu_hierarchy_plan::GpuHierarchyPlan;
 use aria_model_core::gpu_key_plan::{ActiveFrame, GpuPositionKeyPlan};
 use aria_model_core::gpu_warp_plan::GpuWarpHierarchyPlan;
 use wgpu::util::DeviceExt;
@@ -21,6 +23,8 @@ pub struct GpuPositionEvaluator {
     pipeline: wgpu::ComputePipeline,
     blend: Option<ResidentBlendStage>,
     warp: Option<crate::gpu_warp_hierarchy::GpuWarpHierarchyStage>,
+    hierarchy: Option<crate::gpu_hierarchy::GpuHierarchyStage>,
+    glue: Option<crate::gpu_glue_stage::GpuGlueStage>,
 }
 
 struct ResidentBlendStage {
@@ -156,6 +160,8 @@ impl GpuPositionEvaluator {
             pipeline,
             blend: None,
             warp: None,
+            hierarchy: None,
+            glue: None,
         })
     }
 
@@ -290,8 +296,29 @@ impl GpuPositionEvaluator {
         device: &wgpu::Device,
         plan: GpuWarpHierarchyPlan,
     ) -> Result<Self> {
+        ensure!(
+            self.hierarchy.is_none(),
+            "Full GPU hierarchy is already attached"
+        );
         self.warp =
             crate::gpu_warp_hierarchy::GpuWarpHierarchyStage::new(device, &self.output, plan)?;
+        Ok(self)
+    }
+
+    /// Attach the full warp/rotation parent hierarchy. This replaces the
+    /// warp-only pass; both must not transform the same position buffer.
+    pub fn with_hierarchy(mut self, device: &wgpu::Device, plan: GpuHierarchyPlan) -> Result<Self> {
+        ensure!(
+            self.warp.is_none(),
+            "GPU warp-only hierarchy is already attached"
+        );
+        self.hierarchy = crate::gpu_hierarchy::GpuHierarchyStage::new(device, &self.output, plan)?;
+        Ok(self)
+    }
+
+    /// Finish the GPU position buffer with source-ordered glue constraints.
+    pub fn with_glue(mut self, device: &wgpu::Device, plan: GpuGluePlan) -> Result<Self> {
+        self.glue = crate::gpu_glue_stage::GpuGlueStage::new(device, &self.output, plan)?;
         Ok(self)
     }
 
@@ -300,6 +327,16 @@ impl GpuPositionEvaluator {
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         values: &[f32],
+    ) -> Result<()> {
+        self.encode_with_parts(queue, encoder, values, None)
+    }
+
+    pub fn encode_with_parts(
+        &mut self,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        values: &[f32],
+        part_values: Option<&[f32]>,
     ) -> Result<()> {
         self.plan.update_active(&mut self.active, values)?;
         queue.write_buffer(
@@ -336,6 +373,12 @@ impl GpuPositionEvaluator {
         }
         if let Some(warp) = &self.warp {
             warp.encode(encoder);
+        }
+        if let Some(hierarchy) = &mut self.hierarchy {
+            hierarchy.encode(queue, encoder, values)?;
+        }
+        if let Some(glue) = &mut self.glue {
+            glue.encode(queue, encoder, values, part_values)?;
         }
         Ok(())
     }

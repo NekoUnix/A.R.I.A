@@ -24,6 +24,8 @@ mod event_rules;
 mod expressions_panel;
 #[cfg(test)]
 mod gpu_glue;
+pub mod gpu_glue_stage;
+pub mod gpu_hierarchy;
 #[cfg(test)]
 mod gpu_key_plan;
 pub mod gpu_position_evaluator;

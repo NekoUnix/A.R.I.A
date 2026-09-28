@@ -134,3 +134,42 @@ impl GpuWarpHierarchyPlan {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires ARIA_TEST_MOC; surveys private model transform hierarchy"]
+    fn local_hierarchy_coverage_survey() {
+        let bytes = std::fs::read(std::env::var_os("ARIA_TEST_MOC").unwrap()).unwrap();
+        let moc = Moc::parse(&bytes).unwrap();
+        let positions = GpuPositionKeyPlan::new(&moc).unwrap();
+        let plan = GpuWarpHierarchyPlan::new(&moc, &positions).unwrap();
+        let nodes = moc.deformer_layouts().unwrap();
+        let meshes = moc.mesh_layouts().unwrap();
+        let mut edges = [[0_usize; 2]; 2];
+        let mut roots = [0_usize; 2];
+        let mut mesh_parent = [0_usize; 2];
+        for node in &nodes {
+            let kind = usize::from(matches!(node.kind, DeformerKind::Rotation { .. }));
+            if let Some(parent) = node.parent_deformer {
+                let parent_kind =
+                    usize::from(matches!(nodes[parent].kind, DeformerKind::Rotation { .. }));
+                edges[parent_kind][kind] += 1;
+            } else {
+                roots[kind] += 1;
+            }
+        }
+        for mesh in &meshes {
+            if let Some(parent) = mesh.parent_deformer {
+                let kind = usize::from(matches!(nodes[parent].kind, DeformerKind::Rotation { .. }));
+                mesh_parent[kind] += 1;
+            }
+        }
+        eprintln!(
+            "ARIA hierarchy survey: roots warp/rotation={roots:?}, edges parent warp->warp/rotation={:?}, parent rotation->warp/rotation={:?}, mesh parent warp/rotation={mesh_parent:?}, GPU warp-only meshes={}",
+            edges[0], edges[1], plan.supported_meshes
+        );
+    }
+}
