@@ -112,6 +112,9 @@ pub struct Rule {
     pub match_name: String,
     pub minimum: u32,
     pub cooldown: f32,
+    /// Maximum live dispatches per application session; zero means unlimited.
+    #[serde(default)]
+    pub session_limit: u32,
     pub target: Option<Target>,
     /// Gesture conditions are scoped to the currently edited avatar ID.
     pub profile: Option<u64>,
@@ -190,6 +193,7 @@ impl Settings {
             match_name: event.name.clone(),
             minimum: event.amount.max(1),
             cooldown: 2.,
+            session_limit: 0,
             target: None,
             profile: None,
             threshold: 0.5,
@@ -199,6 +203,27 @@ impl Settings {
             any_condition: false,
             release_margin: 0.05,
         });
+        true
+    }
+    fn duplicate(&mut self, id: u64) -> bool {
+        let Some(mut rule) = self.rules.iter().find(|r| r.id == id).cloned() else {
+            return false;
+        };
+        if self.rules.len() >= 128 {
+            return false;
+        }
+        let Some(id) = self
+            .next_id
+            .max(self.rules.iter().map(|r| r.id).max().unwrap_or(0))
+            .checked_add(1)
+        else {
+            return false;
+        };
+        self.next_id = id;
+        rule.id = id;
+        rule.enabled = false;
+        rule.name = format!("{} copy", rule.name.chars().take(30).collect::<String>());
+        self.rules.push(rule);
         true
     }
 }
@@ -212,6 +237,7 @@ pub struct Events {
     pub page: usize,
     seen: VecDeque<String>,
     last: BTreeMap<u64, f64>,
+    dispatched: BTreeMap<u64, u32>,
     gestures: BTreeMap<u64, GestureState>,
     pub log: VecDeque<String>,
     simulation: u64,
@@ -224,6 +250,10 @@ impl Events {
         self.simulation = self.simulation.wrapping_add(1);
         let mut rule = rule.clone();
         rule.enabled = true;
+        // Explicit previews keep cooldowns, but do not consume live session limits.
+        rule.session_limit = 0;
+        let rule_id = rule.id;
+        let count = self.dispatched.get(&rule_id).copied();
         let event = Event {
             id: format!("preview-{}", self.simulation),
             platform: rule.platform.unwrap_or_default(),
@@ -237,7 +267,13 @@ impl Events {
             rules: vec![rule],
             ..Default::default()
         };
-        self.receive(&event, &settings, now).unwrap_or_default()
+        let targets = self.receive(&event, &settings, now).unwrap_or_default();
+        if let Some(count) = count {
+            self.dispatched.insert(rule_id, count);
+        } else {
+            self.dispatched.remove(&rule_id);
+        }
+        targets
     }
     fn log(&mut self, message: String) {
         self.log.push_front(message);
@@ -252,7 +288,12 @@ impl Events {
         event.validate()?;
         anyhow::ensure!(now.is_finite(), "Invalid event clock");
         let identity = format!("{:?}:{}", event.platform, event.id);
-        if !settings.enabled || self.seen.contains(&identity) {
+        if !settings.enabled {
+            self.log(format!("{} · reactions disabled", event.name));
+            return Ok(vec![]);
+        }
+        if self.seen.contains(&identity) {
+            self.log(format!("{} · duplicate ignored", event.name));
             return Ok(vec![]);
         }
         self.seen.push_back(identity);
@@ -260,34 +301,58 @@ impl Events {
             self.seen.pop_front();
         }
         let mut targets = Vec::new();
+        let mut reasons = Vec::new();
         for rule in settings.rules.iter().take(128) {
-            if rule.enabled
-                && rule.validate()
-                && rule.kind == event.kind
+            if rule.kind == event.kind
                 && rule.platform.is_none_or(|p| p == event.platform)
-                && (!event.test || rule.accept_test)
                 && rule.kind != Kind::Gesture
-                && event.amount >= rule.minimum
                 && (rule.match_name.is_empty() || rule.match_name.eq_ignore_ascii_case(&event.name))
-                && self
+            {
+                let reason = if !rule.enabled {
+                    Some("rule disabled")
+                } else if !rule.validate() {
+                    Some("choose or repair the action/settings")
+                } else if event.test && !rule.accept_test {
+                    Some("provider test ignored")
+                } else if event.amount < rule.minimum {
+                    Some("below minimum amount")
+                } else if rule.session_limit > 0
+                    && self.dispatched.get(&rule.id).copied().unwrap_or(0) >= rule.session_limit
+                {
+                    Some("session limit reached")
+                } else if !self
                     .last
                     .get(&rule.id)
                     .is_none_or(|last| now - *last >= f64::from(rule.cooldown))
-            {
+                {
+                    Some("cooldown active")
+                } else if targets.len() == 16 {
+                    Some("event action limit reached")
+                } else {
+                    None
+                };
+                if let Some(reason) = reason {
+                    reasons.push(format!("{}: {reason}", rule.name));
+                    continue;
+                }
                 targets.push(rule.target.clone().unwrap());
                 self.last.insert(rule.id, now);
-                if targets.len() == 16 {
-                    break;
-                }
+                let count = self.dispatched.entry(rule.id).or_default();
+                *count = count.saturating_add(1);
+                reasons.push(format!("{}: dispatched", rule.name));
             }
         }
+        if reasons.is_empty() {
+            reasons.push("no rule matches this platform, kind and name".into());
+        }
         self.log(format!(
-            "{:?} · {:?} · {} · {} action(s){}",
+            "{:?} · {:?} · {} · {} action(s){} — {}",
             event.platform,
             event.kind,
             event.name,
             targets.len(),
-            if event.test { " · test" } else { "" }
+            if event.test { " · test" } else { "" },
+            reasons.join("; ")
         ));
         Ok(targets)
     }
@@ -335,8 +400,12 @@ impl Events {
                     .last
                     .get(&rule.id)
                     .is_none_or(|last| now - *last >= f64::from(rule.cooldown))
+                    && (rule.session_limit == 0
+                        || self.dispatched.get(&rule.id).copied().unwrap_or(0) < rule.session_limit)
                 {
                     self.last.insert(rule.id, now);
+                    let count = self.dispatched.entry(rule.id).or_default();
+                    *count = count.saturating_add(1);
                     targets.push(rule.target.clone().unwrap());
                     if targets.len() == 16 {
                         break;
@@ -371,6 +440,39 @@ impl Events {
                 "All viewers can trigger enabled Command rules. Match a name such as !bonk; arguments are ignored. Existing chat history is never replayed. Rule cooldowns apply.",
             );
         }
+        ui.menu_button("Quick-start reaction", |ui| {
+            for (label, kind, name) in [
+                ("Chat command", Kind::Command, "!bonk"),
+                ("Channel reward", Kind::Reward, "Your reward name"),
+                ("New follower", Kind::Follow, ""),
+                ("Subscription", Kind::Subscription, ""),
+                ("Gift", Kind::Gift, ""),
+            ] {
+                if ui
+                    .add_enabled(settings.rules.len() < 128, egui::Button::new(label))
+                    .clicked()
+                {
+                    let event = Event {
+                        platform: Platform::Local,
+                        test: false,
+                        id: "template".into(),
+                        kind,
+                        name: name.into(),
+                        amount: 1,
+                    };
+                    if settings.add_from_event(&event) {
+                        let rule = settings.rules.last_mut().unwrap();
+                        rule.platform = None;
+                        rule.name = label.into();
+                    }
+                    ui.close();
+                }
+            }
+        });
+        crate::theme::caption(
+            ui,
+            "Templates and copies start disabled. Choose an action, preview it, then enable the reaction.",
+        );
         if ui
             .add_enabled(settings.rules.len() < 128, egui::Button::new("Add rule"))
             .clicked()
@@ -394,6 +496,7 @@ impl Events {
                     match_name: String::new(),
                     minimum: 1,
                     cooldown: 2.,
+                    session_limit: 0,
                     target: None,
                     profile,
                     threshold: 0.5,
@@ -406,6 +509,8 @@ impl Events {
             }
         }
         let mut remove = None;
+        let mut duplicate = None;
+        let can_duplicate = settings.rules.len() < 128;
         let mut simulate = None;
         for rule in &mut settings.rules {
             let rule_before = serde_json::to_string(rule).unwrap_or_default();
@@ -518,6 +623,12 @@ impl Events {
                             .logarithmic(true)
                             .text("Cooldown seconds"),
                     );
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add(egui::DragValue::new(&mut rule.session_limit).range(0..=1_000_000).prefix("Session limit: "));
+                        ui.label(format!("{} dispatched · 0 limit = unlimited", self.dispatched.get(&rule.id).copied().unwrap_or(0)));
+                        if ui.small_button("Reset count").clicked() { self.dispatched.remove(&rule.id); }
+                    });
+                    crate::theme::caption(ui, "Counts dispatch attempts, not playback success. Resets when ARIA restarts. Preview does not consume the limit.");
                     ui.horizontal(|ui| {
                         if ui
                             .add_enabled(
@@ -532,6 +643,7 @@ impl Events {
                         if ui.small_button("Remove rule").clicked() {
                             remove = Some(rule.id);
                         }
+                        if ui.add_enabled(can_duplicate, egui::Button::new("Duplicate")).clicked() { duplicate = Some(rule.id); }
                     });
                 });
             });
@@ -543,6 +655,10 @@ impl Events {
             settings.rules.retain(|r| r.id != id);
             self.gestures.remove(&id);
             self.last.remove(&id);
+            self.dispatched.remove(&id);
+        }
+        if let Some(id) = duplicate {
+            settings.duplicate(id);
         }
         let targets = if let Some(rule) = simulate {
             self.preview(&rule, now)
@@ -550,6 +666,8 @@ impl Events {
             vec![]
         };
         ui.collapsing("Recent event results", |ui| {
+            crate::theme::caption(ui, "Dispatch means the reaction was handed to the action system; it is not a completion or refund receipt.");
+            if ui.small_button("Clear history").clicked() { self.log.clear(); }
             for line in &self.log {
                 ui.label(line);
             }
@@ -563,6 +681,102 @@ impl Events {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn session_limits_preview_reset_and_skip_reasons() {
+        let mut settings = settings();
+        settings.rules[0].session_limit = 1;
+        let mut runtime = Events::default();
+        let mut event = Event {
+            platform: Platform::Local,
+            test: false,
+            id: "first".into(),
+            kind: Kind::Bits,
+            name: String::new(),
+            amount: 100,
+        };
+        assert_eq!(runtime.receive(&event, &settings, 0.).unwrap().len(), 1);
+        event.id = "second".into();
+        assert!(runtime.receive(&event, &settings, 3.).unwrap().is_empty());
+        assert!(runtime.log[0].contains("session limit reached"));
+        assert_eq!(runtime.preview(&settings.rules[0], 6.).len(), 1);
+        assert_eq!(runtime.dispatched[&1], 1);
+        runtime.dispatched.remove(&1);
+        event.id = "third".into();
+        assert_eq!(runtime.receive(&event, &settings, 9.).unwrap().len(), 1);
+        assert!(runtime.receive(&event, &settings, 12.).unwrap().is_empty());
+        assert!(runtime.log[0].contains("duplicate ignored"));
+        settings.rules[0].session_limit = 0;
+        event.id = "fourth".into();
+        assert!(runtime.receive(&event, &settings, 9.1).unwrap().is_empty());
+        assert!(runtime.log[0].contains("cooldown active"));
+        event.id = "low".into();
+        event.amount = 1;
+        runtime.receive(&event, &settings, 20.).unwrap();
+        assert!(runtime.log[0].contains("below minimum amount"));
+        for n in 0..50 {
+            event.id = format!("low-{n}");
+            runtime.receive(&event, &settings, 30.).unwrap();
+        }
+        assert_eq!(runtime.log.len(), 30);
+    }
+    #[test]
+    fn duplicates_are_disabled_keep_targets_and_never_reuse_ids() {
+        let mut settings = settings();
+        settings.rules[0].session_limit = 5;
+        assert!(settings.duplicate(1));
+        assert_eq!(settings.rules[1].id, 2);
+        assert!(!settings.rules[1].enabled);
+        assert_eq!(settings.rules[1].target, settings.rules[0].target);
+        assert_eq!(settings.rules[1].session_limit, 5);
+        settings.rules.pop();
+        assert!(settings.duplicate(1));
+        assert_eq!(settings.rules[1].id, 3);
+        let mut legacy = serde_json::to_value(&settings.rules[0]).unwrap();
+        legacy.as_object_mut().unwrap().remove("session_limit");
+        assert_eq!(
+            serde_json::from_value::<Rule>(legacy)
+                .unwrap()
+                .session_limit,
+            0
+        );
+    }
+    #[test]
+    fn gesture_session_limit_requires_release_after_reset() {
+        let mut settings = settings();
+        let rule = &mut settings.rules[0];
+        rule.kind = Kind::Gesture;
+        rule.match_name = "Smile".into();
+        rule.hold_seconds = 0.05;
+        rule.session_limit = 1;
+        let mut runtime = Events::default();
+        let high = BTreeMap::from([("Smile".into(), 1.)]);
+        let low = BTreeMap::from([("Smile".into(), 0.)]);
+        assert_eq!(
+            runtime
+                .gestures(&settings, Some(1), &high, 0.1, 0., true)
+                .len(),
+            1
+        );
+        runtime.gestures(&settings, Some(1), &low, 0.1, 3., true);
+        assert!(
+            runtime
+                .gestures(&settings, Some(1), &high, 0.1, 4., true)
+                .is_empty()
+        );
+        runtime.dispatched.remove(&1);
+        assert!(
+            runtime
+                .gestures(&settings, Some(1), &high, 0.1, 5., true)
+                .is_empty()
+        );
+        runtime.gestures(&settings, Some(1), &low, 0.1, 6., true);
+        assert_eq!(
+            runtime
+                .gestures(&settings, Some(1), &high, 0.1, 7., true)
+                .len(),
+            1
+        );
+    }
     #[test]
     fn explicit_preview_works_before_enabling_and_keeps_cooldowns() {
         let mut settings = settings();
@@ -700,6 +914,7 @@ mod tests {
                 match_name: String::new(),
                 minimum: 100,
                 cooldown: 2.,
+                session_limit: 0,
                 target: Some(Target::Scene(3)),
                 profile: Some(1),
                 threshold: 0.5,

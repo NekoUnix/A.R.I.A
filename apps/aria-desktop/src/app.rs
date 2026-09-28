@@ -627,6 +627,7 @@ impl AriaApp {
                         release_margin: 0.,
                         id: 1,
                         name: "Reward sound · preview".into(),
+                        session_limit: 0,
                         enabled: false,
                         kind: crate::event_rules::Kind::Reward,
                         match_name: "Bonk".into(),

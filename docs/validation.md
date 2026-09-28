@@ -1342,6 +1342,17 @@ TCP, Bluetooth and recording transfer are not implemented. See the
 
 ### Studio audience reactions (local development)
 
+Follow-up validation passes 335 workspace tests with 40 opt-in checks ignored,
+strict Clippy and a native build. New tests exercise session caps, explicit preview
+without consuming live counts, resets preserving cooldowns, gesture release after
+reset, bounded skip-reason history, disabled copies with unique IDs and migration
+of profiles without limits. A native minimum-window capture with NekoUnity2 checks
+the quick-start entry point. The HTTP command fixture now writes one complete
+request buffer, avoiding fragmented formatting writes against the read deadline;
+the full suite passed after an earlier intermittent fixture timeout.
+
+The initial connector checkpoint was validated as follows:
+
 - All-feature workspace tests pass: 332 tests, zero failures, with 40 opt-in
   checks ignored. Strict all-target/all-feature Clippy and the native desktop
   build pass. Local WebSocket fixtures cover authenticated and unauthenticated

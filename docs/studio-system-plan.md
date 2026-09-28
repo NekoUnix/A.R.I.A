@@ -94,7 +94,8 @@ verified. Then expand chat badges/emotes, moderation and composition.
 
 The Studio event workspace now subscribes to local Streamer.bot Twitch/YouTube
 events and creates disabled reaction rules from received examples. Sound targets
-use background decoding and a bounded worker. Continue with per-user permissions
+use background decoding and a bounded worker. Quick-start templates, disabled
+copies, session dispatch limits and skip-reason history are implemented. Continue with per-user permissions
 and cooldowns, explicit named blocking queues, completion/error history, reward
 catalog management and fulfillment/refund receipts. A received event is not proof
 that an action played successfully. Keep duplicate suppression and gift-bundle

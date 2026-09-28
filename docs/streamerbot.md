@@ -21,6 +21,30 @@ Provider simulations are ignored unless **Accept provider test events** is enabl
 
 The connector receives at most 256 KiB per WebSocket message, buffers 64 events, consumes at most eight per frame and drops events waiting more than five seconds. Overflow and invalid-event counters are visible. Disabling event actions drains pending inputs. Reconnect drops the previous connection's queue; no history request is made. The existing rule engine deduplicates its most recent 1,024 platform/ID pairs and limits each event to 16 targets. These are live reactions, not a durable redemption ledger: busy graphs, cooldowns and overload can skip work, and ARIA does not automatically refund or fulfill rewards.
 
+### Build and troubleshoot reactions
+
+Use **Quick-start reaction** for a chat command, channel reward, follower,
+subscription or gift template. Choose the platform and action before enabling;
+reward templates require your exact reward name. Command templates also require
+the **Accept !commands** switch. **Duplicate** preserves a rule's settings and
+target with a new ID, but starts the copy disabled.
+
+Each rule has an optional **Session limit**: zero is unlimited; a positive number
+caps dispatch attempts during the current ARIA process. Counts survive disabling
+and re-enabling the rule. **Reset count** clears only that rule's count and keeps
+its cooldown. Restarting ARIA clears the counts; saved profiles retain the limits.
+Limits apply to both audience events and gestures. A held gesture must release
+before retriggering after a reset. Explicit previews keep cooldowns but do not
+consume the live count, even when the live limit has already been reached.
+
+**Recent event results** retains the last 30 evaluated events and explains matched
+rule decisions: dispatched, disabled, invalid settings, provider test ignored,
+below minimum, cooldown active or session limit reached. It also identifies
+duplicates and events without matching platform/kind/name rules. **Clear history**
+only clears the display; it does not reset cooldowns, counts or deduplication.
+Dispatch is not a success receipt: an unavailable target, busy graph or failed
+audio device can still prevent the action. These limits never refund a redemption.
+
 ### Play a sound with a model reaction
 
 Under **Events → Sounds → Sound reactions**, add WAV, MP3, OGG or FLAC clips and set their volumes. Choose **Sound · clip name** as a rule or graph target. For a combined reaction, connect sound and avatar nodes in the action graph and choose that graph in the rule. Add a Delay if later steps must wait for the sound: queuing playback completes a sound node immediately. **Sound · Stop all clips** stops workspace clips, including queued requests; it is separate from throw-effect sounds and music.

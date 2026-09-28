@@ -585,7 +585,13 @@ mod tests {
             handle(&mut socket, "test-key", &cat, &tx)
         });
         let mut socket = TcpStream::connect(address).unwrap();
-        write!(socket,"POST /v1/commands HTTP/1.1\r\nAuthorization: Bearer test-key\r\nContent-Length: {}\r\n\r\n{body}",body.len()).unwrap();
+        // Send one complete fixture buffer: formatting directly into a TCP stream
+        // fragments writes and can hit the production read deadline under test load.
+        let request = format!(
+            "POST /v1/commands HTTP/1.1\r\nAuthorization: Bearer test-key\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        );
+        socket.write_all(request.as_bytes()).unwrap();
         (worker.join().unwrap(), rx.try_recv().ok())
     }
     #[test]

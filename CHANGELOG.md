@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add quick-start audience reaction templates, disabled rule duplication, per-rule session dispatch limits and reset controls. Explain skipped events in bounded recent history, including cooldown, minimum amount, duplicate, provider-test and session-limit decisions. Explicit previews preserve live counts.
+
 - Add a local Streamer.bot WebSocket event connection for Twitch rewards, follows, subscriptions, gift bundles, cheers and raids, plus YouTube membership and support events. Include challenge authentication, bounded queues, platform filters, provider-test opt-in and shared-chat/gift-bundle duplicate suppression.
 - Add a workspace sound library and sound/stop-sound action targets, with background decoding, volume controls, file repair and bounded playback. Events, hotkeys and action graphs can combine sounds with avatar reactions.
 - Organize audience reactions into Reactions, Connections and Sounds tabs with model-colored gradient cards. Create disabled rules from received events and preview a selected reaction before enabling live triggers.
