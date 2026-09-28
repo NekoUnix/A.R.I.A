@@ -853,7 +853,7 @@ mod tests {
             };
             let (reference, final_values, groups, outputs) = run(MotionStyle::Bouncy, 120);
             let mut errors = Vec::new();
-            for fps in [30, 60] {
+            for fps in [30, 60, 240] {
                 let (trace, _, _, _) = run(MotionStyle::Bouncy, fps);
                 assert_eq!(reference.len(), trace.len());
                 let rms = (reference

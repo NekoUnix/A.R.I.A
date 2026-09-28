@@ -11,7 +11,9 @@ Run the optimized `target/release/aria-desktop.exe` or a packaged release. The
 repository's **Launch ARIA Studio.cmd** now requires that optimized build;
 `target/debug/aria-desktop.exe` is for development and can be much slower with
 large models. Set the frame target in **Capture & performance**: an existing
-60 FPS profile will remain capped at 60 until you change it to 120.
+60 FPS profile will remain capped at 60 until you select a higher target (120
+or 240). A 240 target gives each frame 4.17 ms; it does not guarantee that a
+model, output, display or capture pipeline can deliver 240 frames per second.
 
 Compare the footer FPS with no avatar, with the avatar, and then with outputs
 enabled. This distinguishes UI scheduling, model work and capture work. For a
@@ -19,7 +21,12 @@ local diagnostic run, set `ARIA_PERF_LOG=1` before starting ARIA. The diagnostic
 session records `PERF_FRAME` (frame preparation, model update and UI time) and
 `PERF_AVATAR` (rig evaluation, ARIA Core model update and model drawing)
 every two seconds. Remove the variable after testing. These are CPU-side times;
-GPU execution can extend beyond them.
+GPU execution can extend beyond them. The VRAM graph measures GPU memory
+allocation against the adapter budget, not GPU utilization or bandwidth. If
+Task Manager shows low GPU activity while frames are slow, check its GPU Engine
+column and ARIA's CPU frame diagnostics: CPU preparation, pacing or a specific
+GPU engine may be limiting progress. High VRAM use alone is not evidence of a
+memory bottleneck; budget pressure or resource migration needs separate proof.
 
 On one Windows test with the NekoUnix 90s outfit model (1,174 meshes, 218,693
 vertices and 17 texture atlases), the optimized app reached roughly 55–60 FPS
