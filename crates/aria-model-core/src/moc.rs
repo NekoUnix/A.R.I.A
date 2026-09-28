@@ -95,6 +95,272 @@ pub struct BindingGraph {
     pub bindings: Vec<Vec<usize>>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct BlendKeyTable {
+    pub parameter: usize,
+    pub keys: Vec<f32>,
+    pub base_key: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BlendConstraint {
+    pub parameter: usize,
+    pub keys: Vec<f32>,
+    pub weights: Vec<f32>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BlendBinding {
+    pub table: usize,
+    pub source_start: usize,
+    pub source_len: usize,
+    pub constraints: Vec<BlendConstraint>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BlendTarget {
+    pub target: usize,
+    pub bindings: Vec<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BlendGraph {
+    pub tables: Vec<BlendKeyTable>,
+    pub bindings: Vec<BlendBinding>,
+    pub art_meshes: Vec<BlendTarget>,
+    pub warps: Vec<BlendTarget>,
+    pub rotations: Vec<BlendTarget>,
+    pub glues: Vec<BlendTarget>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompiledBlendRotationBinding {
+    pub binding: usize,
+    pub source_start: usize,
+    /// Origin X/Y, angle, scale and opacity deltas in local deformer space.
+    pub deltas: Vec<[f32; 5]>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompiledBlendRotation {
+    pub target: usize,
+    pub bindings: Vec<CompiledBlendRotationBinding>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompiledBlendScalarBinding {
+    pub binding: usize,
+    pub source_start: usize,
+    pub deltas: Vec<f32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompiledBlendScalar {
+    pub target: usize,
+    pub bindings: Vec<CompiledBlendScalarBinding>,
+}
+
+impl CompiledBlendScalar {
+    pub fn apply(&self, mut value: f32, graph: &BlendGraph, values: &[f32]) -> Result<f32> {
+        for source in &self.bindings {
+            for key in graph.weights(source.binding, values)? {
+                let index = key
+                    .index
+                    .checked_sub(source.source_start)
+                    .context("Scalar blend key precedes its source range")?;
+                value += source
+                    .deltas
+                    .get(index)
+                    .context("Scalar blend key is outside its source range")?
+                    * key.weight;
+            }
+        }
+        ensure!(value.is_finite(), "Non-finite scalar blend result");
+        Ok(value.clamp(0.0, 1.0))
+    }
+}
+
+impl CompiledBlendRotation {
+    pub fn apply(
+        &self,
+        frame: &mut LocalDeformerFrame,
+        graph: &BlendGraph,
+        values: &[f32],
+    ) -> Result<()> {
+        let LocalDeformerFrame::Rotation {
+            origin,
+            angle,
+            scale,
+            opacity,
+            ..
+        } = frame
+        else {
+            anyhow::bail!("Blend rotation target is not a rotation deformer");
+        };
+        for source in &self.bindings {
+            for key in graph.weights(source.binding, values)? {
+                let index = key
+                    .index
+                    .checked_sub(source.source_start)
+                    .context("Rotation blend key precedes its source range")?;
+                let delta = source
+                    .deltas
+                    .get(index)
+                    .context("Rotation blend key is outside its source range")?;
+                origin[0] += delta[0] * key.weight;
+                origin[1] += delta[1] * key.weight;
+                *angle += delta[2] * key.weight;
+                *scale += delta[3] * key.weight;
+                *opacity += delta[4] * key.weight;
+            }
+        }
+        *angle = angle.clamp(-3600.0, 3600.0);
+        *scale = scale.clamp(0.0001, 100.0);
+        *opacity = opacity.clamp(0.0, 1.0);
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CompiledBlendBinding {
+    pub binding: usize,
+    pub source_start: usize,
+    pub deltas: Vec<Vec<[f32; 2]>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompiledBlendMesh {
+    pub target: usize,
+    pub bindings: Vec<CompiledBlendBinding>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompiledBlendWarpBinding {
+    pub binding: usize,
+    pub source_start: usize,
+    pub position_deltas: Vec<Vec<[f32; 2]>>,
+    pub opacity_deltas: Vec<f32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompiledBlendWarp {
+    pub target: usize,
+    pub bindings: Vec<CompiledBlendWarpBinding>,
+}
+
+impl CompiledBlendWarp {
+    pub fn apply(
+        &self,
+        frame: &mut LocalDeformerFrame,
+        graph: &BlendGraph,
+        values: &[f32],
+    ) -> Result<()> {
+        let LocalDeformerFrame::Warp { points, opacity } = frame else {
+            anyhow::bail!("Blend warp target is not a warp deformer");
+        };
+        for source in &self.bindings {
+            for key in graph.weights(source.binding, values)? {
+                let index = key
+                    .index
+                    .checked_sub(source.source_start)
+                    .context("Warp blend key precedes its source range")?;
+                let delta = source
+                    .position_deltas
+                    .get(index)
+                    .context("Warp blend key is outside its source range")?;
+                ensure!(
+                    delta.len() == points.len(),
+                    "Warp blend key has the wrong point count"
+                );
+                for (point, delta) in points.iter_mut().zip(delta) {
+                    point[0] += delta[0] * key.weight;
+                    point[1] += delta[1] * key.weight;
+                }
+                *opacity += source.opacity_deltas[index] * key.weight;
+            }
+        }
+        *opacity = opacity.clamp(0.0, 1.0);
+        Ok(())
+    }
+}
+
+impl CompiledBlendMesh {
+    pub fn apply(
+        &self,
+        frame: &mut LocalMeshFrame,
+        graph: &BlendGraph,
+        values: &[f32],
+    ) -> Result<()> {
+        for source in &self.bindings {
+            for key in graph.weights(source.binding, values)? {
+                let index = key
+                    .index
+                    .checked_sub(source.source_start)
+                    .context("Blend key precedes its source range")?;
+                let delta = source
+                    .deltas
+                    .get(index)
+                    .context("Blend key is outside its source range")?;
+                ensure!(
+                    delta.len() == frame.positions.len(),
+                    "Blend shape and ArtMesh vertex counts differ"
+                );
+                for (position, delta) in frame.positions.iter_mut().zip(delta) {
+                    position[0] += delta[0] * key.weight;
+                    position[1] += delta[1] * key.weight;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl BlendGraph {
+    /// Resolve the non-base delta keyforms for one blend-shape binding.
+    /// Constraints attenuate the result by their smallest authored response.
+    pub fn weights(&self, binding: usize, values: &[f32]) -> Result<Vec<KeyformWeight>> {
+        let binding = self
+            .bindings
+            .get(binding)
+            .context("Unknown blend binding")?;
+        let table = self
+            .tables
+            .get(binding.table)
+            .context("Unknown blend table")?;
+        let value = *values
+            .get(table.parameter)
+            .context("Missing blend parameter")?;
+        let mut constraint_factor = 1.0_f32;
+        for constraint in &binding.constraints {
+            let value = *values
+                .get(constraint.parameter)
+                .context("Missing blend constraint parameter")?;
+            let factors = crate::rig::linear_keys(&constraint.keys, value)?;
+            let factor = factors
+                .into_iter()
+                .map(|key| constraint.weights[key.index] * key.weight)
+                .sum::<f32>();
+            constraint_factor = constraint_factor.min(factor);
+        }
+        ensure!(constraint_factor.is_finite(), "Invalid blend constraint");
+        let mut weights = Vec::new();
+        for key in crate::rig::linear_keys(&table.keys, value)? {
+            if key.index == table.base_key || key.weight == 0.0 {
+                continue;
+            }
+            ensure!(
+                key.index < binding.source_len,
+                "Blend source key is missing"
+            );
+            weights.push(KeyformWeight {
+                index: binding.source_start + key.index,
+                weight: key.weight * constraint_factor,
+            });
+        }
+        Ok(weights)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct KeyformWeight {
     pub index: usize,
@@ -526,6 +792,493 @@ impl<'a> Moc<'a> {
         Ok(BindingGraph { tables, bindings })
     }
 
+    pub fn blend_graph(&self) -> Result<BlendGraph> {
+        if self.version < 4 {
+            return Ok(BlendGraph {
+                tables: Vec::new(),
+                bindings: Vec::new(),
+                art_meshes: Vec::new(),
+                warps: Vec::new(),
+                rotations: Vec::new(),
+                glues: Vec::new(),
+            });
+        }
+        let counts = self.counts()?;
+        let table_count = self.nonnegative(0, 25)?;
+        let binding_count = self.nonnegative(0, 26)?;
+        let constraint_index_count = self.nonnegative(0, 29)?;
+        let constraint_count = self.nonnegative(0, 30)?;
+        let constraint_value_count = self.nonnegative(0, 31)?;
+        let key_pool_count = self.nonnegative(0, 14)?;
+        ensure!(
+            table_count <= 1_000_000
+                && binding_count <= 1_000_000
+                && constraint_index_count <= 4_000_000
+                && constraint_count <= 1_000_000
+                && constraint_value_count <= 4_000_000,
+            "Blend-shape graph exceeds ARIA limits"
+        );
+        let mut owner = vec![None; table_count];
+        for parameter in 0..counts.parameters as usize {
+            let raw_start = self.word(115, parameter)? as i32;
+            let count = self.nonnegative(116, parameter)?;
+            if raw_start == -1 && count == 0 {
+                continue;
+            }
+            let start = usize::try_from(raw_start).context("Invalid blend table offset")?;
+            ensure!(
+                start
+                    .checked_add(count)
+                    .is_some_and(|end| end <= table_count),
+                "Blend table range is invalid"
+            );
+            for slot in &mut owner[start..start + count] {
+                ensure!(slot.is_none(), "Blend table has multiple owners");
+                *slot = Some(parameter);
+            }
+        }
+        let mut tables = Vec::with_capacity(table_count);
+        for (index, parameter) in owner.into_iter().enumerate() {
+            let start = self.nonnegative(117, index)?;
+            let count = self.nonnegative(118, index)?;
+            let base_key = self.nonnegative(119, index)?;
+            ensure!(
+                count > 0
+                    && count <= 256
+                    && base_key < count
+                    && start
+                        .checked_add(count)
+                        .is_some_and(|end| end <= key_pool_count),
+                "Blend key table is invalid"
+            );
+            let mut keys = Vec::with_capacity(count);
+            for key in start..start + count {
+                let value = f32::from_bits(self.word(77, key)?);
+                ensure!(value.is_finite(), "Blend key is non-finite");
+                keys.push(value);
+            }
+            ensure!(
+                keys.windows(2).all(|pair| pair[0] < pair[1]),
+                "Blend keys are not strictly increasing"
+            );
+            tables.push(BlendKeyTable {
+                parameter: parameter.context("Blend table has no parameter owner")?,
+                keys,
+                base_key,
+            });
+        }
+        let mut bindings = Vec::with_capacity(binding_count);
+        for index in 0..binding_count {
+            let table = self.nonnegative(120, index)?;
+            ensure!(table < table_count, "Blend binding has an invalid table");
+            let source_start = self.nonnegative(121, index)?;
+            let source_len = self.nonnegative(122, index)?;
+            ensure!(
+                source_len >= tables[table].keys.len(),
+                "Blend binding is missing source keyforms"
+            );
+            let raw_constraint_start = self.word(123, index)? as i32;
+            let constraint_len = self.nonnegative(124, index)?;
+            let mut constraints = Vec::with_capacity(constraint_len);
+            if constraint_len > 0 {
+                let start = usize::try_from(raw_constraint_start)
+                    .context("Invalid blend constraint index offset")?;
+                ensure!(
+                    start
+                        .checked_add(constraint_len)
+                        .is_some_and(|end| end <= constraint_index_count),
+                    "Blend constraint index range is invalid"
+                );
+                for item in start..start + constraint_len {
+                    let constraint = self.nonnegative(131, item)?;
+                    ensure!(constraint < constraint_count, "Unknown blend constraint");
+                    let parameter = self.nonnegative(132, constraint)?;
+                    ensure!(
+                        parameter < counts.parameters as usize,
+                        "Blend constraint has an invalid parameter"
+                    );
+                    let key_start = self.nonnegative(133, constraint)?;
+                    let key_len = self.nonnegative(134, constraint)?;
+                    ensure!(
+                        key_len > 0
+                            && key_len <= 256
+                            && key_start
+                                .checked_add(key_len)
+                                .is_some_and(|end| end <= constraint_value_count),
+                        "Blend constraint key range is invalid"
+                    );
+                    let mut keys = Vec::with_capacity(key_len);
+                    let mut weights = Vec::with_capacity(key_len);
+                    for key in key_start..key_start + key_len {
+                        let value = f32::from_bits(self.word(135, key)?);
+                        let weight = f32::from_bits(self.word(136, key)?);
+                        ensure!(
+                            value.is_finite() && weight.is_finite(),
+                            "Non-finite blend constraint"
+                        );
+                        keys.push(value);
+                        weights.push(weight);
+                    }
+                    ensure!(
+                        keys.windows(2).all(|pair| pair[0] < pair[1]),
+                        "Blend constraint keys are not increasing"
+                    );
+                    constraints.push(BlendConstraint {
+                        parameter,
+                        keys,
+                        weights,
+                    });
+                }
+            }
+            bindings.push(BlendBinding {
+                table,
+                source_start,
+                source_len,
+                constraints,
+            });
+        }
+        let targets = |target_section: usize,
+                       binding_section: usize,
+                       length_section: usize,
+                       count: usize,
+                       target_limit: usize|
+         -> Result<Vec<BlendTarget>> {
+            let mut result = Vec::with_capacity(count);
+            for index in 0..count {
+                let target = self.nonnegative(target_section, index)?;
+                let start = self.nonnegative(binding_section, index)?;
+                let len = self.nonnegative(length_section, index)?;
+                ensure!(
+                    target < target_limit
+                        && start
+                            .checked_add(len)
+                            .is_some_and(|end| end <= binding_count),
+                    "Blend target range is invalid"
+                );
+                result.push(BlendTarget {
+                    target,
+                    bindings: (start..start + len).collect(),
+                });
+            }
+            Ok(result)
+        };
+        Ok(BlendGraph {
+            tables,
+            bindings,
+            art_meshes: targets(
+                128,
+                129,
+                130,
+                self.nonnegative(0, 28)?,
+                counts.art_meshes as usize,
+            )?,
+            warps: targets(
+                125,
+                126,
+                127,
+                self.nonnegative(0, 27)?,
+                counts.warp_deformers as usize,
+            )?,
+            rotations: if self.version >= 5 {
+                targets(
+                    146,
+                    147,
+                    148,
+                    self.nonnegative(0, 33)?,
+                    counts.rotation_deformers as usize,
+                )?
+            } else {
+                Vec::new()
+            },
+            glues: if self.version >= 5 {
+                targets(
+                    149,
+                    150,
+                    151,
+                    self.nonnegative(0, 34)?,
+                    self.nonnegative(0, 20)?,
+                )?
+            } else {
+                Vec::new()
+            },
+        })
+    }
+
+    pub fn blend_mesh_position_bytes(
+        &self,
+        target: &BlendTarget,
+        graph: &BlendGraph,
+    ) -> Result<usize> {
+        let vertices = self.nonnegative(43, target.target)?;
+        let mut total = 0_usize;
+        for &binding in &target.bindings {
+            let table = graph
+                .bindings
+                .get(binding)
+                .context("Unknown ArtMesh blend binding")?;
+            total = total
+                .checked_add(
+                    table
+                        .source_len
+                        .checked_mul(vertices)
+                        .and_then(|points| points.checked_mul(std::mem::size_of::<[f32; 2]>()))
+                        .context("Blend ArtMesh RAM size overflow")?,
+                )
+                .context("Blend ArtMesh RAM size overflow")?;
+        }
+        Ok(total)
+    }
+
+    pub fn compile_blend_mesh(
+        &self,
+        target: &BlendTarget,
+        graph: &BlendGraph,
+    ) -> Result<CompiledBlendMesh> {
+        let counts = self.counts()?;
+        ensure!(
+            target.target < counts.art_meshes as usize,
+            "Unknown blend ArtMesh"
+        );
+        ensure!(
+            self.blend_mesh_position_bytes(target, graph)? <= 512 * 1024 * 1024,
+            "Blend ArtMesh keyforms exceed the 512 MiB RAM budget"
+        );
+        let vertices = self.nonnegative(43, target.target)?;
+        let keyform_total = self.nonnegative(0, 9)?;
+        let coordinate_total = self.nonnegative(0, 10)?;
+        let mut bindings = Vec::with_capacity(target.bindings.len());
+        for &binding_index in &target.bindings {
+            let binding = graph
+                .bindings
+                .get(binding_index)
+                .context("Unknown ArtMesh blend binding")?;
+            ensure!(
+                binding
+                    .source_start
+                    .checked_add(binding.source_len)
+                    .is_some_and(|end| end <= keyform_total),
+                "Blend ArtMesh keyforms exceed the keyform pool"
+            );
+            let mut deltas = Vec::with_capacity(binding.source_len);
+            for frame in binding.source_start..binding.source_start + binding.source_len {
+                let start = self.nonnegative(70, frame)?;
+                ensure!(
+                    vertices
+                        .checked_mul(2)
+                        .and_then(|coordinates| start.checked_add(coordinates))
+                        .is_some_and(|end| end <= coordinate_total),
+                    "Blend ArtMesh positions exceed the coordinate pool"
+                );
+                let mut positions = Vec::with_capacity(vertices);
+                for vertex in 0..vertices {
+                    let offset = start + vertex * 2;
+                    let x = f32::from_bits(self.word(71, offset)?);
+                    let y = f32::from_bits(self.word(71, offset + 1)?);
+                    ensure!(
+                        x.is_finite() && y.is_finite(),
+                        "Non-finite blend ArtMesh delta"
+                    );
+                    positions.push([x, y]);
+                }
+                deltas.push(positions);
+            }
+            bindings.push(CompiledBlendBinding {
+                binding: binding_index,
+                source_start: binding.source_start,
+                deltas,
+            });
+        }
+        Ok(CompiledBlendMesh {
+            target: target.target,
+            bindings,
+        })
+    }
+
+    pub fn blend_warp_position_bytes(
+        &self,
+        target: &BlendTarget,
+        graph: &BlendGraph,
+    ) -> Result<usize> {
+        ensure!(
+            target.target < self.counts()?.warp_deformers as usize,
+            "Unknown blend warp"
+        );
+        let points = self.nonnegative(22, target.target)?;
+        let mut total = 0_usize;
+        for &binding in &target.bindings {
+            let source = graph
+                .bindings
+                .get(binding)
+                .context("Unknown warp blend binding")?;
+            total = total
+                .checked_add(
+                    source
+                        .source_len
+                        .checked_mul(points)
+                        .and_then(|count| count.checked_mul(std::mem::size_of::<[f32; 2]>()))
+                        .context("Blend warp RAM size overflow")?,
+                )
+                .context("Blend warp RAM size overflow")?;
+        }
+        Ok(total)
+    }
+
+    pub fn compile_blend_warp(
+        &self,
+        target: &BlendTarget,
+        graph: &BlendGraph,
+    ) -> Result<CompiledBlendWarp> {
+        ensure!(
+            self.blend_warp_position_bytes(target, graph)? <= 512 * 1024 * 1024,
+            "Blend warp keyforms exceed the 512 MiB RAM budget"
+        );
+        let points = self.nonnegative(22, target.target)?;
+        let keyform_total = self.nonnegative(0, 7)?;
+        let coordinate_total = self.nonnegative(0, 10)?;
+        let mut bindings = Vec::with_capacity(target.bindings.len());
+        for &binding_index in &target.bindings {
+            let binding = graph
+                .bindings
+                .get(binding_index)
+                .context("Unknown warp blend binding")?;
+            ensure!(
+                binding
+                    .source_start
+                    .checked_add(binding.source_len)
+                    .is_some_and(|end| end <= keyform_total),
+                "Blend warp keyforms exceed the keyform pool"
+            );
+            let mut position_deltas = Vec::with_capacity(binding.source_len);
+            let mut opacity_deltas = Vec::with_capacity(binding.source_len);
+            for frame in binding.source_start..binding.source_start + binding.source_len {
+                let opacity = f32::from_bits(self.word(59, frame)?);
+                ensure!(opacity.is_finite(), "Non-finite blend warp opacity");
+                opacity_deltas.push(opacity);
+                let start = self.nonnegative(60, frame)?;
+                ensure!(
+                    points
+                        .checked_mul(2)
+                        .and_then(|coordinates| start.checked_add(coordinates))
+                        .is_some_and(|end| end <= coordinate_total),
+                    "Blend warp positions exceed the coordinate pool"
+                );
+                let mut positions = Vec::with_capacity(points);
+                for point in 0..points {
+                    let offset = start + point * 2;
+                    let x = f32::from_bits(self.word(71, offset)?);
+                    let y = f32::from_bits(self.word(71, offset + 1)?);
+                    ensure!(
+                        x.is_finite() && y.is_finite(),
+                        "Non-finite blend warp delta"
+                    );
+                    positions.push([x, y]);
+                }
+                position_deltas.push(positions);
+            }
+            bindings.push(CompiledBlendWarpBinding {
+                binding: binding_index,
+                source_start: binding.source_start,
+                position_deltas,
+                opacity_deltas,
+            });
+        }
+        Ok(CompiledBlendWarp {
+            target: target.target,
+            bindings,
+        })
+    }
+
+    pub fn compile_blend_rotation(
+        &self,
+        target: &BlendTarget,
+        graph: &BlendGraph,
+    ) -> Result<CompiledBlendRotation> {
+        ensure!(
+            target.target < self.counts()?.rotation_deformers as usize,
+            "Unknown blend rotation"
+        );
+        let keyform_total = self.nonnegative(0, 8)?;
+        let mut bindings = Vec::with_capacity(target.bindings.len());
+        for &binding_index in &target.bindings {
+            let binding = graph
+                .bindings
+                .get(binding_index)
+                .context("Unknown rotation blend binding")?;
+            ensure!(
+                binding
+                    .source_start
+                    .checked_add(binding.source_len)
+                    .is_some_and(|end| end <= keyform_total),
+                "Blend rotation keyforms exceed the keyform pool"
+            );
+            let mut deltas = Vec::with_capacity(binding.source_len);
+            for frame in binding.source_start..binding.source_start + binding.source_len {
+                let source = [
+                    f32::from_bits(self.word(63, frame)?),
+                    f32::from_bits(self.word(64, frame)?),
+                    f32::from_bits(self.word(62, frame)?),
+                    f32::from_bits(self.word(65, frame)?),
+                    f32::from_bits(self.word(61, frame)?),
+                ];
+                ensure!(
+                    source.iter().all(|value| value.is_finite()),
+                    "Non-finite blend rotation delta"
+                );
+                deltas.push(source);
+            }
+            bindings.push(CompiledBlendRotationBinding {
+                binding: binding_index,
+                source_start: binding.source_start,
+                deltas,
+            });
+        }
+        Ok(CompiledBlendRotation {
+            target: target.target,
+            bindings,
+        })
+    }
+
+    pub fn compile_blend_glue(
+        &self,
+        target: &BlendTarget,
+        graph: &BlendGraph,
+    ) -> Result<CompiledBlendScalar> {
+        ensure!(
+            target.target < self.nonnegative(0, 20)?,
+            "Unknown blend glue"
+        );
+        let keyform_total = self.nonnegative(0, 22)?;
+        let mut bindings = Vec::with_capacity(target.bindings.len());
+        for &binding_index in &target.bindings {
+            let binding = graph
+                .bindings
+                .get(binding_index)
+                .context("Unknown glue blend binding")?;
+            ensure!(
+                binding
+                    .source_start
+                    .checked_add(binding.source_len)
+                    .is_some_and(|end| end <= keyform_total),
+                "Blend glue keyforms exceed the keyform pool"
+            );
+            let mut deltas = Vec::with_capacity(binding.source_len);
+            for frame in binding.source_start..binding.source_start + binding.source_len {
+                let delta = f32::from_bits(self.word(100, frame)?);
+                ensure!(delta.is_finite(), "Non-finite blend glue intensity");
+                deltas.push(delta);
+            }
+            bindings.push(CompiledBlendScalarBinding {
+                binding: binding_index,
+                source_start: binding.source_start,
+                deltas,
+            });
+        }
+        Ok(CompiledBlendScalar {
+            target: target.target,
+            bindings,
+        })
+    }
+
     /// Evaluate authored ArtMesh keyforms before parent deformers, glues and
     /// blend shapes. This is useful for testing the independent interpolation
     /// path, but is not a complete drawable evaluation.
@@ -543,6 +1296,17 @@ impl<'a> Moc<'a> {
     pub fn mesh_binding(&self, mesh: usize) -> Result<usize> {
         ensure!(mesh < self.counts()?.art_meshes as usize, "Unknown ArtMesh");
         self.nonnegative(34, mesh)
+    }
+
+    pub fn mesh_parent_deformer(&self, mesh: usize) -> Result<Option<usize>> {
+        let counts = self.counts()?;
+        ensure!(mesh < counts.art_meshes as usize, "Unknown ArtMesh");
+        let parent = self.word(40, mesh)? as i32;
+        ensure!(
+            parent == -1 || (parent >= 0 && parent < counts.deformers as i32),
+            "Invalid ArtMesh parent deformer"
+        );
+        Ok((parent >= 0).then_some(parent as usize))
     }
 
     pub fn mesh_keyform_position_bytes(&self, mesh: usize) -> Result<usize> {
@@ -803,6 +1567,38 @@ impl<'a> Moc<'a> {
             }
         }
         Ok(affected)
+    }
+
+    pub fn blend_rotation_targets(&self) -> Result<Vec<usize>> {
+        if self.version < 5 {
+            return Ok(Vec::new());
+        }
+        let count = self.nonnegative(0, 33)?;
+        ensure!(count <= 1_000_000, "Too many rotation blend shapes");
+        let limit = self.counts()?.rotation_deformers as usize;
+        (0..count)
+            .map(|index| {
+                let target = self.nonnegative(146, index)?;
+                ensure!(target < limit, "Blend shape has an invalid rotation");
+                Ok(target)
+            })
+            .collect()
+    }
+
+    pub fn blend_glue_targets(&self) -> Result<Vec<usize>> {
+        if self.version < 5 {
+            return Ok(Vec::new());
+        }
+        let count = self.nonnegative(0, 34)?;
+        ensure!(count <= 1_000_000, "Too many glue blend shapes");
+        let limit = self.nonnegative(0, 20)?;
+        (0..count)
+            .map(|index| {
+                let target = self.nonnegative(149, index)?;
+                ensure!(target < limit, "Blend shape has an invalid glue");
+                Ok(target)
+            })
+            .collect()
     }
 
     pub fn glue_layouts(&self) -> Result<Vec<GlueLayout>> {
@@ -1526,6 +2322,47 @@ mod tests {
     }
 
     #[test]
+    fn blend_weights_skip_base_key_and_honor_constraints() {
+        let graph = BlendGraph {
+            tables: vec![BlendKeyTable {
+                parameter: 0,
+                keys: vec![0.0, 0.5, 1.0],
+                base_key: 0,
+            }],
+            bindings: vec![BlendBinding {
+                table: 0,
+                source_start: 4,
+                source_len: 3,
+                constraints: vec![BlendConstraint {
+                    parameter: 1,
+                    keys: vec![0.0, 1.0],
+                    weights: vec![0.0, 1.0],
+                }],
+            }],
+            art_meshes: Vec::new(),
+            warps: Vec::new(),
+            rotations: Vec::new(),
+            glues: Vec::new(),
+        };
+        assert!(graph.weights(0, &[0.0, 1.0]).unwrap().is_empty());
+        assert_eq!(
+            graph.weights(0, &[0.75, 0.5]).unwrap(),
+            vec![
+                KeyformWeight {
+                    index: 5,
+                    weight: 0.25
+                },
+                KeyformWeight {
+                    index: 6,
+                    weight: 0.25
+                },
+            ]
+        );
+        assert!(graph.weights(0, &[1.0, 0.0]).unwrap()[0].weight == 0.0);
+        assert!(graph.weights(0, &[f32::NAN, 0.5]).is_err());
+    }
+
+    #[test]
     fn parameter_resolution_clamps_and_wraps_finite_values() {
         let mut parameter = ParameterSpec {
             id: "ParamTest".into(),
@@ -1561,6 +2398,9 @@ mod tests {
             assert_eq!(meshes.len(), counts.art_meshes as usize);
             assert_eq!(moc.parameters().unwrap().len(), counts.parameters as usize);
             let graph = moc.binding_graph().unwrap();
+            let blend_graph = moc.blend_graph().unwrap();
+            moc.blend_rotation_targets().unwrap();
+            moc.blend_glue_targets().unwrap();
             let deformers = moc.deformer_layouts().unwrap();
             assert_eq!(deformers.len(), counts.deformers as usize);
             assert_eq!(moc.secondary_meshes().unwrap().len(), meshes.len());
@@ -1578,6 +2418,22 @@ mod tests {
                 let weights = graph.weights(binding, &values).unwrap();
                 assert!(weights.iter().all(|item| item.weight.is_finite()));
                 assert!((weights.iter().map(|item| item.weight).sum::<f32>() - 1.0).abs() < 1e-4);
+            }
+            for binding in 0..blend_graph.bindings.len() {
+                let weights = blend_graph.weights(binding, &values).unwrap();
+                assert!(weights.iter().all(|item| item.weight.is_finite()));
+            }
+            for target in &blend_graph.art_meshes {
+                let compiled = moc.compile_blend_mesh(target, &blend_graph).unwrap();
+                let mut frame = moc
+                    .local_mesh_frame(target.target, &graph, &values)
+                    .unwrap();
+                compiled.apply(&mut frame, &blend_graph, &values).unwrap();
+                assert!(frame.positions.iter().flatten().all(|v| v.is_finite()));
+            }
+            for target in &blend_graph.warps {
+                let compiled = moc.compile_blend_warp(target, &blend_graph).unwrap();
+                assert_eq!(compiled.target, target.target);
             }
             for (mesh, layout) in meshes.iter().enumerate().take(8) {
                 let frame = moc.local_mesh_frame(mesh, &graph, &values).unwrap();

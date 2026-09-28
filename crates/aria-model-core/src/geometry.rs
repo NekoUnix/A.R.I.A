@@ -1,12 +1,12 @@
-//! Model-scoped normal-parameter geometry evaluation.
+//! Model-scoped geometry evaluation with normal and blend-shape parameters.
 //!
 //! Static binding and hierarchy metadata are decoded once. A frame computes
 //! each deformer once before transforming its child ArtMeshes, then applies
-//! glue constraints. Blend-shape targets are represented as `None` until their
-//! geometry is supported.
+//! glue constraints, including their blend-shape intensities.
 
 use crate::moc::{
-    BindingGraph, CompiledMesh, DeformerKind, DeformerLayout, GlueLayout, LocalDeformerFrame,
+    BindingGraph, BlendGraph, CompiledBlendMesh, CompiledBlendRotation, CompiledBlendScalar,
+    CompiledBlendWarp, CompiledMesh, DeformerKind, DeformerLayout, GlueLayout, LocalDeformerFrame,
     LocalMeshFrame, Moc, ParameterSpec,
 };
 use crate::rig::{Point, RotationTransform, WarpGrid};
@@ -36,29 +36,23 @@ pub struct GeometryEvaluator<'model, 'bytes> {
     moc: &'model Moc<'bytes>,
     parameters: Vec<ParameterSpec>,
     graph: BindingGraph,
+    blend_graph: BlendGraph,
     deformers: Vec<DeformerLayout>,
     secondary: Vec<bool>,
     meshes: Vec<Option<CompiledMesh>>,
+    blend_meshes: Vec<Vec<CompiledBlendMesh>>,
+    blend_warps: Vec<Vec<CompiledBlendWarp>>,
+    blend_rotations: Vec<Vec<CompiledBlendRotation>>,
+    blend_glues: Vec<Vec<CompiledBlendScalar>>,
     glues: Vec<GlueLayout>,
 }
 
 impl<'model, 'bytes> GeometryEvaluator<'model, 'bytes> {
     pub fn new(moc: &'model Moc<'bytes>) -> Result<Self> {
         let glues = moc.glue_layouts()?;
-        let mut secondary = moc.blend_shape_meshes()?;
-        for _ in 0..glues.len() {
-            let mut changed = false;
-            for glue in &glues {
-                if secondary[glue.left_mesh] || secondary[glue.right_mesh] {
-                    changed |= !secondary[glue.left_mesh] || !secondary[glue.right_mesh];
-                    secondary[glue.left_mesh] = true;
-                    secondary[glue.right_mesh] = true;
-                }
-            }
-            if !changed {
-                break;
-            }
-        }
+        let deformers = moc.deformer_layouts()?;
+        let blend_graph = moc.blend_graph()?;
+        let secondary = vec![false; moc.counts()?.art_meshes as usize];
         let mut decoded_bytes = 0_usize;
         let mut meshes = Vec::with_capacity(secondary.len());
         for (index, &unsupported) in secondary.iter().enumerate() {
@@ -76,13 +70,51 @@ impl<'model, 'bytes> GeometryEvaluator<'model, 'bytes> {
             let mesh = moc.compile_mesh(index)?;
             meshes.push(Some(mesh));
         }
+        let mut blend_meshes = vec![Vec::new(); secondary.len()];
+        for target in &blend_graph.art_meshes {
+            if secondary[target.target] {
+                continue;
+            }
+            decoded_bytes = decoded_bytes
+                .checked_add(moc.blend_mesh_position_bytes(target, &blend_graph)?)
+                .context("Decoded blend geometry size overflow")?;
+            ensure!(
+                decoded_bytes <= 512 * 1024 * 1024,
+                "Decoded model geometry exceeds the 512 MiB RAM budget"
+            );
+            blend_meshes[target.target].push(moc.compile_blend_mesh(target, &blend_graph)?);
+        }
+        let mut blend_warps = vec![Vec::new(); moc.counts()?.warp_deformers as usize];
+        for target in &blend_graph.warps {
+            decoded_bytes = decoded_bytes
+                .checked_add(moc.blend_warp_position_bytes(target, &blend_graph)?)
+                .context("Decoded blend geometry size overflow")?;
+            ensure!(
+                decoded_bytes <= 512 * 1024 * 1024,
+                "Decoded model geometry exceeds the 512 MiB RAM budget"
+            );
+            blend_warps[target.target].push(moc.compile_blend_warp(target, &blend_graph)?);
+        }
+        let mut blend_rotations = vec![Vec::new(); moc.counts()?.rotation_deformers as usize];
+        for target in &blend_graph.rotations {
+            blend_rotations[target.target].push(moc.compile_blend_rotation(target, &blend_graph)?);
+        }
+        let mut blend_glues = vec![Vec::new(); glues.len()];
+        for target in &blend_graph.glues {
+            blend_glues[target.target].push(moc.compile_blend_glue(target, &blend_graph)?);
+        }
         Ok(Self {
             moc,
             parameters: moc.parameters()?,
             graph: moc.binding_graph()?,
-            deformers: moc.deformer_layouts()?,
+            blend_graph,
+            deformers,
             secondary,
             meshes,
+            blend_meshes,
+            blend_warps,
+            blend_rotations,
+            blend_glues,
             glues,
         })
     }
@@ -94,8 +126,8 @@ impl<'model, 'bytes> GeometryEvaluator<'model, 'bytes> {
             .count()
     }
 
-    /// Return one slot per ArtMesh. `None` means secondary geometry must be
-    /// evaluated first; callers must never render that incomplete mesh.
+    /// Return one slot per ArtMesh. `None` means its deformer chain is disabled;
+    /// callers must never render that inactive mesh.
     pub fn frame(&self, values: &[f32]) -> Result<Vec<Option<LocalMeshFrame>>> {
         ensure!(
             values.len() == self.parameters.len(),
@@ -128,9 +160,18 @@ impl<'model, 'bytes> GeometryEvaluator<'model, 'bytes> {
                 states.push(None);
                 continue;
             }
-            let local = self
+            let mut local = self
                 .moc
                 .local_deformer_frame_weighted(node, &weights[node.binding])?;
+            if matches!(node.kind, DeformerKind::Warp { .. }) {
+                for blend in &self.blend_warps[node.local_index] {
+                    blend.apply(&mut local, &self.blend_graph, &values)?;
+                }
+            } else {
+                for blend in &self.blend_rotations[node.local_index] {
+                    blend.apply(&mut local, &self.blend_graph, &values)?;
+                }
+            }
             let state = match (&node.kind, local) {
                 (
                     DeformerKind::Warp {
@@ -230,6 +271,9 @@ impl<'model, 'bytes> GeometryEvaluator<'model, 'bytes> {
                 .as_ref()
                 .context("Supported mesh has no decoded keyforms")?;
             let mut frame = mesh.frame(&weights[mesh.binding])?;
+            for blend in &self.blend_meshes[index] {
+                blend.apply(&mut frame, &self.blend_graph, &values)?;
+            }
             if let Some(parent) = frame.parent_deformer {
                 let Some(state) = states
                     .get(parent)
@@ -249,11 +293,14 @@ impl<'model, 'bytes> GeometryEvaluator<'model, 'bytes> {
             }
             frames.push(Some(frame));
         }
-        for glue in &self.glues {
+        for (glue_index, glue) in self.glues.iter().enumerate() {
             if self.secondary[glue.left_mesh] || self.secondary[glue.right_mesh] {
                 continue;
             }
-            let intensity = glue.intensity(&weights[glue.binding])?;
+            let mut intensity = glue.intensity(&weights[glue.binding])?;
+            for blend in &self.blend_glues[glue_index] {
+                intensity = blend.apply(intensity, &self.blend_graph, &values)?;
+            }
             let (low, high) = if glue.left_mesh < glue.right_mesh {
                 (glue.left_mesh, glue.right_mesh)
             } else {

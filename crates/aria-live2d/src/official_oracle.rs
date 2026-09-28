@@ -158,12 +158,27 @@ mod tests {
             let mut worst = 0.0_f32;
             let mut rust_worst = 0.0_f32;
             let mut rust_mesh_frames = 0_usize;
-            for frame in 0..5 {
-                for (i, p) in params.iter().enumerate() {
-                    let t = ((frame * 13 + i * 7) % 17) as f32 / 16.0;
-                    let value = p.min + (p.max - p.min) * t;
-                    param_values.add(i).write(value);
-                    current.set_parameter(&p.id, value);
+            let mut rust_mismatches = 0_usize;
+            for frame in 0..7 {
+                if frame < 5 {
+                    for (i, p) in params.iter().enumerate() {
+                        let t = ((frame * 13 + i * 7) % 17) as f32 / 16.0;
+                        let value = p.min + (p.max - p.min) * t;
+                        param_values.add(i).write(value);
+                        current.set_parameter(&p.id, value);
+                    }
+                } else {
+                    for (i, spec) in rust.parameters().unwrap().iter().enumerate() {
+                        if spec.kind == aria_model_core::moc::ParameterKind::BlendShape {
+                            let value = if frame == 5 {
+                                spec.maximum
+                            } else {
+                                spec.minimum
+                            };
+                            param_values.add(i).write(value);
+                            current.set_parameter(&spec.id, value);
+                        }
+                    }
                 }
                 reset(model);
                 update(model);
@@ -187,20 +202,29 @@ mod tests {
                             .max((official.y - aria[1]).abs());
                     }
                     if drawable.visible
-                        && let Some(frame) = &rust_frames[i]
+                        && let Some(rust_frame) = &rust_frames[i]
                     {
                         rust_mesh_frames += 1;
-                        for (official, aria) in source.iter().zip(&frame.positions) {
+                        let mut mesh_difference = 0.0_f32;
+                        for (official, aria) in source.iter().zip(&rust_frame.positions) {
                             let y = if reverse_y { aria[1] } else { -aria[1] };
-                            rust_worst = rust_worst
+                            mesh_difference = mesh_difference
                                 .max((official.x - aria[0]).abs())
                                 .max((official.y - y).abs());
+                        }
+                        rust_worst = rust_worst.max(mesh_difference);
+                        if mesh_difference > 0.001 {
+                            rust_mismatches += 1;
+                            eprintln!(
+                                "Rust mismatch frame {frame} mesh {i} {}: {mesh_difference}",
+                                drawable.id
+                            );
                         }
                     }
                 }
             }
             println!(
-                "official ABI {abi:#x}, current delta {worst}, Rust delta {rust_worst} across {rust_mesh_frames} supported visible mesh frames"
+                "official ABI {abi:#x}, current delta {worst}, Rust delta {rust_worst} across {rust_mesh_frames} supported visible mesh frames ({rust_mismatches} mismatched)"
             );
             assert!(
                 worst <= 0.001,
@@ -212,7 +236,7 @@ mod tests {
             );
             assert!(
                 rust_worst <= 0.001,
-                "Rust normal geometry diverges from official Cubism"
+                "Rust geometry diverges from official Cubism"
             );
         }
     }

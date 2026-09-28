@@ -791,6 +791,75 @@ mod tests {
         assert_eq!(mismatched, 0, "Mixed deformer geometry differs");
     }
     #[test]
+    #[ignore = "requires ARIA_TEST_MOC with ArtMesh blend shapes; compares nondefault blend parameters"]
+    fn rust_artmesh_blend_shapes_match_current_runtime() {
+        let path = std::env::var_os("ARIA_TEST_MOC").expect("ARIA_TEST_MOC");
+        let bytes = std::fs::read(path).unwrap();
+        let rust = aria_model_core::moc::Moc::parse(&bytes).unwrap();
+        let evaluator = aria_model_core::geometry::GeometryEvaluator::new(&rust).unwrap();
+        let graph = rust.blend_graph().unwrap();
+        let specs = rust.parameters().unwrap();
+        let mut current = CubismModel::load(Path::new(""), &bytes, 32).unwrap();
+        let reverse_y = rust.canvas().unwrap().reverse_y;
+        let mut tested = 0_usize;
+        let mut mismatched = 0_usize;
+        let mut largest = 0.0_f32;
+        for use_maximum in [true, false] {
+            for spec in &specs {
+                if spec.kind == aria_model_core::moc::ParameterKind::BlendShape {
+                    current.set_parameter(
+                        &spec.id,
+                        if use_maximum {
+                            spec.maximum
+                        } else {
+                            spec.minimum
+                        },
+                    );
+                }
+            }
+            current.update().unwrap();
+            let values = current
+                .parameters()
+                .iter()
+                .map(|parameter| parameter.value)
+                .collect::<Vec<_>>();
+            let frames = evaluator.frame(&values).unwrap();
+            for target in &graph.art_meshes {
+                let index = target.target;
+                let drawable = &current.drawables[index];
+                let Some(frame) = &frames[index] else {
+                    continue;
+                };
+                if !drawable.visible {
+                    continue;
+                }
+                tested += 1;
+                let mut difference = 0.0_f32;
+                for (actual, reference) in frame.positions.iter().zip(&drawable.positions) {
+                    let y = if reverse_y { actual[1] } else { -actual[1] };
+                    difference = difference.max((actual[0] - reference[0]).abs());
+                    difference = difference.max((y - reference[1]).abs());
+                }
+                if difference >= 0.0001 {
+                    println!(
+                        "blend mismatch {} max={use_maximum}: {difference:.7}",
+                        drawable.id
+                    );
+                    mismatched += 1;
+                }
+                largest = largest.max(difference);
+            }
+        }
+        println!(
+            "Rust ArtMesh blend parity: {tested} frames, {mismatched} mismatched, max delta {largest}"
+        );
+        assert!(
+            tested > 0,
+            "No supported visible ArtMesh blend-shape targets"
+        );
+        assert_eq!(mismatched, 0, "ArtMesh blend-shape vertices differ");
+    }
+    #[test]
     #[ignore = "requires ARIA_TEST_MOC; reports nested-warp parity on locally installed models"]
     fn rust_warp_chain_positions_report_parity() {
         let path = std::env::var_os("ARIA_TEST_MOC").expect("ARIA_TEST_MOC");
