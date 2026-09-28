@@ -7,6 +7,12 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## GPU morph and Rust model-core checks — 2026-09-28 (unreleased)
 
+- The resident GPU evaluator now resolves warp-only hierarchy branches after
+  normal keys and blend deltas. Native DX12 parity passed at three poses on
+  the large outfit (276,025 hierarchy points), OILBUN (112,068) and Ditto
+  (2,309). The test compared 275,742, 105,303 and 702 eligible mesh vertices,
+  respectively, with full Rust geometry across those poses. Mixed rotation
+  branches and glue remain outside this GPU path.
 - The resident normal-key evaluator now chains a resident blend-shape delta
   pass on the same GPU output buffer. Native DX12 comparisons against compiled
   Rust mesh and warp frames passed at three poses on the large 90s outfit

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add a resident GPU warp-chain pass after keyframe and blend-shape evaluation. Rust precomputes immutable work by hierarchy depth, and the GPU resolves child warp control points before transforming mesh vertices without an intermediate readback. Native parity passed on three private MOC3 models, including 276,025 hierarchy points on the large outfit and direct comparison with full Rust geometry for eligible meshes. Mixed rotation branches, glue and final render hookup remain.
+
 - Add a second resident GPU geometry pass for MOC3 blend-shape position deltas. Rust builds a fixed per-point schedule at load time, retains all delta positions on the GPU, and uploads only active blend weights/counts per pose. The combined normal-key and delta passes match the Rust decoder across three poses on the large outfit, OILBUN and Ditto. Hierarchical deformers, glue, final bounds and active renderer connection still remain.
 
 - Replace the pose-specific GPU keyframe test packing with a reusable Rust load-time plan and desktop compute evaluator. Mesh positions lead the output buffer for direct vertex binding; resident key positions and per-vertex work remain fixed while only active offsets, weights and counts upload per pose. Three-pose DX12 parity passed on the large outfit, OILBUN and Ditto. The large outfit uses 24.03 MiB static keys, 15.94 MiB static work and about 41 KiB changing data per pose. Production blend shapes, hierarchy, glue and renderer hookup remain unfinished.

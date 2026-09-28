@@ -245,8 +245,19 @@ the GPU keeps delta points and updates only selected weights/counts. Combined
 normal-key and blend-delta parity passed on all three models across three
 poses, including 458,945 affected points on the large outfit. That model uses
 11.27 MiB resident deltas and 11.12 KiB changing blend keys/counts per pose.
-Hierarchical deformer transforms, glue, metadata and bounds must still be composed before
-the renderer can use the buffer for a real avatar frame.
+The remaining hierarchy transforms, glue, metadata and bounds must still be
+composed before the renderer can use the buffer for a real avatar frame.
+
+A third resident pass now resolves warp-only hierarchy branches in depth
+order. Static grid descriptors and per-point work stay on the GPU; child warp
+control points are transformed before their descendant meshes. It uses the
+same output buffer as normal keys and blend deltas, without an intermediate
+readback. Native DX12 parity passed at three poses on the large outfit
+(276,025 hierarchy points, 118 supported warps and 480 meshes), OILBUN
+(112,068 points) and Ditto (2,309 points). Eligible, non-glued mesh vertices
+also matched the full Rust geometry evaluator. Rotation-containing branches
+still need the GPU rotation stage, and glue, visibility, bounds and rendering
+integration are pending.
 
 A test-only WGPU compute primitive now samples multiple warp grids in a single
 dispatch. It implements the Rust evaluator's affine shortcut, bent-grid quad

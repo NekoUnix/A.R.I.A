@@ -29,6 +29,7 @@ mod gpu_key_plan;
 pub mod gpu_position_evaluator;
 #[cfg(test)]
 mod gpu_warp;
+pub mod gpu_warp_hierarchy;
 mod help;
 mod hotkeys;
 mod image_actions;

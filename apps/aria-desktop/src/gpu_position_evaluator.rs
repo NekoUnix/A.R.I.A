@@ -6,6 +6,7 @@
 use anyhow::{Result, ensure};
 use aria_model_core::gpu_blend_plan::GpuBlendDeltaPlan;
 use aria_model_core::gpu_key_plan::{ActiveFrame, GpuPositionKeyPlan};
+use aria_model_core::gpu_warp_plan::GpuWarpHierarchyPlan;
 use wgpu::util::DeviceExt;
 
 pub struct GpuPositionEvaluator {
@@ -19,6 +20,7 @@ pub struct GpuPositionEvaluator {
     bind: wgpu::BindGroup,
     pipeline: wgpu::ComputePipeline,
     blend: Option<ResidentBlendStage>,
+    warp: Option<crate::gpu_warp_hierarchy::GpuWarpHierarchyStage>,
 }
 
 struct ResidentBlendStage {
@@ -153,6 +155,7 @@ impl GpuPositionEvaluator {
             bind,
             pipeline,
             blend: None,
+            warp: None,
         })
     }
 
@@ -280,6 +283,18 @@ impl GpuPositionEvaluator {
         Ok(self)
     }
 
+    /// Resolve warp-only hierarchy branches after normal keys and blend deltas.
+    /// Mixed rotation branches remain for the following GPU transform stage.
+    pub fn with_warp_hierarchy(
+        mut self,
+        device: &wgpu::Device,
+        plan: GpuWarpHierarchyPlan,
+    ) -> Result<Self> {
+        self.warp =
+            crate::gpu_warp_hierarchy::GpuWarpHierarchyStage::new(device, &self.output, plan)?;
+        Ok(self)
+    }
+
     pub fn encode(
         &mut self,
         queue: &wgpu::Queue,
@@ -318,6 +333,9 @@ impl GpuPositionEvaluator {
             pass.set_pipeline(&blend.pipeline);
             pass.set_bind_group(0, &blend.bind, &[]);
             pass.dispatch_workgroups(blend.plan.work.len().div_ceil(64) as u32, 1, 1);
+        }
+        if let Some(warp) = &self.warp {
+            warp.encode(encoder);
         }
         Ok(())
     }

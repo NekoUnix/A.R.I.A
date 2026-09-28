@@ -173,6 +173,12 @@ uploaded per pose (11.12 KiB on the large outfit, with 11.27 MiB resident
 deltas). Whole-frame GPU timing and active Studio FPS have not been
 measured because later deformation stages and metadata are still on the CPU path.
 
+The resident path now also transforms warp-only hierarchy branches in GPU
+storage, using fixed depth-ordered work and no intermediate readback. It
+covered 276,025 control/mesh points on the large outfit. Rotation branches,
+glue, metadata and renderer connection are still required before live FPS
+can benefit from this path.
+
 The developing Rust `aria-model-core` now retains MOC3 source bytes and all
 declared encoded atlas files in system RAM. The current desktop renderer reads
 these resident bytes, but still uploads every atlas to the GPU. RAM residency
