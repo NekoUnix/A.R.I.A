@@ -9,6 +9,7 @@ use aria_core::{
 use aria_live2d::CubismModel;
 use aria_live2d::host::HostedModel;
 use aria_model::ModelFiles;
+use aria_model_core::resident::ResidentModel;
 use eframe::egui_wgpu::RenderState;
 use std::{
     collections::BTreeMap,
@@ -21,6 +22,7 @@ pub struct Avatar {
     pub name: String,
     pub model_key: String,
     pub files: ModelFiles,
+    _resident: ResidentModel,
     pub model: HostedModel,
     pub initial_config: RigConfig,
     pub labels: BTreeMap<String, String>,
@@ -34,13 +36,18 @@ pub struct Avatar {
 }
 impl Avatar {
     pub fn load(state: &RenderState, core: &Path, mut files: ModelFiles) -> Result<Self> {
-        let bytes = aria_model::read_bounded(&files.moc, aria_core::asset_limits::MOC_FILE)?;
-        let model_key = movement::model_key(&bytes);
-        drop(bytes);
+        let resident = ResidentModel::load(&files.moc, &files.textures)
+            .context("Cannot load model sources into RAM")?;
+        let model_key = movement::model_key(resident.moc());
         let model = HostedModel::load(core, &files.moc, files.textures.len())
             .context("Cannot load Live2D avatar")?;
-        let mut renderer =
-            ModelRenderer::new(state, model.canvas, &model.drawables, &files.textures)?;
+        let mut renderer = ModelRenderer::new_resident(
+            state,
+            model.canvas,
+            &model.drawables,
+            &resident,
+            &files.textures,
+        )?;
         files.warnings.extend(renderer.import_notes.clone());
         renderer.render(model.canvas, &model.drawables)?;
         let mut initial_config = RigConfig::from_parameters(model.parameters());
@@ -107,6 +114,7 @@ impl Avatar {
             name,
             model_key,
             files,
+            _resident: resident,
             model,
             initial_config,
             labels: display.labels,

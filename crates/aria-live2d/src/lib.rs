@@ -2,6 +2,8 @@
 //! The MIT runtime is compiled in; no proprietary SDK or external library is loaded.
 mod ffi;
 pub mod host;
+#[cfg(test)]
+mod official_oracle;
 use anyhow::{Context, Result, ensure};
 use ffi::{Aligned, Api, V2, array, count};
 use std::{collections::BTreeMap, ffi::CStr, marker::PhantomData, path::Path, rc::Rc};
@@ -478,6 +480,66 @@ mod tests {
             "purism deformation only: {:.2} ms/frame",
             started.elapsed().as_secs_f64() * 1000. / 120.
         );
+    }
+    #[test]
+    #[ignore = "requires ARIA_TEST_MOC; compares local model output during runtime changes"]
+    fn real_core_frame_fingerprint() {
+        let path = std::env::var_os("ARIA_TEST_MOC").expect("ARIA_TEST_MOC");
+        let bytes = std::fs::read(path).unwrap();
+        let mut model = CubismModel::load(Path::new(""), &bytes, 32).unwrap();
+        let params: Vec<_> = model.parameters().iter().take(16).cloned().collect();
+        for frame in 0..5 {
+            for (i, p) in params.iter().enumerate() {
+                let t = ((frame * 13 + i * 7) % 17) as f32 / 16.0;
+                model.set_parameter(&p.id, p.min + (p.max - p.min) * t);
+            }
+            model.update().unwrap();
+            let mut hash = 0xcbf29ce484222325_u64;
+            for d in &model.drawables {
+                for position in &d.positions {
+                    for value in position {
+                        hash = (hash ^ u64::from(value.to_bits())).wrapping_mul(0x100000001b3);
+                    }
+                }
+                hash = (hash ^ u64::from(d.opacity.to_bits())).wrapping_mul(0x100000001b3);
+            }
+            println!("frame {frame}: {hash:016x}");
+        }
+    }
+
+    #[test]
+    #[ignore = "requires ARIA_TEST_MOC; compares independent Rust decoding with the current runtime"]
+    fn rust_mesh_topology_matches_current_runtime() {
+        let path = std::env::var_os("ARIA_TEST_MOC").expect("ARIA_TEST_MOC");
+        let bytes = std::fs::read(path).unwrap();
+        let rust = aria_model_core::moc::Moc::parse(&bytes).unwrap();
+        let layouts = rust.mesh_layouts().unwrap();
+        let parameters = rust.parameters().unwrap();
+        let current = CubismModel::load(Path::new(""), &bytes, 32).unwrap();
+        assert_eq!(parameters.len(), current.parameters().len());
+        for (spec, parameter) in parameters.iter().zip(current.parameters()) {
+            assert_eq!(spec.id, parameter.id);
+            assert_eq!(spec.minimum, parameter.min);
+            assert_eq!(spec.maximum, parameter.max);
+            assert_eq!(spec.default, parameter.default);
+        }
+        assert_eq!(layouts.len(), current.drawables.len());
+        for (layout, drawable) in layouts.iter().zip(&current.drawables) {
+            assert_eq!(layout.id, drawable.id);
+            assert_eq!(usize::from(layout.texture), drawable.texture);
+            assert_eq!(layout.uvs, drawable.uvs, "UV mismatch: {}", layout.id);
+            assert_eq!(
+                layout.triangles, drawable.indices,
+                "index mismatch: {}",
+                layout.id
+            );
+            assert_eq!(
+                layout.masks.iter().map(|&m| m as usize).collect::<Vec<_>>(),
+                drawable.masks,
+                "mask mismatch: {}",
+                layout.id
+            );
+        }
     }
     /// Opt-in integration test, using locally supplied licensed assets. No fixture is redistributed.
     #[test]

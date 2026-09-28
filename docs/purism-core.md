@@ -6,6 +6,11 @@ The C implementation is statically linked. There is no proprietary Core download
 dynamic Core loader, SDK discovery or fallback. Existing Core paths are ignored.
 The native worker protocol is version 4; keep the application and worker together.
 
+An [independent Rust ARIA Model Core](aria-model-core.md) is under development.
+It is not yet the production evaluator. The Purism attribution and release
+notice remain required until the worker has been switched and the derived C
+runtime removed from shipped builds.
+
 ## Source and notices
 
 - Revision: `1069334965522df5d0b791e97f01e26b19c45456` (Purism Core 1.1.0).

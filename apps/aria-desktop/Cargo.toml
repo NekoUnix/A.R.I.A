@@ -16,6 +16,7 @@ screenshots = []
 aria-core.workspace = true
 aria-tracking.workspace = true
 aria-model.workspace = true
+aria-model-core.workspace = true
 aria-live2d.workspace = true
 bytemuck = { version = "1", features = ["derive"] }
 

@@ -200,6 +200,7 @@ dependencies = [
  "aria-core",
  "aria-live2d",
  "aria-model",
+ "aria-model-core",
  "aria-tracking",
  "base64 0.23.1",
  "bytemuck",
@@ -234,7 +235,9 @@ version = "0.37.0-alpha.1"
 dependencies = [
  "anyhow",
  "aria-core",
+ "aria-model-core",
  "cc",
+ "libloading",
  "postcard",
  "serde",
  "tempfile",
@@ -249,6 +252,13 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "aria-model-core"
+version = "0.37.0-alpha.1"
+dependencies = [
+ "anyhow",
 ]
 
 [[package]]

@@ -84,6 +84,12 @@ the native GPU clipping/blending test passed. The large model did not approach
 
 ## Core and licensing
 
+The developing Rust `aria-model-core` now retains MOC3 source bytes and all
+declared encoded atlas files in system RAM. The current desktop renderer reads
+these resident bytes, but still uploads every atlas to the GPU. RAM residency
+alone does not lower VRAM or remove the measured Live2D mask-pass cost; GPU
+atlas residency and frame-time changes need separate measurement.
+
 ARIA builds the MIT-licensed Purism Core source pinned under
 `crates/aria-live2d/vendor/purism-core`. Its generated bundle remains upstream
 unchanged. Performance work should be measured against that open source and

@@ -2,9 +2,12 @@
 use anyhow::{Context, Result, ensure};
 use aria_core::asset_limits as limits;
 use aria_live2d::{Blend, Canvas, Drawable};
+use aria_model_core::resident::ResidentModel;
 use bytemuck::{Pod, Zeroable};
 use eframe::{egui, egui_wgpu::RenderState};
-use std::{fs::File, io::BufReader, num::NonZeroU64, ops::Range, path::PathBuf, time::Instant};
+#[cfg(test)]
+use std::{fs::File, io::Read};
+use std::{io::Cursor, num::NonZeroU64, ops::Range, path::PathBuf, time::Instant};
 use wgpu::util::DeviceExt;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
@@ -297,11 +300,58 @@ impl ModelRenderer {
         buffer.unmap();
         Ok((rgba, [size.width, size.height]))
     }
+    #[cfg(test)]
     pub fn new(
         state: &RenderState,
         canvas: Canvas,
         drawables: &[Drawable],
         paths: &[PathBuf],
+    ) -> Result<Self> {
+        let mut sources = Vec::with_capacity(paths.len());
+        for path in paths {
+            let mut file = File::open(path)
+                .with_context(|| format!("Cannot open texture {}", path.display()))?;
+            ensure!(
+                file.metadata()?.len() <= limits::ATLAS_FILE,
+                "Texture file exceeds 1280 MiB"
+            );
+            let mut bytes = Vec::new();
+            file.by_ref()
+                .take(limits::ATLAS_FILE + 1)
+                .read_to_end(&mut bytes)?;
+            ensure!(
+                bytes.len() as u64 <= limits::ATLAS_FILE,
+                "Texture file exceeds 1280 MiB"
+            );
+            sources.push(bytes);
+        }
+        let views = sources.iter().map(Vec::as_slice).collect::<Vec<_>>();
+        Self::new_with_sources(state, canvas, drawables, paths, &views)
+    }
+
+    pub fn new_resident(
+        state: &RenderState,
+        canvas: Canvas,
+        drawables: &[Drawable],
+        resident: &ResidentModel,
+        paths: &[PathBuf],
+    ) -> Result<Self> {
+        ensure!(
+            resident.atlas_count() == paths.len(),
+            "Atlas source count changed"
+        );
+        let sources = (0..paths.len())
+            .map(|i| resident.atlas(i).unwrap_or_default())
+            .collect::<Vec<_>>();
+        Self::new_with_sources(state, canvas, drawables, paths, &sources)
+    }
+
+    fn new_with_sources(
+        state: &RenderState,
+        canvas: Canvas,
+        drawables: &[Drawable],
+        paths: &[PathBuf],
+        sources: &[&[u8]],
     ) -> Result<Self> {
         let device = &state.device;
         let queue = &state.queue;
@@ -352,21 +402,22 @@ impl ModelRenderer {
         let mut atlases = Vec::new();
         let mut total_bytes = 0_u64;
         let mut import_notes = Vec::new();
-        for path in paths {
-            let file = File::open(path)
-                .with_context(|| format!("Cannot open texture {}", path.display()))?;
+        for (path, source_bytes) in paths.iter().zip(sources) {
             ensure!(
-                file.metadata()?.len() <= limits::ATLAS_FILE,
+                source_bytes.len() as u64 <= limits::ATLAS_FILE,
                 "Texture file exceeds 1280 MiB"
             );
-            let mut reader = image::ImageReader::new(BufReader::new(file)).with_guessed_format()?;
+            let mut reader =
+                image::ImageReader::new(Cursor::new(source_bytes)).with_guessed_format()?;
             let mut limits = image::Limits::default();
             let maximum = device.limits().max_texture_dimension_2d;
             limits.max_image_width = Some(limits::ATLAS_SIDE);
             limits.max_image_height = Some(limits::ATLAS_SIDE);
             limits.max_alloc = Some(limits::ATLAS_DECODED);
             reader.limits(limits);
-            let source = image::image_dimensions(path)?;
+            let source = image::ImageReader::new(Cursor::new(source_bytes))
+                .with_guessed_format()?
+                .into_dimensions()?;
             ensure!(
                 u64::from(source.0) * u64::from(source.1) * 4 <= limits::ATLAS_DECODED,
                 "Texture exceeds 5120 MiB decoded"
