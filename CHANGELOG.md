@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Prototype a batched DX12 compute warp sampler for the independent Rust MOC3 core. It matches ARIA's affine, bent, quad, triangular and exterior sampling on generated grids and decoded control grids from three supplied models. A two-level child/grandchild dispatch resolves parent control points in GPU storage without intermediate CPU readback. This is a tested primitive, not yet the active Live2D renderer; keyform blending, rotation parents, glue and final mesh output still need GPU integration.
+
 - Let VRM/GLB meshes run up to 32 simultaneous expression morphs in the GPU vertex shader when the shared 64 MiB budget and device limits permit, instead of falling back after eight. Handle valid position-only morphs by supplying zero normal deltas. Generated DX12 twelve-morph and local NekoUnity2 render checks pass. A model survey found that simple unparented-mesh GPU interpolation would cover none of the large 90s outfit's 225,448 vertices, so Live2D needs a hierarchical GPU evaluator.
 
 - Reuse unchanged Rust MOC3 deformer states across frames with explicit normal-key and blend-shape parameter dependencies, propagating changes through parent deformers. This reduces large-model CPU evaluation for narrow parameter updates while preserving official-Core output across all 28 supplied exports. A broad 32-axis animation remains slower than the transitional runtime; GPU MOC3 deformation is still pending.

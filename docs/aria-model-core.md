@@ -173,6 +173,17 @@ replacement must evaluate normal and blend keyforms, parent warp/rotation
 chains, mesh deformation and glue without a synchronous full-frame GPU readback;
 the current renderer-facing CPU geometry contract still needs to be evolved.
 
+A test-only WGPU compute primitive now samples multiple warp grids in a single
+dispatch. It implements the Rust evaluator's affine shortcut, bent-grid quad
+or triangular cells and exterior continuation. Native DX12 comparisons passed
+for generated grids and default-pose control grids decoded from the large 90s
+outfit, OILBUN and Ditto. A separate two-depth test writes child control points
+to GPU storage, then samples that GPU-produced child grid for its grandchild in
+the next dispatch without an intermediate readback. The live renderer does not
+use this shader yet. GPU keyform/blend evaluation, rotation chains, glue,
+visibility/order and mesh output must be integrated and checked end to end
+before the CPU geometry path can be removed.
+
 Optimized 120-frame worker tests measured OILBUN at about 2.58 ms/frame with
 the current runtime and 4.09 ms/frame with Rust. The large 90s outfit measured
 about 10.20 ms/frame current and 18.38 ms/frame Rust. These figures include

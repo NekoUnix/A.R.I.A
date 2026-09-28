@@ -7,6 +7,14 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## GPU morph and Rust model-core checks — 2026-09-28 (unreleased)
 
+- A test-only DX12 compute warp sampler matched Rust across affine and bent
+  generated grids, quad/triangle interpolation, interior/exterior coordinates,
+  and interleaved samples from four grids in one dispatch. It also matched
+  three affine and three bent default-pose grids each from the large 90s outfit,
+  OILBUN and Ditto at 96 sample positions per grid. An in-place two-depth test
+  resolved child and grandchild control grids in successive compute passes with
+  no intermediate CPU readback. The live Live2D renderer does not use this
+  shader yet; no FPS improvement is claimed.
 - A generated DX12 VRM fixture with 12 simultaneously active morph targets
   stayed on the GPU and rendered within 1% of the CPU fallback image channels.
   The GPU path now accepts position-only morphs, treating absent normal deltas

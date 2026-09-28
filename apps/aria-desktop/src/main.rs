@@ -22,6 +22,8 @@ mod effects;
 mod effects_panel;
 mod event_rules;
 mod expressions_panel;
+#[cfg(test)]
+mod gpu_warp;
 mod help;
 mod hotkeys;
 mod image_actions;

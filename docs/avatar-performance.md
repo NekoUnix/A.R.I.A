@@ -85,6 +85,13 @@ profiling itself adds overhead; the uninstrumented totals above are the
 performance comparison. This change reduces CPU work but does not execute MOC3
 deformation on the GPU. A matching desktop FPS check is recorded separately.
 
+The experimental GPU warp kernel is a correctness and scheduling prototype,
+not a desktop FPS change. It batches independent grids in one compute dispatch
+and resolves a child then grandchild grid in successive GPU passes without
+reading the parent back to the CPU. The current Studio path still computes
+deformer keyforms, hierarchy, meshes and glue on the CPU and uploads final
+vertices, so the measured Live2D frame rates above remain the baseline.
+
 In matched 20-second hidden Studio physics smokes on the same optimized
 executable, the cached direct Rust path settled near 42.3 FPS by the last six
 sampled intervals, versus 53.9 FPS for the default runtime. The Rust sample's
