@@ -1154,11 +1154,11 @@ Click Graphs in the bottom bar to open a scrollable view with a large Overview a
 
 ### CPU and memory
 
-CPU and RAM include the desktop plus directly owned Cubism model/attachment/effect workers and camera/setup workers. Other programs and descendants launched by those workers are not discovered. CPU is normalized across available logical processors; one busy thread may show a small percentage. RAM sums resident working sets, so shared pages can be counted twice. Private commit includes memory committed but not necessarily resident. The expanded view includes desktop-only values, the number of readable processes, private commit, available/total system RAM and open handles. N/A means unavailable, an unreadable worker or a rate awaiting its second sample; it never means zero. OS process/system counters currently use Windows APIs; unsupported platforms show N/A while the cross-platform frame and tracking graphs remain usable.
+CPU and RAM include the desktop plus directly owned attachment/effect workers and camera/setup workers. Other programs and descendants launched by those workers are not discovered. CPU is normalized across available logical processors; one busy thread may show a small percentage. RAM sums resident working sets, so shared pages can be counted twice. Private commit includes memory committed but not necessarily resident. The expanded view includes desktop-only values, the number of readable processes, private commit, available/total system RAM and open handles. N/A means unavailable, an unreadable worker or a rate awaiting its second sample; it never means zero. OS process/system counters currently use Windows APIs; unsupported platforms show N/A while the cross-platform frame and tracking graphs remain usable.
 
 ### GPU and process I/O
 
-VRAM is ARIA's local GPU memory allocation on its exact rendering adapter, using DXGI on Windows. The expanded view adds budget and shared/non-local memory. These include driver allocations and are not GPU utilization or other applications' usage. Integrated GPUs can use system memory. Process I/O counts bytes read/written by the desktop and directly owned workers, including files, network and IPC pipes; it is not disk throughput. Cubism worker traffic can make it large even with no disk activity.
+VRAM is ARIA's local GPU memory allocation on its exact rendering adapter, using DXGI on Windows. The expanded view adds budget and shared/non-local memory. These include driver allocations and are not GPU utilization or other applications' usage. Integrated GPUs can use system memory. Process I/O counts bytes read/written by the desktop and directly owned workers, including files, network and IPC pipes; it is not disk throughput.
 
 ### Frame and tracking timing
 

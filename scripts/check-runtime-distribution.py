@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def prohibited(path):
     name = path.name.lower()
-    return ("live2dcubismcore" in name or "purism" in name
+    return ("live2dcubismcore" in name or any("purism" in part.lower() for part in path.parts)
             or path.suffix.lower() in {".moc", ".moc3", ".cmo3"}
             or name.endswith((".model3.json", ".physics3.json", ".motion3.json", ".exp3.json")))
 

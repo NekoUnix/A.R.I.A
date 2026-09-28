@@ -357,9 +357,9 @@ Imported masks are retained when hiding visible artwork.
 ## Avatar layer and motion state
 
 `aria-core::layers::Config` stores ArtMesh opacity and named visibility groups in
-each `RigConfig`. Stable native drawable/parent-part IDs travel in Cubism worker
-protocol version 2's initial metadata; per-frame transport still carries only
-dynamic mesh state. The color pass applies opacity while the mask pass retains
+each `RigConfig`. Stable drawable and parent-part IDs are decoded once by the
+Rust evaluator; per-frame evaluation updates dynamic mesh state. The color pass
+applies opacity while the mask pass retains
 authored coverage. Layer-only changes invalidate rendering even on frozen poses.
 
 `SavedRig::layer_hotkeys` joins the shared action registry and conflict validation.

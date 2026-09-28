@@ -478,6 +478,7 @@ mod tests {
                 .update(&Inputs::new(), &mut config, &mut expressions, 1.0 / 60.0)
                 .unwrap()
         );
+        assert!(avatar.gpu.as_ref().unwrap().positions_ready);
         assert!(avatar.cpu_surface_current);
         let mut expected =
             HostedModel::load_resident(avatar._resident.moc(), avatar.files.textures.len())
@@ -697,6 +698,59 @@ mod tests {
                 original.size,
                 view.size
             );
+            if a.gpu.is_some()
+                && let Some((mesh, drawable)) =
+                    a.model.drawables.iter().enumerate().find(|(_, drawable)| {
+                        if !drawable.visible || drawable.indices.len() < 3 {
+                            return false;
+                        }
+                        let Some(a) = drawable.positions.get(drawable.indices[0] as usize) else {
+                            return false;
+                        };
+                        let Some(b) = drawable.positions.get(drawable.indices[1] as usize) else {
+                            return false;
+                        };
+                        (a[0] - b[0]).hypot(a[1] - b[1]) > 1e-5
+                    })
+            {
+                let pin = aria_core::items::Pin::Surface {
+                    mesh,
+                    vertices: [
+                        drawable.indices[0],
+                        drawable.indices[1],
+                        drawable.indices[2],
+                    ],
+                    weights: [0.2, 0.3, 0.5],
+                    angle: 0.0,
+                    length: 1.0,
+                };
+                let mut config = a.initial_config.clone();
+                config.items.push(aria_core::items::Item {
+                    pin: Some(pin.clone()),
+                    ..Default::default()
+                });
+                a.cpu_surface_current = false;
+                a.update(
+                    &Inputs::new(),
+                    &mut config,
+                    &mut crate::expressions_panel::ExpressionsPanel::default(),
+                    1.0 / 60.0,
+                )
+                .unwrap();
+                assert!(
+                    a.cpu_surface_current,
+                    "Surface geometry stale for {}",
+                    a.name
+                );
+                assert!(
+                    matches!(
+                        crate::items::anchor(Some(&pin), Some(&a)),
+                        crate::items::Anchor::Surface { .. }
+                    ),
+                    "Surface pin failed for {}",
+                    a.name
+                );
+            }
             if let Some(folder) = std::env::var_os("ARIA_TEST_RENDER_DIR") {
                 a.save_png(&Path::new(&folder).join(format!("friend-{index}.png")))
                     .unwrap();

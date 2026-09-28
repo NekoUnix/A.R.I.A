@@ -24,6 +24,13 @@ class DistributionTests(unittest.TestCase):
                 asset.write_bytes(b"fixture")
                 self.assertTrue(any("Prohibited" in error for error in audit.check(stage)))
 
+    def test_old_core_directory_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            asset = Path(directory) / "vendor" / "purism-core" / "README.md"
+            asset.parent.mkdir(parents=True)
+            asset.write_text("old core")
+            self.assertTrue(any("Prohibited" in error for error in audit.check(directory)))
+
 
 if __name__ == "__main__":
     unittest.main()
