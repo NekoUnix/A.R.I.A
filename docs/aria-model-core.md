@@ -44,6 +44,14 @@ this opt-in GPU path sampled 100.5–114.7 FPS (106.1 average), versus
 (53.9 average) for the default Purism worker. Each was a separate 20-second
 desktop run with demo input. This is a substantial measured gain, but not a
 steady 120 FPS result or a replacement gate for all supported models.
+The native GPU hierarchy and visible-bounds comparison also passed three
+poses on all 28 supplied local MOC3 file paths. One deeply nested warp export
+amplified float32 control-point rounding to 0.000275 model units at a mesh
+vertex; its fitted canvas differed by under 0.05 pixels from the CPU render.
+Two native CPU/GPU image comparisons of that export stayed within 0.25% of
+pixels differing by more than two color levels and 0.02% differing by more
+than sixteen. These are bounded local checks, not a complete Cubism
+conformance or device compatibility test.
 After compilation,
 frame evaluation no longer borrows or reads the encoded MOC3 bytes. It does
 not run C code, relocate pointers in model bytes, load an SDK, or include

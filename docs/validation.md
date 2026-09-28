@@ -1423,6 +1423,12 @@ flags for the current worker baseline. Keep the same model and capture setup.
 On the supplied large outfit, the 2026-09-28 local runs averaged 106.1, 44.5
 and 53.9 sampled FPS respectively. These smokes do not establish a steady
 120 FPS or full-model compatibility gate.
+The native GPU geometry and visible-bounds test passed three poses on all 28
+local MOC3 file paths. A deeply nested warp export had up to 0.000275 model
+units of float32 position difference; native CPU/GPU screenshots differed by
+at most 0.224% of pixels beyond two channel levels and 0.0185% beyond sixteen
+levels across its two tested poses. This covers the supplied exports, not all
+possible Cubism versions, flags, poses or graphics adapters.
 
 1. Physical iPhone running the user's VTube Studio version, permissions and Wi-Fi.
    Confirm valid packets, head directions, blinks, mouth, gaze, calibration and
