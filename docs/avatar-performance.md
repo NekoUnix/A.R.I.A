@@ -188,6 +188,12 @@ or resolving warp points on the CPU. Native comparisons confirmed identical
 visibility, opacity, color and order on the three local models. This path is
 ready to accompany GPU positions, but active Studio frame-time gains still
 depend on completing GPU framing and connecting the renderer.
+The resident position evaluator now applies the final canvas Y orientation on
+the GPU after glue, matching the renderer-facing Rust vertex array across
+three poses on each of those models. It keeps warp control points unchanged.
+This is a required handoff step, not an active Studio FPS improvement: visible
+bounds and view fitting still need to be supplied without synchronously reading
+the vertex buffer back to the CPU.
 An optimized 120-frame alternating-parameter microbenchmark on the large
 outfit measured 3.015 ms/frame for full direct Rust updates and 0.085
 ms/frame for metadata-only updates after warmup. These figures exclude GPU

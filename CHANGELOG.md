@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Finish the resident GPU MOC3 position buffer with the canvas Y orientation used by the Rust renderer. The pass runs after hierarchy and glue and touches only mesh vertices, leaving warp control points in source coordinates. Three-pose DX12 position parity still passes on the large outfit, OILBUN and Ditto. GPU visible bounds and live Studio connection remain before this can improve frame rate.
+
 - Add a metadata-only Rust MOC3 evaluation path for GPU-rendered avatars. It resolves mesh visibility, opacity, color and draw order—including inherited deformer and part state—without blending or transforming CPU vertices. The direct Rust hosted model preserves its existing vertex arrays while updating this render state. Three-pose parity with full Rust frames passed on the large outfit, OILBUN and Ditto. GPU framing and live renderer hookup remain.
 
 - Extend the resident GPU MOC3 evaluator through all warp/rotation parent combinations and source-ordered glue. Rust resolves compact local rotation frames and glue intensities per pose; GPU compute resolves the hierarchy by depth, applies mesh transforms and glue, and keeps final vertices resident. Native DX12 comparisons with full Rust geometry passed at three poses on the large outfit (676,344 active vertex-poses; 1,365 glue pairs), OILBUN (223,740; 2,298 pairs) and Ditto (1,980; no glue). Metadata, bounds, live renderer connection and whole-frame performance validation remain.

@@ -59,6 +59,7 @@ fn local_moc3_full_gpu_hierarchy_matches_rust_meshes() {
     let nodes = (hierarchy.warp_count, hierarchy.rotation_count);
     let levels = hierarchy.levels.len();
     let glue_stats = (glue.glue_count(), glue.pair_count, glue.levels.len());
+    let reverse_y = moc.canvas().unwrap().reverse_y;
     let state = crate::spout::tests::gpu_state();
     let device = &state.device;
     let mut evaluator = crate::gpu_position_evaluator::GpuPositionEvaluator::new(device, positions)
@@ -68,6 +69,8 @@ fn local_moc3_full_gpu_hierarchy_matches_rust_meshes() {
         .with_hierarchy(device, hierarchy)
         .unwrap()
         .with_glue(device, glue)
+        .unwrap()
+        .with_output_orientation(device, reverse_y)
         .unwrap();
     let cpu = GeometryEvaluator::new(&moc).unwrap();
     let output_bytes = evaluator.positions().size();
@@ -118,12 +121,14 @@ fn local_moc3_full_gpu_hierarchy_matches_rust_meshes() {
                 .zip(&gpu[range.start as usize..range.end as usize])
                 .enumerate()
             {
-                let error = (cpu[0] - gpu[0]).abs().max((cpu[1] - gpu[1]).abs());
+                let expected_y = if reverse_y { cpu[1] } else { -cpu[1] };
+                let error = (cpu[0] - gpu[0]).abs().max((expected_y - gpu[1]).abs());
                 max_error = max_error.max(error);
                 let tolerance = 0.0001_f32.max(cpu[0].abs().max(cpu[1].abs()) * 0.000002);
                 assert!(
                     error <= tolerance,
-                    "pose {pose}, mesh {index}, vertex {vertex}: {cpu:?} vs {gpu:?}, error {error}, tolerance {tolerance}"
+                    "pose {pose}, mesh {index}, vertex {vertex}: expected [{}, {expected_y}] vs {gpu:?}, error {error}, tolerance {tolerance}",
+                    cpu[0]
                 );
                 checked += 1;
             }

@@ -9,6 +9,7 @@ use aria_model_core::gpu_glue_plan::GpuGluePlan;
 use aria_model_core::gpu_hierarchy_plan::GpuHierarchyPlan;
 use aria_model_core::gpu_key_plan::{ActiveFrame, GpuPositionKeyPlan};
 use aria_model_core::gpu_warp_plan::GpuWarpHierarchyPlan;
+use std::num::NonZeroU64;
 use wgpu::util::DeviceExt;
 
 pub struct GpuPositionEvaluator {
@@ -25,6 +26,13 @@ pub struct GpuPositionEvaluator {
     warp: Option<crate::gpu_warp_hierarchy::GpuWarpHierarchyStage>,
     hierarchy: Option<crate::gpu_hierarchy::GpuHierarchyStage>,
     glue: Option<crate::gpu_glue_stage::GpuGlueStage>,
+    output_orientation: Option<OutputOrientationStage>,
+}
+
+struct OutputOrientationStage {
+    bind: wgpu::BindGroup,
+    pipeline: wgpu::ComputePipeline,
+    mesh_vertex_count: u32,
 }
 
 struct ResidentBlendStage {
@@ -162,6 +170,7 @@ impl GpuPositionEvaluator {
             warp: None,
             hierarchy: None,
             glue: None,
+            output_orientation: None,
         })
     }
 
@@ -322,6 +331,68 @@ impl GpuPositionEvaluator {
         Ok(self)
     }
 
+    /// Match the Rust renderer's final MOC canvas orientation after glue.
+    /// Warp control points remain in source coordinates; only mesh vertices
+    /// are exposed to the render pipeline.
+    pub fn with_output_orientation(
+        mut self,
+        device: &wgpu::Device,
+        reverse_y: bool,
+    ) -> Result<Self> {
+        if reverse_y || self.plan.mesh_vertex_count == 0 {
+            return Ok(self);
+        }
+        let mesh_vertex_count = self.plan.mesh_vertex_count;
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("ARIA GPU output orientation layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+        let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("ARIA GPU output orientation bind"),
+            layout: &layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &self.output,
+                    offset: 0,
+                    size: NonZeroU64::new(u64::from(mesh_vertex_count) * 8),
+                }),
+            }],
+        });
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("ARIA GPU output orientation compute"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("gpu_output_orientation.wgsl").into()),
+        });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("ARIA GPU output orientation pipeline layout"),
+            bind_group_layouts: &[Some(&layout)],
+            immediate_size: 0,
+        });
+        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("ARIA GPU output orientation pipeline"),
+            layout: Some(&pipeline_layout),
+            module: &shader,
+            entry_point: Some("orient_mesh"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+        self.output_orientation = Some(OutputOrientationStage {
+            bind,
+            pipeline,
+            mesh_vertex_count,
+        });
+        Ok(self)
+    }
+
     pub fn encode(
         &mut self,
         queue: &wgpu::Queue,
@@ -379,6 +450,12 @@ impl GpuPositionEvaluator {
         }
         if let Some(glue) = &mut self.glue {
             glue.encode(queue, encoder, values, part_values)?;
+        }
+        if let Some(orientation) = &self.output_orientation {
+            let mut pass = encoder.begin_compute_pass(&Default::default());
+            pass.set_pipeline(&orientation.pipeline);
+            pass.set_bind_group(0, &orientation.bind, &[]);
+            pass.dispatch_workgroups(orientation.mesh_vertex_count.div_ceil(64), 1, 1);
         }
         Ok(())
     }

@@ -280,6 +280,13 @@ Rust frame's metadata and render order exactly. This removes the need to run
 CPU vertex deformation solely to feed GPU rendering; dynamic bounds and the
 actual Studio renderer switch are still pending.
 
+The resident GPU evaluator now finishes with canvas orientation after all
+deformer and glue passes. Only the leading mesh-vertex range is flipped when
+the MOC canvas requires it; control points retain their source orientation.
+Native DX12 checks against Rust renderer coordinates passed at three poses on
+the large outfit, OILBUN and Ditto. Dynamic visible bounds and view fitting
+remain prerequisites for enabling the GPU vertex buffer in Studio.
+
 A test-only WGPU compute primitive now samples multiple warp grids in a single
 dispatch. It implements the Rust evaluator's affine shortcut, bent-grid quad
 or triangular cells and exterior continuation. Native DX12 comparisons passed
