@@ -322,8 +322,9 @@ A two-pass GPU reduction now calculates the minimum and maximum of final mesh
 positions for visible meshes, with static vertex ownership and a small dynamic
 visibility array. Native checks on those three models also passed with every
 third mesh intentionally hidden. It produces a four-float result. The opt-in
-Studio path now reads that small result asynchronously, discards stale bounds,
-fits the view and binds the resident vertex buffer directly. Two-pose native
+Studio path now reads that small result asynchronously, applies each completed
+bounds update even while a newer pose is queued, fits the view and binds the
+resident vertex buffer directly. Two-pose native
 render comparisons passed on those models, with sparse raster-edge differences
 on the large outfit. Live frame-time and broader compatibility checks remain.
 
