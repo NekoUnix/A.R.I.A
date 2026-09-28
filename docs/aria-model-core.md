@@ -210,6 +210,16 @@ chain also carried an active mesh delta through two parent warps and a
 reflection/scale rotation without CPU readback. These figures establish math
 parity only; the active renderer still evaluates these steps on the CPU.
 
+Glue now has a conflict-aware Rust pass planner. It places independent glues
+in the same GPU dispatch and assigns later passes when a vertex is reused,
+preserving source-order updates. A glue that reuses a vertex within itself
+still requires finer scheduling or CPU fallback. The large 90s outfit's
+1,365 authored pairs fit one pass; OILBUN's 2,298 pairs need two passes
+because four vertices are shared across glues. A test-only compute pass
+matched sequential Rust updates on synthetic positions using each rig's
+actual pair topology, weights and pose-derived intensities. This does not
+yet validate glue on final rendered poses or improve the live frame rate.
+
 A test-only WGPU compute primitive now samples multiple warp grids in a single
 dispatch. It implements the Rust evaluator's affine shortcut, bent-grid quad
 or triangular cells and exterior continuation. Native DX12 comparisons passed

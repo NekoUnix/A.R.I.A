@@ -7,6 +7,13 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## GPU morph and Rust model-core checks — 2026-09-28 (unreleased)
 
+- The Rust GPU-glue planner gives one conflict-free pass for the large
+  90s outfit's 16 glues and 1,365 pairs, and two ordered passes for OILBUN's
+  24 glues and 2,298 pairs. OILBUN reuses four vertices across glues; neither
+  rig repeats a vertex within one glue. Test-only DX12 compute matched
+  sequential Rust pair updates on synthetic positions with the rigs' actual
+  topology, weights and pose-derived intensities. Maximum coordinate error
+  was below 0.000001 model units. This is not a live-renderer result.
 - A second test-only GPU dispatch applied authored warp and ArtMesh
   blend-shape position deltas after normal key interpolation. The large
   90s outfit matched Rust with 1,477,244 resident delta points touching

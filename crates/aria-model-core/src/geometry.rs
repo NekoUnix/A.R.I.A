@@ -682,6 +682,51 @@ mod cache_tests {
     }
 
     #[test]
+    #[ignore = "requires ARIA_TEST_MOC; surveys local glue dependencies for GPU scheduling"]
+    fn local_glue_gpu_schedule_survey() {
+        let bytes = std::fs::read(std::env::var_os("ARIA_TEST_MOC").unwrap()).unwrap();
+        let moc = Moc::parse(&bytes).unwrap();
+        let glues = moc.glue_layouts().unwrap();
+        let mut all_vertices = std::collections::BTreeSet::new();
+        let mut shared_across_glues = std::collections::BTreeSet::new();
+        let mut internal_collisions = 0_usize;
+        let mut total_pairs = 0_usize;
+        let mut max_pairs = 0_usize;
+        let mut last_level = std::collections::BTreeMap::new();
+        let mut levels = Vec::<usize>::new();
+        for glue in &glues {
+            let mut local = std::collections::BTreeSet::new();
+            total_pairs += glue.pairs.len();
+            max_pairs = max_pairs.max(glue.pairs.len());
+            for pair in &glue.pairs {
+                for vertex in [(glue.left_mesh, pair.left), (glue.right_mesh, pair.right)] {
+                    if !local.insert(vertex) {
+                        internal_collisions += 1;
+                    }
+                    if !all_vertices.insert(vertex) {
+                        shared_across_glues.insert(vertex);
+                    }
+                }
+            }
+            let level = local
+                .iter()
+                .filter_map(|vertex| last_level.get(vertex).map(|last: &usize| last + 1))
+                .max()
+                .unwrap_or(0);
+            levels.push(level);
+            for vertex in local {
+                last_level.insert(vertex, level);
+            }
+        }
+        eprintln!(
+            "GPU glue schedule: {} glues, {total_pairs} pairs, max {max_pairs} pairs/glue, {internal_collisions} within-glue vertex overlaps, {} vertices reused across glues, {} ordered levels",
+            glues.len(),
+            shared_across_glues.len(),
+            levels.iter().copied().max().map_or(0, |max| max + 1)
+        );
+    }
+
+    #[test]
     #[ignore = "requires ARIA_TEST_MOC; private model remains on the local machine"]
     fn cached_deformers_match_a_fresh_evaluation_across_parameter_and_part_changes() {
         let path = std::env::var_os("ARIA_TEST_MOC").unwrap();
