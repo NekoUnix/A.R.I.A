@@ -287,6 +287,12 @@ Native DX12 checks against Rust renderer coordinates passed at three poses on
 the large outfit, OILBUN and Ditto. Dynamic visible bounds and view fitting
 remain prerequisites for enabling the GPU vertex buffer in Studio.
 
+A two-pass GPU reduction now calculates the minimum and maximum of final mesh
+positions for visible meshes, with static vertex ownership and a small dynamic
+visibility array. Native checks on those three models also passed with every
+third mesh intentionally hidden. It produces a four-float result; asynchronous
+CPU delivery for view fitting and the actual Studio renderer connection remain.
+
 A test-only WGPU compute primitive now samples multiple warp grids in a single
 dispatch. It implements the Rust evaluator's affine shortcut, bent-grid quad
 or triangular cells and exterior continuation. Native DX12 comparisons passed

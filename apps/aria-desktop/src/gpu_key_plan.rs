@@ -73,6 +73,18 @@ fn local_moc3_full_gpu_hierarchy_matches_rust_meshes() {
         .with_output_orientation(device, reverse_y)
         .unwrap();
     let cpu = GeometryEvaluator::new(&moc).unwrap();
+    let mut gpu_bounds = crate::gpu_visible_bounds::GpuVisibleBounds::new(
+        device,
+        evaluator.positions(),
+        evaluator.plan(),
+    )
+    .unwrap();
+    let bounds_readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("ARIA visible GPU bounds parity readback"),
+        size: 16,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
     let output_bytes = evaluator.positions().size();
     let readback = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("ARIA full GPU hierarchy parity readback"),
@@ -96,10 +108,20 @@ fn local_moc3_full_gpu_hierarchy_matches_rust_meshes() {
             })
             .collect::<Vec<_>>();
         let mut encoder = device.create_command_encoder(&Default::default());
+        let frames = cpu.frame(&values).unwrap();
+        let visible = frames
+            .iter()
+            .enumerate()
+            .map(|(index, frame)| frame.is_some() && (pose != 2 || index % 3 != 0))
+            .collect::<Vec<_>>();
         evaluator
             .encode(&state.queue, &mut encoder, &values)
             .unwrap();
+        gpu_bounds
+            .encode(&state.queue, &mut encoder, &visible)
+            .unwrap();
         encoder.copy_buffer_to_buffer(evaluator.positions(), 0, &readback, 0, output_bytes);
+        encoder.copy_buffer_to_buffer(gpu_bounds.output(), 0, &bounds_readback, 0, 16);
         state.queue.submit([encoder.finish()]);
         let (tx, rx) = std::sync::mpsc::channel();
         readback
@@ -112,7 +134,7 @@ fn local_moc3_full_gpu_hierarchy_matches_rust_meshes() {
         let bytes = readback.slice(..).get_mapped_range().unwrap().to_vec();
         readback.unmap();
         let gpu = bytemuck::cast_slice::<u8, [f32; 2]>(&bytes);
-        let frames = cpu.frame(&values).unwrap();
+        let mut expected_bounds = [f32::INFINITY, f32::INFINITY, -f32::INFINITY, -f32::INFINITY];
         for (index, (range, frame)) in evaluator.plan().mesh_ranges.iter().zip(frames).enumerate() {
             let Some(frame) = frame else { continue };
             for (vertex, (cpu, gpu)) in frame
@@ -122,6 +144,12 @@ fn local_moc3_full_gpu_hierarchy_matches_rust_meshes() {
                 .enumerate()
             {
                 let expected_y = if reverse_y { cpu[1] } else { -cpu[1] };
+                if visible[index] {
+                    expected_bounds[0] = expected_bounds[0].min(cpu[0]);
+                    expected_bounds[1] = expected_bounds[1].min(expected_y);
+                    expected_bounds[2] = expected_bounds[2].max(cpu[0]);
+                    expected_bounds[3] = expected_bounds[3].max(expected_y);
+                }
                 let error = (cpu[0] - gpu[0]).abs().max((expected_y - gpu[1]).abs());
                 max_error = max_error.max(error);
                 let tolerance = 0.0001_f32.max(cpu[0].abs().max(cpu[1].abs()) * 0.000002);
@@ -133,6 +161,26 @@ fn local_moc3_full_gpu_hierarchy_matches_rust_meshes() {
                 checked += 1;
             }
         }
+        let (tx, rx) = std::sync::mpsc::channel();
+        bounds_readback
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                tx.send(result).unwrap();
+            });
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        rx.recv().unwrap().unwrap();
+        let bytes = bounds_readback.slice(..).get_mapped_range().unwrap();
+        let gpu_bounds = bytemuck::from_bytes::<[f32; 4]>(&bytes);
+        for axis in 0..4 {
+            assert!(
+                (expected_bounds[axis] - gpu_bounds[axis]).abs() <= 0.0001,
+                "pose {pose}, bounds axis {axis}: CPU {} vs GPU {}",
+                expected_bounds[axis],
+                gpu_bounds[axis]
+            );
+        }
+        drop(bytes);
+        bounds_readback.unmap();
     }
     assert!(checked > 0, "No active meshes were compared");
     eprintln!(

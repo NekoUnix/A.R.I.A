@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add a two-pass GPU reduction for visible MOC3 mesh bounds. Static vertex-to-mesh ownership stays resident, and only one visibility word per mesh changes per pose; the GPU reduces final oriented positions to four bound values without a vertex readback. Native DX12 parity passed across three poses on the large outfit, OILBUN and Ditto, including deliberately hidden meshes. Asynchronous bound delivery, dynamic view fitting and active renderer hookup remain.
+
 - Finish the resident GPU MOC3 position buffer with the canvas Y orientation used by the Rust renderer. The pass runs after hierarchy and glue and touches only mesh vertices, leaving warp control points in source coordinates. Three-pose DX12 position parity still passes on the large outfit, OILBUN and Ditto. GPU visible bounds and live Studio connection remain before this can improve frame rate.
 
 - Add a metadata-only Rust MOC3 evaluation path for GPU-rendered avatars. It resolves mesh visibility, opacity, color and draw order—including inherited deformer and part state—without blending or transforming CPU vertices. The direct Rust hosted model preserves its existing vertex arrays while updating this render state. Three-pose parity with full Rust frames passed on the large outfit, OILBUN and Ditto. GPU framing and live renderer hookup remain.

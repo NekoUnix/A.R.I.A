@@ -194,6 +194,13 @@ three poses on each of those models. It keeps warp control points unchanged.
 This is a required handoff step, not an active Studio FPS improvement: visible
 bounds and view fitting still need to be supplied without synchronously reading
 the vertex buffer back to the CPU.
+The GPU now also reduces oriented positions into visible mesh bounds in two
+compute passes. Vertex ownership stays on the device, visibility changes upload
+one 32-bit word per mesh, and the output is only four floats. Three-pose DX12
+checks against Rust bounds passed on the large outfit, OILBUN and Ditto, with
+one pose hiding every third mesh. Studio still needs asynchronous delivery of
+those bounds and a view update before the GPU path can be enabled; these native
+checks do not measure live frame time.
 An optimized 120-frame alternating-parameter microbenchmark on the large
 outfit measured 3.015 ms/frame for full direct Rust updates and 0.085
 ms/frame for metadata-only updates after warmup. These figures exclude GPU
