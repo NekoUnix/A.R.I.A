@@ -23,6 +23,11 @@ The connector receives at most 256 KiB per WebSocket message, buffers 64 events,
 
 ### Build and troubleshoot reactions
 
+Reaction cards show the name, event kind and enabled state in a collapsible
+header. Click the header to edit a rule. A single rule and new rules without
+targets open initially; configured multi-rule setups start compact. Open/closed
+state is retained while using the editor.
+
 Use **Quick-start reaction** for a chat command, channel reward, follower,
 subscription or gift template. Choose the platform and action before enabling;
 reward templates require your exact reward name. Command templates also require

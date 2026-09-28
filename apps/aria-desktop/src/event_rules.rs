@@ -75,7 +75,7 @@ impl Event {
         Ok(())
     }
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct Condition {
     pub input: String,
     pub threshold: f32,
@@ -99,7 +99,7 @@ impl Condition {
             && self.threshold.abs() <= 1e6
     }
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct Rule {
     #[serde(default)]
     pub platform: Option<Platform>,
@@ -162,7 +162,7 @@ impl Rule {
         }
     }
 }
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
     pub enabled: bool,
@@ -424,7 +424,7 @@ impl Events {
         inputs: &aria_core::rig::Inputs,
         now: f64,
     ) -> (bool, Vec<Target>) {
-        let before = serde_json::to_string(settings).unwrap_or_default();
+        let before = settings.clone();
         ui.heading("Your reactions");
         crate::theme::caption(
             ui,
@@ -511,11 +511,23 @@ impl Events {
         let mut remove = None;
         let mut duplicate = None;
         let can_duplicate = settings.rules.len() < 128;
+        let single_rule = settings.rules.len() == 1;
         let mut simulate = None;
         for rule in &mut settings.rules {
-            let rule_before = serde_json::to_string(rule).unwrap_or_default();
-            crate::theme::card(ui, |ui| {
-                ui.push_id(rule.id, |ui| {
+            let rule_before = rule.clone();
+            let heading = format!(
+                "{} · {:?} · {}",
+                rule.name,
+                rule.kind,
+                if rule.enabled { "Enabled" } else { "Off" }
+            );
+            crate::theme::category(
+                ui,
+                ("reaction-editor", rule.id),
+                &heading,
+                single_rule || rule.target.is_none(),
+                |ui| {
+                    ui.push_id(rule.id, |ui| {
                     ui.horizontal(|ui| {
                         ui.checkbox(&mut rule.enabled, "");
                         ui.add(egui::TextEdit::singleline(&mut rule.name).char_limit(80));
@@ -646,8 +658,9 @@ impl Events {
                         if ui.add_enabled(can_duplicate, egui::Button::new("Duplicate")).clicked() { duplicate = Some(rule.id); }
                     });
                 });
-            });
-            if rule_before != serde_json::to_string(rule).unwrap_or_default() {
+                },
+            );
+            if rule_before != *rule {
                 self.gestures.remove(&rule.id);
             }
         }
@@ -672,15 +685,44 @@ impl Events {
                 ui.label(line);
             }
         });
-        (
-            before != serde_json::to_string(settings).unwrap_or_default(),
-            targets,
-        )
+        (before != *settings, targets)
     }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "manual UI dirty-check microbenchmark; reports timings without a machine-specific threshold"]
+    fn benchmark_editor_change_detection() {
+        use std::{hint::black_box, time::Instant};
+        let mut settings = settings();
+        for _ in 1..128 {
+            assert!(settings.duplicate(1));
+        }
+        let started = Instant::now();
+        for _ in 0..500 {
+            let before = serde_json::to_string(black_box(&settings)).unwrap();
+            for rule in &settings.rules {
+                let snapshot = serde_json::to_string(black_box(rule)).unwrap();
+                black_box(snapshot != serde_json::to_string(black_box(rule)).unwrap());
+            }
+            black_box(before != serde_json::to_string(black_box(&settings)).unwrap());
+        }
+        let json = started.elapsed();
+        let started = Instant::now();
+        for _ in 0..500 {
+            let before = black_box(&settings).clone();
+            for rule in &settings.rules {
+                let snapshot = black_box(rule).clone();
+                black_box(snapshot != *black_box(rule));
+            }
+            black_box(before != *black_box(&settings));
+        }
+        eprintln!(
+            "128-rule dirty checks, 500 frames: JSON={json:?}, direct={:?}",
+            started.elapsed()
+        );
+    }
     #[test]
     fn session_limits_preview_reset_and_skip_reasons() {
         let mut settings = settings();

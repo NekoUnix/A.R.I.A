@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Refine Studio navigation with compact grouped rows, left-aligned labels and an active accent marker. Add collapsible reaction cards and subtle lower card shading. Replace per-frame reaction JSON serialization with direct change detection and avoid building gradients for offscreen cards.
+
 - Add quick-start audience reaction templates, disabled rule duplication, per-rule session dispatch limits and reset controls. Explain skipped events in bounded recent history, including cooldown, minimum amount, duplicate, provider-test and session-limit decisions. Explicit previews preserve live counts.
 
 - Add a local Streamer.bot WebSocket event connection for Twitch rewards, follows, subscriptions, gift bundles, cheers and raids, plus YouTube membership and support events. Include challenge authentication, bounded queues, platform filters, provider-test opt-in and shared-chat/gift-bundle duplicate suppression.

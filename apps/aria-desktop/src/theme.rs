@@ -553,7 +553,7 @@ pub fn card(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
             ui.set_width(ui.available_width());
             add(ui);
         });
-    if glass_enabled() {
+    if glass_enabled() && ui.is_rect_visible(response.response.rect) {
         let rect = response.response.rect;
         ui.painter().set(layer, rounded_gradient(rect));
         let inset = rect.shrink(12.);
@@ -564,11 +564,20 @@ pub fn card(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
             ],
             Stroke::new(1., text_color().gamma_multiply(0.10)),
         );
+        ui.painter().line_segment(
+            [
+                egui::pos2(inset.left(), rect.bottom() - 1.),
+                egui::pos2(inset.right(), rect.bottom() - 1.),
+            ],
+            Stroke::new(1., Color32::from_black_alpha(38)),
+        );
     }
 }
 
 fn rounded_gradient(rect: egui::Rect) -> egui::Shape {
     let mut mesh = egui::Mesh::default();
+    mesh.vertices.reserve_exact(37);
+    mesh.indices.reserve_exact(108);
     let radius = 14_f32.min(rect.width() / 2.).min(rect.height() / 2.);
     let top = card_color().lerp_to_gamma(purple(), 0.10);
     let bottom = card_color().lerp_to_gamma(bg(), 0.24);

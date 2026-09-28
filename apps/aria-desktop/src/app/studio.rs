@@ -512,10 +512,20 @@ impl AriaApp {
                     (ControlsPage::Chat, "Streaming chat"),
                     (ControlsPage::Settings, "Settings"),
                 ] {
+                    let group = match page {
+                        ControlsPage::Home => Some("STUDIO"),
+                        ControlsPage::Profiles => Some("AVATAR"),
+                        ControlsPage::Output => Some("BROADCAST"),
+                        _ => None,
+                    };
+                    if let Some(group) = group {
+                        ui.add_space(7.);
+                        theme::caption(ui, group);
+                    }
                     let selected = self.controls_page == page;
                     let response = ui.add_sized(
-                        [ui.available_width(), 38.0],
-                        egui::Button::new(format!("      {label}"))
+                        [ui.available_width(), 31.0],
+                        egui::Button::new("")
                             .corner_radius(10)
                             .selected(selected)
                             .fill(if selected {
@@ -529,6 +539,32 @@ impl AriaApp {
                                 Stroke::NONE
                             }),
                     );
+                    ui.painter().text(
+                        response.rect.left_center() + egui::vec2(32., 0.),
+                        egui::Align2::LEFT_CENTER,
+                        label,
+                        egui::FontId::proportional(12.),
+                        if selected {
+                            theme::text_color()
+                        } else {
+                            theme::muted()
+                        },
+                    );
+                    response.widget_info(|| {
+                        egui::WidgetInfo::selected(
+                            egui::WidgetType::Button,
+                            ui.is_enabled(),
+                            selected,
+                            label,
+                        )
+                    });
+                    if selected {
+                        let marker = egui::Rect::from_center_size(
+                            response.rect.left_center() + egui::vec2(2., 0.),
+                            egui::vec2(3., 15.),
+                        );
+                        ui.painter().rect_filled(marker, 2., mint());
+                    }
                     let center = response.rect.left_center() + egui::vec2(16., 0.);
                     let stroke = Stroke::new(1.3, if selected { mint() } else { theme::muted() });
                     let icon = egui::Rect::from_center_size(center, egui::vec2(12., 12.));

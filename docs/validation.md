@@ -1342,6 +1342,19 @@ TCP, Bluetooth and recording transfer are not implemented. See the
 
 ### Studio audience reactions (local development)
 
+Studio polish adds compact grouped navigation and collapsible reaction cards.
+The checkpoint passes 335 standard workspace tests (41 opt-in tests ignored),
+strict Clippy, formatting, documentation checks and the native desktop build.
+The benchmark below was run explicitly. A minimum-window screenshot with the
+supplied NekoUnity2 model verifies grouped navigation and expanded reaction cards.
+A local debug-build microbenchmark of dirty detection for 128 rules over 500
+iterations measured JSON serialization at 1.935 seconds versus direct snapshots
+and comparisons at 15.96 milliseconds (about 121 times faster for that isolated
+operation). This does not measure total frame time or establish an FPS gain.
+Run the ignored `benchmark_editor_change_detection` test to repeat the comparison.
+Offscreen card gradients are now culled and visible gradient meshes reserve their
+known vertex/index capacity. Solid and high-contrast themes retain their styling.
+
 Follow-up validation passes 335 workspace tests with 40 opt-in checks ignored,
 strict Clippy and a native build. New tests exercise session caps, explicit preview
 without consuming live counts, resets preserving cooldowns, gesture release after
