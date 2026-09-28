@@ -541,6 +541,304 @@ mod tests {
             );
         }
     }
+    #[test]
+    #[ignore = "requires ARIA_TEST_MOC with unparented meshes; compares Rust keyform interpolation"]
+    fn rust_local_mesh_positions_match_unparented_runtime_meshes() {
+        let path = std::env::var_os("ARIA_TEST_MOC").expect("ARIA_TEST_MOC");
+        let bytes = std::fs::read(path).unwrap();
+        let rust = aria_model_core::moc::Moc::parse(&bytes).unwrap();
+        let graph = rust.binding_graph().unwrap();
+        let current = CubismModel::load(Path::new(""), &bytes, 32).unwrap();
+        let values = current
+            .parameters()
+            .iter()
+            .map(|p| p.value)
+            .collect::<Vec<_>>();
+        let reverse_y = rust.canvas().unwrap().reverse_y;
+        let mut meshes = 0_usize;
+        let mut vertices = 0_usize;
+        let mut largest = 0.0_f32;
+        for (index, drawable) in current.drawables.iter().enumerate() {
+            let local = rust.local_mesh_frame(index, &graph, &values).unwrap();
+            if local.parent_deformer.is_some() || !drawable.visible {
+                continue;
+            }
+            meshes += 1;
+            for (ours, theirs) in local.positions.iter().zip(&drawable.positions) {
+                let y = if reverse_y { ours[1] } else { -ours[1] };
+                largest = largest.max((ours[0] - theirs[0]).abs());
+                largest = largest.max((y - theirs[1]).abs());
+                vertices += 1;
+            }
+        }
+        println!(
+            "Rust local mesh parity: {meshes} meshes, {vertices} vertices, max delta {largest}"
+        );
+        assert!(meshes > 0, "Test model has no visible unparented ArtMeshes");
+        assert!(largest < 0.0001, "Unparented mesh position mismatch");
+    }
+    #[test]
+    #[ignore = "requires ARIA_TEST_MOC with single-root-warp meshes; compares independent Rust deformation"]
+    fn rust_single_warp_mesh_positions_match_current_runtime() {
+        let path = std::env::var_os("ARIA_TEST_MOC").expect("ARIA_TEST_MOC");
+        let bytes = std::fs::read(path).unwrap();
+        let rust = aria_model_core::moc::Moc::parse(&bytes).unwrap();
+        let graph = rust.binding_graph().unwrap();
+        let deformers = rust.deformer_layouts().unwrap();
+        let specs = rust.parameters().unwrap();
+        let mut current = CubismModel::load(Path::new(""), &bytes, 32).unwrap();
+        let reverse_y = rust.canvas().unwrap().reverse_y;
+        let mut tested = 0_usize;
+        let mut max_delta = 0.0_f32;
+        for extremum in [None, Some(true), Some(false)] {
+            if let Some(use_maximum) = extremum {
+                for (parameter, spec) in current.parameters().to_vec().into_iter().zip(&specs) {
+                    if spec.kind != aria_model_core::moc::ParameterKind::Normal {
+                        continue;
+                    }
+                    current.set_parameter(
+                        &parameter.id,
+                        if use_maximum {
+                            parameter.max
+                        } else {
+                            parameter.min
+                        },
+                    );
+                }
+                current.update().unwrap();
+            }
+            let values = current
+                .parameters()
+                .iter()
+                .zip(&specs)
+                .map(|(p, spec)| spec.resolve(p.value).unwrap())
+                .collect::<Vec<_>>();
+            for (index, drawable) in current.drawables.iter().enumerate() {
+                let Some(frame) = rust
+                    .single_warp_mesh_frame(index, &graph, &values, &deformers)
+                    .unwrap()
+                else {
+                    continue;
+                };
+                if !drawable.visible {
+                    continue;
+                }
+                tested += 1;
+                for (a, b) in frame.positions.iter().zip(&drawable.positions) {
+                    let y = if reverse_y { a[1] } else { -a[1] };
+                    max_delta = max_delta.max((a[0] - b[0]).abs());
+                    max_delta = max_delta.max((y - b[1]).abs());
+                }
+            }
+        }
+        println!("Rust single-warp parity: {tested} meshes, max delta {max_delta}");
+        assert!(
+            tested > 0,
+            "Test model has no supported visible single-warp meshes"
+        );
+        assert!(max_delta < 0.0001, "Single-warp mesh position mismatch");
+    }
+    #[test]
+    #[ignore = "requires ARIA_TEST_MOC with root-rotation meshes; compares independent Rust deformation"]
+    fn rust_root_rotation_positions_match_current_runtime() {
+        let path = std::env::var_os("ARIA_TEST_MOC").expect("ARIA_TEST_MOC");
+        let bytes = std::fs::read(path).unwrap();
+        let rust = aria_model_core::moc::Moc::parse(&bytes).unwrap();
+        let graph = rust.binding_graph().unwrap();
+        let deformers = rust.deformer_layouts().unwrap();
+        let secondary = rust.secondary_meshes().unwrap();
+        let specs = rust.parameters().unwrap();
+        let mut current = CubismModel::load(Path::new(""), &bytes, 32).unwrap();
+        let reverse_y = rust.canvas().unwrap().reverse_y;
+        let mut tested = 0_usize;
+        let mut max_delta = 0.0_f32;
+        for extremum in [None, Some(true), Some(false)] {
+            if let Some(use_maximum) = extremum {
+                for (parameter, spec) in current.parameters().to_vec().into_iter().zip(&specs) {
+                    if spec.kind == aria_model_core::moc::ParameterKind::Normal {
+                        current.set_parameter(
+                            &parameter.id,
+                            if use_maximum {
+                                parameter.max
+                            } else {
+                                parameter.min
+                            },
+                        );
+                    }
+                }
+                current.update().unwrap();
+            }
+            let values = current
+                .parameters()
+                .iter()
+                .zip(&specs)
+                .map(|(p, spec)| spec.resolve(p.value).unwrap())
+                .collect::<Vec<_>>();
+            for (index, drawable) in current.drawables.iter().enumerate() {
+                if !drawable.visible || secondary[index] {
+                    continue;
+                }
+                let Some(frame) = rust
+                    .root_rotation_mesh_frame(index, &graph, &values, &deformers)
+                    .unwrap()
+                else {
+                    continue;
+                };
+                tested += 1;
+                for (actual, reference) in frame.positions.iter().zip(&drawable.positions) {
+                    let y = if reverse_y { actual[1] } else { -actual[1] };
+                    max_delta = max_delta.max((actual[0] - reference[0]).abs());
+                    max_delta = max_delta.max((y - reference[1]).abs());
+                }
+            }
+        }
+        println!("Rust root-rotation parity: {tested} visible mesh frames, max delta {max_delta}");
+        if tested > 0 {
+            assert!(max_delta < 0.0001, "Root rotation geometry differs");
+        }
+    }
+    #[test]
+    #[ignore = "requires ARIA_TEST_MOC; compares supported Rust warp/rotation hierarchy geometry"]
+    fn rust_deformer_chain_positions_match_current_runtime() {
+        let path = std::env::var_os("ARIA_TEST_MOC").expect("ARIA_TEST_MOC");
+        let bytes = std::fs::read(path).unwrap();
+        let rust = aria_model_core::moc::Moc::parse(&bytes).unwrap();
+        let evaluator = aria_model_core::geometry::GeometryEvaluator::new(&rust).unwrap();
+        let specs = rust.parameters().unwrap();
+        let mut current = CubismModel::load(Path::new(""), &bytes, 32).unwrap();
+        let reverse_y = rust.canvas().unwrap().reverse_y;
+        let mut tested = 0_usize;
+        let mut mismatched = 0_usize;
+        let mut max_delta = 0.0_f32;
+        for extremum in [None, Some(true), Some(false)] {
+            if let Some(use_maximum) = extremum {
+                for (parameter, spec) in current.parameters().to_vec().into_iter().zip(&specs) {
+                    if spec.kind == aria_model_core::moc::ParameterKind::Normal {
+                        current.set_parameter(
+                            &parameter.id,
+                            if use_maximum {
+                                parameter.max
+                            } else {
+                                parameter.min
+                            },
+                        );
+                    }
+                }
+                current.update().unwrap();
+            }
+            let values = current
+                .parameters()
+                .iter()
+                .zip(&specs)
+                .map(|(p, spec)| spec.resolve(p.value).unwrap())
+                .collect::<Vec<_>>();
+            let frames = evaluator.frame(&values).unwrap();
+            for (index, drawable) in current.drawables.iter().enumerate() {
+                if !drawable.visible {
+                    continue;
+                }
+                let Some(frame) = &frames[index] else {
+                    continue;
+                };
+                tested += 1;
+                let mut difference = 0.0_f32;
+                for (actual, reference) in frame.positions.iter().zip(&drawable.positions) {
+                    let y = if reverse_y { actual[1] } else { -actual[1] };
+                    difference = difference.max((actual[0] - reference[0]).abs());
+                    difference = difference.max((y - reference[1]).abs());
+                }
+                if difference >= 0.0001 {
+                    println!(
+                        "mismatch {} frame {:?}: {difference:.7}",
+                        drawable.id, extremum
+                    );
+                    mismatched += 1;
+                }
+                max_delta = max_delta.max(difference);
+            }
+        }
+        println!(
+            "Rust mixed-chain parity: {tested} visible mesh frames, {mismatched} mismatched, max delta {max_delta}"
+        );
+        assert_eq!(mismatched, 0, "Mixed deformer geometry differs");
+    }
+    #[test]
+    #[ignore = "requires ARIA_TEST_MOC; reports nested-warp parity on locally installed models"]
+    fn rust_warp_chain_positions_report_parity() {
+        let path = std::env::var_os("ARIA_TEST_MOC").expect("ARIA_TEST_MOC");
+        let bytes = std::fs::read(path).unwrap();
+        let rust = aria_model_core::moc::Moc::parse(&bytes).unwrap();
+        let graph = rust.binding_graph().unwrap();
+        let deformers = rust.deformer_layouts().unwrap();
+        let secondary = rust.secondary_meshes().unwrap();
+        let specs = rust.parameters().unwrap();
+        let mut current = CubismModel::load(Path::new(""), &bytes, 32).unwrap();
+        let reverse_y = rust.canvas().unwrap().reverse_y;
+        let mut tested = 0_usize;
+        let mut mismatched = 0_usize;
+        let mut max_delta = 0.0_f32;
+        for extremum in [None, Some(true), Some(false)] {
+            if let Some(use_maximum) = extremum {
+                for (parameter, spec) in current.parameters().to_vec().into_iter().zip(&specs) {
+                    if spec.kind != aria_model_core::moc::ParameterKind::Normal {
+                        continue;
+                    }
+                    current.set_parameter(
+                        &parameter.id,
+                        if use_maximum {
+                            parameter.max
+                        } else {
+                            parameter.min
+                        },
+                    );
+                }
+                current.update().unwrap();
+            }
+            let values = current
+                .parameters()
+                .iter()
+                .zip(&specs)
+                .map(|(p, spec)| spec.resolve(p.value).unwrap())
+                .collect::<Vec<_>>();
+            for (index, drawable) in current.drawables.iter().enumerate() {
+                if !drawable.visible || secondary[index] {
+                    continue;
+                }
+                let Some(frame) = rust
+                    .warp_chain_mesh_frame(index, &graph, &values, &deformers)
+                    .unwrap()
+                else {
+                    continue;
+                };
+                tested += 1;
+                let mut difference = 0.0_f32;
+                for (a, b) in frame.positions.iter().zip(&drawable.positions) {
+                    let y = if reverse_y { a[1] } else { -a[1] };
+                    difference = difference.max((a[0] - b[0]).abs());
+                    difference = difference.max((y - b[1]).abs());
+                }
+                max_delta = max_delta.max(difference);
+                if difference >= 0.0001 {
+                    println!(
+                        "mismatch {} frame {:?}: {difference:.7}",
+                        drawable.id, extremum
+                    );
+                }
+                mismatched += usize::from(difference >= 0.0001);
+            }
+        }
+        println!(
+            "Rust warp-chain parity: {tested} visible mesh frames, {mismatched} mismatched, max delta {max_delta}"
+        );
+        assert!(
+            tested > 0,
+            "Test model has no supported visible warp-chain meshes"
+        );
+        assert_eq!(
+            mismatched, 0,
+            "Nested warp geometry differs from the current runtime"
+        );
+    }
     /// Opt-in integration test, using locally supplied licensed assets. No fixture is redistributed.
     #[test]
     #[ignore = "requires ARIA_TEST_MOC paths"]

@@ -8,12 +8,19 @@ the current application as Purism-free, remove its MIT notice, or switch the
 worker simply because a file parses successfully.
 
 `crates/aria-model-core` currently implements bounded, immutable MOC3 container
-reading, model counts, canvas metadata, parameter metadata, ArtMesh IDs, atlas
-slots, UVs, triangle indices and masks. It also has Rust interpolation and
-quadrilateral sampling primitives. The parser does not run C code, relocate
-pointers in model bytes, load an SDK, or include copied Purism source. The
-crate is in the workspace for development and testing; it is not the active
-evaluator yet.
+reading, model counts, canvas and parameter metadata, ArtMesh IDs, atlas slots,
+UVs, triangle indices and masks. It decodes normal-parameter key tables,
+ArtMesh and deformer keyforms, and warp/rotation parent hierarchies. The Rust
+geometry evaluator interpolates parameter keyforms and transforms mesh vertices
+through mixed warp and rotation chains, including grid extrapolation. A
+model-scoped evaluator decodes static bindings once and computes each parent
+deformer once per frame. Unsupported secondary-geometry meshes are returned as
+empty slots so they cannot accidentally be rendered as complete geometry. It does
+not run C code, relocate pointers in model bytes, load an SDK, or include
+copied Purism source. The crate is in the workspace for development and
+testing; it is **not** the active evaluator yet. The model-scoped path still
+allocates per frame and has no end-to-end frame-time measurement, so it is not
+a measured 120 FPS implementation.
 
 `resident::ResidentModel` is the first production connection to this core.
 On avatar load, it reads the complete MOC3 source and every declared encoded
@@ -73,6 +80,20 @@ The official DLL is neither referenced by production code nor copied to the
 repository or release. It is supplied through `ARIA_CUBISM_CORE` only for an
 ignored local test.
 
+The Rust geometry work added on 2026-09-28 passed its own interpolation,
+reflection, hierarchy and extrapolation tests. The mixed warp/rotation parity
+test compared visible ArtMesh positions at default, all-normal-parameter
+minimum and all-normal-parameter maximum frames against the existing runtime.
+It found zero mismatched frames across 27 of the 28 locally supplied MOC3
+exports; the largest absolute coordinate difference observed was below
+`0.0000015` model units. `Ditto Eevees.moc3` remains rejected by the existing
+runtime's loader, so there is no comparison result for it. This parity test
+intentionally excludes ArtMeshes directly targeted by glue or blend-shape
+geometry and does not exercise nondefault blend-shape parameter values.
+Opacity, draw order, visibility, color, offscreen behavior and final rendered
+pixels are not covered by this geometry result. A test passing on these frames
+does not make the evaluator production-ready or prove a performance gain.
+
 The already-Rust ARIA physics solver was also adjusted with an explicit
 frequency-controlled return torque for Natural and Bouncy modes. This gives
 the Bouncy chain a defined restoring force and measurable overshoot while
@@ -86,6 +107,10 @@ Set `ARIA_TEST_MOC` to a local `.moc3` and run the ignored
 `rust_mesh_topology_matches_current_runtime` test in `aria-live2d` to repeat
 the static comparison. Assets stay on the user's machine and are never added
 to the repository.
+
+Run the ignored `rust_deformer_chain_positions_match_current_runtime` test
+with the same variable to repeat the supported animated geometry comparison.
+It reports the number of visible mesh frames and the largest coordinate delta.
 
 Set `ARIA_CUBISM_CORE` to an official Core DLL you already have and run the
 ignored `official_cubism_matches_current_runtime_on_animated_vertices` test

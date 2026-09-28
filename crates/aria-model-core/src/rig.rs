@@ -62,6 +62,46 @@ pub struct WarpGrid {
     points: Vec<Point>,
 }
 
+/// Affine rotation about a model-space origin, with authored reflection and
+/// scale. The coefficients are computed once for all vertices in a mesh.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RotationTransform {
+    origin: Point,
+    xx: f32,
+    xy: f32,
+    yx: f32,
+    yy: f32,
+}
+
+impl RotationTransform {
+    pub fn new(origin: Point, degrees: f32, scale: f32, reflect: [bool; 2]) -> Result<Self> {
+        ensure!(
+            origin.x.is_finite()
+                && origin.y.is_finite()
+                && degrees.is_finite()
+                && scale.is_finite(),
+            "Invalid rotation transform"
+        );
+        let (sine, cosine) = degrees.to_radians().sin_cos();
+        let sx = if reflect[0] { -scale } else { scale };
+        let sy = if reflect[1] { -scale } else { scale };
+        Ok(Self {
+            origin,
+            xx: cosine * sx,
+            xy: -sine * sy,
+            yx: sine * sx,
+            yy: cosine * sy,
+        })
+    }
+
+    pub fn apply(self, point: Point) -> Point {
+        Point {
+            x: self.origin.x + self.xx * point.x + self.xy * point.y,
+            y: self.origin.y + self.yx * point.x + self.yy * point.y,
+        }
+    }
+}
+
 impl WarpGrid {
     pub fn new(columns: usize, rows: usize, points: Vec<Point>) -> Result<Self> {
         ensure!(
@@ -86,6 +126,13 @@ impl WarpGrid {
     /// Evaluate the interior of a rectangular quadrilateral warp.
     /// Extrapolation and triangular cells require separate paths.
     pub fn sample_quad(&self, uv: Point) -> Result<Point> {
+        self.sample_interior(uv, true)
+    }
+
+    /// Sample an interior grid cell using the authored interpolation mode.
+    /// Exterior points are rejected until the separate extrapolation path is
+    /// validated against local models.
+    pub fn sample_interior(&self, uv: Point, quad: bool) -> Result<Point> {
         ensure!(
             uv.x.is_finite()
                 && uv.y.is_finite()
@@ -101,20 +148,105 @@ impl WarpGrid {
         let local_y = scaled_y - row as f32;
         let top_left = row * (self.columns + 1) + col;
         let stride = self.columns + 1;
-        Ok(bilinear_cell(
-            [
-                self.points[top_left],
-                self.points[top_left + 1],
-                self.points[top_left + stride],
-                self.points[top_left + stride + 1],
-            ],
-            local_x,
-            local_y,
-        ))
+        let corners = [
+            self.points[top_left],
+            self.points[top_left + 1],
+            self.points[top_left + stride],
+            self.points[top_left + stride + 1],
+        ];
+        Ok(if quad {
+            bilinear_cell(corners, local_x, local_y)
+        } else {
+            triangle_cell(corners, local_x, local_y)
+        })
+    }
+
+    /// Extend the grid using a diagonal-derived affine boundary basis. Near
+    /// the grid, virtual boundary cells meet the authored edge points; far
+    /// outside, the same basis gives a bounded-cost affine continuation.
+    pub fn sample_extended(&self, uv: Point, quad: bool) -> Result<Point> {
+        ensure!(
+            uv.x.is_finite() && uv.y.is_finite(),
+            "Non-finite warp coordinate"
+        );
+        if (0.0..=1.0).contains(&uv.x) && (0.0..=1.0).contains(&uv.y) {
+            return self.sample_interior(uv, quad);
+        }
+        let stride = self.columns + 1;
+        let p00 = self.points[0];
+        let p10 = self.points[self.columns];
+        let p01 = self.points[self.rows * stride];
+        let p11 = self.points[self.rows * stride + self.columns];
+        let diagonal = p11.sub(p00);
+        let opposite = p10.sub(p01);
+        let dv = diagonal.sub(opposite).scale(0.5);
+        let du = diagonal.add(opposite).scale(0.5);
+        let center = p00
+            .add(p10)
+            .add(p01)
+            .add(p11)
+            .scale(0.25)
+            .sub(diagonal.scale(0.5));
+        let affine = |u: f32, v: f32| center.add(du.scale(u)).add(dv.scale(v));
+        if uv.x <= -2.0 || uv.x >= 3.0 || uv.y <= -2.0 || uv.y >= 3.0 {
+            return Ok(affine(uv.x, uv.y));
+        }
+        let x = exterior_axis(uv.x, self.columns);
+        let y = exterior_axis(uv.y, self.rows);
+        let corner = |xi: usize, yi: usize| {
+            let column = if xi == 0 { x.3 } else { x.4 };
+            let row = if yi == 0 { y.3 } else { y.4 };
+            match (column, row) {
+                (Some(column), Some(row)) => self.points[row * stride + column],
+                _ => affine(
+                    if xi == 0 { x.0 } else { x.1 },
+                    if yi == 0 { y.0 } else { y.1 },
+                ),
+            }
+        };
+        let corners = [corner(0, 0), corner(1, 0), corner(0, 1), corner(1, 1)];
+        Ok(triangle_cell(corners, x.2, y.2))
+    }
+}
+
+/// Bounds, interpolation fraction, and real grid-point indexes for one axis.
+fn exterior_axis(value: f32, cells: usize) -> (f32, f32, f32, Option<usize>, Option<usize>) {
+    if value <= 0.0 {
+        (-2.0, 0.0, (value + 2.0) * 0.5, None, Some(0))
+    } else if value >= 1.0 {
+        (1.0, 3.0, (value - 1.0) * 0.5, Some(cells), None)
+    } else {
+        let scaled = value * cells as f32;
+        let lower = (scaled as usize).min(cells - 1);
+        (
+            lower as f32 / cells as f32,
+            (lower + 1) as f32 / cells as f32,
+            scaled - lower as f32,
+            Some(lower),
+            Some(lower + 1),
+        )
     }
 }
 
 impl Point {
+    fn add(self, other: Self) -> Self {
+        Self {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
+    }
+    fn sub(self, other: Self) -> Self {
+        Self {
+            x: self.x - other.x,
+            y: self.y - other.y,
+        }
+    }
+    fn scale(self, scalar: f32) -> Self {
+        Self {
+            x: self.x * scalar,
+            y: self.y * scalar,
+        }
+    }
     fn mix(self, other: Self, t: f32) -> Self {
         Self {
             x: self.x + (other.x - self.x) * t,
@@ -154,6 +286,23 @@ pub fn bilinear_cell(corners: [Point; 4], u: f32, v: f32) -> Point {
     corners[0]
         .mix(corners[1], u)
         .mix(corners[2].mix(corners[3], u), v)
+}
+
+/// Triangulated cell interpolation preserves the authored diagonal rather
+/// than introducing the bilinear cross-term of a quadrilateral.
+pub fn triangle_cell(corners: [Point; 4], u: f32, v: f32) -> Point {
+    let [p00, p10, p01, p11] = corners;
+    if u + v <= 1.0 {
+        Point {
+            x: p00.x * (1.0 - u - v) + p10.x * u + p01.x * v,
+            y: p00.y * (1.0 - u - v) + p10.y * u + p01.y * v,
+        }
+    } else {
+        Point {
+            x: p10.x * (1.0 - v) + p11.x * (u + v - 1.0) + p01.x * (1.0 - u),
+            y: p10.y * (1.0 - v) + p11.y * (u + v - 1.0) + p01.y * (1.0 - u),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -236,5 +385,59 @@ mod tests {
             Point { x: 2.0, y: 2.0 }
         );
         assert!(grid.sample_quad(Point { x: 1.1, y: 0.0 }).is_err());
+    }
+
+    #[test]
+    fn triangle_interpolation_uses_two_planar_cells() {
+        let corners = [
+            Point { x: 0.0, y: 0.0 },
+            Point { x: 2.0, y: 0.0 },
+            Point { x: 0.0, y: 2.0 },
+            Point { x: 3.0, y: 3.0 },
+        ];
+        assert_eq!(triangle_cell(corners, 0.25, 0.25), Point { x: 0.5, y: 0.5 });
+        assert_eq!(triangle_cell(corners, 0.75, 0.75), Point { x: 2.0, y: 2.0 });
+        assert_ne!(
+            triangle_cell(corners, 0.25, 0.25),
+            bilinear_cell(corners, 0.25, 0.25)
+        );
+    }
+
+    #[test]
+    fn rotation_transform_preserves_origin_and_reflection() {
+        let transform =
+            RotationTransform::new(Point { x: 2.0, y: -3.0 }, 90.0, 2.0, [false, false]).unwrap();
+        let result = transform.apply(Point { x: 1.0, y: 0.0 });
+        assert!((result.x - 2.0).abs() < 1e-6);
+        assert!((result.y + 1.0).abs() < 1e-6);
+        let reflected = RotationTransform::new(Point::default(), 0.0, 1.0, [true, false])
+            .unwrap()
+            .apply(Point { x: 3.0, y: 4.0 });
+        assert_eq!(reflected, Point { x: -3.0, y: 4.0 });
+        assert!(RotationTransform::new(Point::default(), f32::NAN, 1.0, [false; 2]).is_err());
+    }
+
+    #[test]
+    fn exterior_warp_sampling_is_affine_for_an_affine_grid() {
+        let grid = WarpGrid::new(
+            1,
+            1,
+            vec![
+                Point { x: 1.0, y: -2.0 },
+                Point { x: 3.0, y: -2.0 },
+                Point { x: 1.0, y: 1.0 },
+                Point { x: 3.0, y: 1.0 },
+            ],
+        )
+        .unwrap();
+        for point in [
+            Point { x: -0.5, y: 0.5 },
+            Point { x: 0.5, y: 1.5 },
+            Point { x: -4.0, y: 5.0 },
+        ] {
+            let result = grid.sample_extended(point, true).unwrap();
+            assert!((result.x - (1.0 + 2.0 * point.x)).abs() < 1e-5);
+            assert!((result.y - (-2.0 + 3.0 * point.y)).abs() < 1e-5);
+        }
     }
 }

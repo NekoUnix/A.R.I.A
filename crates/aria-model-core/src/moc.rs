@@ -57,6 +57,141 @@ pub struct ParameterSpec {
     pub maximum: f32,
     pub default: f32,
     pub repeat: bool,
+    pub kind: ParameterKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParameterKind {
+    Normal,
+    BlendShape,
+}
+
+impl ParameterSpec {
+    /// Convert an external value to the value used by keyform evaluation.
+    pub fn resolve(&self, value: f32) -> Result<f32> {
+        ensure!(value.is_finite(), "Non-finite parameter value");
+        if self.repeat {
+            let span = self.maximum - self.minimum;
+            ensure!(
+                span > 0.0 && span.is_finite(),
+                "Invalid repeating parameter range"
+            );
+            Ok((value - self.minimum).rem_euclid(span) + self.minimum)
+        } else {
+            Ok(value.clamp(self.minimum, self.maximum))
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct KeyTable {
+    pub parameter: usize,
+    pub keys: Vec<f32>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BindingGraph {
+    pub tables: Vec<KeyTable>,
+    pub bindings: Vec<Vec<usize>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct KeyformWeight {
+    pub index: usize,
+    pub weight: f32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LocalMeshFrame {
+    pub positions: Vec<[f32; 2]>,
+    pub opacity: f32,
+    pub draw_order: f32,
+    pub parent_deformer: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DeformerKind {
+    Warp {
+        columns: usize,
+        rows: usize,
+        points: usize,
+        quad: bool,
+    },
+    Rotation {
+        base_angle: f32,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeformerLayout {
+    pub id: String,
+    pub parent_part: Option<usize>,
+    pub parent_deformer: Option<usize>,
+    pub binding: usize,
+    pub local_index: usize,
+    pub keyform_start: usize,
+    pub keyform_count: usize,
+    pub enabled: bool,
+    pub visible: bool,
+    pub kind: DeformerKind,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LocalDeformerFrame {
+    Warp {
+        points: Vec<[f32; 2]>,
+        opacity: f32,
+    },
+    Rotation {
+        origin: [f32; 2],
+        angle: f32,
+        scale: f32,
+        opacity: f32,
+        reflect: [bool; 2],
+    },
+}
+
+impl BindingGraph {
+    /// Resolve a binding in mixed-radix keyform order. The first parameter
+    /// axis changes fastest, matching the exported keyform layout.
+    pub fn weights(&self, binding: usize, values: &[f32]) -> Result<Vec<KeyformWeight>> {
+        let axes = self
+            .bindings
+            .get(binding)
+            .context("Unknown keyform binding")?;
+        let mut combinations = vec![KeyformWeight {
+            index: 0,
+            weight: 1.0,
+        }];
+        let mut stride = 1_usize;
+        for &table_index in axes {
+            let table = self.tables.get(table_index).context("Invalid key table")?;
+            let value = *values
+                .get(table.parameter)
+                .context("Missing parameter value")?;
+            let selected = crate::rig::linear_keys(&table.keys, value)?;
+            let capacity = combinations
+                .len()
+                .checked_mul(selected.len())
+                .context("Keyform combination overflow")?;
+            ensure!(capacity <= 65_536, "Too many active keyform combinations");
+            let mut next = Vec::with_capacity(capacity);
+            for key in selected {
+                for current in &combinations {
+                    next.push(KeyformWeight {
+                        index: current.index + key.index * stride,
+                        weight: current.weight * key.weight,
+                    });
+                }
+            }
+            combinations = next;
+            stride = stride
+                .checked_mul(table.keys.len())
+                .context("Keyform index overflow")?;
+            ensure!(stride <= 16_777_216, "Keyform grid exceeds ARIA limits");
+        }
+        Ok(combinations)
+    }
 }
 
 impl<'a> Moc<'a> {
@@ -145,7 +280,7 @@ impl<'a> Moc<'a> {
             .section(section)
             .context("Missing MOC3 section")?
             .get(start..end)
-            .context("Truncated MOC3 field")?;
+            .with_context(|| format!("Truncated MOC3 field in section {section} at {index}"))?;
         let raw: [u8; 4] = bytes.try_into().context("Invalid MOC3 field")?;
         Ok(match self.byte_order {
             ByteOrder::Little => u32::from_le_bytes(raw),
@@ -202,15 +337,708 @@ impl<'a> Moc<'a> {
                     && minimum <= maximum,
                 "Invalid MOC3 parameter range"
             );
+            let kind = if self.version < 4 {
+                ParameterKind::Normal
+            } else {
+                match self.word(114, i)? {
+                    0 => ParameterKind::Normal,
+                    1 => ParameterKind::BlendShape,
+                    _ => anyhow::bail!("Unknown MOC3 parameter type"),
+                }
+            };
             parameters.push(ParameterSpec {
                 id: self.id(50, i)?,
                 minimum,
                 maximum,
                 default: default.clamp(minimum, maximum),
                 repeat: self.word(54, i)? != 0,
+                kind,
             });
         }
         Ok(parameters)
+    }
+
+    /// Decode the normal-parameter key table graph without native pointers.
+    /// Blend-shape bindings are a separate format and are decoded later.
+    pub fn binding_graph(&self) -> Result<BindingGraph> {
+        let counts = self.counts()?;
+        let parameter_count = counts.parameters as usize;
+        let table_count = self.nonnegative(0, 13)?;
+        let binding_count = self.nonnegative(0, 12)?;
+        let index_count = self.nonnegative(0, 11)?;
+        let key_count = self.nonnegative(0, 14)?;
+        ensure!(
+            table_count <= 1_000_000
+                && binding_count <= 1_000_000
+                && index_count <= 4_000_000
+                && key_count <= 4_000_000,
+            "MOC3 binding graph exceeds ARIA limits"
+        );
+        let mut owner = vec![None; table_count];
+        for parameter in 0..parameter_count {
+            let raw_start = self.word(56, parameter)? as i32;
+            let count = self.nonnegative(57, parameter)?;
+            if raw_start == -1 && count == 0 {
+                continue;
+            }
+            let start = usize::try_from(raw_start).context("Invalid parameter key table offset")?;
+            let end = start
+                .checked_add(count)
+                .context("Key table range overflow")?;
+            ensure!(end <= table_count, "Parameter key table range is invalid");
+            for slot in &mut owner[start..end] {
+                ensure!(slot.is_none(), "Key table has multiple parameter owners");
+                *slot = Some(parameter);
+            }
+        }
+        let mut tables = Vec::with_capacity(table_count);
+        for (table, parameter) in owner.into_iter().enumerate() {
+            let start = self.nonnegative(75, table)?;
+            let count = self.nonnegative(76, table)?;
+            ensure!(count > 0 && count <= 256, "Invalid parameter key count");
+            let end = start
+                .checked_add(count)
+                .context("Parameter key range overflow")?;
+            ensure!(end <= key_count, "Parameter keys exceed the key pool");
+            let mut keys = Vec::with_capacity(count);
+            for index in start..end {
+                let key = f32::from_bits(self.word(77, index)?);
+                ensure!(key.is_finite(), "Non-finite parameter key");
+                keys.push(key);
+            }
+            ensure!(
+                keys.windows(2).all(|pair| pair[0] < pair[1]),
+                "Parameter keys are not strictly increasing"
+            );
+            tables.push(KeyTable {
+                parameter: parameter.context("Key table has no parameter owner")?,
+                keys,
+            });
+        }
+        let mut bindings = Vec::with_capacity(binding_count);
+        for binding in 0..binding_count {
+            let start = self.nonnegative(73, binding)?;
+            let count = self.nonnegative(74, binding)?;
+            ensure!(count <= 16, "Binding has too many parameter axes");
+            let end = start
+                .checked_add(count)
+                .context("Binding index range overflow")?;
+            ensure!(end <= index_count, "Binding indexes exceed the index pool");
+            let mut axes = Vec::with_capacity(count);
+            for index in start..end {
+                let table = self.nonnegative(72, index)?;
+                ensure!(
+                    table < table_count,
+                    "Binding references an invalid key table"
+                );
+                axes.push(table);
+            }
+            bindings.push(axes);
+        }
+        Ok(BindingGraph { tables, bindings })
+    }
+
+    /// Evaluate authored ArtMesh keyforms before parent deformers, glues and
+    /// blend shapes. This is useful for testing the independent interpolation
+    /// path, but is not a complete drawable evaluation.
+    pub fn local_mesh_frame(
+        &self,
+        mesh: usize,
+        graph: &BindingGraph,
+        values: &[f32],
+    ) -> Result<LocalMeshFrame> {
+        let counts = self.counts()?;
+        ensure!(mesh < counts.art_meshes as usize, "Unknown ArtMesh");
+        let binding = self.nonnegative(34, mesh)?;
+        let keyform_start = self.nonnegative(35, mesh)?;
+        let keyform_count = self.nonnegative(36, mesh)?;
+        let vertex_count = self.nonnegative(43, mesh)?;
+        let keyform_total = self.nonnegative(0, 9)?;
+        ensure!(
+            keyform_count > 0
+                && keyform_start
+                    .checked_add(keyform_count)
+                    .is_some_and(|end| end <= keyform_total),
+            "ArtMesh keyforms exceed the keyform pool"
+        );
+        ensure!(vertex_count <= 65_536, "ArtMesh has too many vertices");
+        let mut positions = vec![[0.0_f32; 2]; vertex_count];
+        let mut opacity = 0.0_f32;
+        let mut draw_order = 0.0_f32;
+        let coordinate_count = self.nonnegative(0, 10)?;
+        for key in graph.weights(binding, values)? {
+            ensure!(
+                key.index < keyform_count,
+                "Binding exceeds ArtMesh keyforms"
+            );
+            let frame = keyform_start + key.index;
+            let start = self.nonnegative(70, frame)?;
+            ensure!(
+                vertex_count
+                    .checked_mul(2)
+                    .and_then(|coordinates| start.checked_add(coordinates))
+                    .is_some_and(|end| end <= coordinate_count),
+                "ArtMesh key positions exceed the position pool"
+            );
+            let frame_opacity = f32::from_bits(self.word(68, frame)?);
+            let frame_order = f32::from_bits(self.word(69, frame)?);
+            ensure!(
+                frame_opacity.is_finite() && frame_order.is_finite(),
+                "Invalid ArtMesh key opacity or order"
+            );
+            opacity += frame_opacity * key.weight;
+            draw_order += frame_order * key.weight;
+            for (vertex, out) in positions.iter_mut().enumerate() {
+                let point = start + vertex * 2;
+                let x = f32::from_bits(self.word(71, point)?);
+                let y = f32::from_bits(self.word(71, point + 1)?);
+                ensure!(
+                    x.is_finite() && y.is_finite(),
+                    "Invalid ArtMesh key position"
+                );
+                out[0] += x * key.weight;
+                out[1] += y * key.weight;
+            }
+        }
+        let parent = self.word(40, mesh)? as i32;
+        ensure!(
+            parent == -1 || (parent >= 0 && parent < counts.deformers as i32),
+            "Invalid ArtMesh parent deformer"
+        );
+        Ok(LocalMeshFrame {
+            positions,
+            opacity,
+            draw_order,
+            parent_deformer: (parent >= 0).then_some(parent as usize),
+        })
+    }
+
+    pub fn deformer_layouts(&self) -> Result<Vec<DeformerLayout>> {
+        let counts = self.counts()?;
+        let mut layouts = Vec::with_capacity(counts.deformers as usize);
+        let binding_total = self.nonnegative(0, 12)?;
+        for index in 0..counts.deformers as usize {
+            let parent_part = self.word(15, index)? as i32;
+            let parent_deformer = self.word(16, index)? as i32;
+            ensure!(
+                parent_part == -1 || (parent_part >= 0 && parent_part < counts.parts as i32),
+                "Deformer has an invalid parent part"
+            );
+            ensure!(
+                parent_deformer == -1 || (parent_deformer >= 0 && parent_deformer < index as i32),
+                "Deformer hierarchy is not topologically ordered"
+            );
+            let local = self.nonnegative(18, index)?;
+            let (binding, keyform_start, keyform_count, kind, total) = match self.word(17, index)? {
+                0 => {
+                    ensure!(local < counts.warp_deformers as usize, "Invalid warp index");
+                    let columns = self.nonnegative(24, local)?;
+                    let rows = self.nonnegative(23, local)?;
+                    let points = self.nonnegative(22, local)?;
+                    ensure!(
+                        (1..=256).contains(&columns)
+                            && (1..=256).contains(&rows)
+                            && (columns + 1) * (rows + 1) == points,
+                        "Invalid warp control grid"
+                    );
+                    let quad = self.version >= 2 && self.word(101, local)? != 0;
+                    (
+                        self.nonnegative(19, local)?,
+                        self.nonnegative(20, local)?,
+                        self.nonnegative(21, local)?,
+                        DeformerKind::Warp {
+                            columns,
+                            rows,
+                            points,
+                            quad,
+                        },
+                        self.nonnegative(0, 7)?,
+                    )
+                }
+                1 => {
+                    ensure!(
+                        local < counts.rotation_deformers as usize,
+                        "Invalid rotation index"
+                    );
+                    let base_angle = f32::from_bits(self.word(28, local)?);
+                    ensure!(base_angle.is_finite(), "Invalid rotation base angle");
+                    (
+                        self.nonnegative(25, local)?,
+                        self.nonnegative(26, local)?,
+                        self.nonnegative(27, local)?,
+                        DeformerKind::Rotation { base_angle },
+                        self.nonnegative(0, 8)?,
+                    )
+                }
+                _ => anyhow::bail!("Unknown MOC3 deformer type"),
+            };
+            ensure!(binding < binding_total, "Deformer binding is invalid");
+            ensure!(
+                keyform_count > 0
+                    && keyform_start
+                        .checked_add(keyform_count)
+                        .is_some_and(|end| end <= total),
+                "Deformer keyform range is invalid"
+            );
+            layouts.push(DeformerLayout {
+                id: self.id(11, index)?,
+                parent_part: (parent_part >= 0).then_some(parent_part as usize),
+                parent_deformer: (parent_deformer >= 0).then_some(parent_deformer as usize),
+                binding,
+                local_index: local,
+                keyform_start,
+                keyform_count,
+                enabled: self.word(14, index)? != 0,
+                visible: self.word(13, index)? != 0,
+                kind,
+            });
+        }
+        Ok(layouts)
+    }
+
+    /// Mark meshes whose final vertices also depend on glue or blend-shape
+    /// geometry. These require additional evaluation after warp deformation.
+    pub fn secondary_meshes(&self) -> Result<Vec<bool>> {
+        let mesh_count = self.counts()?.art_meshes as usize;
+        let mut secondary = vec![false; mesh_count];
+        let glues = self.nonnegative(0, 20)?;
+        ensure!(glues <= 1_000_000, "Too many glue relationships");
+        for glue in 0..glues {
+            for section in [94, 95] {
+                let mesh = self.nonnegative(section, glue)?;
+                ensure!(mesh < mesh_count, "Glue references an invalid ArtMesh");
+                secondary[mesh] = true;
+            }
+        }
+        if self.version >= 4 {
+            let blend_meshes = self.nonnegative(0, 28)?;
+            ensure!(blend_meshes <= 1_000_000, "Too many ArtMesh blend shapes");
+            for shape in 0..blend_meshes {
+                let mesh = self.nonnegative(128, shape)?;
+                ensure!(
+                    mesh < mesh_count,
+                    "Blend shape references an invalid ArtMesh"
+                );
+                secondary[mesh] = true;
+            }
+        }
+        Ok(secondary)
+    }
+
+    /// Blend local deformer keyforms before hierarchy transforms and blend
+    /// shapes. All position and scalar sources remain in model coordinates.
+    pub fn local_deformer_frame(
+        &self,
+        layout: &DeformerLayout,
+        graph: &BindingGraph,
+        values: &[f32],
+    ) -> Result<LocalDeformerFrame> {
+        let weights = graph.weights(layout.binding, values)?;
+        match layout.kind {
+            DeformerKind::Warp { points, .. } => {
+                let coordinate_total = self.nonnegative(0, 10)?;
+                let mut output = vec![[0.0_f32; 2]; points];
+                let mut opacity = 0.0_f32;
+                for key in weights {
+                    ensure!(
+                        key.index < layout.keyform_count,
+                        "Warp binding exceeds keyforms"
+                    );
+                    let frame = layout.keyform_start + key.index;
+                    let start = self.nonnegative(60, frame)?;
+                    ensure!(
+                        points
+                            .checked_mul(2)
+                            .and_then(|coordinates| start.checked_add(coordinates))
+                            .is_some_and(|end| end <= coordinate_total),
+                        "Warp key positions exceed the position pool"
+                    );
+                    let source_opacity = f32::from_bits(self.word(59, frame)?);
+                    ensure!(source_opacity.is_finite(), "Invalid warp opacity");
+                    opacity += source_opacity * key.weight;
+                    for (vertex, out) in output.iter_mut().enumerate() {
+                        let offset = start + vertex * 2;
+                        let x = f32::from_bits(self.word(71, offset)?);
+                        let y = f32::from_bits(self.word(71, offset + 1)?);
+                        ensure!(x.is_finite() && y.is_finite(), "Invalid warp position");
+                        out[0] += x * key.weight;
+                        out[1] += y * key.weight;
+                    }
+                }
+                Ok(LocalDeformerFrame::Warp {
+                    points: output,
+                    opacity,
+                })
+            }
+            DeformerKind::Rotation { .. } => {
+                let mut origin = [0.0_f32; 2];
+                let mut angle = 0.0_f32;
+                let mut scale = 0.0_f32;
+                let mut opacity = 0.0_f32;
+                let mut dominant = (f32::NEG_INFINITY, [false; 2]);
+                for key in weights {
+                    ensure!(
+                        key.index < layout.keyform_count,
+                        "Rotation binding exceeds keyforms"
+                    );
+                    let frame = layout.keyform_start + key.index;
+                    let values = [
+                        f32::from_bits(self.word(63, frame)?),
+                        f32::from_bits(self.word(64, frame)?),
+                        f32::from_bits(self.word(62, frame)?),
+                        f32::from_bits(self.word(65, frame)?),
+                        f32::from_bits(self.word(61, frame)?),
+                    ];
+                    ensure!(
+                        values.iter().all(|v| v.is_finite()),
+                        "Invalid rotation keyform"
+                    );
+                    origin[0] += values[0] * key.weight;
+                    origin[1] += values[1] * key.weight;
+                    angle += values[2] * key.weight;
+                    scale += values[3] * key.weight;
+                    opacity += values[4] * key.weight;
+                    if key.weight > dominant.0 {
+                        dominant = (
+                            key.weight,
+                            [self.word(66, frame)? != 0, self.word(67, frame)? != 0],
+                        );
+                    }
+                }
+                Ok(LocalDeformerFrame::Rotation {
+                    origin,
+                    angle,
+                    scale,
+                    opacity,
+                    reflect: dominant.1,
+                })
+            }
+        }
+    }
+
+    /// Evaluate an ArtMesh with one root warp parent. Returns `None` for
+    /// hierarchy cases that are not supported by this narrow evaluator yet.
+    /// Blend shapes and glues are not applied.
+    pub fn single_warp_mesh_frame(
+        &self,
+        mesh: usize,
+        graph: &BindingGraph,
+        values: &[f32],
+        deformers: &[DeformerLayout],
+    ) -> Result<Option<LocalMeshFrame>> {
+        let mut frame = self.local_mesh_frame(mesh, graph, values)?;
+        let Some(parent_index) = frame.parent_deformer else {
+            return Ok(None);
+        };
+        let parent = deformers
+            .get(parent_index)
+            .context("Missing mesh parent deformer")?;
+        let DeformerKind::Warp {
+            columns,
+            rows,
+            quad,
+            ..
+        } = parent.kind
+        else {
+            return Ok(None);
+        };
+        if parent.parent_deformer.is_some() || !parent.enabled {
+            return Ok(None);
+        }
+        let LocalDeformerFrame::Warp { points, opacity } =
+            self.local_deformer_frame(parent, graph, values)?
+        else {
+            unreachable!()
+        };
+        let grid = crate::rig::WarpGrid::new(
+            columns,
+            rows,
+            points
+                .into_iter()
+                .map(|p| crate::rig::Point { x: p[0], y: p[1] })
+                .collect(),
+        )?;
+        for position in &mut frame.positions {
+            let point = grid.sample_extended(
+                crate::rig::Point {
+                    x: position[0],
+                    y: position[1],
+                },
+                quad,
+            )?;
+            *position = [point.x, point.y];
+        }
+        frame.opacity *= opacity;
+        Ok(Some(frame))
+    }
+
+    /// Evaluate a mesh under one root rotation. This deliberately excludes
+    /// secondary geometry and inherited transforms until those paths have
+    /// independent parity coverage.
+    pub fn root_rotation_mesh_frame(
+        &self,
+        mesh: usize,
+        graph: &BindingGraph,
+        values: &[f32],
+        deformers: &[DeformerLayout],
+    ) -> Result<Option<LocalMeshFrame>> {
+        let mut frame = self.local_mesh_frame(mesh, graph, values)?;
+        let Some(parent_index) = frame.parent_deformer else {
+            return Ok(None);
+        };
+        let parent = deformers
+            .get(parent_index)
+            .context("Missing mesh parent deformer")?;
+        let DeformerKind::Rotation { base_angle } = parent.kind else {
+            return Ok(None);
+        };
+        if parent.parent_deformer.is_some() || !parent.enabled {
+            return Ok(None);
+        }
+        let LocalDeformerFrame::Rotation {
+            origin,
+            angle,
+            scale,
+            opacity,
+            reflect,
+        } = self.local_deformer_frame(parent, graph, values)?
+        else {
+            unreachable!()
+        };
+        let transform = crate::rig::RotationTransform::new(
+            crate::rig::Point {
+                x: origin[0],
+                y: origin[1],
+            },
+            base_angle + angle,
+            scale,
+            reflect,
+        )?;
+        for position in &mut frame.positions {
+            let result = transform.apply(crate::rig::Point {
+                x: position[0],
+                y: position[1],
+            });
+            *position = [result.x, result.y];
+        }
+        frame.opacity *= opacity;
+        Ok(Some(frame))
+    }
+
+    /// Evaluate a hierarchy made entirely of warp deformers. Rotation nodes,
+    /// glues, blend shapes, part opacity, and exterior fidelity require their
+    /// own parity gates before this can be used as a complete model frame.
+    pub fn warp_chain_mesh_frame(
+        &self,
+        mesh: usize,
+        graph: &BindingGraph,
+        values: &[f32],
+        deformers: &[DeformerLayout],
+    ) -> Result<Option<LocalMeshFrame>> {
+        let mut frame = self.local_mesh_frame(mesh, graph, values)?;
+        let Some(mut parent_index) = frame.parent_deformer else {
+            return Ok(None);
+        };
+        let mut chain = Vec::new();
+        loop {
+            ensure!(chain.len() < deformers.len(), "Cyclic deformer hierarchy");
+            let node = deformers
+                .get(parent_index)
+                .context("Missing mesh parent deformer")?;
+            if !node.enabled || !matches!(node.kind, DeformerKind::Warp { .. }) {
+                return Ok(None);
+            }
+            chain.push(parent_index);
+            let Some(next) = node.parent_deformer else {
+                break;
+            };
+            parent_index = next;
+        }
+        chain.reverse();
+        let mut parent_grid: Option<(crate::rig::WarpGrid, bool)> = None;
+        for index in chain {
+            let node = &deformers[index];
+            let DeformerKind::Warp {
+                columns,
+                rows,
+                quad,
+                ..
+            } = node.kind
+            else {
+                unreachable!()
+            };
+            let LocalDeformerFrame::Warp { points, opacity } =
+                self.local_deformer_frame(node, graph, values)?
+            else {
+                unreachable!()
+            };
+            let mut points = points
+                .into_iter()
+                .map(|p| crate::rig::Point { x: p[0], y: p[1] })
+                .collect::<Vec<_>>();
+            if let Some((grid, parent_quad)) = &parent_grid {
+                for point in &mut points {
+                    *point = grid.sample_extended(*point, *parent_quad)?;
+                }
+            }
+            frame.opacity *= opacity;
+            parent_grid = Some((crate::rig::WarpGrid::new(columns, rows, points)?, quad));
+        }
+        let Some((grid, quad)) = parent_grid else {
+            return Ok(None);
+        };
+        for position in &mut frame.positions {
+            let p = grid.sample_extended(
+                crate::rig::Point {
+                    x: position[0],
+                    y: position[1],
+                },
+                quad,
+            )?;
+            *position = [p.x, p.y];
+        }
+        Ok(Some(frame))
+    }
+
+    /// Evaluate a mesh through any authored warp/rotation hierarchy. The
+    /// caller must exclude meshes with glue or blend-shape geometry; this
+    /// method currently evaluates the normal-parameter geometry only.
+    pub fn deformer_chain_mesh_frame(
+        &self,
+        mesh: usize,
+        graph: &BindingGraph,
+        values: &[f32],
+        deformers: &[DeformerLayout],
+    ) -> Result<LocalMeshFrame> {
+        enum Transform {
+            Warp(crate::rig::WarpGrid, bool),
+            Rotation(crate::rig::RotationTransform),
+        }
+        impl Transform {
+            fn apply(&self, point: crate::rig::Point) -> Result<crate::rig::Point> {
+                match self {
+                    Self::Warp(grid, quad) => grid.sample_extended(point, *quad),
+                    Self::Rotation(transform) => Ok(transform.apply(point)),
+                }
+            }
+        }
+
+        let mut frame = self.local_mesh_frame(mesh, graph, values)?;
+        let Some(mut parent_index) = frame.parent_deformer else {
+            return Ok(frame);
+        };
+        let mut chain = Vec::new();
+        loop {
+            ensure!(chain.len() < deformers.len(), "Cyclic deformer hierarchy");
+            let node = deformers
+                .get(parent_index)
+                .context("Missing mesh parent deformer")?;
+            ensure!(node.enabled, "Disabled deformer in active mesh hierarchy");
+            chain.push(parent_index);
+            let Some(next) = node.parent_deformer else {
+                break;
+            };
+            parent_index = next;
+        }
+        chain.reverse();
+        let mut parent: Option<Transform> = None;
+        let mut inherited_scale = 1.0_f32;
+        for index in chain {
+            let node = &deformers[index];
+            let local = self.local_deformer_frame(node, graph, values)?;
+            let next = match (node.kind.clone(), local) {
+                (
+                    DeformerKind::Warp {
+                        columns,
+                        rows,
+                        quad,
+                        ..
+                    },
+                    LocalDeformerFrame::Warp { points, opacity },
+                ) => {
+                    let mut points = points
+                        .into_iter()
+                        .map(|p| crate::rig::Point { x: p[0], y: p[1] })
+                        .collect::<Vec<_>>();
+                    if let Some(transform) = &parent {
+                        for point in &mut points {
+                            *point = transform.apply(*point)?;
+                        }
+                    }
+                    frame.opacity *= opacity;
+                    Transform::Warp(crate::rig::WarpGrid::new(columns, rows, points)?, quad)
+                }
+                (
+                    DeformerKind::Rotation { base_angle },
+                    LocalDeformerFrame::Rotation {
+                        origin,
+                        angle,
+                        scale,
+                        opacity,
+                        reflect,
+                    },
+                ) => {
+                    let mut origin = crate::rig::Point {
+                        x: origin[0],
+                        y: origin[1],
+                    };
+                    let mut angle = angle;
+                    if let Some(transform) = &parent {
+                        let delta = if matches!(transform, Transform::Rotation(_)) {
+                            -10.0
+                        } else {
+                            -0.1
+                        };
+                        let transformed_origin = transform.apply(origin)?;
+                        // Transport the local negative-Y direction through
+                        // the parent. The direction gives an orientation even
+                        // when the parent warp is not affine.
+                        let mut direction = crate::rig::Point::default();
+                        let mut step = delta;
+                        for _ in 0..16 {
+                            let probe = transform.apply(crate::rig::Point {
+                                x: origin.x,
+                                y: origin.y + step,
+                            })?;
+                            direction = crate::rig::Point {
+                                x: probe.x - transformed_origin.x,
+                                y: probe.y - transformed_origin.y,
+                            };
+                            if direction.x != 0.0 || direction.y != 0.0 {
+                                break;
+                            }
+                            step *= 0.1;
+                        }
+                        ensure!(
+                            direction.x != 0.0 || direction.y != 0.0,
+                            "Rotation direction collapsed under parent"
+                        );
+                        angle += direction.x.atan2(-direction.y).to_degrees();
+                        origin = transformed_origin;
+                    }
+                    inherited_scale *= scale;
+                    frame.opacity *= opacity;
+                    Transform::Rotation(crate::rig::RotationTransform::new(
+                        origin,
+                        base_angle + angle,
+                        inherited_scale,
+                        reflect,
+                    )?)
+                }
+                _ => anyhow::bail!("Deformer layout and frame types differ"),
+            };
+            parent = Some(next);
+        }
+        if let Some(transform) = parent {
+            for position in &mut frame.positions {
+                let result = transform.apply(crate::rig::Point {
+                    x: position[0],
+                    y: position[1],
+                })?;
+                *position = [result.x, result.y];
+            }
+        }
+        Ok(frame)
     }
 
     /// Read immutable mesh topology and UVs, independently of the evaluator.
@@ -385,6 +1213,71 @@ mod tests {
     }
 
     #[test]
+    fn mixed_radix_binding_weights_cover_interpolated_keyforms() {
+        let graph = BindingGraph {
+            tables: vec![
+                KeyTable {
+                    parameter: 0,
+                    keys: vec![-1.0, 0.0, 1.0],
+                },
+                KeyTable {
+                    parameter: 1,
+                    keys: vec![0.0, 10.0],
+                },
+            ],
+            bindings: vec![vec![0, 1]],
+        };
+        assert_eq!(
+            graph.weights(0, &[0.5, 5.0]).unwrap(),
+            vec![
+                KeyformWeight {
+                    index: 1,
+                    weight: 0.25
+                },
+                KeyformWeight {
+                    index: 2,
+                    weight: 0.25
+                },
+                KeyformWeight {
+                    index: 4,
+                    weight: 0.25
+                },
+                KeyformWeight {
+                    index: 5,
+                    weight: 0.25
+                },
+            ]
+        );
+        assert_eq!(
+            graph.weights(0, &[1.0, 10.0]).unwrap(),
+            vec![KeyformWeight {
+                index: 5,
+                weight: 1.0
+            }]
+        );
+        assert!(graph.weights(0, &[0.0]).is_err());
+    }
+
+    #[test]
+    fn parameter_resolution_clamps_and_wraps_finite_values() {
+        let mut parameter = ParameterSpec {
+            id: "ParamTest".into(),
+            minimum: -1.0,
+            maximum: 1.0,
+            default: 0.0,
+            repeat: false,
+            kind: ParameterKind::Normal,
+        };
+        assert_eq!(parameter.resolve(-2.0).unwrap(), -1.0);
+        assert_eq!(parameter.resolve(2.0).unwrap(), 1.0);
+        assert!(parameter.resolve(f32::NAN).is_err());
+        parameter.repeat = true;
+        assert_eq!(parameter.resolve(1.0).unwrap(), -1.0);
+        assert_eq!(parameter.resolve(2.5).unwrap(), 0.5);
+        assert_eq!(parameter.resolve(-2.5).unwrap(), -0.5);
+    }
+
+    #[test]
     fn accepts_local_model_headers_when_explicitly_supplied() {
         let Ok(paths) = std::env::var("ARIA_TEST_MOC") else {
             return;
@@ -400,6 +1293,58 @@ mod tests {
             let meshes = moc.mesh_layouts().unwrap();
             assert_eq!(meshes.len(), counts.art_meshes as usize);
             assert_eq!(moc.parameters().unwrap().len(), counts.parameters as usize);
+            let graph = moc.binding_graph().unwrap();
+            let deformers = moc.deformer_layouts().unwrap();
+            assert_eq!(deformers.len(), counts.deformers as usize);
+            assert_eq!(moc.secondary_meshes().unwrap().len(), meshes.len());
+            let values = moc
+                .parameters()
+                .unwrap()
+                .iter()
+                .map(|parameter| parameter.default)
+                .collect::<Vec<_>>();
+            for binding in 0..graph.bindings.len() {
+                let weights = graph.weights(binding, &values).unwrap();
+                assert!(weights.iter().all(|item| item.weight.is_finite()));
+                assert!((weights.iter().map(|item| item.weight).sum::<f32>() - 1.0).abs() < 1e-4);
+            }
+            for (mesh, layout) in meshes.iter().enumerate().take(8) {
+                let frame = moc.local_mesh_frame(mesh, &graph, &values).unwrap();
+                assert_eq!(frame.positions.len(), layout.uvs.len());
+                assert!(frame.positions.iter().flatten().all(|v| v.is_finite()));
+            }
+            for layout in deformers.iter().take(8) {
+                match moc.local_deformer_frame(layout, &graph, &values).unwrap() {
+                    LocalDeformerFrame::Warp { points, opacity } => {
+                        assert!(points.iter().flatten().all(|v| v.is_finite()));
+                        assert!(opacity.is_finite());
+                    }
+                    LocalDeformerFrame::Rotation {
+                        origin,
+                        angle,
+                        scale,
+                        opacity,
+                        ..
+                    } => {
+                        assert!(
+                            origin
+                                .into_iter()
+                                .chain([angle, scale, opacity])
+                                .all(f32::is_finite)
+                        );
+                    }
+                }
+            }
+            let evaluator = crate::geometry::GeometryEvaluator::new(&moc).unwrap();
+            let frames = evaluator.frame(&values).unwrap();
+            assert_eq!(frames.len(), meshes.len());
+            for (frame, layout) in frames.iter().zip(&meshes) {
+                if let Some(frame) = frame {
+                    assert_eq!(frame.positions.len(), layout.uvs.len());
+                    assert!(frame.positions.iter().flatten().all(|v| v.is_finite()));
+                    assert!(frame.opacity.is_finite());
+                }
+            }
         }
     }
 }
