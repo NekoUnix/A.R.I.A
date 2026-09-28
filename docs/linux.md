@@ -171,7 +171,7 @@ See the [output guide](obs-output.md#linux-aria-canvas) for framing and transpar
 ## Import your avatar and tracking
 
 Open **Avatar → Avatar & appearance → Import avatar** to select PNG/GIF, VRM or
-Live2D. Live2D-compatible models use the bundled Purism Core runtime. Select your
+Live2D. Live2D-compatible models use the bundled ARIA Core runtime. Select your
 exported model and textures; no external library or SDK download is required.
 
 For iPhone VTube Studio or external JSON input, follow [tracking setup](tracking.md)

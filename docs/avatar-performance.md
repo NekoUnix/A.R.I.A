@@ -9,7 +9,7 @@ directory on `PATH` is not a valid performance sample.
 
 Set `ARIA_PERF_LOG=1` for two-second `PERF_FRAME` and `PERF_AVATAR` records in the
 local diagnostics directory. `PERF_FRAME` reports the UI/update interval;
-`PERF_AVATAR` separates rig/physics evaluation, Purism host roundtrip and
+`PERF_AVATAR` separates rig/physics evaluation, model update and
 Live2D mesh rendering. `PERF_CUBISM_RENDER` further splits view fitting, vertex
 preparation, GPU writes and command encoding, including mask/color pass counts.
 These are CPU wall times, not GPU execution timings or end-to-end tracking
@@ -211,15 +211,15 @@ checks against Rust bounds passed on the large outfit, OILBUN and Ditto, with
 one pose hiding every third mesh. A newer opt-in path now delivers those bounds
 asynchronously and uses them for view fitting; these native geometry checks do
 not measure live frame time.
-Set `ARIA_EXPERIMENTAL_DIRECT_RUST_CORE=1` and `ARIA_EXPERIMENTAL_GPU_MOC3=1`
-before launching Studio to use the Rust metadata and GPU geometry path. Mesh
+The Rust metadata and GPU geometry path is now the default. Set
+`ARIA_DISABLE_GPU_MOC3=1` for the Rust CPU geometry path. Mesh
 positions stay on the GPU through deformation, bounds reduction and rendering;
 only four bounds values return asynchronously. Superseded bounds are discarded,
 and layer-only changes skip geometry dispatch. Two-pose native image comparisons
 passed on Ditto, OILBUN and the large outfit, including masks and view fitting.
 The large model's broad second pose differed at 0.116% of pixels by more than
 two color levels, within the test's 0.2% budget. The many mask/color passes
-and broad model compatibility still need profiling before the default changes.
+and broad model compatibility still need profiling.
 In separate optimized 20-second screenshot smokes of the large 90s outfit on
 this Windows machine, all capped at 120 FPS, sampled FPS averaged 44.5 for
 direct Rust CPU geometry (42.5–46.4), 53.9 for the current Purism worker
@@ -231,7 +231,7 @@ substantially reduces the CPU bottleneck but does not hold 120 FPS on that
 model. The renderer still issues about 60 mask and 61 color passes per changing
 frame; GPU-mode render work sampled about 4–7 ms, leaving little room for UI,
 capture and frame pacing inside an 8.33 ms budget.
-The experimental path now encodes compute, bounds reduction and rendering
+The GPU path now encodes compute, bounds reduction and rendering
 before one queue submission on a changing frame. A separate optimized smoke
 after closing two older ARIA instances averaged 109.4 sampled FPS over eight
 steady intervals (98.8–120.6). The earlier run had different background
@@ -248,14 +248,11 @@ these resident bytes, but still uploads every atlas to the GPU. RAM residency
 alone does not lower VRAM or remove the measured Live2D mask-pass cost; GPU
 atlas residency and frame-time changes need separate measurement.
 
-ARIA builds the MIT-licensed Purism Core source pinned under
-`crates/aria-live2d/vendor/purism-core`. Its generated bundle remains upstream
-unchanged. Performance work should be measured against that open source and
-validated on licensed, local model files. No proprietary Live2D binary or
-model artwork is part of the repository. Replacing the entire runtime is a
-larger compatibility task. ARIA's independent Rust replacement is being
-validated separately against local Cubism exports before it becomes active;
-renderer and transport costs still need measurement alongside that work.
+The active runtime is ARIA's independent Rust evaluator. The repository and
+release exclude third-party model artwork and proprietary Live2D binaries.
+Earlier runtime measurements above are historical baselines, not measurements
+of the current Rust default. Renderer and transport costs still need end-to-end
+measurement on licensed local exports.
 
 ## Reproducing the CPU test
 

@@ -17,7 +17,7 @@ Compare the footer FPS with no avatar, with the avatar, and then with outputs
 enabled. This distinguishes UI scheduling, model work and capture work. For a
 local diagnostic run, set `ARIA_PERF_LOG=1` before starting ARIA. The diagnostic
 session records `PERF_FRAME` (frame preparation, model update and UI time) and
-`PERF_AVATAR` (rig evaluation, Purism Core worker round trip and model drawing)
+`PERF_AVATAR` (rig evaluation, ARIA Core model update and model drawing)
 every two seconds. Remove the variable after testing. These are CPU-side times;
 GPU execution can extend beyond them.
 
@@ -27,7 +27,7 @@ at a 120 FPS target with no outputs open. The same UI without a model held about
 120 FPS. This is a model-specific observation, not a guaranteed frame rate for
 other systems or avatars. The runtime now initializes immutable UVs, indices,
 masks and mesh metadata once, while updating and checking moving vertices each
-frame. The isolated Purism Core worker remains the default for crash isolation.
+frame. The in-process Rust model core is the default.
 
 ## What changed
 

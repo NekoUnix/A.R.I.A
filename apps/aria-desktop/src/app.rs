@@ -2372,6 +2372,12 @@ impl AriaApp {
                     .apply(mouth_response, &mut self.live_inputs, dt);
             }
             if let Some(avatar) = &mut self.live2d {
+                avatar.request_cpu_surface_geometry(
+                    self.items.pick_pin
+                        || self.items.edit_pin
+                        || self.items.pin_here
+                        || self.items.mount_editor.is_some(),
+                );
                 self.input_monitor.vts.advance(
                     ctx,
                     avatar,
@@ -2471,6 +2477,9 @@ impl AriaApp {
         );
 
         if ctx.current_pass_index() == 0 {
+            self.items
+                .models
+                .request_cpu_surface_geometry(self.items.mount_editor.is_some());
             self.items
                 .models
                 .update(&mut self.input_monitor.saved.config, &self.live_inputs, dt);

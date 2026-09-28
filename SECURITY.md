@@ -18,7 +18,7 @@ If GitHub's reporting form is unavailable, ask repository owner **NekoUnix** for
 a private channel before sharing sensitive details. No response-time guarantee
 is currently offered.
 
-Review sensitive changes carefully: native Purism Core/NVIDIA interfaces, avatar and
+Review sensitive changes carefully: GPU/NVIDIA interfaces, avatar and
 image parsers, HTTP authentication, OAuth credentials, camera subprocesses,
 dependency installation and Windows shared-texture resources. Vulnerability
 alerts and Dependabot security PRs supplement code review; their absence does not

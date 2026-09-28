@@ -3,16 +3,58 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        CubismModel,
-        ffi::{Aligned, V2, V4},
-        rust_model::RustModel,
-    };
+    use crate::rust_model::RustModel;
     use libloading::Library;
+    use std::alloc::{Layout, alloc_zeroed, dealloc};
     use std::{
         ffi::{CStr, c_char, c_void},
-        path::Path,
+        ptr::NonNull,
     };
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
+    struct V2 {
+        x: f32,
+        y: f32,
+    }
+
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct V4 {
+        x: f32,
+        y: f32,
+        z: f32,
+        w: f32,
+    }
+
+    struct Aligned {
+        ptr: NonNull<u8>,
+        layout: Layout,
+    }
+    impl Aligned {
+        fn new(size: usize, alignment: usize) -> anyhow::Result<Self> {
+            let layout = Layout::from_size_align(size, alignment)?;
+            let ptr = NonNull::new(unsafe { alloc_zeroed(layout) })
+                .ok_or_else(|| anyhow::anyhow!("Cannot allocate oracle model memory"))?;
+            Ok(Self { ptr, layout })
+        }
+        fn ptr(&self) -> *mut c_void {
+            self.ptr.as_ptr().cast()
+        }
+        fn copy_from(&mut self, bytes: &[u8]) {
+            assert!(bytes.len() <= self.layout.size());
+            unsafe {
+                std::ptr::copy_nonoverlapping(bytes.as_ptr(), self.ptr.as_ptr(), bytes.len());
+            }
+        }
+    }
+    impl Drop for Aligned {
+        fn drop(&mut self) {
+            unsafe {
+                dealloc(self.ptr.as_ptr(), self.layout);
+            }
+        }
+    }
 
     #[test]
     #[ignore = "requires ARIA_CUBISM_CORE and ARIA_TEST_MOC; official DLL stays local"]
@@ -24,27 +66,7 @@ mod tests {
         let evaluator = aria_model_core::geometry::GeometryEvaluator::new(&rust).unwrap();
         let orderer = aria_model_core::draw_order::RenderOrderEvaluator::new(&rust).unwrap();
         let reverse_y = rust.canvas().unwrap().reverse_y;
-        // Some valid exports are rejected by the transitional Purism loader.
-        // The independent evaluator must still be compared directly to Core.
-        let mut current = (std::env::var("ARIA_COMPARE_TRANSITIONAL_CORE").as_deref() == Ok("1"))
-            .then(|| CubismModel::load(Path::new(""), &bytes, 32).ok())
-            .flatten();
         let mut rust_adapter = RustModel::load(&bytes, 32).unwrap();
-        if let Some(current) = &current {
-            assert_eq!(rust_adapter.drawables.len(), current.drawables.len());
-            for (independent, existing) in rust_adapter.drawables.iter().zip(&current.drawables) {
-                assert_eq!(independent.id, existing.id);
-                assert_eq!(independent.part, existing.part);
-                assert_eq!(independent.uvs, existing.uvs);
-                assert_eq!(independent.indices, existing.indices);
-                assert_eq!(independent.masks, existing.masks);
-                assert_eq!(independent.texture, existing.texture);
-                assert_eq!(independent.masked, existing.masked);
-                assert_eq!(independent.inverted, existing.inverted);
-                assert_eq!(independent.double_sided, existing.double_sided);
-                assert_eq!(independent.blend, existing.blend);
-            }
-        }
 
         // SAFETY: The local library is used only after its documented exported
         // functions have been resolved. MOC/model buffers have the Core ABI's
@@ -234,7 +256,6 @@ mod tests {
             let param_values = values(model);
             assert!(!param_values.is_null());
             let params: Vec<_> = rust_adapter.parameters().iter().take(16).cloned().collect();
-            let mut worst = 0.0_f32;
             let mut rust_worst = 0.0_f32;
             let mut opacity_worst = 0.0_f32;
             let mut color_worst = 0.0_f32;
@@ -248,9 +269,6 @@ mod tests {
                         let t = ((frame * 13 + i * 7) % 17) as f32 / 16.0;
                         let value = p.min + (p.max - p.min) * t;
                         param_values.add(i).write(value);
-                        if let Some(current) = &mut current {
-                            current.set_parameter(&p.id, value);
-                        }
                         rust_adapter.set_parameter(&p.id, value);
                     }
                 } else {
@@ -262,9 +280,6 @@ mod tests {
                                 spec.minimum
                             };
                             param_values.add(i).write(value);
-                            if let Some(current) = &mut current {
-                                current.set_parameter(&spec.id, value);
-                            }
                             rust_adapter.set_parameter(&spec.id, value);
                         }
                     }
@@ -284,16 +299,10 @@ mod tests {
                     .collect::<Vec<_>>();
                 for (i, value) in input_parts.iter().enumerate() {
                     part_opacities(model).add(i).write(*value);
-                    if let Some(current) = &mut current {
-                        current.parts[i].value = *value;
-                    }
                     rust_adapter.parts[i].value = *value;
                 }
                 reset(model);
                 update(model);
-                if let Some(current) = &mut current {
-                    current.update().unwrap();
-                }
                 rust_adapter.update().unwrap();
                 let counts =
                     std::slice::from_raw_parts(vertex_counts(model), rust_adapter.drawables.len());
@@ -333,19 +342,6 @@ mod tests {
                 for (index, independent) in rust_adapter.drawables.iter().enumerate() {
                     assert_eq!(independent.visible, native_dynamic[index] & 1 != 0);
                     assert_eq!(independent.order, native_render_orders[index]);
-                    if let Some(drawable) = current.as_ref().map(|model| &model.drawables[index]) {
-                        assert_eq!(independent.visible, drawable.visible);
-                        assert_eq!(independent.order, drawable.order);
-                        if drawable.visible {
-                            assert!((independent.opacity - drawable.opacity).abs() <= 0.001);
-                            for (left, right) in
-                                independent.positions.iter().zip(&drawable.positions)
-                            {
-                                assert!((left[0] - right[0]).abs() <= 0.001);
-                                assert!((left[1] - right[1]).abs() <= 0.001);
-                            }
-                        }
-                    }
                     if native_render_orders[index] != rust_orders[index] {
                         render_order_mismatches += 1;
                         if render_order_mismatches <= 8 {
@@ -375,13 +371,6 @@ mod tests {
                     assert_eq!(counts[i] as usize, independent.positions.len());
                     let source =
                         std::slice::from_raw_parts(positions[i], independent.positions.len());
-                    if let Some(drawable) = current.as_ref().map(|model| &model.drawables[i]) {
-                        for (official, aria) in source.iter().zip(&drawable.positions) {
-                            worst = worst
-                                .max((official.x - aria[0]).abs())
-                                .max((official.y - aria[1]).abs());
-                        }
-                    }
                     if independent.visible {
                         let rust_frame = rust_frames[i].as_ref().unwrap_or_else(|| {
                             panic!("Visible mesh {i} {} has no Rust frame", independent.id)
@@ -431,18 +420,9 @@ mod tests {
                     }
                 }
             }
-            let transitional_delta = current
-                .as_ref()
-                .map_or_else(|| "not compared".to_string(), |_| worst.to_string());
             println!(
-                "official ABI {abi:#x}, transitional delta {transitional_delta}, Rust delta {rust_worst}, opacity delta {opacity_worst}, color delta {color_worst}, draw-order mismatches {draw_order_mismatches}, render-order mismatches {render_order_mismatches} across {rust_mesh_frames} supported visible mesh frames ({rust_mismatches} mismatched)"
+                "official ABI {abi:#x}, Rust delta {rust_worst}, opacity delta {opacity_worst}, color delta {color_worst}, draw-order mismatches {draw_order_mismatches}, render-order mismatches {render_order_mismatches} across {rust_mesh_frames} supported visible mesh frames ({rust_mismatches} mismatched)"
             );
-            if current.is_some() {
-                assert!(
-                    worst <= 0.001,
-                    "current runtime diverges from official Cubism"
-                );
-            }
             assert!(
                 rust_mesh_frames > 0,
                 "No supported Rust geometry was compared"

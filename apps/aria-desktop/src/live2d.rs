@@ -42,6 +42,8 @@ pub struct Avatar {
     last_pose_mode: PoseMode,
     last_layers: aria_core::layers::Config,
     values: Vec<rig::RigParameter>,
+    cpu_surface_requested: bool,
+    cpu_surface_current: bool,
 }
 
 struct GpuModelPath {
@@ -122,11 +124,11 @@ impl GpuModelPath {
     }
 }
 impl Avatar {
-    pub fn load(state: &RenderState, core: &Path, mut files: ModelFiles) -> Result<Self> {
+    pub fn load(state: &RenderState, _core: &Path, mut files: ModelFiles) -> Result<Self> {
         let resident = ResidentModel::load(&files.moc, &files.textures)
             .context("Cannot load model sources into RAM")?;
         let model_key = movement::model_key(resident.moc());
-        let model = HostedModel::load(core, &files.moc, files.textures.len())
+        let model = HostedModel::load_resident(resident.moc(), files.textures.len())
             .context("Cannot load Live2D avatar")?;
         let mut renderer = ModelRenderer::new_resident(
             state,
@@ -137,9 +139,7 @@ impl Avatar {
         )?;
         files.warnings.extend(renderer.import_notes.clone());
         renderer.render(model.canvas, &model.drawables)?;
-        let gpu = if model.uses_direct_rust()
-            && std::env::var("ARIA_EXPERIMENTAL_GPU_MOC3").as_deref() == Ok("1")
-        {
+        let gpu = if std::env::var("ARIA_DISABLE_GPU_MOC3").as_deref() != Ok("1") {
             match GpuModelPath::new(state, &resident, &model) {
                 Ok(path) => Some(path),
                 Err(error) => {
@@ -228,27 +228,28 @@ impl Avatar {
             last_pose_mode: PoseMode::Live,
             last_layers: Default::default(),
             values,
+            cpu_surface_requested: false,
+            cpu_surface_current: true,
         })
+    }
+    pub fn request_cpu_surface_geometry(&mut self, requested: bool) {
+        self.cpu_surface_requested = requested;
     }
     pub fn image(&self) -> ModelImage {
         self.renderer.image
     }
     pub fn runtime_label(&self) -> &'static str {
         if self.gpu.is_some() {
-            "LIVE2D · ARIA RUST + GPU · EXPERIMENTAL"
-        } else if self.model.uses_direct_rust() {
-            "LIVE2D · ARIA RUST · EXPERIMENTAL"
+            "LIVE2D · ARIA RUST + GPU"
         } else {
-            "LIVE2D · PURISM CORE"
+            "LIVE2D · ARIA RUST · CPU"
         }
     }
     pub fn runtime_description(&self) -> &'static str {
         if self.gpu.is_some() {
-            "ARIA's experimental Rust core evaluates model geometry on the GPU."
-        } else if self.model.uses_direct_rust() {
-            "ARIA's experimental Rust core evaluates model geometry on the CPU."
+            "ARIA's Rust core evaluates model geometry on the GPU."
         } else {
-            "Purism Core is built in. No separate runtime download is needed."
+            "ARIA's Rust core evaluates model geometry on the CPU."
         }
     }
     pub fn frozen_preview_renderer(&self) -> ModelRenderer {
@@ -333,25 +334,40 @@ impl Avatar {
             .iter()
             .zip(self.model.parameters())
             .all(|(a, b)| a.value == b.value);
+        let cpu_surface_needed = self.gpu.is_some()
+            && (self.cpu_surface_requested
+                || config.items.iter().any(|item| {
+                    matches!(
+                        item.pin.as_ref(),
+                        Some(aria_core::items::Pin::Surface { .. })
+                    )
+                }));
+        let surface_refresh = cpu_surface_needed && !self.cpu_surface_current;
         let bounds_changed = self
             .gpu
             .as_mut()
             .map_or(Ok(false), GpuModelPath::poll_bounds)?;
-        if !pose_changed && !parts_changed && self.last_layers == *render_layers && !bounds_changed
+        if !pose_changed
+            && !parts_changed
+            && !surface_refresh
+            && self.last_layers == *render_layers
+            && !bounds_changed
         {
             return Ok(false);
         }
-        if pose_changed || parts_changed {
+        if pose_changed || parts_changed || surface_refresh {
             if parts_changed {
                 self.model.parts.clone_from(parts);
             }
             for p in &self.values {
                 self.model.set_parameter(&p.id, p.value);
             }
-            if self.gpu.is_some() {
+            if self.gpu.is_some() && !cpu_surface_needed {
                 self.model.update_metadata()?;
+                self.cpu_surface_current = false;
             } else {
                 self.model.update()?;
+                self.cpu_surface_current = true;
             }
         }
         let host_updated = Instant::now();
@@ -440,7 +456,37 @@ mod tests {
     use super::*;
     #[test]
     #[cfg(windows)]
-    #[ignore = "requires ARIA_TEST_MODEL, ARIA_EXPERIMENTAL_DIRECT_RUST_CORE=1 and DX12"]
+    #[ignore = "requires ARIA_TEST_MODEL and DX12"]
+    fn gpu_surface_pin_refreshes_cpu_geometry() {
+        let state = crate::spout::tests::gpu_state();
+        let path = std::env::var_os("ARIA_TEST_MODEL").unwrap();
+        let files = aria_model::load_files(Path::new(&path)).unwrap();
+        let mut avatar = Avatar::load(&state, Path::new(""), files).unwrap();
+        assert!(avatar.gpu.is_some(), "test model must support GPU geometry");
+        avatar.cpu_surface_current = false;
+        avatar.request_cpu_surface_geometry(true);
+        let mut config = avatar.initial_config.clone();
+        let mut expressions = crate::expressions_panel::ExpressionsPanel::default();
+        assert!(
+            avatar
+                .update(&Inputs::new(), &mut config, &mut expressions, 1.0 / 60.0)
+                .unwrap()
+        );
+        assert!(avatar.cpu_surface_current);
+        let mut expected =
+            HostedModel::load_resident(avatar._resident.moc(), avatar.files.textures.len())
+                .unwrap();
+        for parameter in avatar.model.parameters() {
+            expected.set_parameter(&parameter.id, parameter.value);
+        }
+        expected.update().unwrap();
+        for (actual, expected) in avatar.model.drawables.iter().zip(&expected.drawables) {
+            assert_eq!(actual.positions, expected.positions);
+        }
+    }
+    #[test]
+    #[cfg(windows)]
+    #[ignore = "requires ARIA_TEST_MODEL and DX12"]
     fn local_gpu_model_frame_matches_full_rust_render() {
         let state = crate::spout::tests::gpu_state();
         let path = std::env::var_os("ARIA_TEST_MODEL").unwrap();
@@ -621,7 +667,7 @@ mod tests {
     }
     #[test]
     #[cfg(windows)]
-    #[ignore = "requires ARIA_TEST_MODEL_FOLDER and DX12; uses bundled Purism Core"]
+    #[ignore = "requires ARIA_TEST_MODEL_FOLDER and DX12"]
     fn nested_model_library_renders_full_geometry() {
         let state = crate::spout::tests::gpu_state();
         let root = std::env::var_os("ARIA_TEST_MODEL_FOLDER").unwrap();
@@ -964,9 +1010,7 @@ mod tests {
             aria_model::load_files(Path::new(&path)).unwrap(),
         )
         .unwrap();
-        if std::env::var("ARIA_EXPERIMENTAL_RUST_CORE").as_deref() == Ok("1") {
-            assert!(avatar.model.version.starts_with("ARIA Rust Model Core"));
-        }
+        assert!(avatar.model.version.starts_with("ARIA Rust Model Core"));
         let mut config = avatar.initial_config.clone();
         config.pose.mode = PoseMode::Frozen;
         config.pose.frozen = avatar

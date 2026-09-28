@@ -258,13 +258,8 @@ impl Wizard {
                         }
                         theme::caption(ui,"Nested folders, spaces and Unicode names are supported. Extract ZIP/RAR downloads first. For OneDrive, choose Always keep on this device before importing.");
                         if let Some(path)=&self.model {ui.label(path.display().to_string());}
-                        if std::env::var("ARIA_EXPERIMENTAL_DIRECT_RUST_CORE").as_deref() == Ok("1") {
-                            help::label(ui,"ARIA Rust Core · experimental","runtime");
-                            theme::caption(ui,"The active GPU or CPU path will be shown after import.");
-                        } else {
-                            help::label(ui,"Purism Core · built in","runtime");
-                            theme::caption(ui,"Ready to import. No separate runtime download is needed.");
-                        }
+                        help::label(ui,"ARIA Rust Core · built in","runtime");
+                        theme::caption(ui,"Model data loads into RAM before rendering. The active GPU or CPU path is shown after import.");
                     }
                     ui.horizontal(|ui| {
                         if ui.button("Back").clicked(){self.step=0;}

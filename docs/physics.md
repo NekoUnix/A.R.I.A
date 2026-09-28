@@ -93,7 +93,7 @@ Each avatar independently retains:
 Switching avatars remembers the outgoing profile and restores the incoming one.
 The tracking connection is disconnected on a switch; click Connect tracking to
 connect to that model's saved sender. The OBS window open/closed state is a session
-action. Purism Core is built in; old Cubism DLL paths are ignored.
+action. ARIA Core is built in; old Cubism DLL paths are ignored.
 
 Identity uses the `.moc3` contents, so relocating the same export keeps its profile.
 A different moc gets a different profile. PNG/JPEG puppets use their own decoded

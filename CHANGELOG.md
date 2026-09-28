@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Make ARIA's Rust MOC3 evaluator the default desktop path and try its GPU
+  geometry evaluator automatically. Model MOC3 and encoded atlases are loaded
+  into RAM before renderer setup; the evaluator consumes those resident bytes.
+  Surface pinning and mounted Live2D objects refresh CPU mesh geometry when
+  their anchor needs it. Remove the copied Purism C runtime, build dependency
+  and release notice. The optional isolated model host now serves Rust only.
+  `ARIA_DISABLE_GPU_MOC3=1` forces Rust CPU geometry for troubleshooting.
+
 - Batch up to 16 full-resolution Cubism clipping masks per ordered draw chunk by default. This reduces color-pass setup on masked models while preserving mask resolution, blend order, and exact local native screenshots on the large 90s outfit, OILBUN, and tray-maid exports. A frozen layer-preview check also passed. A matched optimized 20-second large-outfit smoke sampled 117.4 FPS on average (111.6–124.5), versus 111.0 and 105.7 in surrounding single-mask runs; this is an improvement on this setup, not sustained 120 FPS. `ARIA_DISABLE_MASK_BATCH=1` restores the single-mask path for low-memory troubleshooting.
 
 - Fix asynchronous GPU model framing under continuous animation. A completed four-float bounds readback now expands the stage even when a newer pose is queued; the newer result continues asynchronously. Previously every completed result could be discarded as stale while tracking changed each frame. A native DX12 test covers hidden-to-visible changes during an in-flight readback.

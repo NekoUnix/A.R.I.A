@@ -1,11 +1,9 @@
 # ARIA Model Core: independent Rust replacement
 
-The target runtime is entirely authored in Rust by ARIA. Purism Core is a
-temporary **comparison oracle**, not the implementation or a source fork for
-this crate. The desktop application still uses the current Purism-backed
-`aria-live2d` worker until the replacement meets the gates below. Do not label
-the current application as Purism-free, remove its MIT notice, or switch the
-worker simply because a file parses successfully.
+The active Live2D-compatible runtime is authored in Rust by ARIA. The desktop
+uses it directly by default and no longer compiles or distributes Purism Core.
+Valid but unsupported MOC3 features must fail clearly; parsing alone is not
+proof of parity, visual quality or frame-rate performance.
 
 `crates/aria-model-core` currently implements bounded, immutable MOC3 container
 reading, model counts, canvas and parameter metadata, ArtMesh IDs, atlas slots,
@@ -23,21 +21,15 @@ visibility, authored multiply/screen colors, integer ArtMesh draw order and
 hierarchical final render order. The draw-group evaluator validates unique
 ownership, acyclic relationships and declared descendant counts, then visits
 groups in parent-before-child order even if they are stored differently. A
-renderer-facing adapter is available in the
-isolated worker when `ARIA_EXPERIMENTAL_RUST_CORE=1` is set. An additional
-`ARIA_EXPERIMENTAL_DIRECT_RUST_CORE=1` path evaluates the same Rust core in the
-desktop process without worker serialization. Both are opt-in comparison paths;
-the default and distributed runtime still use Purism. The direct path loses
-worker crash isolation and must remain experimental until the replacement gates
-are met.
-With the direct path enabled, `ARIA_EXPERIMENTAL_GPU_MOC3=1` additionally runs
+renderer-facing adapter is used directly in the desktop. An optional isolated
+Rust worker remains for integration tests. By default the desktop also runs
 mesh deformation, hierarchy, glue and visible-bounds reduction on the GPU.
 Rust still resolves drawable metadata and compact dynamic coefficients on the
 CPU. The final vertex buffer is bound directly by the desktop renderer, and
 only four bounds values are returned asynchronously to fit the view. If GPU
 plan construction fails for a model, Studio records a warning and uses the
-direct Rust CPU geometry path. Both variables must be set for this experiment;
-it is not yet the default or a measured 120 FPS path.
+Rust CPU geometry path. Set `ARIA_DISABLE_GPU_MOC3=1` to force that path for
+diagnostics. Neither path establishes a universal measured 120 FPS result.
 Completed bounds are applied even if a newer pose is already pending, because
 the fitted canvas only grows. A second readback then catches up without
 blocking rendering; continuous tracking no longer starves stage expansion.
@@ -103,10 +95,8 @@ size in RAM; decoded pixel buffers are temporary during the initial upload.
 4. Fuzz malformed MOC3 input, check memory limits, profile large and small
    avatars, and validate rendering and physics at target frame rates. A 120 FPS
    claim requires end-to-end frame measurements, not a core-only benchmark.
-5. Switch the desktop and worker to the Rust implementation, remove the
-   Purism C source/build dependency and current-runtime test linkage, update
-   package notices and documentation, then test shipped builds on supported
-   platforms and the supplied local models.
+5. Test the active Rust desktop path, Rust-only worker, model pinning and
+   shipped builds on supported platforms and supplied local models.
 
 ## Current evidence
 
@@ -381,5 +371,5 @@ It reports the number of visible mesh frames and the largest coordinate delta.
 Set `ARIA_CUBISM_CORE` to an official Core DLL you already have and run the
 ignored `official_cubism_matches_rust_on_animated_vertices` test
 to repeat the direct Cubism comparison. No DLL path is hardcoded into ARIA.
-Set `ARIA_COMPARE_TRANSITIONAL_CORE=1` to include the temporary Purism runtime
-in that diagnostic; direct Rust-to-official comparison works without it.
+The official Core remains a local, developer-supplied differential oracle;
+the distributable never loads or ships it.

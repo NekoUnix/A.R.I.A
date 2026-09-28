@@ -43,11 +43,11 @@ jobs:
             alpha-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}-
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.98.1 --profile minimal --component clippy
-      - name: Purism source and release-content checks
+      - name: Rust-only runtime and release-content checks
         run: |
           python3 scripts/check-runtime-distribution.py
           python3 scripts/test-runtime-distribution.py
-      - name: Build desktop, CLI and Purism host
+      - name: Build desktop, CLI and Rust model host
         run: cargo build --locked --workspace
       - name: macOS Syphon orientation and idle-frame regression
         if: runner.os == 'macOS'

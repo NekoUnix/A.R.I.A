@@ -10,25 +10,15 @@ spec.loader.exec_module(audit)
 
 
 class DistributionTests(unittest.TestCase):
-    def test_missing_or_modified_notice_is_rejected(self):
+    def test_empty_stage_is_valid(self):
         with tempfile.TemporaryDirectory() as directory:
-            stage = Path(directory)
-            self.assertTrue(audit.check(stage))
-            notice = stage / audit.NOTICE
-            notice.parent.mkdir(parents=True)
-            notice.write_bytes((audit.ROOT / audit.NOTICE).read_bytes())
-            self.assertEqual(audit.check(stage), [])
-            notice.write_text("MIT without the required copyright notice")
-            self.assertTrue(audit.check(stage))
+            self.assertEqual(audit.check(directory), [])
 
-    def test_nested_sdk_and_avatar_files_are_rejected(self):
+    def test_nested_sdk_old_core_and_avatar_files_are_rejected(self):
         for name in ["Live2DCubismCore.dll", "libLive2DCubismCore.a", "libLive2DCubismCore.so.6",
-                     "Live2DCubismCore.bundle", "private.MOC3", "avatar.model3.json"]:
+                     "Live2DCubismCore.bundle", "PurismCoreBundle.h", "private.MOC3", "avatar.model3.json"]:
             with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
                 stage = Path(directory)
-                notice = stage / audit.NOTICE
-                notice.parent.mkdir(parents=True)
-                notice.write_bytes((audit.ROOT / audit.NOTICE).read_bytes())
                 asset = stage / "unexpected" / name
                 asset.parent.mkdir()
                 asset.write_bytes(b"fixture")

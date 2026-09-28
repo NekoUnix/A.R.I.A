@@ -1,5 +1,5 @@
 //! Rust particle-chain solver for authored physics3 rigs. Evaluates fixed steps
-//! before Purism Core; retains momentum and interpolates outputs between steps.
+//! before ARIA Core; retains momentum and interpolates outputs between steps.
 //! This implements the data format, not VTube Studio's proprietary physics modes.
 use crate::rig::RigParameter;
 use anyhow::{Result, ensure};

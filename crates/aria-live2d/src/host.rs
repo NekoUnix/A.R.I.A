@@ -1,7 +1,7 @@
-//! A private, versioned stdio connection to a separate Cubism process, plus an
-//! opt-in in-process adapter for profiling ARIA's Rust model core. The default
-//! worker isolates Core crashes; it is not an OS security sandbox.
-use crate::{Canvas, CubismModel, Drawable, Parameter, rust_model::RustModel};
+//! ARIA's in-process Rust model adapter and an optional isolated Rust worker.
+#[cfg(test)]
+use crate::CubismModel;
+use crate::{Canvas, Drawable, Parameter, rust_model::RustModel};
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{
@@ -80,11 +80,6 @@ fn read_packet<T: DeserializeOwned>(reader: &mut impl Read) -> Result<Option<T>>
     Ok(Some(value))
 }
 
-enum HostEngine {
-    Current(Box<CubismModel>),
-    Rust(Box<RustModel>),
-}
-
 fn apply_inputs(
     parameters: &mut [Parameter],
     model_parts: &mut [Parameter],
@@ -125,10 +120,10 @@ fn moving(drawables: &[Drawable]) -> Vec<MovingDrawable> {
         .collect()
 }
 
-/// Worker entry point. Rust evaluation can be enabled for local parity testing.
+/// Worker entry point. It serves only ARIA's Rust evaluator.
 pub fn serve(reader: impl Read, writer: impl Write) -> Result<()> {
     let (mut reader, mut writer) = (BufReader::new(reader), BufWriter::new(writer));
-    let mut model: Option<HostEngine> = None;
+    let mut model: Option<Box<RustModel>> = None;
     while let Some(request) = read_packet(&mut reader)? {
         let response = (|| -> Result<Response> {
             match request {
@@ -139,50 +134,22 @@ pub fn serve(reader: impl Read, writer: impl Write) -> Result<()> {
                         .with_context(|| format!("Cannot open {}", moc.display()))?
                         .take(aria_core::asset_limits::MOC_FILE as u64 + 1)
                         .read_to_end(&mut bytes)?;
-                    let use_rust =
-                        std::env::var("ARIA_EXPERIMENTAL_RUST_CORE").as_deref() == Ok("1");
-                    let loaded = if use_rust {
-                        HostEngine::Rust(Box::new(RustModel::load(&bytes, textures)?))
-                    } else {
-                        HostEngine::Current(Box::new(CubismModel::load(
-                            Path::new(""),
-                            &bytes,
-                            textures,
-                        )?))
-                    };
-                    let response = match &loaded {
-                        HostEngine::Current(inner) => Response::Loaded {
-                            canvas: inner.canvas,
-                            version: inner.version.clone(),
-                            parameters: inner.parameters().to_vec(),
-                            parts: inner.parts.clone(),
-                            draws: inner.drawables.clone(),
-                        },
-                        HostEngine::Rust(inner) => Response::Loaded {
-                            canvas: inner.canvas,
-                            version: inner.version.clone(),
-                            parameters: inner.parameters().to_vec(),
-                            parts: inner.parts.clone(),
-                            draws: inner.drawables.clone(),
-                        },
+                    let loaded = Box::new(RustModel::load(&bytes, textures)?);
+                    let response = Response::Loaded {
+                        canvas: loaded.canvas,
+                        version: loaded.version.clone(),
+                        parameters: loaded.parameters().to_vec(),
+                        parts: loaded.parts.clone(),
+                        draws: loaded.drawables.clone(),
                     };
                     model = Some(loaded);
                     Ok(response)
                 }
                 Request::Update(values, parts) => {
                     let model = model.as_mut().context("Load a model before updating it")?;
-                    match model {
-                        HostEngine::Current(inner) => {
-                            apply_inputs(&mut inner.parameters, &mut inner.parts, values, parts)?;
-                            inner.update()?;
-                            Ok(Response::Frame(moving(&inner.drawables)))
-                        }
-                        HostEngine::Rust(inner) => {
-                            apply_inputs(&mut inner.parameters, &mut inner.parts, values, parts)?;
-                            inner.update()?;
-                            Ok(Response::Frame(moving(&inner.drawables)))
-                        }
-                    }
+                    apply_inputs(&mut model.parameters, &mut model.parts, values, parts)?;
+                    model.update()?;
+                    Ok(Response::Frame(moving(&model.drawables)))
                 }
             }
         })()
@@ -315,16 +282,14 @@ impl HostedModel {
             .as_ref()
             .map_or_else(std::process::id, |connection| connection.child.id())
     }
-    /// The legacy Core path is ignored. The default worker uses statically linked
-    /// Purism Core; the explicit experimental flag runs ARIA's Rust core in process.
-    pub fn load(core: &Path, moc: &Path, textures: usize) -> Result<Self> {
-        if std::env::var("ARIA_EXPERIMENTAL_DIRECT_RUST_CORE").as_deref() == Ok("1") {
-            return Self::load_direct_rust(moc, textures);
-        }
-        let executable = std::env::var_os("ARIA_CUBISM_HOST")
-            .map(PathBuf::from)
-            .map_or_else(std::env::current_exe, Ok)?;
-        Self::load_with_host(&executable, core, moc, textures)
+    /// Load through ARIA's in-process Rust evaluator. The legacy Core path is ignored.
+    pub fn load(_core: &Path, moc: &Path, textures: usize) -> Result<Self> {
+        Self::load_direct_rust(moc, textures)
+    }
+
+    /// Compile directly from a resident RAM source rather than reopening the MOC3.
+    pub fn load_resident(moc: &[u8], textures: usize) -> Result<Self> {
+        Self::from_rust_model(RustModel::load(moc, textures)?)
     }
 
     fn load_rust(moc: &Path, textures: usize) -> Result<RustModel> {
@@ -343,6 +308,10 @@ impl HostedModel {
 
     fn load_direct_rust(moc: &Path, textures: usize) -> Result<Self> {
         let direct = Self::load_rust(moc, textures)?;
+        Self::from_rust_model(direct)
+    }
+
+    fn from_rust_model(direct: RustModel) -> Result<Self> {
         let parameters = direct.parameters().to_vec();
         let lookup = parameters
             .iter()
@@ -572,12 +541,8 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires ARIA_TEST_HOST, ARIA_TEST_MOC, ARIA_EXPERIMENTAL_RUST_CORE=1 and local artwork"]
+    #[ignore = "requires ARIA_TEST_HOST, ARIA_TEST_MOC and local artwork"]
     fn isolated_rust_core_serves_renderer_frames() {
-        assert_eq!(
-            std::env::var("ARIA_EXPERIMENTAL_RUST_CORE").as_deref(),
-            Ok("1")
-        );
         let host = PathBuf::from(std::env::var_os("ARIA_TEST_HOST").unwrap());
         let moc = PathBuf::from(std::env::var_os("ARIA_TEST_MOC").unwrap());
         let bytes = std::fs::read(&moc).unwrap();
@@ -618,12 +583,8 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires ARIA_TEST_MOC and ARIA_EXPERIMENTAL_DIRECT_RUST_CORE=1"]
+    #[ignore = "requires ARIA_TEST_MOC"]
     fn direct_rust_core_keeps_independent_avatar_frames() {
-        assert_eq!(
-            std::env::var("ARIA_EXPERIMENTAL_DIRECT_RUST_CORE").as_deref(),
-            Ok("1")
-        );
         let moc = PathBuf::from(std::env::var_os("ARIA_TEST_MOC").unwrap());
         let mut first = HostedModel::load(Path::new(""), &moc, 32).unwrap();
         let mut second = HostedModel::load(Path::new(""), &moc, 32).unwrap();
@@ -706,12 +667,8 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires ARIA_TEST_MOC and ARIA_EXPERIMENTAL_DIRECT_RUST_CORE=1; run optimized"]
+    #[ignore = "requires ARIA_TEST_MOC; run optimized"]
     fn direct_rust_update_benchmark() {
-        assert_eq!(
-            std::env::var("ARIA_EXPERIMENTAL_DIRECT_RUST_CORE").as_deref(),
-            Ok("1")
-        );
         let moc = PathBuf::from(std::env::var_os("ARIA_TEST_MOC").unwrap());
         let mut full = HostedModel::load(Path::new(""), &moc, 32).unwrap();
         let mut metadata = HostedModel::load(Path::new(""), &moc, 32).unwrap();
