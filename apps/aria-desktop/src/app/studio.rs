@@ -402,18 +402,45 @@ impl AriaApp {
     pub(super) fn studio_header(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.allocate_ui(egui::vec2(154., 38.), |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new("Aria")
-                            .size(29.)
-                            .strong()
-                            .italics()
-                            .color(mint()),
-                    );
+                ui.horizontal_centered(|ui| {
+                    ui.spacing_mut().item_spacing.x = 5.;
+                    let key = egui::Id::new("vaelari-aria-header-mascot");
+                    let texture = ui
+                        .ctx()
+                        .data(|d| d.get_temp::<egui::TextureHandle>(key))
+                        .unwrap_or_else(|| {
+                            let bytes =
+                                include_bytes!("../../assets/branding/vaelari-aria-mascot-256.png");
+                            let image = image::load_from_memory(bytes)
+                                .expect("embedded Vaelari mascot PNG is valid")
+                                .to_rgba8();
+                            let color = egui::ColorImage::from_rgba_unmultiplied(
+                                [image.width() as usize, image.height() as usize],
+                                image.as_raw(),
+                            );
+                            let texture = ui.ctx().load_texture(
+                                "Vaelari ARIA mascot",
+                                color,
+                                egui::TextureOptions::LINEAR,
+                            );
+                            ui.ctx().data_mut(|d| d.insert_temp(key, texture.clone()));
+                            texture
+                        });
+                    ui.add(egui::Image::new((texture.id(), egui::vec2(38., 38.))));
                     ui.vertical(|ui| {
-                        ui.add_space(7.);
-                        ui.label(RichText::new("AVATAR").size(9.).color(theme::teal()));
-                        ui.label(RichText::new("STUDIO").size(9.).color(theme::muted()));
+                        ui.add_space(2.);
+                        ui.label(
+                            RichText::new("A.R.I.A.")
+                                .size(21.)
+                                .strong()
+                                .color(theme::pink()),
+                        );
+                        ui.label(
+                            RichText::new("AVATAR STUDIO")
+                                .size(10.)
+                                .strong()
+                                .color(theme::teal()),
+                        );
                     });
                 });
             });

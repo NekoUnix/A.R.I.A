@@ -1342,6 +1342,13 @@ TCP, Bluetooth and recording transfer are not implemented. See the
 
 ### Studio audience reactions (local development)
 
+Vaelari header identity: the transparent 256×256 PNG was checked for alpha and
+embedded in the desktop binary. A native minimum-window capture confirms that
+the chibi mascot and the exact `A.R.I.A.` / `AVATAR STUDIO` lockup render in the
+top-left header. Desktop build, strict desktop Clippy, formatting, repository
+links and runtime distribution checks pass. The source artwork is the owner's
+Vaelari AI model sheet, not a Live2D or NekoUnity model.
+
 Studio polish adds compact grouped navigation and collapsible reaction cards.
 The checkpoint passes 335 standard workspace tests (41 opt-in tests ignored),
 strict Clippy, formatting, documentation checks and the native desktop build.

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Replace the Studio header wordmark with a Vaelari AI model chibi mascot and the exact A.R.I.A. / Avatar Studio lockup. Bundle a transparent, optimized header icon and full-resolution art master without including the user's private reference sheet.
+
 - Refine Studio navigation with compact grouped rows, left-aligned labels and an active accent marker. Add collapsible reaction cards and subtle lower card shading. Replace per-frame reaction JSON serialization with direct change detection and avoid building gradients for offscreen cards.
 
 - Add quick-start audience reaction templates, disabled rule duplication, per-rule session dispatch limits and reset controls. Explain skipped events in bounded recent history, including cooldown, minimum amount, duplicate, provider-test and session-limit decisions. Explicit previews preserve live counts.
