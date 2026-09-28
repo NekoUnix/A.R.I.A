@@ -26,6 +26,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
+    time::{Duration, Instant},
 };
 
 pub struct LoadJob {
@@ -288,6 +289,7 @@ impl Avatar {
         expressions: &mut crate::expressions_panel::ExpressionsPanel,
         dt: f32,
     ) -> Result<bool> {
+        let started = Instant::now();
         let frozen = config.pose.mode == PoseMode::Frozen;
         self.glb_jaw = self.asset.summary.is_glb()
             && !config.bindings.iter().any(|(id, b)| {
@@ -364,6 +366,7 @@ impl Avatar {
         config.evaluate_with_expressions(inputs, &mut self.parameters, dt, None, |p, active| {
             expressions.update(p, active, dt)
         });
+        let evaluated = Instant::now();
         let changed = self.last_settings.as_ref() != Some(&config.vrm)
             || (frozen && self.last_frozen.as_ref() != Some(&config.vrm_pose))
             || self.last_physics.as_ref() != Some(&config.physics)
@@ -384,6 +387,7 @@ impl Avatar {
             self.clock += dt.clamp(0., 0.1);
         }
         self.pose(&config.vrm, frozen.then_some(config.vrm_pose.blink));
+        let posed = Instant::now();
         let offsets = if frozen {
             motion::BONES.map(|bone| {
                 glam::Vec3::from_array(config.vrm_pose.motion.get(bone).copied().unwrap_or([0.; 3]))
@@ -462,8 +466,32 @@ impl Avatar {
             };
             self.last_frozen = None;
         }
+        let simulated = Instant::now();
         self.renderer
             .render(&self.asset, &self.world, &self.weights, &config.vrm)?;
+        let rendered = Instant::now();
+        static PERF_LOG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        if *PERF_LOG.get_or_init(|| std::env::var("ARIA_PERF_LOG").as_deref() == Ok("1")) {
+            static LAST: std::sync::OnceLock<Mutex<Instant>> = std::sync::OnceLock::new();
+            let mut last = LAST.get_or_init(|| Mutex::new(started)).lock().unwrap();
+            if last.elapsed() >= Duration::from_secs(2) {
+                *last = rendered;
+                crate::diagnostics::record(
+                    "info",
+                    "PERF_VRM",
+                    &format!(
+                        "eval_ms={:.2} pose_ms={:.2} simulation_ms={:.2} render_ms={:.2} geometry={} skins={} glb={}",
+                        (evaluated - started).as_secs_f64() * 1000.,
+                        (posed - evaluated).as_secs_f64() * 1000.,
+                        (simulated - posed).as_secs_f64() * 1000.,
+                        (rendered - simulated).as_secs_f64() * 1000.,
+                        self.asset.geometry.len(),
+                        self.asset.skins.len(),
+                        self.asset.summary.is_glb(),
+                    ),
+                );
+            }
+        }
         self.last_values.clear();
         self.last_values
             .extend(self.parameters.iter().map(|p| p.value));

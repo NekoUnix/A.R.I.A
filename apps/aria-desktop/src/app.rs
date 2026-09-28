@@ -3213,6 +3213,15 @@ impl eframe::App for AriaApp {
         self.poll_image_import();
         self.poll_vrm_import();
         self.finish_profile_load();
+        // Imports can restore a profile's saved FPS after smoke setup. Keep the
+        // requested benchmark cap stable across asynchronous profile handoffs.
+        #[cfg(feature = "screenshots")]
+        if crate::smoke_mode()
+            && let Ok(target) = std::env::var("ARIA_SMOKE_TARGET_FPS")
+            && let Ok(target) = target.parse::<u32>()
+        {
+            self.settings.fps = target.clamp(15, 120);
+        }
         self.input_monitor.save_requested |=
             self.chats.update(&mut self.settings.chat_accounts, ctx);
         let mut chat_events = self

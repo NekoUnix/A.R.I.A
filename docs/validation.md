@@ -5,6 +5,27 @@
 This file records checks for the development builds. The Windows CI workflow
 is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
+## Avatar performance investigation — 2026-09-27 (unreleased)
+
+- Optimized native CPU test on the supplied large Live2D moc: 1,174 meshes,
+  218,693 vertices, 4.99 ms full local update and 4.53 ms Purism deformation.
+  The supplied chibi moc measured 0.28/0.27 ms respectively. The large native
+  120-target Studio run remained about 54–63 FPS after static-UV, render-pass
+  binding and single-channel mask changes. It required 60 mask and 61 color
+  passes for 378 active meshes. Chibi reached 120 FPS in its last two sampled
+  intervals; earlier intervals were 114–118 FPS with 74 mask passes.
+- NekoUnity2 VRM held about 119–120 FPS after the spring ancestry change;
+  the ICHIGO GLB export remained about 109–114 FPS, so no universal 120 FPS
+  claim is made. Both imported and rendered successfully. The four supplied
+  GIFs completed import in about 49 seconds, then played near 120 FPS; PNG
+  image actions and a 160-particle effects smoke reached about 120 in steady
+  samples with occasional UI/screenshot spikes.
+- 208 standard desktop tests passed; 39 opt-in tests were omitted from that
+  run. Focused native ICHIGO profile/import and GPU clipping/blending tests
+  passed. Repository/link contracts and Purism source/license/distribution
+  guards passed. The [performance note](avatar-performance.md) explains timing
+  scope, model complexity, DLL setup for standalone tests and remaining costs.
+
 ## Conditional graphs and repeated actions — 2026-09-27 (unreleased)
 
 - 322 standard workspace tests passed: 96 core, 194 desktop, 5 Live2D,

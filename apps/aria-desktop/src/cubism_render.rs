@@ -4,10 +4,11 @@ use aria_core::asset_limits as limits;
 use aria_live2d::{Blend, Canvas, Drawable};
 use bytemuck::{Pod, Zeroable};
 use eframe::{egui, egui_wgpu::RenderState};
-use std::{fs::File, io::BufReader, num::NonZeroU64, ops::Range, path::PathBuf};
+use std::{fs::File, io::BufReader, num::NonZeroU64, ops::Range, path::PathBuf, time::Instant};
 use wgpu::util::DeviceExt;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+const MASK_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
 
 /// Grow the view to contain every visible ArtMesh, including revealed expressions.
 /// Keep the texture's aspect ratio and never shrink on animation frames, avoiding
@@ -56,12 +57,6 @@ fn fit_canvas(original: Canvas, drawables: &[Drawable], previous: Option<Canvas>
 }
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
-struct Vertex {
-    position: [f32; 2],
-    uv: [f32; 2],
-}
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
 struct Style {
     multiply: [f32; 4],
     screen: [f32; 4],
@@ -97,6 +92,7 @@ pub struct ModelRenderer {
     pipelines: Vec<wgpu::RenderPipeline>,
     mask_pipelines: Vec<wgpu::RenderPipeline>,
     vertices: wgpu::Buffer,
+    uvs: wgpu::Buffer,
     indices: wgpu::Buffer,
     uniforms: wgpu::Buffer,
     uniform_stride: usize,
@@ -105,7 +101,7 @@ pub struct ModelRenderer {
     pub atlas_mib: f64,
     pub import_notes: Vec<String>,
     palette: crate::chroma::Palette,
-    vertex_staging: Vec<Vertex>,
+    vertex_staging: Vec<[f32; 2]>,
     style_staging: Vec<u8>,
     order: Vec<usize>,
     layer_config: aria_core::layers::Config,
@@ -131,12 +127,13 @@ impl ModelRenderer {
             "Frozen layer preview",
         )
         .create_view(&Default::default());
-        let mask = target(
+        let mask = target_with_format(
             device,
             size.width,
             size.height,
             wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             "Frozen layer mask",
+            MASK_FORMAT,
         )
         .create_view(&Default::default());
         let vertices = device.create_buffer(&wgpu::BufferDescriptor {
@@ -207,6 +204,7 @@ impl ModelRenderer {
             pipelines: self.pipelines.clone(),
             mask_pipelines: self.mask_pipelines.clone(),
             vertices,
+            uvs: self.uvs.clone(),
             indices: self.indices.clone(),
             uniforms,
             uniform_stride: self.uniform_stride,
@@ -447,12 +445,13 @@ impl ModelRenderer {
             "Cubism output",
         )
         .create_view(&Default::default());
-        let mask = target(
+        let mask = target_with_format(
             device,
             width,
             height,
             wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             "Cubism mask",
+            MASK_FORMAT,
         )
         .create_view(&Default::default());
         let white = target(
@@ -475,9 +474,20 @@ impl ModelRenderer {
         let vertex_count = drawables.iter().map(|d| d.positions.len()).sum();
         let vertices = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Cubism vertices"),
-            size: (vertex_count as u64 * 16).max(16),
+            size: (vertex_count as u64 * 8).max(8),
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
+        });
+        // UV topology never changes after import. Keep it resident on the GPU
+        // instead of copying it with the deforming positions each frame.
+        let uv_data: Vec<[f32; 2]> = drawables
+            .iter()
+            .flat_map(|d| d.uvs.iter().copied())
+            .collect();
+        let uvs = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Cubism static UVs"),
+            contents: bytemuck::cast_slice(&uv_data),
+            usage: wgpu::BufferUsages::VERTEX,
         });
         let mut index_data = Vec::new();
         let mut meshes = Vec::new();
@@ -585,6 +595,7 @@ impl ModelRenderer {
             pipelines,
             mask_pipelines,
             vertices,
+            uvs,
             indices,
             uniforms,
             uniform_stride,
@@ -612,6 +623,7 @@ impl ModelRenderer {
         drawables: &[Drawable],
         layers: &aria_core::layers::Config,
     ) -> Result<()> {
+        let started = Instant::now();
         ensure!(
             self.meshes.len() == drawables.len()
                 && self.vertex_count == drawables.iter().map(|d| d.positions.len()).sum::<usize>(),
@@ -624,26 +636,24 @@ impl ModelRenderer {
             self.layer_config.clone_from(layers);
         }
         self.view_canvas = fit_canvas(canvas, drawables, Some(self.view_canvas));
+        let fitted = Instant::now();
         let vertices = &mut self.vertex_staging;
         vertices.clear();
         let uniform_bytes = &mut self.style_staging;
         let c = self.view_canvas;
         let mut bounds = egui::Rect::NOTHING;
         for (i, d) in drawables.iter().enumerate() {
-            vertices.extend(d.positions.iter().zip(&d.uvs).map(|(p, &uv)| Vertex {
-                position: [
+            vertices.extend(d.positions.iter().map(|p| {
+                [
                     2.0 * (p[0] * c.pixels_per_unit + c.origin[0]) / c.size[0] - 1.0,
                     2.0 * (p[1] * c.pixels_per_unit + c.origin[1]) / c.size[1] - 1.0,
-                ],
-                uv,
+                ]
             }));
             let opacity = d.opacity * self.layer_opacities[i];
             if d.visible && opacity > 0.01 {
                 for vertex in &vertices[vertices.len() - d.positions.len()..] {
-                    bounds.extend_with(egui::pos2(
-                        (vertex.position[0] + 1.0) * 0.5,
-                        (1.0 - vertex.position[1]) * 0.5,
-                    ));
+                    bounds
+                        .extend_with(egui::pos2((vertex[0] + 1.0) * 0.5, (1.0 - vertex[1]) * 0.5));
                 }
             }
             let style = Style {
@@ -669,12 +679,14 @@ impl ModelRenderer {
             egui::Pos2::ZERO,
             egui::pos2(1., 1.),
         ));
+        let prepared = Instant::now();
         self.state
             .queue
             .write_buffer(&self.vertices, 0, bytemuck::cast_slice(vertices));
         self.state
             .queue
             .write_buffer(&self.uniforms, 0, uniform_bytes);
+        let uploaded = Instant::now();
         let mut encoder = self
             .state
             .device
@@ -688,10 +700,14 @@ impl ModelRenderer {
             .sort_unstable_by_key(|&i| (drawables[i].order, i));
         let sorted = &self.order;
         let mut cursor = 0;
+        let mut mask_passes = 0_usize;
+        let mut color_passes = 0_usize;
         while cursor < sorted.len() {
             let d = &drawables[sorted[cursor]];
             if d.masked {
+                mask_passes += 1;
                 let mut pass = begin_pass(&mut encoder, &self.mask, true);
+                self.bind_geometry(&mut pass);
                 for &index in &d.masks {
                     let mask = &drawables[index];
                     pass.set_pipeline(&self.mask_pipelines[usize::from(mask.double_sided)]);
@@ -699,6 +715,8 @@ impl ModelRenderer {
                 }
             }
             let mut pass = begin_pass(&mut encoder, &self.output, false);
+            color_passes += 1;
+            self.bind_geometry(&mut pass);
             loop {
                 let index = sorted[cursor];
                 let mesh = &drawables[index];
@@ -719,8 +737,42 @@ impl ModelRenderer {
                 }
             }
         }
+        let encoded = Instant::now();
         self.state.queue.submit([encoder.finish()]);
+        let submitted = Instant::now();
+        static PERF_LOG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        if *PERF_LOG.get_or_init(|| std::env::var("ARIA_PERF_LOG").as_deref() == Ok("1")) {
+            static LAST: std::sync::OnceLock<std::sync::Mutex<Instant>> =
+                std::sync::OnceLock::new();
+            let mut last = LAST
+                .get_or_init(|| std::sync::Mutex::new(started))
+                .lock()
+                .unwrap();
+            if last.elapsed().as_secs_f32() >= 2.0 {
+                *last = Instant::now();
+                crate::diagnostics::record(
+                    "info",
+                    "PERF_CUBISM_RENDER",
+                    &format!(
+                        "fit_ms={:.2} prepare_ms={:.2} upload_ms={:.2} encode_ms={:.2} submit_ms={:.2} masks={} color_passes={} active_meshes={}",
+                        (fitted - started).as_secs_f64() * 1000.,
+                        (prepared - fitted).as_secs_f64() * 1000.,
+                        (uploaded - prepared).as_secs_f64() * 1000.,
+                        (encoded - uploaded).as_secs_f64() * 1000.,
+                        (submitted - encoded).as_secs_f64() * 1000.,
+                        mask_passes,
+                        color_passes,
+                        sorted.len(),
+                    ),
+                );
+            }
+        }
         Ok(())
+    }
+    fn bind_geometry(&self, pass: &mut wgpu::RenderPass<'_>) {
+        pass.set_vertex_buffer(0, self.vertices.slice(..));
+        pass.set_vertex_buffer(1, self.uvs.slice(..));
+        pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
     }
     fn draw_mesh(&self, pass: &mut wgpu::RenderPass<'_>, index: usize, d: &Drawable, masked: bool) {
         pass.set_bind_group(0, &self.atlases[d.texture], &[]);
@@ -733,8 +785,6 @@ impl ModelRenderer {
             },
             &[(index * self.uniform_stride) as u32],
         );
-        pass.set_vertex_buffer(0, self.vertices.slice(..));
-        pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
         pass.draw_indexed(self.meshes[index].indices.clone(), 0, 0..1);
     }
 }
@@ -789,6 +839,16 @@ fn target(
     usage: wgpu::TextureUsages,
     label: &str,
 ) -> wgpu::Texture {
+    target_with_format(device, width, height, usage, label, FORMAT)
+}
+fn target_with_format(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+    usage: wgpu::TextureUsages,
+    label: &str,
+    format: wgpu::TextureFormat,
+) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
         label: Some(label),
         size: wgpu::Extent3d {
@@ -799,7 +859,7 @@ fn target(
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
-        format: FORMAT,
+        format,
         usage,
         view_formats: &[],
     })
@@ -872,18 +932,25 @@ fn pipeline(
             module: shader,
             entry_point: Some("vertex"),
             compilation_options: Default::default(),
-            buffers: &[Some(wgpu::VertexBufferLayout {
-                array_stride: 16,
-                step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2],
-            })],
+            buffers: &[
+                Some(wgpu::VertexBufferLayout {
+                    array_stride: 8,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![0 => Float32x2],
+                }),
+                Some(wgpu::VertexBufferLayout {
+                    array_stride: 8,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![1 => Float32x2],
+                }),
+            ],
         },
         fragment: Some(wgpu::FragmentState {
             module: shader,
             entry_point: Some(if mask { "mask_fragment" } else { "fragment" }),
             compilation_options: Default::default(),
             targets: &[Some(wgpu::ColorTargetState {
-                format: FORMAT,
+                format: if mask { MASK_FORMAT } else { FORMAT },
                 blend: Some(blend),
                 write_mask: wgpu::ColorWrites::ALL,
             })],

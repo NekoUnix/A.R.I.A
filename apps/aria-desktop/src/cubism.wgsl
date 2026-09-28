@@ -25,7 +25,7 @@ struct VertexOut {
     let color = multiplied + style.screen.rgb - multiplied * style.screen.rgb;
     var coverage = 1.0;
     if style.control.y > 0.5 {
-        let mask_alpha = textureSample(mask, linear_sampler, in.position.xy / style.control.zw).a;
+        let mask_alpha = textureSample(mask, linear_sampler, in.position.xy / style.control.zw).r;
         coverage = select(mask_alpha, 1.0 - mask_alpha, style.control.y > 1.5);
     }
     let alpha = texel.a * style.control.x * coverage;

@@ -69,6 +69,7 @@ pub struct Simulation {
     collision_world: Vec<Mat4>,
     collision_rotations: Vec<Quat>,
     collision_scratch: Vec<super::collision::WorldCollider>,
+    ancestor_scratch: Vec<usize>,
     pub contacts: usize,
 }
 
@@ -415,7 +416,11 @@ impl Simulation {
                 }
                 for (j, tail) in g.joints.iter().zip(tails) {
                     let node = &nodes[j.node];
-                    let parent = node.parent.map_or(Mat4::IDENTITY, |p| world[p]);
+                    // Only the current joint's ancestry is needed here. Eagerly
+                    // refreshing every descendant after each spring joint turns
+                    // long hair/cloth chains into repeated whole-subtree walks.
+                    let parent =
+                        parent_world(node.parent, nodes, rotations, &mut self.ancestor_scratch);
                     let local = Mat4::from_scale_rotation_translation(
                         node.scale,
                         baseline[j.node],
@@ -433,7 +438,6 @@ impl Simulation {
                         tail.origin = origin;
                         rotations[j.node] = baseline[j.node];
                         world[j.node] = rest;
-                        refresh_children(j.node, nodes, rotations, world);
                         continue;
                     }
                     // Keep tips in world space: a head-centered VRM must still lag a head turn.
@@ -570,7 +574,6 @@ impl Simulation {
                     };
                     tail.current = next;
                     tail.rotation = rotations[j.node];
-                    refresh_children(j.node, nodes, rotations, world);
                 }
             }
             world_matrices(nodes, order, rotations, world);
@@ -597,14 +600,68 @@ impl Simulation {
         world_matrices(nodes, order, rotations, world);
     }
 }
-fn refresh_children(parent: usize, nodes: &[Node], rotations: &[Quat], world: &mut [Mat4]) {
-    for &i in &nodes[parent].children {
-        world[i] = world[parent]
-            * Mat4::from_scale_rotation_translation(
-                nodes[i].scale,
-                rotations[i],
-                nodes[i].translation,
-            );
-        refresh_children(i, nodes, rotations, world);
+fn parent_world(
+    mut parent: Option<usize>,
+    nodes: &[Node],
+    rotations: &[Quat],
+    scratch: &mut Vec<usize>,
+) -> Mat4 {
+    scratch.clear();
+    while let Some(i) = parent {
+        scratch.push(i);
+        parent = nodes[i].parent;
+    }
+    let mut world = Mat4::IDENTITY;
+    for &i in scratch.iter().rev() {
+        world *= Mat4::from_scale_rotation_translation(
+            nodes[i].scale,
+            rotations[i],
+            nodes[i].translation,
+        );
+    }
+    world
+}
+
+#[cfg(test)]
+mod ancestry_tests {
+    use super::*;
+
+    #[test]
+    fn joint_parent_reconstruction_matches_full_world_after_ancestor_motion() {
+        let mut nodes = Vec::new();
+        for i in 0..32 {
+            nodes.push(Node {
+                name: format!("bone{i}"),
+                parent: (i > 0).then(|| i - 1),
+                children: (i < 31).then_some(i + 1).into_iter().collect(),
+                translation: Vec3::new(0.02 * i as f32, 0.1, 0.03),
+                rotation: Quat::IDENTITY,
+                scale: Vec3::ONE,
+                world: Mat4::IDENTITY,
+            });
+        }
+        let mut rotations = vec![Quat::IDENTITY; nodes.len()];
+        rotations[0] = Quat::from_rotation_y(0.31);
+        rotations[8] = Quat::from_rotation_x(-0.18);
+        rotations[17] = Quat::from_rotation_z(0.44);
+        let mut world = vec![Mat4::IDENTITY; nodes.len()];
+        world_matrices(
+            &nodes,
+            &(0..nodes.len()).collect::<Vec<_>>(),
+            &rotations,
+            &mut world,
+        );
+        let mut scratch = Vec::new();
+        for i in 1..nodes.len() {
+            let actual = parent_world(nodes[i].parent, &nodes, &rotations, &mut scratch);
+            let expected = world[i - 1];
+            for (a, b) in actual
+                .to_cols_array()
+                .into_iter()
+                .zip(expected.to_cols_array())
+            {
+                assert!((a - b).abs() < 1e-5, "parent matrix diverged at node {i}");
+            }
+        }
     }
 }

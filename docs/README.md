@@ -11,6 +11,8 @@ including systems that are not implemented yet.
 
 Development additions also include the [Studio browser](studio-browser.md) and
 [scene layouts, music routing and event rules](studio-production.md).
+The [avatar performance investigation](avatar-performance.md) explains the
+120 FPS budget, local Live2D/VRM/GIF measurements and repeatable profiling.
 
 New to ARIA? Start with the [beginner setup walkthrough](../README.md#first-time-setup)
 and [changelog](../CHANGELOG.md). For system-specific steps use [Windows setup](windows.md), [Linux installation](linux.md) or

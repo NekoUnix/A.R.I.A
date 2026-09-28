@@ -433,6 +433,11 @@ mod tests {
             model.update().unwrap();
         }
         let started = std::time::Instant::now();
+        let parameter_index = model
+            .parameters
+            .iter()
+            .position(|p| p.id == parameter.id)
+            .unwrap();
         for frame in 0..120 {
             model.set_parameter(
                 &parameter.id,
@@ -453,6 +458,25 @@ mod tests {
                 .iter()
                 .map(|d| d.positions.len())
                 .sum::<usize>()
+        );
+        // Separate Purism's deformation from Rust-owned mesh extraction. This
+        // benchmark is diagnostic only and never bypasses the production host.
+        let started = std::time::Instant::now();
+        for frame in 0..120 {
+            unsafe {
+                let values = (model.api.values)(model.model);
+                values.add(parameter_index).write(if frame % 2 == 0 {
+                    parameter.min
+                } else {
+                    parameter.max
+                });
+                (model.api.reset)(model.model);
+                (model.api.update)(model.model);
+            }
+        }
+        println!(
+            "purism deformation only: {:.2} ms/frame",
+            started.elapsed().as_secs_f64() * 1000. / 120.
         );
     }
     /// Opt-in integration test, using locally supplied licensed assets. No fixture is redistributed.
