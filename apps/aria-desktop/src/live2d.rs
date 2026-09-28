@@ -343,6 +343,7 @@ impl Avatar {
                     )
                 }));
         let surface_refresh = cpu_surface_needed && !self.cpu_surface_current;
+        let gpu_geometry_pending = self.gpu.as_ref().is_some_and(|gpu| !gpu.positions_ready);
         let bounds_changed = self
             .gpu
             .as_mut()
@@ -350,6 +351,7 @@ impl Avatar {
         if !pose_changed
             && !parts_changed
             && !surface_refresh
+            && !gpu_geometry_pending
             && self.last_layers == *render_layers
             && !bounds_changed
         {
@@ -374,7 +376,11 @@ impl Avatar {
         if let Some(gpu) = &mut self.gpu {
             let mut encoder = gpu.state.device.create_command_encoder(&Default::default());
             let mut evaluated_gpu = false;
-            if pose_changed || parts_changed || self.last_layers != *render_layers {
+            if pose_changed
+                || parts_changed
+                || gpu_geometry_pending
+                || self.last_layers != *render_layers
+            {
                 gpu.encode(
                     &mut encoder,
                     &self.model,
