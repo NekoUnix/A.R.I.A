@@ -7,6 +7,12 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## GPU morph and Rust model-core checks — 2026-09-28 (unreleased)
 
+- A native DX12 renderer fixture wrote masked-mesh vertices in a compute
+  shader, then bound that buffer directly for mask and color passes. The
+  resulting image matched the CPU-position path pixel for pixel despite
+  deliberately incorrect CPU drawable coordinates. Undersized GPU buffers,
+  non-finite bounds and zero-sized views were rejected. This verifies the renderer
+  handoff only; live model evaluation still uses CPU positions.
 - The Rust GPU-glue planner gives one conflict-free pass for the large
   90s outfit's 16 glues and 1,365 pairs, and two ordered passes for OILBUN's
   24 glues and 2,298 pairs. OILBUN reuses four vertices across glues; neither

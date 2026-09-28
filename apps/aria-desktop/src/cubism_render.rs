@@ -675,6 +675,63 @@ impl ModelRenderer {
         drawables: &[Drawable],
         layers: &aria_core::layers::Config,
     ) -> Result<()> {
+        self.render_layers_inner(canvas, drawables, layers, None)
+    }
+
+    /// Draw GPU-evaluated positions without downloading them or uploading a
+    /// CPU position vector. The source must be a VERTEX buffer containing
+    /// one tightly packed vec2 per vertex in drawable order. The caller also
+    /// supplies the already-fitted view and normalized visible bounds.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "GPU model evaluator connection is pending")
+    )]
+    pub fn render_layers_gpu_positions(
+        &mut self,
+        view_canvas: Canvas,
+        drawables: &[Drawable],
+        layers: &aria_core::layers::Config,
+        gpu_positions: &wgpu::Buffer,
+        bounds: egui::Rect,
+    ) -> Result<()> {
+        ensure!(
+            gpu_positions.size() >= self.vertex_count as u64 * 8,
+            "GPU geometry has fewer vertices than this model"
+        );
+        ensure!(
+            bounds.min.x.is_finite()
+                && bounds.min.y.is_finite()
+                && bounds.max.x.is_finite()
+                && bounds.max.y.is_finite()
+                && bounds.min.x <= bounds.max.x
+                && bounds.min.y <= bounds.max.y,
+            "GPU geometry bounds are invalid"
+        );
+        ensure!(
+            view_canvas
+                .size
+                .iter()
+                .all(|size| size.is_finite() && *size > 0.0)
+                && view_canvas.origin.iter().all(|origin| origin.is_finite())
+                && view_canvas.pixels_per_unit.is_finite()
+                && view_canvas.pixels_per_unit > 0.0,
+            "GPU geometry view canvas is invalid"
+        );
+        self.render_layers_inner(
+            view_canvas,
+            drawables,
+            layers,
+            Some((gpu_positions, bounds)),
+        )
+    }
+
+    fn render_layers_inner(
+        &mut self,
+        canvas: Canvas,
+        drawables: &[Drawable],
+        layers: &aria_core::layers::Config,
+        gpu: Option<(&wgpu::Buffer, egui::Rect)>,
+    ) -> Result<()> {
         let started = Instant::now();
         ensure!(
             self.meshes.len() == drawables.len()
@@ -687,7 +744,11 @@ impl ModelRenderer {
                 .extend(drawables.iter().map(|d| layers.opacity(&d.id)));
             self.layer_config.clone_from(layers);
         }
-        self.view_canvas = fit_canvas(canvas, drawables, Some(self.view_canvas));
+        self.view_canvas = if gpu.is_some() {
+            canvas
+        } else {
+            fit_canvas(canvas, drawables, Some(self.view_canvas))
+        };
         let fitted = Instant::now();
         let vertices = &mut self.vertex_staging;
         vertices.clear();
@@ -702,9 +763,11 @@ impl ModelRenderer {
         let mut model_min = egui::Vec2::INFINITY;
         let mut model_max = -egui::Vec2::INFINITY;
         for (i, d) in drawables.iter().enumerate() {
-            vertices.extend_from_slice(&d.positions);
+            if gpu.is_none() {
+                vertices.extend_from_slice(&d.positions);
+            }
             let opacity = d.opacity * self.layer_opacities[i];
-            if d.visible && opacity > 0.01 {
+            if gpu.is_none() && d.visible && opacity > 0.01 {
                 for vertex in &d.positions {
                     let point = egui::vec2(vertex[0], vertex[1]);
                     model_min = model_min.min(point);
@@ -740,18 +803,23 @@ impl ModelRenderer {
         } else {
             egui::Rect::NOTHING
         };
-        self.bounds = bounds.intersect(egui::Rect::from_min_max(
-            egui::Pos2::ZERO,
-            egui::pos2(1., 1.),
-        ));
+        self.bounds = gpu
+            .map_or(bounds, |(_, bounds)| bounds)
+            .intersect(egui::Rect::from_min_max(
+                egui::Pos2::ZERO,
+                egui::pos2(1., 1.),
+            ));
         let prepared = Instant::now();
-        self.state
-            .queue
-            .write_buffer(&self.vertices, 0, bytemuck::cast_slice(vertices));
+        if gpu.is_none() {
+            self.state
+                .queue
+                .write_buffer(&self.vertices, 0, bytemuck::cast_slice(vertices));
+        }
         self.state
             .queue
             .write_buffer(&self.uniforms, 0, uniform_bytes);
         let uploaded = Instant::now();
+        let vertex_buffer = gpu.map_or(&self.vertices, |(positions, _)| positions);
         let mut encoder = self
             .state
             .device
@@ -772,7 +840,7 @@ impl ModelRenderer {
             if d.masked {
                 mask_passes += 1;
                 let mut pass = begin_pass(&mut encoder, &self.mask, true);
-                self.bind_geometry(&mut pass);
+                self.bind_geometry(&mut pass, vertex_buffer);
                 for &index in &d.masks {
                     let mask = &drawables[index];
                     pass.set_pipeline(&self.mask_pipelines[usize::from(mask.double_sided)]);
@@ -781,7 +849,7 @@ impl ModelRenderer {
             }
             let mut pass = begin_pass(&mut encoder, &self.output, false);
             color_passes += 1;
-            self.bind_geometry(&mut pass);
+            self.bind_geometry(&mut pass, vertex_buffer);
             loop {
                 let index = sorted[cursor];
                 let mesh = &drawables[index];
@@ -834,8 +902,8 @@ impl ModelRenderer {
         }
         Ok(())
     }
-    fn bind_geometry(&self, pass: &mut wgpu::RenderPass<'_>) {
-        pass.set_vertex_buffer(0, self.vertices.slice(..));
+    fn bind_geometry<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, vertices: &'a wgpu::Buffer) {
+        pass.set_vertex_buffer(0, vertices.slice(..));
         pass.set_vertex_buffer(1, self.uvs.slice(..));
         pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
     }
@@ -1268,5 +1336,158 @@ mod tests {
         let pixel = |x: usize| &data[(1024 * 2048 + x) * 4..(1024 * 2048 + x) * 4 + 4];
         near(pixel(512), [128, 0, 128, 255]);
         near(pixel(1536), [0, 0, 255, 255]);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    #[ignore = "requires a DX12 GPU; checks compute-produced geometry in the model renderer"]
+    fn compute_generated_vertices_render_without_cpu_position_upload() {
+        let state = crate::spout::tests::gpu_state();
+        let temp = tempfile::tempdir().unwrap();
+        let atlas = temp.path().join("gpu-geometry-atlas.png");
+        image::save_buffer(&atlas, &[240, 80, 190, 255], 1, 1, image::ColorType::Rgba8).unwrap();
+        let canvas = Canvas {
+            size: [4.0, 4.0],
+            origin: [0.0, 0.0],
+            pixels_per_unit: 1.0,
+        };
+        let mut scene = [quad(0, 0, 4.0), quad(0, 1, 2.0)];
+        scene[0].masked = true;
+        scene[0].masks = vec![1];
+        scene[1].visible = false;
+        scene[1].opacity = 0.0;
+        let mut renderer = ModelRenderer::new(&state, canvas, &scene, &[atlas]).unwrap();
+        renderer.render(canvas, &scene).unwrap();
+        let reference = pixels(&renderer);
+        let view_canvas = renderer.view_canvas;
+        let bounds = renderer.bounds;
+        let gpu_positions = state.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("ARIA compute-produced model vertices"),
+            size: 8 * 8,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::VERTEX,
+            mapped_at_creation: false,
+        });
+        let layout = state
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("ARIA generated model vertex layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+        let bind = state.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("ARIA generated model vertices"),
+            layout: &layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: gpu_positions.as_entire_binding(),
+            }],
+        });
+        let shader = state
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("ARIA generated model vertices compute"),
+                source: wgpu::ShaderSource::Wgsl(
+                    "@group(0) @binding(0) var<storage, read_write> vertices: array<vec2<f32>>;\n\
+                 @compute @workgroup_size(8)\n\
+                 fn main(@builtin(global_invocation_id) id: vec3<u32>) {\n\
+                     let points = array<vec2<f32>, 8>(\n\
+                         vec2<f32>(0.0, 0.0), vec2<f32>(4.0, 0.0),\n\
+                         vec2<f32>(4.0, 4.0), vec2<f32>(0.0, 4.0),\n\
+                         vec2<f32>(0.0, 0.0), vec2<f32>(2.0, 0.0),\n\
+                         vec2<f32>(2.0, 4.0), vec2<f32>(0.0, 4.0));\n\
+                     vertices[id.x] = points[id.x];\n\
+                 }"
+                    .into(),
+                ),
+            });
+        let pipeline_layout =
+            state
+                .device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("ARIA generated model pipeline layout"),
+                    bind_group_layouts: &[Some(&layout)],
+                    immediate_size: 0,
+                });
+        let pipeline = state
+            .device
+            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("ARIA generated model pipeline"),
+                layout: Some(&pipeline_layout),
+                module: &shader,
+                entry_point: Some("main"),
+                compilation_options: Default::default(),
+                cache: None,
+            });
+        let mut encoder = state.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_compute_pass(&Default::default());
+            pass.set_pipeline(&pipeline);
+            pass.set_bind_group(0, &bind, &[]);
+            pass.dispatch_workgroups(1, 1, 1);
+        }
+        state.queue.submit([encoder.finish()]);
+        let mut metadata = scene;
+        for drawable in &mut metadata {
+            drawable.positions.fill([99.0, 99.0]);
+        }
+        let short = state.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("ARIA undersized GPU geometry fixture"),
+            size: 8,
+            usage: wgpu::BufferUsages::VERTEX,
+            mapped_at_creation: false,
+        });
+        assert!(
+            renderer
+                .render_layers_gpu_positions(
+                    view_canvas,
+                    &metadata,
+                    &Default::default(),
+                    &short,
+                    bounds,
+                )
+                .is_err()
+        );
+        assert!(
+            renderer
+                .render_layers_gpu_positions(
+                    view_canvas,
+                    &metadata,
+                    &Default::default(),
+                    &gpu_positions,
+                    egui::Rect::from_min_max(egui::pos2(f32::NAN, 0.0), egui::pos2(1.0, 1.0)),
+                )
+                .is_err()
+        );
+        let mut invalid_view = view_canvas;
+        invalid_view.size[0] = 0.0;
+        assert!(
+            renderer
+                .render_layers_gpu_positions(
+                    invalid_view,
+                    &metadata,
+                    &Default::default(),
+                    &gpu_positions,
+                    bounds,
+                )
+                .is_err()
+        );
+        renderer
+            .render_layers_gpu_positions(
+                view_canvas,
+                &metadata,
+                &Default::default(),
+                &gpu_positions,
+                bounds,
+            )
+            .unwrap();
+        assert_eq!(pixels(&renderer), reference);
     }
 }

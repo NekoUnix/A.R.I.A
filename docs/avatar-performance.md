@@ -157,6 +157,12 @@ the native GPU clipping/blending test passed. The large model did not approach
 
 ## Core and licensing
 
+An experimental renderer entry point can now draw directly from a GPU
+compute-produced position buffer. A native masked-mesh pixel comparison
+passed with CPU vertex coordinates deliberately poisoned. The full MOC3
+deformation pipeline is not yet connected to it, so current desktop FPS and
+CPU-use figures should not be interpreted as gains from this entry point.
+
 The developing Rust `aria-model-core` now retains MOC3 source bytes and all
 declared encoded atlas files in system RAM. The current desktop renderer reads
 these resident bytes, but still uploads every atlas to the GPU. RAM residency

@@ -220,6 +220,17 @@ matched sequential Rust updates on synthetic positions using each rig's
 actual pair topology, weights and pose-derived intensities. This does not
 yet validate glue on final rendered poses or improve the live frame rate.
 
+The desktop renderer now has an explicit GPU-position entry point. It binds
+the caller's compute-produced vertex buffer directly for mask and color
+passes, skipping the CPU position upload and an intermediate GPU copy. The
+caller must provide a fitted view canvas and normalized visible bounds;
+undersized buffers and invalid view/bounds values are rejected. A native
+two-mesh fixture, including a
+hidden mask mesh, matched the CPU-rendered image pixel for pixel while all
+CPU drawable coordinates were deliberately wrong. This verifies the
+compute-to-render buffer contract, not a live MOC3 model update: the full
+GPU evaluator and its bounds calculation still need to call this path.
+
 A test-only WGPU compute primitive now samples multiple warp grids in a single
 dispatch. It implements the Rust evaluator's affine shortcut, bent-grid quad
 or triangular cells and exterior continuation. Native DX12 comparisons passed

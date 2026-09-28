@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add a renderer entry point that binds GPU-computed MOC3 positions directly as the vertex source, skipping the per-frame CPU position upload and any GPU readback. A native masked-mesh fixture generated its vertices in compute and matched the CPU-rendered image pixel for pixel, even with deliberately incorrect CPU coordinates. The full GPU evaluator is not yet connected to this entry point.
+
 - Add a conflict-aware Rust glue scheduler and test-only GPU glue pass. The scheduler runs independent pairs together, preserves source order where glues share vertices, and signals a CPU fallback for within-glue overlap. GPU parity passed on the large outfit's 1,365 pairs in one pass and OILBUN's 2,298 pairs in two ordered passes. This is not yet wired into the live renderer.
 
 - Add a GPU compute pass for additive warp and ArtMesh blend-shape deltas after normal keyframe blending. The large 90s outfit matched Rust with 1,477,244 resident delta points affecting 458,945 positions; OILBUN also passed. A generated chain carries a mesh delta through parent warps and rotation without readback. This remains test-only until complete hierarchy, glue and renderer integration pass.
