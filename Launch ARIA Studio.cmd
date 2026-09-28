@@ -1,9 +1,10 @@
 @echo off
 setlocal
-set "ARIA_EXE=%~dp0target\debug\aria-desktop.exe"
+set "ARIA_EXE=%~dp0target\release\aria-desktop.exe"
 if not exist "%ARIA_EXE%" (
-  echo ARIA Studio has not been built in this folder.
+  echo The optimized ARIA Studio build is missing.
   echo Expected: "%ARIA_EXE%"
+  echo Build it with: cargo build --release --locked -p aria-desktop
   echo See docs\windows.md for the Windows build instructions.
   pause
   exit /b 1

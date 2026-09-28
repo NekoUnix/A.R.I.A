@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Make the Windows source launcher use the optimized release executable and warn when it is missing. Mark debug builds in the Studio footer, add opt-in frame/model timing diagnostics, and stop re-copying static Live2D mesh UVs, indices and masks on every update. Document the measured limits of a large model at a 120 FPS target.
+
 - Replace the Studio header wordmark with a Vaelari AI model chibi mascot and the exact A.R.I.A. / Avatar Studio lockup. Bundle a transparent, optimized header icon and full-resolution art master without including the user's private reference sheet.
 
 - Refine Studio navigation with compact grouped rows, left-aligned labels and an active accent marker. Add collapsible reaction cards and subtle lower card shading. Replace per-frame reaction JSON serialization with direct change detection and avoid building gradients for offscreen cards.

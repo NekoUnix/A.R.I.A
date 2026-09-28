@@ -1010,6 +1010,13 @@ impl AriaApp {
         let mut app = app;
         // Initial import/setup is not a model-update interval.
         app.frame_clock = crate::performance::FrameClock::new(Instant::now());
+        #[cfg(feature = "screenshots")]
+        if crate::smoke_mode()
+            && let Ok(target) = std::env::var("ARIA_SMOKE_TARGET_FPS")
+            && let Ok(target) = target.parse::<u32>()
+        {
+            app.settings.fps = target.clamp(15, 120);
+        }
         if crate::smoke_mode() {
             app.started = Instant::now();
         }
@@ -3199,6 +3206,7 @@ impl eframe::App for AriaApp {
         }
     }
     fn ui(&mut self, root_ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        let perf_started = Instant::now();
         let ctx = &root_ui.ctx().clone();
         theme::sync(ctx, self.settings.theme.active.colors);
         self.process_profile_actions(ctx);
@@ -3421,7 +3429,9 @@ impl eframe::App for AriaApp {
                 self.effect_api.complete(command.ticket, result);
             }
         }
+        let perf_before_models = Instant::now();
         self.advance_profiles(ctx, dt);
+        let perf_after_models = Instant::now();
 
         if self.metrics.update(
             self.render_state.as_ref(),
@@ -4155,6 +4165,31 @@ impl eframe::App for AriaApp {
         // does not become an immediate repaint on a high-refresh monitor.
         let prediction = Duration::from_secs_f32(ctx.input(|i| i.predicted_dt).max(0.0));
         ctx.request_repaint_after(remaining + prediction);
+        static PERF_LOG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        if *PERF_LOG.get_or_init(|| std::env::var("ARIA_PERF_LOG").as_deref() == Ok("1")) {
+            let key = egui::Id::new("aria-perf-log-last");
+            let report = ctx.data(|data| {
+                data.get_temp::<Instant>(key)
+                    .is_none_or(|last| last.elapsed() >= Duration::from_secs(2))
+            });
+            if report {
+                let now = Instant::now();
+                ctx.data_mut(|data| data.insert_temp(key, now));
+                crate::diagnostics::record(
+                    "info",
+                    "PERF_FRAME",
+                    &format!(
+                        "fps={:.1} target={} pre_model_ms={:.1} model_update_ms={:.1} post_model_ms={:.1} ui_total_ms={:.1}",
+                        self.render_fps,
+                        self.settings.fps,
+                        (perf_before_models - perf_started).as_secs_f64() * 1000.,
+                        (perf_after_models - perf_before_models).as_secs_f64() * 1000.,
+                        (now - perf_after_models).as_secs_f64() * 1000.,
+                        (now - perf_started).as_secs_f64() * 1000.,
+                    ),
+                );
+            }
+        }
     }
 
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {

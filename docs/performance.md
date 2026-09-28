@@ -5,6 +5,30 @@ egui/eframe for the native UI. v0.33 improves ARIA's per-frame work; its current
 stable graphics libraries were already up to date when reviewed on 2026-09-14
 ([wgpu](https://crates.io/crates/wgpu), [eframe](https://crates.io/crates/eframe)).
 
+## Diagnose a low frame rate
+
+Run the optimized `target/release/aria-desktop.exe` or a packaged release. The
+repository's **Launch ARIA Studio.cmd** now requires that optimized build;
+`target/debug/aria-desktop.exe` is for development and can be much slower with
+large models. Set the frame target in **Capture & performance**: an existing
+60 FPS profile will remain capped at 60 until you change it to 120.
+
+Compare the footer FPS with no avatar, with the avatar, and then with outputs
+enabled. This distinguishes UI scheduling, model work and capture work. For a
+local diagnostic run, set `ARIA_PERF_LOG=1` before starting ARIA. The diagnostic
+session records `PERF_FRAME` (frame preparation, model update and UI time) and
+`PERF_AVATAR` (rig evaluation, Purism Core worker round trip and model drawing)
+every two seconds. Remove the variable after testing. These are CPU-side times;
+GPU execution can extend beyond them.
+
+On one Windows test with the NekoUnix 90s outfit model (1,174 meshes, 218,693
+vertices and 17 texture atlases), the optimized app reached roughly 55–60 FPS
+at a 120 FPS target with no outputs open. The same UI without a model held about
+120 FPS. This is a model-specific observation, not a guaranteed frame rate for
+other systems or avatars. The runtime now initializes immutable UVs, indices,
+masks and mesh metadata once, while updating and checking moving vertices each
+frame. The isolated Purism Core worker remains the default for crash isolation.
+
 ## What changed
 
 - **Multi-avatar settings handoffs:** exchange owned per-avatar settings instead

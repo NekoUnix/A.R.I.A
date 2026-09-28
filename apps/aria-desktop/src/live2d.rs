@@ -10,7 +10,12 @@ use aria_live2d::CubismModel;
 use aria_live2d::host::HostedModel;
 use aria_model::ModelFiles;
 use eframe::egui_wgpu::RenderState;
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::BTreeMap,
+    path::Path,
+    sync::{Mutex, OnceLock},
+    time::{Duration, Instant},
+};
 
 pub struct Avatar {
     pub name: String,
@@ -153,6 +158,7 @@ impl Avatar {
         expressions: &mut crate::expressions_panel::ExpressionsPanel,
         dt: f32,
     ) -> Result<bool> {
+        let started = Instant::now();
         if config.pose.mode != self.last_pose_mode {
             self.reset_motion();
             self.last_pose_mode = config.pose.mode;
@@ -169,6 +175,7 @@ impl Avatar {
             self.physics.as_mut(),
             |p, active| expressions.update(p, active, dt),
         );
+        let evaluated = Instant::now();
         let parts = &expressions.motions.parts;
         let parts_changed = parts.len() == self.model.parts.len()
             && parts
@@ -209,8 +216,38 @@ impl Avatar {
             }
             self.model.update()?;
         }
+        let host_updated = Instant::now();
         self.renderer
             .render_layers(self.model.canvas, &self.model.drawables, &render_layers)?;
+        let rendered = Instant::now();
+        static PERF_LOG: OnceLock<bool> = OnceLock::new();
+        if *PERF_LOG.get_or_init(|| std::env::var("ARIA_PERF_LOG").as_deref() == Ok("1")) {
+            static LAST: OnceLock<Mutex<Instant>> = OnceLock::new();
+            let mut last = LAST
+                .get_or_init(|| Mutex::new(started - Duration::from_secs(2)))
+                .lock()
+                .expect("performance log timer");
+            if last.elapsed() >= Duration::from_secs(2) {
+                *last = rendered;
+                crate::diagnostics::record(
+                    "info",
+                    "PERF_AVATAR",
+                    &format!(
+                        "eval_ms={:.1} host_ms={:.1} render_ms={:.1} drawables={} vertices={} atlases={}",
+                        (evaluated - started).as_secs_f64() * 1000.,
+                        (host_updated - evaluated).as_secs_f64() * 1000.,
+                        (rendered - host_updated).as_secs_f64() * 1000.,
+                        self.model.drawables.len(),
+                        self.model
+                            .drawables
+                            .iter()
+                            .map(|d| d.positions.len())
+                            .sum::<usize>(),
+                        self.files.textures.len(),
+                    ),
+                );
+            }
+        }
         if self.last_layers != *render_layers {
             self.last_layers.clone_from(&render_layers);
         }

@@ -128,10 +128,18 @@ For a quicker edit/compile loop:
 cargo run --locked -p aria-desktop
 ```
 
-After a local debug build, open this repository in File Explorer and
+For performance testing and normal use, build an optimized executable:
+
+```powershell
+cargo build --release --locked -p aria-desktop
+```
+
+After that build, open this repository in File Explorer and
 double-click **Launch ARIA Studio.cmd**. It starts
-`target\debug\aria-desktop.exe` from the repository folder and reports a missing
-build. A file link in a code editor may open the executable as a file rather
+`target\release\aria-desktop.exe` from the repository folder and reports a missing
+optimized build. `cargo run` without `--release` and `target\debug\aria-desktop.exe`
+are development builds and can be dramatically slower on complex models. A file
+link in a code editor may open the executable as a file rather
 than run it; use File Explorer or Windows Run to launch the program.
 
 For a tested ZIP:

@@ -262,7 +262,9 @@ impl CubismModel {
             let indices = read!(indices);
             let multiply = read!(multiply);
             let screen = read!(screen);
-            if let Some(blends) = a.blend_modes {
+            if self.drawables.is_empty()
+                && let Some(blends) = a.blend_modes
+            {
                 for mode in array(blends(m), n)? {
                     ensure!(
                         (0..=2).contains(mode),
@@ -290,7 +292,8 @@ impl CubismModel {
                 );
                 ensure!(ic.is_multiple_of(3), "Invalid triangle index count");
                 let d = &mut self.drawables[i];
-                if d.id.is_empty() {
+                let first_frame = d.id.is_empty();
+                if first_frame {
                     ensure!(!ids[i].is_null(), "Null drawable ID");
                     d.id = std::ffi::CStr::from_ptr(ids[i]).to_str()?.to_owned();
                     ensure!(!d.id.is_empty() && d.id.len() <= 256, "Invalid drawable ID");
@@ -304,26 +307,46 @@ impl CubismModel {
                         ensure!(d.part.len() <= 256, "Invalid part ID");
                     }
                 }
-                d.positions.clear();
-                d.positions
-                    .extend(array(positions[i], vc)?.iter().map(|v| [v.x, v.y]));
-                d.uvs.clear();
-                d.uvs.extend(array(uvs[i], vc)?.iter().map(|v| [v.x, v.y]));
-                d.indices.clear();
-                d.indices.extend_from_slice(array(indices[i], ic)?);
                 ensure!(
-                    d.positions
-                        .iter()
-                        .chain(&d.uvs)
-                        .flatten()
-                        .all(|v| v.is_finite())
-                        && d.indices.iter().all(|&v| (v as usize) < vc),
-                    "Invalid mesh coordinates or triangle index"
+                    d.positions.is_empty() || d.positions.len() == vc,
+                    "Model vertex count changed"
                 );
-                let mc = count(mask_counts[i], n)?;
-                d.masks.clear();
-                for &v in array(masks[i], mc)?.iter().filter(|&&v| v != -1) {
-                    d.masks.push(count(v, n.saturating_sub(1))?);
+                d.positions.resize(vc, [0.0; 2]);
+                for (dst, src) in d.positions.iter_mut().zip(array(positions[i], vc)?) {
+                    *dst = [src.x, src.y];
+                }
+                ensure!(
+                    d.positions.iter().flatten().all(|v| v.is_finite()),
+                    "Invalid mesh coordinates"
+                );
+                if first_frame {
+                    d.uvs.extend(array(uvs[i], vc)?.iter().map(|v| [v.x, v.y]));
+                    d.indices.extend_from_slice(array(indices[i], ic)?);
+                    ensure!(
+                        d.uvs.iter().flatten().all(|v| v.is_finite())
+                            && d.indices.iter().all(|&v| (v as usize) < vc),
+                        "Invalid mesh coordinates or triangle index"
+                    );
+                    let mc = count(mask_counts[i], n)?;
+                    for &v in array(masks[i], mc)?.iter().filter(|&&v| v != -1) {
+                        d.masks.push(count(v, n.saturating_sub(1))?);
+                    }
+                    d.texture = count(textures[i], 31)?;
+                    d.masked = mc > 0;
+                    d.inverted = flags[i] & 8 != 0;
+                    d.double_sided = flags[i] & 4 != 0;
+                    d.blend = if flags[i] & 1 != 0 {
+                        Blend::Add
+                    } else if flags[i] & 2 != 0 {
+                        Blend::Multiply
+                    } else {
+                        Blend::Normal
+                    };
+                } else {
+                    ensure!(
+                        d.uvs.len() == vc && d.indices.len() == ic,
+                        "Model topology changed"
+                    );
                 }
                 let mul = multiply[i];
                 let scr = screen[i];
@@ -333,22 +356,11 @@ impl CubismModel {
                     opacity[i].is_finite() && mul.iter().chain(&scr).all(|v| v.is_finite()),
                     "Invalid drawable color"
                 );
-                d.texture = count(textures[i], 31)?;
-                d.masked = mc > 0;
-                d.inverted = flags[i] & 8 != 0;
-                d.double_sided = flags[i] & 4 != 0;
                 d.visible = dynamic[i] & 1 != 0;
                 d.order = orders[i];
                 d.opacity = opacity[i].clamp(0.0, 1.0);
                 d.multiply = mul;
                 d.screen = scr;
-                d.blend = if flags[i] & 1 != 0 {
-                    Blend::Add
-                } else if flags[i] & 2 != 0 {
-                    Blend::Multiply
-                } else {
-                    Blend::Normal
-                };
             }
         }
         Ok(())
@@ -396,6 +408,52 @@ mod tests {
             assert_eq!(mem.ptr() as usize % align, 0);
         }
         assert!(Aligned::new(0, 64).is_err());
+    }
+    #[test]
+    #[ignore = "requires ARIA_TEST_MOC; reports a local performance sample"]
+    fn real_core_update_benchmark() {
+        let path = std::env::var_os("ARIA_TEST_MOC").expect("ARIA_TEST_MOC");
+        let bytes = std::fs::read(path).unwrap();
+        let mut model = CubismModel::load(Path::new(""), &bytes, 32).unwrap();
+        let parameter = model
+            .parameters()
+            .iter()
+            .find(|p| p.max > p.min)
+            .unwrap()
+            .clone();
+        for frame in 0..20 {
+            model.set_parameter(
+                &parameter.id,
+                if frame % 2 == 0 {
+                    parameter.min
+                } else {
+                    parameter.max
+                },
+            );
+            model.update().unwrap();
+        }
+        let started = std::time::Instant::now();
+        for frame in 0..120 {
+            model.set_parameter(
+                &parameter.id,
+                if frame % 2 == 0 {
+                    parameter.min
+                } else {
+                    parameter.max
+                },
+            );
+            model.update().unwrap();
+        }
+        println!(
+            "core model update: {:.2} ms/frame, {} meshes, {} vertices",
+            started.elapsed().as_secs_f64() * 1000. / 120.,
+            model.drawables.len(),
+            model
+                .drawables
+                .iter()
+                .map(|d| d.positions.len())
+                .sum::<usize>()
+        );
     }
     /// Opt-in integration test, using locally supplied licensed assets. No fixture is redistributed.
     #[test]

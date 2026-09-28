@@ -680,6 +680,12 @@ impl AriaApp {
                 "{:.0} / {} FPS",
                 self.render_fps, self.settings.fps
             ));
+            if cfg!(debug_assertions) {
+                ui.colored_label(
+                    theme::orange(),
+                    "Debug build · use optimized release for performance",
+                );
+            }
             let remaining = self.studio.timer.remaining_at(Instant::now());
             if self.studio.timer.running_since.is_some() {
                 ui.small(if remaining.is_zero() {
