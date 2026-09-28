@@ -185,6 +185,14 @@ parent levels from that GPU buffer without intermediate readback. Mesh output
 still needs to remain on the GPU. No frame-time or FPS improvement has been
 established from this test path.
 
+The same keyframe batch now includes ordinary ArtMesh base positions. A large
+model interior pose matched Rust for all 1,210 meshes and 225,448 vertices,
+including 358 multi-key meshes; combined warp and mesh keys occupied 24.03 MiB.
+OILBUN and Ditto passed the equivalent native GPU check. A generated chain
+consumed GPU-blended local points through two parent warps into final mesh
+positions without intermediate readback. Per-model blend shapes, rotation
+parents and glue are still CPU-only, so this path is not a complete renderer.
+
 A test-only WGPU compute primitive now samples multiple warp grids in a single
 dispatch. It implements the Rust evaluator's affine shortcut, bent-grid quad
 or triangular cells and exterior continuation. Native DX12 comparisons passed
@@ -192,7 +200,7 @@ for generated grids and default-pose control grids decoded from the large 90s
 outfit, OILBUN and Ditto. A separate two-depth test writes child control points
 to GPU storage, then samples that GPU-produced child grid for its grandchild in
 the next dispatch without an intermediate readback. The live renderer does not
-use this shader yet. Integrating GPU keyform/blend evaluation, rotation chains, glue,
+use this shader yet. GPU keyform/blend evaluation, rotation chains, glue,
 visibility/order and mesh output must be integrated and checked end to end
 before the CPU geometry path can be removed.
 

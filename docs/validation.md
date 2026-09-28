@@ -15,6 +15,13 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
   tolerance. A generated two-depth chain also consumed GPU-blended control
   points and resolved its children without intermediate CPU readback. These
   are parity results, not a live-renderer speedup.
+- The same GPU batch matched Rust for all 1,210 large-model ArtMeshes and
+  225,448 base vertices, including 358 multi-key meshes. Combined warp and
+  ArtMesh keys occupied 24.03 MiB. OILBUN passed on 249 warps and 284 meshes;
+  Ditto passed on 95 warps and 167 meshes. The generated hierarchy check now
+  resolves final mesh positions from GPU-blended local points through two
+  parent warps with no intermediate readback. It does not cover rotation
+  parents, blend shapes or glue and does not measure production FPS.
 - A test-only DX12 compute warp sampler matched Rust across affine and bent
   generated grids, quad/triangle interpolation, interior/exterior coordinates,
   and interleaved samples from four grids in one dispatch. It also matched

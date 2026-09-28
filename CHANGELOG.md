@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Extend the batched GPU keyframe parity path to ArtMesh base positions. The large model matched Rust on all 1,210 meshes and 225,448 vertices in addition to its warp grids; OILBUN and Ditto passed too. A generated GPU-only hierarchy carries blended points through two parent warps into final mesh positions. Blend shapes, rotations, glue and renderer integration remain open.
+
 - Add a test-only GPU compute stage that blends resident MOC3 warp keyforms in one batched dispatch. A non-default pose of the supplied large model matched Rust across 680 warp nodes and 819,275 points, including 327 multi-key nodes. A generated two-depth chain then consumed blended control points directly in GPU storage without intermediate readback. This targets a known CPU cost but is not connected to the live renderer yet.
 
 - Prototype a batched DX12 compute warp sampler for the independent Rust MOC3 core. It matches ARIA's affine, bent, quad, triangular and exterior sampling on generated grids and decoded control grids from three supplied models. A two-level child/grandchild dispatch resolves parent control points in GPU storage without intermediate CPU readback. This is a tested primitive, not yet the active Live2D renderer; keyform blending, rotation parents, glue and final mesh output still need GPU integration.

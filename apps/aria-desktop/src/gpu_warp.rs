@@ -437,6 +437,16 @@ fn child_and_grandchild_warps_resolve_on_gpu_without_intermediate_readback() {
                 .unwrap()
         })
         .collect::<Vec<_>>();
+    let mesh_local = [[0.2_f32, 0.3], [0.8, 0.25], [1.2, 0.7], [-0.3, 1.1]];
+    let grandchild_grid = WarpGrid::new(2, 2, expected_grandchild.clone()).unwrap();
+    let expected_mesh = mesh_local
+        .iter()
+        .map(|p| {
+            grandchild_grid
+                .sample_extended(Point { x: p[0], y: p[1] }, true)
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
     let (root_affine, [center, basis_u, basis_v]) = basis(2, 2, &root);
     let descriptors = [
         GridDescriptor {
@@ -457,10 +467,20 @@ fn child_and_grandchild_warps_resolve_on_gpu_without_intermediate_readback() {
             basis_u: [0.0; 4],
             basis_v: [0.0; 4],
         },
+        GridDescriptor {
+            point_offset: 18,
+            columns: 2,
+            rows: 2,
+            flags: 1 | 4,
+            center: [0.0; 4],
+            basis_u: [0.0; 4],
+            basis_v: [0.0; 4],
+        },
     ];
     let mut all_points = root;
     all_points.extend(child_local.iter().copied());
     all_points.extend(grandchild_local.iter().copied());
+    all_points.extend(mesh_local);
     let points_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("ARIA in-place hierarchy points"),
         contents: bytemuck::cast_slice(&vec![[0.0_f32; 2]; all_points.len()]),
@@ -497,6 +517,20 @@ fn child_and_grandchild_warps_resolve_on_gpu_without_intermediate_readback() {
     let grandchild_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("ARIA grandchild warp samples"),
         contents: bytemuck::cast_slice(&grandchild_samples),
+        usage: wgpu::BufferUsages::STORAGE,
+    });
+    let mesh_samples = mesh_local
+        .iter()
+        .enumerate()
+        .map(|(index, &position)| GpuSample {
+            position,
+            grid: 2,
+            output_index: (27 + index) as u32,
+        })
+        .collect::<Vec<_>>();
+    let mesh_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("ARIA mesh warp samples"),
+        contents: bytemuck::cast_slice(&mesh_samples),
         usage: wgpu::BufferUsages::STORAGE,
     });
     let unused_output = device.create_buffer(&wgpu::BufferDescriptor {
@@ -548,6 +582,7 @@ fn child_and_grandchild_warps_resolve_on_gpu_without_intermediate_readback() {
     };
     let child_bind = bind(&child_buffer);
     let grandchild_bind = bind(&grandchild_buffer);
+    let mesh_bind = bind(&mesh_buffer);
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("ARIA hierarchy warp compute"),
         source: wgpu::ShaderSource::Wgsl(include_str!("gpu_warp.wgsl").into()),
@@ -672,7 +707,7 @@ fn child_and_grandchild_warps_resolve_on_gpu_without_intermediate_readback() {
         pass.set_bind_group(0, &blend_bind, &[]);
         pass.dispatch_workgroups(1, 1, 1);
     }
-    for bind in [&child_bind, &grandchild_bind] {
+    for bind in [&child_bind, &grandchild_bind, &mesh_bind] {
         let mut pass = encoder.begin_compute_pass(&Default::default());
         pass.set_pipeline(&pipeline);
         pass.set_bind_group(0, bind, &[]);
@@ -697,10 +732,16 @@ fn child_and_grandchild_warps_resolve_on_gpu_without_intermediate_readback() {
             "child {index}: {expected:?} vs {actual:?}"
         );
     }
-    for (index, (expected, actual)) in expected_grandchild.iter().zip(&output[18..]).enumerate() {
+    for (index, (expected, actual)) in expected_grandchild.iter().zip(&output[18..27]).enumerate() {
         assert!(
             (expected.x - actual[0]).abs() < 0.00001 && (expected.y - actual[1]).abs() < 0.00001,
             "grandchild {index}: {expected:?} vs {actual:?}"
+        );
+    }
+    for (index, (expected, actual)) in expected_mesh.iter().zip(&output[27..]).enumerate() {
+        assert!(
+            (expected.x - actual[0]).abs() < 0.00001 && (expected.y - actual[1]).abs() < 0.00001,
+            "mesh vertex {index}: {expected:?} vs {actual:?}"
         );
     }
 }
@@ -818,8 +859,8 @@ struct WarpActiveKey {
 
 #[test]
 #[cfg(windows)]
-#[ignore = "requires ARIA_TEST_MOC and DX12; blends private model warp keys on the GPU"]
-fn local_moc3_warp_keyforms_match_rust_on_gpu() {
+#[ignore = "requires ARIA_TEST_MOC and DX12; blends private model geometry keys on the GPU"]
+fn local_moc3_geometry_keyforms_match_rust_on_gpu() {
     use aria_model_core::moc::{DeformerKind, LocalDeformerFrame, Moc};
 
     let bytes = std::fs::read(std::env::var_os("ARIA_TEST_MOC").unwrap()).unwrap();
@@ -883,6 +924,40 @@ fn local_moc3_warp_keyforms_match_rust_on_gpu() {
         warp_count += 1;
     }
     assert!(warp_count > 0);
+    let warp_point_count = expected.len();
+    let mut mesh_count = 0;
+    let mut blended_mesh_count = 0;
+    for mesh_index in 0..moc.mesh_layouts().unwrap().len() {
+        let compiled = moc.compile_mesh(mesh_index).unwrap();
+        let weights = graph.weights(compiled.binding, &values).unwrap();
+        blended_mesh_count += usize::from(weights.len() > 1);
+        let keyform_offsets = compiled
+            .keyform_points()
+            .into_iter()
+            .map(|points| {
+                let offset = source_points.len() as u32;
+                source_points.extend_from_slice(points);
+                offset
+            })
+            .collect::<Vec<_>>();
+        let points = compiled.frame(&weights).unwrap().positions;
+        let active_start = active_keys.len() as u32;
+        for key in &weights {
+            active_keys.push(WarpActiveKey {
+                source_offset: keyform_offsets[key.index],
+                weight: key.weight,
+            });
+        }
+        let output_start = expected.len() as u32;
+        work.extend((0..points.len()).map(|local_index| WarpKeyWork {
+            output_index: output_start + local_index as u32,
+            local_index: local_index as u32,
+            active_start,
+            active_count: weights.len() as u32,
+        }));
+        expected.extend(points);
+        mesh_count += 1;
+    }
     let limits = device.limits();
     let source_bytes = std::mem::size_of_val(source_points.as_slice()) as u64;
     let work_bytes = std::mem::size_of_val(work.as_slice()) as u64;
@@ -890,7 +965,7 @@ fn local_moc3_warp_keyforms_match_rust_on_gpu() {
     for size in [source_bytes, work_bytes, output_bytes] {
         assert!(
             size <= limits.max_storage_buffer_binding_size,
-            "warp key blend exceeds GPU storage binding: {size} bytes"
+            "geometry key blend exceeds GPU storage binding: {size} bytes"
         );
     }
     let source_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -1001,11 +1076,15 @@ fn local_moc3_warp_keyforms_match_rust_on_gpu() {
         let error = (cpu[0] - gpu[0]).abs().max((cpu[1] - gpu[1]).abs());
         max_error = max_error.max(error);
         let tolerance = 0.00001_f32.max(cpu[0].abs().max(cpu[1].abs()) * 0.000001);
-        assert!(error <= tolerance, "warp point {index}: {cpu:?} vs {gpu:?}");
+        assert!(
+            error <= tolerance,
+            "geometry point {index}: {cpu:?} vs {gpu:?}"
+        );
     }
     eprintln!(
-        "ARIA GPU warp key parity: {warp_count} nodes, {blended_count} multi-key, {} points, {:.2} MiB resident keys, max error {max_error}",
-        expected.len(),
+        "ARIA GPU key parity: {warp_count} warps ({blended_count} multi-key), {mesh_count} meshes ({blended_mesh_count} multi-key), {} warp points, {} mesh vertices, {:.2} MiB resident keys, max error {max_error}",
+        warp_point_count,
+        expected.len() - warp_point_count,
         source_bytes as f64 / 1048576.0
     );
 }

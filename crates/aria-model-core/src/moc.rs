@@ -530,6 +530,14 @@ impl GlueLayout {
 }
 
 impl CompiledMesh {
+    /// Borrow load-time ArtMesh keys for GPU upload without cloning positions.
+    pub fn keyform_points(&self) -> Vec<&[[f32; 2]]> {
+        self.keyforms
+            .iter()
+            .map(|keyform| keyform.positions.as_slice())
+            .collect()
+    }
+
     pub fn decoded_position_bytes(&self) -> usize {
         self.keyforms
             .iter()
