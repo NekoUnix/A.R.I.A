@@ -7,6 +7,13 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## GPU morph and Rust model-core checks — 2026-09-28 (unreleased)
 
+- A metadata-only Rust evaluator and direct hosted adapter matched full Rust
+  visibility, opacity, colors and render order across three poses on the large
+  outfit (3,630 active mesh-poses), OILBUN (852) and Ditto (46). Hosted adapter
+  tests confirmed its vertex arrays remain untouched. This validates the CPU
+  companion for GPU geometry, not live rendering or FPS.
+  An optimized 120-frame large-outfit microbenchmark measured 3.015 ms/frame
+  for full direct Rust updates and 0.085 ms/frame for metadata-only updates.
 - The resident evaluator now chains normal keys, blend-shape deltas, mixed
   warp/rotation hierarchy and ordered glue on one GPU position buffer. Native
   DX12 versus full Rust geometry at three poses passed for the large outfit

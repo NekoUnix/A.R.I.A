@@ -171,6 +171,31 @@ impl RustModel {
         }
         Ok(())
     }
+
+    /// Update render state while GPU geometry supplies positions separately.
+    /// Existing CPU positions are left untouched for stable mesh topology.
+    pub fn update_metadata(&mut self) -> Result<()> {
+        let values = self
+            .parameters
+            .iter()
+            .map(|parameter| parameter.value)
+            .collect::<Vec<_>>();
+        let parts = self.parts.iter().map(|part| part.value).collect::<Vec<_>>();
+        let frames = self.evaluator.metadata_frame_with_parts(&values, &parts)?;
+        let orders = self.orderer.frame(&values, &frames)?;
+        for ((drawable, frame), order) in self.drawables.iter_mut().zip(frames).zip(orders) {
+            drawable.order = order;
+            if let Some(frame) = frame {
+                drawable.opacity = frame.opacity.clamp(0.0, 1.0);
+                drawable.visible = drawable.opacity != 0.0;
+                drawable.multiply = frame.multiply;
+                drawable.screen = frame.screen;
+            } else {
+                drawable.visible = false;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

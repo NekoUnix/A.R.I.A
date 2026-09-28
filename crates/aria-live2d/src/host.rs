@@ -418,23 +418,46 @@ impl HostedModel {
             p.value = p.default;
         }
     }
+    pub fn uses_direct_rust(&self) -> bool {
+        self.direct.is_some()
+    }
+
+    /// Evaluate renderer metadata without CPU vertex deformation. Only the
+    /// independent in-process Rust model supports this GPU companion path.
+    pub fn update_metadata(&mut self) -> Result<()> {
+        ensure!(
+            self.direct.is_some(),
+            "GPU metadata requires the Rust model core"
+        );
+        self.update_direct(true)
+    }
+
+    fn update_direct(&mut self, metadata_only: bool) -> Result<()> {
+        let direct = self.direct.as_mut().context("Missing direct Rust model")?;
+        ensure!(
+            self.parameters.len() == direct.parameters.len()
+                && self.parts.len() == direct.parts.len(),
+            "Rust core topology changed"
+        );
+        for (source, target) in self.parameters.iter().zip(&mut direct.parameters) {
+            target.value = source.value;
+        }
+        for (source, target) in self.parts.iter().zip(&mut direct.parts) {
+            target.value = source.value;
+        }
+        std::mem::swap(&mut self.drawables, &mut direct.drawables);
+        let result = if metadata_only {
+            direct.update_metadata()
+        } else {
+            direct.update()
+        };
+        std::mem::swap(&mut self.drawables, &mut direct.drawables);
+        result
+    }
+
     pub fn update(&mut self) -> Result<()> {
-        if let Some(direct) = &mut self.direct {
-            ensure!(
-                self.parameters.len() == direct.parameters.len()
-                    && self.parts.len() == direct.parts.len(),
-                "Rust core topology changed"
-            );
-            for (source, target) in self.parameters.iter().zip(&mut direct.parameters) {
-                target.value = source.value;
-            }
-            for (source, target) in self.parts.iter().zip(&mut direct.parts) {
-                target.value = source.value;
-            }
-            std::mem::swap(&mut self.drawables, &mut direct.drawables);
-            let result = direct.update();
-            std::mem::swap(&mut self.drawables, &mut direct.drawables);
-            return result;
+        if self.direct.is_some() {
+            return self.update_direct(false);
         }
         let Response::Frame(frame) = self
             .connection
@@ -640,6 +663,49 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires ARIA_TEST_MOC; compares direct Rust metadata with full frames"]
+    fn direct_rust_metadata_keeps_vertices_and_matches_render_state() {
+        let moc = PathBuf::from(std::env::var_os("ARIA_TEST_MOC").unwrap());
+        let mut full = HostedModel::load_direct_rust(&moc, 32).unwrap();
+        let mut metadata = HostedModel::load_direct_rust(&moc, 32).unwrap();
+        assert!(metadata.uses_direct_rust());
+        let initial_positions = metadata
+            .drawables
+            .iter()
+            .map(|drawable| drawable.positions.clone())
+            .collect::<Vec<_>>();
+        for pose in 0..3 {
+            for (index, parameter) in full.parameters().to_vec().iter().enumerate() {
+                let value = match pose {
+                    0 => parameter.default,
+                    1 => parameter.min + (parameter.max - parameter.min) * 0.37,
+                    _ => {
+                        let phase = ((index * 17 + 3) % 23) as f32 / 22.0;
+                        parameter.min + (parameter.max - parameter.min) * phase
+                    }
+                };
+                full.set_parameter(&parameter.id, value);
+                metadata.set_parameter(&parameter.id, value);
+            }
+            full.update().unwrap();
+            metadata.update_metadata().unwrap();
+            for ((expected, actual), initial) in full
+                .drawables
+                .iter()
+                .zip(&metadata.drawables)
+                .zip(&initial_positions)
+            {
+                assert_eq!(actual.visible, expected.visible);
+                assert_eq!(actual.order, expected.order);
+                assert_eq!(actual.opacity, expected.opacity);
+                assert_eq!(actual.multiply, expected.multiply);
+                assert_eq!(actual.screen, expected.screen);
+                assert_eq!(&actual.positions, initial);
+            }
+        }
+    }
+
+    #[test]
     #[ignore = "requires ARIA_TEST_MOC and ARIA_EXPERIMENTAL_DIRECT_RUST_CORE=1; run optimized"]
     fn direct_rust_update_benchmark() {
         assert_eq!(
@@ -647,34 +713,44 @@ mod tests {
             Ok("1")
         );
         let moc = PathBuf::from(std::env::var_os("ARIA_TEST_MOC").unwrap());
-        let mut model = HostedModel::load(Path::new(""), &moc, 32).unwrap();
-        let parameter = model
+        let mut full = HostedModel::load(Path::new(""), &moc, 32).unwrap();
+        let mut metadata = HostedModel::load(Path::new(""), &moc, 32).unwrap();
+        let parameter = full
             .parameters()
             .iter()
             .find(|parameter| parameter.max > parameter.min)
             .unwrap()
             .clone();
-        let mut measured = std::time::Duration::ZERO;
-        for frame in 0..140 {
-            model.set_parameter(
-                &parameter.id,
-                if frame % 2 == 0 {
-                    parameter.min
+        for (label, model, metadata_only) in [
+            ("full", &mut full, false),
+            ("metadata", &mut metadata, true),
+        ] {
+            let mut measured = std::time::Duration::ZERO;
+            for frame in 0..140 {
+                model.set_parameter(
+                    &parameter.id,
+                    if frame % 2 == 0 {
+                        parameter.min
+                    } else {
+                        parameter.max
+                    },
+                );
+                let start = std::time::Instant::now();
+                if metadata_only {
+                    model.update_metadata().unwrap();
                 } else {
-                    parameter.max
-                },
-            );
-            let start = std::time::Instant::now();
-            model.update().unwrap();
-            if frame >= 20 {
-                measured += start.elapsed();
+                    model.update().unwrap();
+                }
+                if frame >= 20 {
+                    measured += start.elapsed();
+                }
             }
+            eprintln!(
+                "{} {label}: 120 direct hosted frames {:.3} ms/frame after warmup",
+                model.version,
+                measured.as_secs_f64() * 1000.0 / 120.0
+            );
         }
-        eprintln!(
-            "{}: 120 direct hosted frames {:.3} ms/frame after warmup",
-            model.version,
-            measured.as_secs_f64() * 1000.0 / 120.0
-        );
     }
 
     #[test]

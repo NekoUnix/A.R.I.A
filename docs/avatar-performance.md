@@ -183,6 +183,16 @@ final mesh positions stay GPU-resident. The active Studio renderer is still on
 its existing path, so no FPS gain is claimed until metadata, bounds and
 renderer integration are measured.
 
+The Rust core now computes drawable metadata without blending mesh positions
+or resolving warp points on the CPU. Native comparisons confirmed identical
+visibility, opacity, color and order on the three local models. This path is
+ready to accompany GPU positions, but active Studio frame-time gains still
+depend on completing GPU framing and connecting the renderer.
+An optimized 120-frame alternating-parameter microbenchmark on the large
+outfit measured 3.015 ms/frame for full direct Rust updates and 0.085
+ms/frame for metadata-only updates after warmup. These figures exclude GPU
+compute and rendering and are not a Studio FPS measurement.
+
 The developing Rust `aria-model-core` now retains MOC3 source bytes and all
 declared encoded atlas files in system RAM. The current desktop renderer reads
 these resident bytes, but still uploads every atlas to the GPU. RAM residency

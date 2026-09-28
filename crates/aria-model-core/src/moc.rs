@@ -545,6 +545,45 @@ impl CompiledMesh {
             .sum()
     }
 
+    /// Evaluate the scalar render state without allocating or blending mesh
+    /// positions. The GPU geometry path supplies those vertices separately.
+    pub fn metadata_frame(&self, weights: &[KeyformWeight]) -> Result<LocalMeshFrame> {
+        ensure!(!weights.is_empty(), "Mesh binding has no active keyforms");
+        ensure!(
+            weights.iter().all(|weight| weight.weight.is_finite()),
+            "Mesh binding contains non-finite weights"
+        );
+        let (opacity, draw_order) = if let [key] = weights
+            && key.weight == 1.0
+        {
+            let source = self
+                .keyforms
+                .get(key.index)
+                .context("Binding exceeds mesh keyforms")?;
+            (source.opacity, source.draw_order)
+        } else {
+            let mut opacity = 0.0_f32;
+            let mut draw_order = 0.0_f32;
+            for key in weights {
+                let source = self
+                    .keyforms
+                    .get(key.index)
+                    .context("Binding exceeds mesh keyforms")?;
+                opacity += source.opacity * key.weight;
+                draw_order += source.draw_order * key.weight;
+            }
+            (opacity, draw_order)
+        };
+        Ok(LocalMeshFrame {
+            positions: Vec::new(),
+            opacity,
+            draw_order,
+            multiply: [1.0; 4],
+            screen: [0.0, 0.0, 0.0, 1.0],
+            parent_deformer: self.parent_deformer,
+        })
+    }
+
     pub fn frame(&self, weights: &[KeyformWeight]) -> Result<LocalMeshFrame> {
         ensure!(!weights.is_empty(), "Mesh binding has no active keyforms");
         ensure!(
@@ -653,6 +692,36 @@ impl CompiledDeformer {
                 LocalDeformerFrame::Rotation { .. } => anyhow::bail!("Expected warp keyform"),
             })
             .collect()
+    }
+
+    /// Blend only the local opacity used by the renderer's metadata path.
+    pub fn metadata_opacity(&self, weights: &[KeyformWeight]) -> Result<f32> {
+        ensure!(
+            !weights.is_empty() && weights.iter().all(|key| key.weight.is_finite()),
+            "Deformer binding has invalid active keyforms"
+        );
+        if let [key] = weights
+            && key.weight == 1.0
+        {
+            return self
+                .keyforms
+                .get(key.index)
+                .map(|frame| match frame {
+                    LocalDeformerFrame::Warp { opacity, .. }
+                    | LocalDeformerFrame::Rotation { opacity, .. } => *opacity,
+                })
+                .context("Unknown deformer keyform");
+        }
+        weights.iter().try_fold(0.0_f32, |opacity, key| {
+            self.keyforms
+                .get(key.index)
+                .map(|frame| match frame {
+                    LocalDeformerFrame::Warp { opacity, .. }
+                    | LocalDeformerFrame::Rotation { opacity, .. } => opacity * key.weight,
+                })
+                .map(|value| opacity + value)
+                .context("Unknown deformer keyform")
+        })
     }
 
     pub fn frame(&self, weights: &[KeyformWeight]) -> Result<LocalDeformerFrame> {

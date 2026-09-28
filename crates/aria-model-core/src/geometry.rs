@@ -305,6 +305,140 @@ impl GeometryEvaluator {
             .count()
     }
 
+    /// Evaluate the renderer-facing scalar state without touching vertex or
+    /// warp-point positions. GPU geometry can be paired with these frames and
+    /// the regular render-order evaluator.
+    pub fn metadata_frame_with_parts(
+        &self,
+        values: &[f32],
+        part_values: &[f32],
+    ) -> Result<Vec<Option<LocalMeshFrame>>> {
+        ensure!(
+            values.len() == self.parameters.len() && part_values.len() == self.parts.len(),
+            "GPU metadata pose has the wrong shape"
+        );
+        let values = self
+            .parameters
+            .iter()
+            .zip(values)
+            .map(|(spec, value)| spec.resolve(*value))
+            .collect::<Result<Vec<_>>>()?;
+        let binding_active = (0..self.graph.bindings.len())
+            .map(|binding| self.graph.in_range(binding, &values))
+            .collect::<Result<Vec<_>>>()?;
+        let weights = (0..self.graph.bindings.len())
+            .map(|binding| self.graph.weights(binding, &values))
+            .collect::<Result<Vec<_>>>()?;
+        let mut part_active = Vec::with_capacity(self.parts.len());
+        let mut part_opacity = Vec::with_capacity(self.parts.len());
+        for (part, input) in self.parts.iter().zip(part_values) {
+            ensure!(input.is_finite(), "Part opacity is not finite");
+            let active = part.enabled
+                && binding_active[part.binding]
+                && part.parent.is_none_or(|parent| part_active[parent]);
+            let inherited = part.parent.map_or(1.0, |parent| part_opacity[parent]);
+            part_active.push(active);
+            part_opacity.push(if active {
+                input.clamp(0.0, 1.0) * inherited
+            } else {
+                0.0
+            });
+        }
+        let mut states = Vec::<Option<(f32, ColorPair)>>::with_capacity(self.deformers.len());
+        for (index, node) in self.deformers.iter().enumerate() {
+            if !node.enabled
+                || !binding_active[node.binding]
+                || node.parent_part.is_some_and(|part| !part_active[part])
+                || node
+                    .parent_deformer
+                    .is_some_and(|parent| states[parent].is_none())
+            {
+                states.push(None);
+                continue;
+            }
+            let parent = node.parent_deformer.and_then(|parent| states[parent]);
+            let mut opacity =
+                self.compiled_deformers[index].metadata_opacity(&weights[node.binding])?;
+            if matches!(node.kind, DeformerKind::Warp { .. }) {
+                for blend in &self.blend_warps[node.local_index] {
+                    for source in &blend.bindings {
+                        for key in self.blend_graph.weights(source.binding, &values)? {
+                            let key_index = key
+                                .index
+                                .checked_sub(source.source_start)
+                                .context("Warp blend key precedes its source range")?;
+                            opacity += source
+                                .opacity_deltas
+                                .get(key_index)
+                                .context("Warp opacity blend key is missing")?
+                                * key.weight;
+                        }
+                    }
+                    opacity = opacity.clamp(0.0, 1.0);
+                }
+            } else {
+                for blend in &self.blend_rotations[node.local_index] {
+                    for source in &blend.bindings {
+                        for key in self.blend_graph.weights(source.binding, &values)? {
+                            let key_index = key
+                                .index
+                                .checked_sub(source.source_start)
+                                .context("Rotation blend key precedes its source range")?;
+                            opacity += source
+                                .deltas
+                                .get(key_index)
+                                .context("Rotation opacity blend key is missing")?[4]
+                                * key.weight;
+                        }
+                    }
+                    opacity = opacity.clamp(0.0, 1.0);
+                }
+            }
+            let color = self.deformer_colors[index]
+                .frame(&weights[node.binding])?
+                .under(parent.map_or(ColorPair::default(), |(_, color)| color));
+            states.push(Some((
+                opacity * parent.map_or(1.0, |(opacity, _)| opacity),
+                color,
+            )));
+        }
+        let mut frames = Vec::with_capacity(self.meshes.len());
+        for index in 0..self.meshes.len() {
+            if self.secondary[index]
+                || !self.mesh_enabled[index]
+                || !binding_active[self.meshes[index]
+                    .as_ref()
+                    .context("Supported mesh has no decoded keyforms")?
+                    .binding]
+                || self.mesh_parts[index].is_some_and(|part| !part_active[part])
+            {
+                frames.push(None);
+                continue;
+            }
+            let mesh = self.meshes[index]
+                .as_ref()
+                .context("Supported mesh has no decoded keyforms")?;
+            let mut frame = mesh.metadata_frame(&weights[mesh.binding])?;
+            let mut color = self.mesh_colors[index].frame(&weights[mesh.binding])?;
+            if let Some(parent) = frame.parent_deformer {
+                let Some((opacity, parent_color)) = states[parent] else {
+                    frames.push(None);
+                    continue;
+                };
+                frame.opacity *= opacity;
+                color = color.under(parent_color);
+            }
+            color = color.under(ColorPair::default());
+            frame.multiply = [color.multiply[0], color.multiply[1], color.multiply[2], 1.0];
+            frame.screen = [color.screen[0], color.screen[1], color.screen[2], 1.0];
+            if let Some(part) = self.mesh_parts[index] {
+                frame.opacity *= part_opacity[part];
+            }
+            frames.push(Some(frame));
+        }
+        Ok(frames)
+    }
+
     /// Return one slot per ArtMesh. `None` means its deformer chain is disabled;
     /// callers must never render that inactive mesh.
     pub fn frame(&self, values: &[f32]) -> Result<Vec<Option<LocalMeshFrame>>> {
@@ -628,7 +762,71 @@ impl GeometryEvaluator {
 #[cfg(test)]
 mod cache_tests {
     use super::*;
+    use crate::draw_order::RenderOrderEvaluator;
     use crate::moc::ParameterKind;
+
+    #[test]
+    #[ignore = "requires ARIA_TEST_MOC; compares metadata-only output with full geometry"]
+    fn local_metadata_only_frames_match_full_geometry_across_poses() {
+        let bytes = std::fs::read(std::env::var_os("ARIA_TEST_MOC").unwrap()).unwrap();
+        let moc = Moc::parse(&bytes).unwrap();
+        let evaluator = GeometryEvaluator::new(&moc).unwrap();
+        let orderer = RenderOrderEvaluator::new(&moc).unwrap();
+        let parameters = moc.parameters().unwrap();
+        let parts = moc.part_layouts().unwrap();
+        let mut compared = 0_usize;
+        for pose in 0..3 {
+            let values = parameters
+                .iter()
+                .enumerate()
+                .map(|(index, parameter)| match pose {
+                    0 => parameter.default,
+                    1 => parameter.minimum + (parameter.maximum - parameter.minimum) * 0.37,
+                    _ => {
+                        let phase = ((index * 17 + 3) % 23) as f32 / 22.0;
+                        parameter.minimum + (parameter.maximum - parameter.minimum) * phase
+                    }
+                })
+                .collect::<Vec<_>>();
+            let part_values = parts
+                .iter()
+                .enumerate()
+                .map(|(index, part)| {
+                    if part.visible {
+                        ((index * 7 + pose * 3) % 13) as f32 / 12.0
+                    } else {
+                        0.0
+                    }
+                })
+                .collect::<Vec<_>>();
+            let full = evaluator.frame_with_parts(&values, &part_values).unwrap();
+            let metadata = evaluator
+                .metadata_frame_with_parts(&values, &part_values)
+                .unwrap();
+            assert_eq!(
+                orderer.frame(&values, &full).unwrap(),
+                orderer.frame(&values, &metadata).unwrap(),
+                "Render order changed on pose {pose}"
+            );
+            for (index, (full, metadata)) in full.iter().zip(&metadata).enumerate() {
+                match (full, metadata) {
+                    (None, None) => {}
+                    (Some(full), Some(metadata)) => {
+                        assert!(metadata.positions.is_empty());
+                        assert_eq!(full.opacity, metadata.opacity, "mesh {index} opacity");
+                        assert_eq!(full.draw_order, metadata.draw_order, "mesh {index} order");
+                        assert_eq!(full.multiply, metadata.multiply, "mesh {index} multiply");
+                        assert_eq!(full.screen, metadata.screen, "mesh {index} screen");
+                        assert_eq!(full.parent_deformer, metadata.parent_deformer);
+                        compared += 1;
+                    }
+                    _ => panic!("mesh {index} activation changed on pose {pose}"),
+                }
+            }
+        }
+        assert!(compared > 0);
+        eprintln!("ARIA metadata-only parity: {compared} active mesh-poses");
+    }
 
     #[test]
     #[ignore = "requires ARIA_TEST_MOC; reports local GPU eligibility without redistributing art"]
