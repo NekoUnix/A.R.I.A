@@ -1412,6 +1412,18 @@ normal portable builds do not run them or change user layouts automatically.
 
 ## Manual acceptance still required on the intended setup
 
+The opt-in GPU MOC3 path can be reproduced in an optimized screenshot smoke by
+setting `ARIA_EXPERIMENTAL_DIRECT_RUST_CORE=1`, `ARIA_EXPERIMENTAL_GPU_MOC3=1`,
+`ARIA_PERF_LOG=1`, `ARIA_SMOKE_TARGET_FPS=120`, and `ARIA_TEST_MODEL` to a local
+manifest before launching an `aria-desktop` build with `screenshots`. Set
+`ARIA_SMOKE_DELAY_SECONDS=20` for sampled `PERF_FRAME`, `PERF_AVATAR` and
+`PERF_CUBISM_RENDER` entries in the profile's `diagnostics` directory. Remove
+the GPU flag for the direct Rust CPU baseline, then remove both experimental
+flags for the current worker baseline. Keep the same model and capture setup.
+On the supplied large outfit, the 2026-09-28 local runs averaged 106.1, 44.5
+and 53.9 sampled FPS respectively. These smokes do not establish a steady
+120 FPS or full-model compatibility gate.
+
 1. Physical iPhone running the user's VTube Studio version, permissions and Wi-Fi.
    Confirm valid packets, head directions, blinks, mouth, gaze, calibration and
    recovery after backgrounding/reopening the phone app.

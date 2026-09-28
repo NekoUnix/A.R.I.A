@@ -207,6 +207,17 @@ passed on Ditto, OILBUN and the large outfit, including masks and view fitting.
 The large model's broad second pose differed at 0.116% of pixels by more than
 two color levels, within the test's 0.2% budget. The many mask/color passes
 and broad model compatibility still need profiling before the default changes.
+In separate optimized 20-second screenshot smokes of the large 90s outfit on
+this Windows machine, all capped at 120 FPS, sampled FPS averaged 44.5 for
+direct Rust CPU geometry (42.5–46.4), 53.9 for the current Purism worker
+(51.5–60.7), and 106.1 for direct Rust plus GPU geometry (100.5–114.7).
+The GPU sample's avatar updates were about 4–8 ms versus 17–24 ms for direct
+Rust CPU. These are desktop smokes with demo input and the same VTS import
+dialog open, not a GPU-timestamp benchmark or a long stream. The GPU path
+substantially reduces the CPU bottleneck but does not hold 120 FPS on that
+model. The renderer still issues about 60 mask and 61 color passes per changing
+frame; GPU-mode render work sampled about 4–7 ms, leaving little room for UI,
+capture and frame pacing inside an 8.33 ms budget.
 An optimized 120-frame alternating-parameter microbenchmark on the large
 outfit measured 3.015 ms/frame for full direct Rust updates and 0.085
 ms/frame for metadata-only updates after warmup. These figures exclude GPU

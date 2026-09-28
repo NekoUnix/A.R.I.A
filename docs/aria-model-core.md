@@ -38,6 +38,12 @@ only four bounds values are returned asynchronously to fit the view. If GPU
 plan construction fails for a model, Studio records a warning and uses the
 direct Rust CPU geometry path. Both variables must be set for this experiment;
 it is not yet the default or a measured 120 FPS path.
+In matched optimized Studio smoke runs on the large outfit with a 120-FPS cap,
+this opt-in GPU path sampled 100.5–114.7 FPS (106.1 average), versus
+42.5–46.4 FPS (44.5 average) for the direct Rust CPU path and 51.5–60.7 FPS
+(53.9 average) for the default Purism worker. Each was a separate 20-second
+desktop run with demo input. This is a substantial measured gain, but not a
+steady 120 FPS result or a replacement gate for all supported models.
 After compilation,
 frame evaluation no longer borrows or reads the encoded MOC3 bytes. It does
 not run C code, relocate pointers in model bytes, load an SDK, or include

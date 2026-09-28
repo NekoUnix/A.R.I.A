@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Measure the experimental GPU MOC3 path in optimized Studio smokes on the large 90s outfit at a 120-FPS cap: sampled FPS averaged 106.1 (100.5–114.7), versus 44.5 for direct Rust CPU geometry and 53.9 for the current Purism worker in separate matched 20-second runs. GPU mode cut sampled avatar-update times from roughly 17–24 ms on direct Rust CPU to 4–8 ms. It still did not sustain 120 FPS, and broad model compatibility remains before changing the default or removing Purism.
+
 - Connect the independent Rust MOC3 core's metadata path to resident GPU geometry and direct GPU vertex rendering behind `ARIA_EXPERIMENTAL_DIRECT_RUST_CORE=1` plus `ARIA_EXPERIMENTAL_GPU_MOC3=1`. Visible bounds reduce on the GPU and return asynchronously as four floats; stale results are discarded when visibility changes again. Layer-only edits skip geometry dispatch, and fully hidden models retain a valid transparent render. Two-pose native render comparisons passed on Ditto, OILBUN and the large outfit; the latter differed by at most 3,231 of 2,779,136 pixels beyond two color levels (0.116%) and 264 pixels beyond sixteen levels. Default rendering, whole-frame speed and the Purism removal gate remain unchanged pending performance measurements and broader model validation.
 
 - Add a two-pass GPU reduction for visible MOC3 mesh bounds. Static vertex-to-mesh ownership stays resident, and only one visibility word per mesh changes per pose; the GPU reduces final oriented positions to four bound values without a vertex readback. Native DX12 parity passed across three poses on the large outfit, OILBUN and Ditto, including deliberately hidden meshes. Asynchronous bound delivery, dynamic view fitting and active renderer hookup remain.
