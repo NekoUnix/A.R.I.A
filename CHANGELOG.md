@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Reduce CPU command-recording work for deep Live2D deformer hierarchies by
+  recording their ordered GPU dispatches in one compute pass. Add separate
+  geometry-encode, color-encode and submission timings to `PERF_AVATAR` so
+  future worker-thread changes target measured CPU work. On a 48-logical-core
+  system, a single saturated frame thread appears as roughly 2% process CPU;
+  spawning a worker per core cannot accelerate ordered model dependencies.
+
 - Allow an opt-in 240 FPS Studio target across the frame scheduler, saved model
   profiles, smoke runs and slow-frame diagnostics. This removes the 120 FPS cap;
   sustained 240 FPS still depends on the model, GPU, CPU and output pipeline.

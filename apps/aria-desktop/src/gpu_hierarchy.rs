@@ -185,18 +185,20 @@ impl GpuHierarchyStage {
         self.plan.update_rotation_locals(&mut self.locals, values)?;
         queue.write_buffer(&self.locals_buffer, 0, bytemuck::cast_slice(&self.locals));
         let mut bind_index = 0;
+        // Each level consumes its parent's results, so dispatches stay in
+        // level order. Recording them in one pass avoids rebuilding a compute
+        // pass for every level of a deeply nested Live2D hierarchy.
+        let mut pass = encoder.begin_compute_pass(&Default::default());
+        pass.set_pipeline(&self.deformer_pipeline);
         for level in &self.plan.levels {
             if level.is_empty() {
                 continue;
             }
-            let mut pass = encoder.begin_compute_pass(&Default::default());
-            pass.set_pipeline(&self.deformer_pipeline);
             pass.set_bind_group(0, &self.binds[bind_index], &[]);
             pass.dispatch_workgroups(level.len().div_ceil(64) as u32, 1, 1);
             bind_index += 1;
         }
         if !self.plan.meshes.is_empty() {
-            let mut pass = encoder.begin_compute_pass(&Default::default());
             pass.set_pipeline(&self.mesh_pipeline);
             pass.set_bind_group(0, &self.binds[bind_index], &[]);
             pass.dispatch_workgroups(self.plan.meshes.len().div_ceil(64) as u32, 1, 1);
