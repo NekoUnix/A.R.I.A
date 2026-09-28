@@ -135,6 +135,10 @@ impl GpuPositionKeyPlan {
                     .checked_add(key.len())
                     .context("GPU key data count overflow")
             })?;
+        ensure!(
+            source_end <= 512 * 1024 * 1024 / std::mem::size_of::<[f32; 2]>(),
+            "GPU position keys exceed the 512 MiB RAM budget"
+        );
         u32::try_from(source_end).context("GPU key data exceeds index space")?;
         let node_index =
             u32::try_from(self.nodes.len()).context("GPU node count exceeds index space")?;

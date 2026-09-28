@@ -166,9 +166,12 @@ CPU-use figures should not be interpreted as gains from this entry point.
 Normal mesh and warp key positions now use a resident GPU plan in native
 parity checks. On the large outfit, the static key and work buffers total
 39.97 MiB, while parameter changes upload about 41 KiB per pose. This
-removes a planned full-frame geometry upload for that stage, but whole-frame
-GPU timing and active Studio FPS have not been measured because later
-deformation stages and metadata are still on the CPU path.
+removes a planned full-frame geometry upload for that stage. A second resident
+pass applies blend-shape position deltas to the same output buffer, including
+458,945 affected points on that model, with only active blend weights/counts
+uploaded per pose (11.12 KiB on the large outfit, with 11.27 MiB resident
+deltas). Whole-frame GPU timing and active Studio FPS have not been
+measured because later deformation stages and metadata are still on the CPU path.
 
 The developing Rust `aria-model-core` now retains MOC3 source bytes and all
 declared encoded atlas files in system RAM. The current desktop renderer reads

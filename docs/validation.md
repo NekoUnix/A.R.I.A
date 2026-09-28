@@ -7,6 +7,13 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## GPU morph and Rust model-core checks — 2026-09-28 (unreleased)
 
+- The resident normal-key evaluator now chains a resident blend-shape delta
+  pass on the same GPU output buffer. Native DX12 comparisons against compiled
+  Rust mesh and warp frames passed at three poses on the large 90s outfit
+  (458,945 blend-affected points), OILBUN (82,468) and Ditto (none). This is
+  local geometry parity, not full hierarchy/glue or live rendering parity.
+  The large outfit's blend stage held 11.27 MiB static deltas and uploaded
+  11.12 KiB active weights/counts per pose.
 - A reusable Rust GPU key plan and desktop compute evaluator matched decoded
   mesh and warp keyframe positions across three poses on the large 90s outfit,
   OILBUN and Ditto. The large model held 24.03 MiB source positions and
