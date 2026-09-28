@@ -660,17 +660,24 @@ mod cache_tests {
         let deformers = moc.deformer_layouts().unwrap();
         let mut depth = vec![0_usize; deformers.len()];
         let mut warp_points = 0_usize;
+        let mut warp_keyform_bytes = 0_usize;
+        let mut max_warp_keyform_bytes = 0_usize;
         for (index, node) in deformers.iter().enumerate() {
             depth[index] = node.parent_deformer.map_or(1, |parent| depth[parent] + 1);
             if let DeformerKind::Warp { points, .. } = node.kind {
                 warp_points += points;
+                let bytes = moc.deformer_keyform_position_bytes(node).unwrap();
+                warp_keyform_bytes += bytes;
+                max_warp_keyform_bytes = max_warp_keyform_bytes.max(bytes);
             }
         }
         eprintln!(
-            "GPU hierarchy: {} deformers, max depth {}, {} warp control points",
+            "GPU hierarchy: {} deformers, max depth {}, {} warp control points, {:.2} MiB warp keyforms, {:.2} MiB largest warp",
             deformers.len(),
             depth.iter().copied().max().unwrap_or(0),
-            warp_points
+            warp_points,
+            warp_keyform_bytes as f64 / 1048576.0,
+            max_warp_keyform_bytes as f64 / 1048576.0
         );
     }
 

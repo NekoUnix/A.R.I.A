@@ -142,3 +142,15 @@ fn resolve_level(@builtin(global_invocation_id) invocation: vec3<u32>) {
         control_points[sample.output_index] = sample_extended(grids[sample.grid], sample.position);
     }
 }
+
+// The local positions were blended into control_points by blend_warp_keys.
+// Parent and child ranges are disjoint within a depth pass.
+@compute @workgroup_size(64)
+fn resolve_points(@builtin(global_invocation_id) invocation: vec3<u32>) {
+    let index = invocation.x;
+    if index < arrayLength(&samples) {
+        let sample = samples[index];
+        let local = control_points[sample.output_index];
+        control_points[sample.output_index] = sample_extended(grids[sample.grid], local);
+    }
+}

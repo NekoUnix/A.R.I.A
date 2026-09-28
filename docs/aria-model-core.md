@@ -173,6 +173,18 @@ replacement must evaluate normal and blend keyforms, parent warp/rotation
 chains, mesh deformation and glue without a synchronous full-frame GPU readback;
 the current renderer-facing CPU geometry contract still needs to be evolved.
 
+A test-only WGPU compute stage also blends load-time warp keyforms from one
+resident GPU buffer into a control-point buffer in a batched dispatch. The
+large 90s outfit needed 19.75 MiB of warp key positions. At an interior
+parameter pose, all 680 warp nodes and 819,275 points matched the CPU Rust
+evaluator within its coordinate-relative tolerance; 327 nodes used multiple
+keys. This has no per-frame key-position upload, but active key weights and
+the work schedule still need efficient runtime updates. A generated
+root/child/grandchild test now blends local points on the GPU and resolves two
+parent levels from that GPU buffer without intermediate readback. Mesh output
+still needs to remain on the GPU. No frame-time or FPS improvement has been
+established from this test path.
+
 A test-only WGPU compute primitive now samples multiple warp grids in a single
 dispatch. It implements the Rust evaluator's affine shortcut, bent-grid quad
 or triangular cells and exterior continuation. Native DX12 comparisons passed
@@ -180,7 +192,7 @@ for generated grids and default-pose control grids decoded from the large 90s
 outfit, OILBUN and Ditto. A separate two-depth test writes child control points
 to GPU storage, then samples that GPU-produced child grid for its grandchild in
 the next dispatch without an intermediate readback. The live renderer does not
-use this shader yet. GPU keyform/blend evaluation, rotation chains, glue,
+use this shader yet. Integrating GPU keyform/blend evaluation, rotation chains, glue,
 visibility/order and mesh output must be integrated and checked end to end
 before the CPU geometry path can be removed.
 

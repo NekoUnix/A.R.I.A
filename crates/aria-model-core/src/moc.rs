@@ -636,6 +636,17 @@ pub struct CompiledDeformer {
 }
 
 impl CompiledDeformer {
+    /// Borrow load-time warp keys for GPU upload without cloning their points.
+    pub fn warp_keyform_points(&self) -> Result<Vec<&[[f32; 2]]>> {
+        self.keyforms
+            .iter()
+            .map(|frame| match frame {
+                LocalDeformerFrame::Warp { points, .. } => Ok(points.as_slice()),
+                LocalDeformerFrame::Rotation { .. } => anyhow::bail!("Expected warp keyform"),
+            })
+            .collect()
+    }
+
     pub fn frame(&self, weights: &[KeyformWeight]) -> Result<LocalDeformerFrame> {
         ensure!(
             !weights.is_empty(),

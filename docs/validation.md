@@ -7,6 +7,14 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## GPU morph and Rust model-core checks — 2026-09-28 (unreleased)
 
+- A test-only DX12 warp-key compute pass matched the Rust evaluator on the
+  supplied large 90s outfit at an interior parameter pose: 680 warp nodes,
+  819,275 control points and 327 multi-key blends. Resident key positions
+  occupied 19.75 MiB; the largest observed coordinate difference was
+  0.000244 model units and stayed within the coordinate-relative test
+  tolerance. A generated two-depth chain also consumed GPU-blended control
+  points and resolved its children without intermediate CPU readback. These
+  are parity results, not a live-renderer speedup.
 - A test-only DX12 compute warp sampler matched Rust across affine and bent
   generated grids, quad/triangle interpolation, interior/exterior coordinates,
   and interleaved samples from four grids in one dispatch. It also matched

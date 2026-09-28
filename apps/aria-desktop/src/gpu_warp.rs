@@ -463,7 +463,7 @@ fn child_and_grandchild_warps_resolve_on_gpu_without_intermediate_readback() {
     all_points.extend(grandchild_local.iter().copied());
     let points_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("ARIA in-place hierarchy points"),
-        contents: bytemuck::cast_slice(&all_points),
+        contents: bytemuck::cast_slice(&vec![[0.0_f32; 2]; all_points.len()]),
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
     });
     let grid_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -561,7 +561,100 @@ fn child_and_grandchild_warps_resolve_on_gpu_without_intermediate_readback() {
         label: Some("ARIA hierarchy warp pipeline"),
         layout: Some(&pipeline_layout),
         module: &shader,
-        entry_point: Some("resolve_level"),
+        entry_point: Some("resolve_points"),
+        compilation_options: Default::default(),
+        cache: None,
+    });
+    let mut source_points = Vec::with_capacity(all_points.len() * 2);
+    for delta in [0.125_f32, -0.125] {
+        source_points.extend(all_points.iter().map(|p| [p[0] + delta, p[1] + delta]));
+    }
+    let work = (0..all_points.len())
+        .map(|index| WarpKeyWork {
+            output_index: index as u32,
+            local_index: index as u32,
+            active_start: 0,
+            active_count: 2,
+        })
+        .collect::<Vec<_>>();
+    let active = [
+        WarpActiveKey {
+            source_offset: 0,
+            weight: 0.5,
+        },
+        WarpActiveKey {
+            source_offset: all_points.len() as u32,
+            weight: 0.5,
+        },
+    ];
+    let source_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("ARIA hierarchy blended source keys"),
+        contents: bytemuck::cast_slice(&source_points),
+        usage: wgpu::BufferUsages::STORAGE,
+    });
+    let work_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("ARIA hierarchy blend work"),
+        contents: bytemuck::cast_slice(&work),
+        usage: wgpu::BufferUsages::STORAGE,
+    });
+    let active_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("ARIA hierarchy active keys"),
+        contents: bytemuck::cast_slice(&active),
+        usage: wgpu::BufferUsages::STORAGE,
+    });
+    let blend_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("ARIA hierarchy blend layout"),
+        entries: &[(0, false), (1, false), (2, false), (3, true)].map(|(binding, writable)| {
+            wgpu::BindGroupLayoutEntry {
+                binding,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage {
+                        read_only: !writable,
+                    },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }
+        }),
+    });
+    let blend_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("ARIA hierarchy blend bind"),
+        layout: &blend_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: source_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: work_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: active_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: points_buffer.as_entire_binding(),
+            },
+        ],
+    });
+    let blend_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("ARIA hierarchy key blend compute"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("gpu_warp_keys.wgsl").into()),
+    });
+    let blend_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("ARIA hierarchy blend pipeline layout"),
+        bind_group_layouts: &[Some(&blend_layout)],
+        immediate_size: 0,
+    });
+    let blend_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("ARIA hierarchy blend pipeline"),
+        layout: Some(&blend_pipeline_layout),
+        module: &blend_shader,
+        entry_point: Some("blend_warp_keys"),
         compilation_options: Default::default(),
         cache: None,
     });
@@ -573,6 +666,12 @@ fn child_and_grandchild_warps_resolve_on_gpu_without_intermediate_readback() {
         mapped_at_creation: false,
     });
     let mut encoder = device.create_command_encoder(&Default::default());
+    {
+        let mut pass = encoder.begin_compute_pass(&Default::default());
+        pass.set_pipeline(&blend_pipeline);
+        pass.set_bind_group(0, &blend_bind, &[]);
+        pass.dispatch_workgroups(1, 1, 1);
+    }
     for bind in [&child_bind, &grandchild_bind] {
         let mut pass = encoder.begin_compute_pass(&Default::default());
         pass.set_pipeline(&pipeline);
@@ -620,7 +719,13 @@ fn local_moc3_warp_grids_match_rust_on_gpu() {
         .parameters()
         .unwrap()
         .into_iter()
-        .map(|parameter| parameter.default)
+        .map(|parameter| {
+            if parameter.maximum > parameter.minimum {
+                parameter.minimum + (parameter.maximum - parameter.minimum) * 0.37
+            } else {
+                parameter.default
+            }
+        })
         .collect::<Vec<_>>();
     let state = crate::spout::tests::gpu_state();
     let inputs = (0..96)
@@ -692,5 +797,215 @@ fn local_moc3_warp_grids_match_rust_on_gpu() {
         checked[0],
         checked[1],
         inputs.len()
+    );
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct WarpKeyWork {
+    output_index: u32,
+    local_index: u32,
+    active_start: u32,
+    active_count: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct WarpActiveKey {
+    source_offset: u32,
+    weight: f32,
+}
+
+#[test]
+#[cfg(windows)]
+#[ignore = "requires ARIA_TEST_MOC and DX12; blends private model warp keys on the GPU"]
+fn local_moc3_warp_keyforms_match_rust_on_gpu() {
+    use aria_model_core::moc::{DeformerKind, LocalDeformerFrame, Moc};
+
+    let bytes = std::fs::read(std::env::var_os("ARIA_TEST_MOC").unwrap()).unwrap();
+    let moc = Moc::parse(&bytes).unwrap();
+    let graph = moc.binding_graph().unwrap();
+    let values = moc
+        .parameters()
+        .unwrap()
+        .into_iter()
+        .map(|parameter| {
+            if parameter.maximum > parameter.minimum {
+                parameter.minimum + (parameter.maximum - parameter.minimum) * 0.37
+            } else {
+                parameter.default
+            }
+        })
+        .collect::<Vec<_>>();
+    let state = crate::spout::tests::gpu_state();
+    let device = &state.device;
+    let mut source_points = Vec::<[f32; 2]>::new();
+    let mut work = Vec::<WarpKeyWork>::new();
+    let mut active_keys = Vec::<WarpActiveKey>::new();
+    let mut expected = Vec::<[f32; 2]>::new();
+    let mut warp_count = 0;
+    let mut blended_count = 0;
+    for node in moc.deformer_layouts().unwrap() {
+        if !matches!(node.kind, DeformerKind::Warp { .. }) {
+            continue;
+        }
+        let compiled = moc.compile_deformer(&node).unwrap();
+        let weights = graph.weights(node.binding, &values).unwrap();
+        blended_count += usize::from(weights.len() > 1);
+        let keyform_offsets = compiled
+            .warp_keyform_points()
+            .unwrap()
+            .into_iter()
+            .map(|points| {
+                let offset = source_points.len() as u32;
+                source_points.extend_from_slice(points);
+                offset
+            })
+            .collect::<Vec<_>>();
+        let LocalDeformerFrame::Warp { points, .. } = compiled.frame(&weights).unwrap() else {
+            unreachable!()
+        };
+        let active_start = active_keys.len() as u32;
+        for key in &weights {
+            active_keys.push(WarpActiveKey {
+                source_offset: keyform_offsets[key.index],
+                weight: key.weight,
+            });
+        }
+        let output_start = expected.len() as u32;
+        work.extend((0..points.len()).map(|local_index| WarpKeyWork {
+            output_index: output_start + local_index as u32,
+            local_index: local_index as u32,
+            active_start,
+            active_count: weights.len() as u32,
+        }));
+        expected.extend(points);
+        warp_count += 1;
+    }
+    assert!(warp_count > 0);
+    let limits = device.limits();
+    let source_bytes = std::mem::size_of_val(source_points.as_slice()) as u64;
+    let work_bytes = std::mem::size_of_val(work.as_slice()) as u64;
+    let output_bytes = std::mem::size_of_val(expected.as_slice()) as u64;
+    for size in [source_bytes, work_bytes, output_bytes] {
+        assert!(
+            size <= limits.max_storage_buffer_binding_size,
+            "warp key blend exceeds GPU storage binding: {size} bytes"
+        );
+    }
+    let source_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("ARIA resident warp keyforms"),
+        contents: bytemuck::cast_slice(&source_points),
+        usage: wgpu::BufferUsages::STORAGE,
+    });
+    let work_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("ARIA warp key work"),
+        contents: bytemuck::cast_slice(&work),
+        usage: wgpu::BufferUsages::STORAGE,
+    });
+    let active_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("ARIA active warp keys"),
+        contents: bytemuck::cast_slice(&active_keys),
+        usage: wgpu::BufferUsages::STORAGE,
+    });
+    let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("ARIA GPU blended warp points"),
+        size: output_bytes,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        mapped_at_creation: false,
+    });
+    let readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("ARIA warp blend diagnostic readback"),
+        size: output_bytes,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+    let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("ARIA warp key blend layout"),
+        entries: &[(0, false), (1, false), (2, false), (3, true)].map(|(binding, writable)| {
+            wgpu::BindGroupLayoutEntry {
+                binding,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage {
+                        read_only: !writable,
+                    },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }
+        }),
+    });
+    let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("ARIA warp key blend bind"),
+        layout: &layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: source_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: work_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: active_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: output_buffer.as_entire_binding(),
+            },
+        ],
+    });
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("ARIA warp key blend compute"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("gpu_warp_keys.wgsl").into()),
+    });
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("ARIA warp key blend pipeline layout"),
+        bind_group_layouts: &[Some(&layout)],
+        immediate_size: 0,
+    });
+    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("ARIA warp key blend pipeline"),
+        layout: Some(&pipeline_layout),
+        module: &shader,
+        entry_point: Some("blend_warp_keys"),
+        compilation_options: Default::default(),
+        cache: None,
+    });
+    let mut encoder = device.create_command_encoder(&Default::default());
+    {
+        let mut pass = encoder.begin_compute_pass(&Default::default());
+        pass.set_pipeline(&pipeline);
+        pass.set_bind_group(0, &bind, &[]);
+        pass.dispatch_workgroups(work.len().div_ceil(64) as u32, 1, 1);
+    }
+    encoder.copy_buffer_to_buffer(&output_buffer, 0, &readback, 0, output_bytes);
+    state.queue.submit([encoder.finish()]);
+    let (tx, rx) = std::sync::mpsc::channel();
+    readback
+        .slice(..)
+        .map_async(wgpu::MapMode::Read, move |result| {
+            tx.send(result).unwrap();
+        });
+    device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+    rx.recv().unwrap().unwrap();
+    let bytes = readback.slice(..).get_mapped_range().unwrap().to_vec();
+    readback.unmap();
+    let gpu = bytemuck::cast_slice::<u8, [f32; 2]>(&bytes);
+    let mut max_error = 0.0_f32;
+    for (index, (cpu, gpu)) in expected.iter().zip(gpu).enumerate() {
+        let error = (cpu[0] - gpu[0]).abs().max((cpu[1] - gpu[1]).abs());
+        max_error = max_error.max(error);
+        let tolerance = 0.00001_f32.max(cpu[0].abs().max(cpu[1].abs()) * 0.000001);
+        assert!(error <= tolerance, "warp point {index}: {cpu:?} vs {gpu:?}");
+    }
+    eprintln!(
+        "ARIA GPU warp key parity: {warp_count} nodes, {blended_count} multi-key, {} points, {:.2} MiB resident keys, max error {max_error}",
+        expected.len(),
+        source_bytes as f64 / 1048576.0
     );
 }
