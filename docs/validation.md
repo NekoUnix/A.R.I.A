@@ -1339,3 +1339,29 @@ TCP, Bluetooth and recording transfer are not implemented. See the
   explicit apply, tracking control and recovery instructions for replaced meshes.
   Manual visual usability testing on additional artist-authored rigs is still
   recommended; triangle picking does not sample texture alpha or clipping masks.
+
+### Studio audience reactions (local development)
+
+- All-feature workspace tests pass: 332 tests, zero failures, with 40 opt-in
+  checks ignored. Strict all-target/all-feature Clippy and the native desktop
+  build pass. Local WebSocket fixtures cover authenticated and unauthenticated
+  subscriptions, authentication rejection, queue limits, stale-event removal,
+  provider payload validation, duplicate suppression and test-event filtering.
+- An explicit native acceptance check successfully subscribed to the supplied
+  Streamer.bot 1.0.7 application on localhost. Its research server was stopped
+  afterward. No connected account or live channel redemption was used.
+- The app integration test learns a disabled reward rule, explicitly enables an
+  action graph, queues a silent sound and changes the avatar pose. It verifies
+  duplicate suppression and sound cancellation. Sound actions are accepted by
+  graph validation; enqueue completion does not mean audible playback completed.
+- The Reactions, Connections and Sounds pages were captured and visually checked
+  at the minimum 960 by 640 logical window size with the supplied NekoUnity2 VRM
+  loaded in isolated profiles. Gradient cards, navigation and controls render;
+  longer content remains inside the scrollable workspace.
+- Direct local debug launches now resolve the trusted toolchain's libunwind.dll
+  beside the executable and test binaries without a development PATH. This is
+  local launch validation, not release-package acceptance.
+
+Audible device output, authenticated live rewards, native TikTok/X connections,
+reward creation and shared sound/music/VST routing remain unverified or unfinished.
+See the [Streamer.bot guide](streamerbot.md) for supported event mappings and limits.

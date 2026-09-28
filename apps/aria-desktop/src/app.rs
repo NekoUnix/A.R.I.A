@@ -57,6 +57,8 @@ impl Default for IFacialSettings {
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 struct Settings {
+    streamerbot_events: crate::streamerbot::events::Settings,
+    sounds: crate::sounds::Library,
     events: crate::event_rules::Settings,
     music: crate::music::Settings,
     scenes: crate::scenes::Library,
@@ -92,6 +94,8 @@ struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            streamerbot_events: Default::default(),
+            sounds: Default::default(),
             music: Default::default(),
             events: Default::default(),
             scenes: Default::default(),
@@ -271,6 +275,8 @@ struct PendingImage {
 }
 pub struct AriaApp {
     events: crate::event_rules::Events,
+    streamerbot_events: crate::streamerbot::events::Bridge,
+    sounds: crate::sounds::Sounds,
     music: crate::music::Music,
     scenes: crate::scenes::Scenes,
     studio: studio::Studio,
@@ -416,6 +422,8 @@ impl AriaApp {
             music: Default::default(),
             scenes: Default::default(),
             events: Default::default(),
+            streamerbot_events: Default::default(),
+            sounds: Default::default(),
             studio: studio::Studio::new(if crate::smoke_mode() {
                 None
             } else {
@@ -592,22 +600,39 @@ impl AriaApp {
                     game.canvases[0].zoom = 0.6;
                     let _ = app.settings.scenes.capture("Game".into(), game);
                     ControlsPage::Scenes
-                } else if scenario == "studio-events" {
+                } else if matches!(
+                    scenario.as_str(),
+                    "studio-events" | "studio-streamerbot" | "studio-sounds" | "studio-reactions"
+                ) {
+                    app.events.page = match scenario.as_str() {
+                        "studio-streamerbot" => 1,
+                        "studio-sounds" => 2,
+                        _ => 0,
+                    };
+                    {
+                        app.settings.sounds.clips.push(crate::sounds::Clip {
+                            id: 1,
+                            name: "Reward pop".into(),
+                            path: Path::new(env!("CARGO_MANIFEST_DIR"))
+                                .join("../../templates/effects/assets/pop.wav"),
+                            volume: 0.5,
+                        });
+                    }
                     app.settings.events.rules.push(crate::event_rules::Rule {
+                        platform: Some(crate::event_rules::Platform::Twitch),
+                        accept_test: false,
                         below: false,
                         conditions: vec![],
                         any_condition: false,
                         release_margin: 0.,
                         id: 1,
-                        name: "Cheer reaction · preview".into(),
+                        name: "Reward sound · preview".into(),
                         enabled: false,
-                        kind: crate::event_rules::Kind::Bits,
-                        match_name: String::new(),
-                        minimum: 100,
+                        kind: crate::event_rules::Kind::Reward,
+                        match_name: "Bonk".into(),
+                        minimum: 1,
                         cooldown: 2.,
-                        target: Some(crate::actions::Target::Music(
-                            crate::actions::MusicCommand::Next,
-                        )),
+                        target: Some(crate::actions::Target::Sound(1)),
                         profile: app.profiles.current,
                         threshold: 0.5,
                         hold_seconds: 0.3,
@@ -1249,6 +1274,84 @@ impl AriaApp {
 
     fn controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         if self.controls_page == ControlsPage::Events {
+            theme::card(ui, |ui| {
+                ui.heading("Audience reactions");
+                theme::caption(
+                    ui,
+                    "Turn a reward, cheer or chat command into a moment with your avatar.",
+                );
+                ui.horizontal_wrapped(|ui| {
+                    self.input_monitor.save_requested |= ui
+                        .checkbox(&mut self.settings.events.enabled, "Reactions enabled")
+                        .changed();
+                    ui.separator();
+                    ui.label(format!(
+                        "{} active rules",
+                        self.settings
+                            .events
+                            .rules
+                            .iter()
+                            .filter(|r| r.enabled)
+                            .count()
+                    ));
+                    ui.separator();
+                    ui.label(self.streamerbot_events.status());
+                });
+                ui.add_space(8.);
+                ui.horizontal_wrapped(|ui| {
+                    for (page, label) in [(0, "Reactions"), (1, "Connections"), (2, "Sounds")] {
+                        ui.selectable_value(&mut self.events.page, page, label);
+                    }
+                    if ui.button("Build action sequence").clicked() {
+                        self.action_editor.open = true;
+                    }
+                });
+            });
+            ui.add_space(10.);
+            if self.events.page == 1 {
+                theme::card(ui, |ui| {
+                    ui.heading("1 · Connect your audience");
+                    theme::caption(
+                        ui,
+                        "Use website sign-in for Twitch and YouTube chat. For channel rewards and support events, connect your local Streamer.bot below.",
+                    );
+                    if ui.button("Open Twitch / YouTube sign-in").clicked() {
+                        self.controls_page = ControlsPage::Chat;
+                    }
+                });
+                let (dirty, event) = self
+                    .streamerbot_events
+                    .ui(ui, &mut self.settings.streamerbot_events);
+                self.input_monitor.save_requested |= dirty;
+                if let Some(event) = event {
+                    if self.settings.events.add_from_event(&event) {
+                        self.input_monitor.save_requested = true;
+                        self.events.page = 0;
+                    } else {
+                        self.status_message =
+                            Some("Reaction library is full. Remove an unused rule first.".into());
+                    }
+                }
+                return;
+            }
+            if self.events.page == 2 {
+                self.input_monitor.save_requested |= self.sounds.ui(ui, &mut self.settings.sounds);
+                return;
+            }
+            if self.settings.events.rules.is_empty() {
+                theme::card(ui, |ui| {
+                    ui.heading("Make your first reaction");
+                    ui.label("Connect an event source → add a rule → choose an expression, throw, sound or action sequence.");
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button("Connect an event source").clicked() {
+                            self.events.page = 1;
+                        }
+                        if ui.button("Add a sound first").clicked() {
+                            self.events.page = 2;
+                        }
+                    });
+                });
+            }
             let choices = self.action_choices();
             let (dirty, targets) = self.events.ui(
                 ui,
@@ -3103,9 +3206,13 @@ impl eframe::App for AriaApp {
         self.finish_profile_load();
         self.input_monitor.save_requested |=
             self.chats.update(&mut self.settings.chat_accounts, ctx);
-        let chat_events = self
+        let mut chat_events = self
             .chats
             .take_commands(self.settings.events.enabled && self.settings.events.chat_commands);
+        chat_events.extend(self.streamerbot_events.drain(
+            self.settings.events.enabled,
+            self.settings.events.chat_commands,
+        ));
         for event in chat_events {
             if let Ok(targets) = self.events.receive(
                 &event,

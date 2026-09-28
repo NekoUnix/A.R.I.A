@@ -1264,6 +1264,77 @@ mod tests {
         assert_eq!(app.input_monitor.saved.config.pose.mode, PoseMode::Live);
     }
     #[test]
+    fn learned_reward_routes_sound_and_avatar_without_executing_during_setup() {
+        use crate::actions::{Command, Graph, Mode, Step, Target};
+        let (ctx, mut app) = app();
+        let profile = add(&mut app, &ctx, "reaction-avatar.png");
+        app.input_monitor.saved.config.pose.mode = PoseMode::Live;
+        app.settings.sounds.clips.push(crate::sounds::Clip {
+            id: 1,
+            name: "Silent test".into(),
+            path: "builtin:pop".into(),
+            volume: 0.,
+        });
+        let mut graph = Graph::new(90);
+        graph.nodes[1].step = Step::Action {
+            target: Some(Target::Sound(1)),
+            mode: Mode::Toggle,
+        };
+        let avatar = 4;
+        graph.nodes.push(crate::actions::Node {
+            id: avatar,
+            position: [400., 40.],
+            step: Step::Action {
+                target: Some(Target::Avatar {
+                    profile,
+                    command: Command::Pose,
+                }),
+                mode: Mode::On,
+            },
+        });
+        graph.edges = vec![[1, 2], [2, avatar], [avatar, 3]];
+        app.settings.actions.graphs.push(graph);
+        let mut event = crate::event_rules::Event {
+            id: "reward-1".into(),
+            platform: crate::event_rules::Platform::Twitch,
+            test: false,
+            kind: crate::event_rules::Kind::Reward,
+            name: "Bonk".into(),
+            amount: 1,
+        };
+        assert!(app.settings.events.add_from_event(&event));
+        assert!(!app.settings.events.rules[0].enabled);
+        assert!(app.settings.events.rules[0].target.is_none());
+        assert!(
+            app.events
+                .receive(&event, &app.settings.events, 0.)
+                .unwrap()
+                .is_empty()
+        );
+        app.settings.events.enabled = true;
+        app.settings.events.rules[0].enabled = true;
+        app.settings.events.rules[0].target = Some(Target::Graph(90));
+        event.id = "reward-2".into();
+        for target in app
+            .events
+            .receive(&event, &app.settings.events, 3.)
+            .unwrap()
+        {
+            app.trigger_target(target);
+        }
+        app.update_actions(&ctx);
+        assert_eq!(app.input_monitor.saved.config.pose.mode, PoseMode::Frozen);
+        assert!(app.action_runs.is_empty());
+        assert!(
+            app.events
+                .receive(&event, &app.settings.events, 8.)
+                .unwrap()
+                .is_empty()
+        );
+        app.trigger_target(Target::StopSounds);
+        app.update_actions(&ctx);
+    }
+    #[test]
     fn streamerbot_targets_profiles_not_focus_and_rejects_missing_targets() {
         use crate::actions::{Command, Mode, Target};
         let (ctx, mut app) = app();

@@ -210,6 +210,12 @@ impl Chats {
                 }
                 if let Some(name) = action_command(&message.text) {
                     commands.push(crate::event_rules::Event {
+                        platform: if service == 0 {
+                            crate::event_rules::Platform::Twitch
+                        } else {
+                            crate::event_rules::Platform::YouTube
+                        },
+                        test: false,
                         id: format!("chat-{service}-{}", message.id),
                         kind: crate::event_rules::Kind::Command,
                         name,

@@ -52,6 +52,7 @@ mod scenes;
 #[cfg(feature = "screenshots")]
 mod screenshot;
 mod socials;
+mod sounds;
 #[cfg(windows)]
 mod spout;
 mod streamerbot;

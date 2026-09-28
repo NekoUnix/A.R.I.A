@@ -14,8 +14,12 @@ pub enum Kind {
     Bits,
     Raid,
     Gesture,
+    Tip,
+    Like,
+    Share,
+    Custom,
 }
-const KINDS: [Kind; 8] = [
+const KINDS: [Kind; 12] = [
     Kind::Command,
     Kind::Reward,
     Kind::Follow,
@@ -24,10 +28,36 @@ const KINDS: [Kind; 8] = [
     Kind::Bits,
     Kind::Raid,
     Kind::Gesture,
+    Kind::Tip,
+    Kind::Like,
+    Kind::Share,
+    Kind::Custom,
+];
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Platform {
+    #[default]
+    Local,
+    Twitch,
+    YouTube,
+    Kick,
+    TikTok,
+    X,
+}
+const PLATFORMS: [Platform; 6] = [
+    Platform::Local,
+    Platform::Twitch,
+    Platform::YouTube,
+    Platform::Kick,
+    Platform::TikTok,
+    Platform::X,
 ];
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Event {
+    #[serde(default)]
+    pub platform: Platform,
+    #[serde(default)]
+    pub test: bool,
     pub id: String,
     pub kind: Kind,
     pub name: String,
@@ -71,6 +101,10 @@ impl Condition {
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Rule {
+    #[serde(default)]
+    pub platform: Option<Platform>,
+    #[serde(default)]
+    pub accept_test: bool,
     pub id: u64,
     pub name: String,
     pub enabled: bool,
@@ -133,6 +167,41 @@ pub struct Settings {
     pub rules: Vec<Rule>,
     next_id: u64,
 }
+impl Settings {
+    pub fn add_from_event(&mut self, event: &Event) -> bool {
+        if self.rules.len() >= 128 || event.validate().is_err() {
+            return false;
+        }
+        let Some(id) = self
+            .next_id
+            .max(self.rules.iter().map(|r| r.id).max().unwrap_or(0))
+            .checked_add(1)
+        else {
+            return false;
+        };
+        self.next_id = id;
+        self.rules.push(Rule {
+            id,
+            name: event.name.chars().take(32).collect(),
+            enabled: false,
+            kind: event.kind,
+            platform: Some(event.platform),
+            accept_test: false,
+            match_name: event.name.clone(),
+            minimum: event.amount.max(1),
+            cooldown: 2.,
+            target: None,
+            profile: None,
+            threshold: 0.5,
+            hold_seconds: 0.3,
+            below: false,
+            conditions: vec![],
+            any_condition: false,
+            release_margin: 0.05,
+        });
+        true
+    }
+}
 #[derive(Default)]
 struct GestureState {
     duration: f32,
@@ -140,6 +209,7 @@ struct GestureState {
 }
 #[derive(Default)]
 pub struct Events {
+    pub page: usize,
     seen: VecDeque<String>,
     last: BTreeMap<u64, f64>,
     gestures: BTreeMap<u64, GestureState>,
@@ -147,6 +217,28 @@ pub struct Events {
     simulation: u64,
 }
 impl Events {
+    fn preview(&mut self, rule: &Rule, now: f64) -> Vec<Target> {
+        if rule.kind == Kind::Gesture || !rule.validate() {
+            return vec![];
+        }
+        self.simulation = self.simulation.wrapping_add(1);
+        let mut rule = rule.clone();
+        rule.enabled = true;
+        let event = Event {
+            id: format!("preview-{}", self.simulation),
+            platform: rule.platform.unwrap_or_default(),
+            test: false,
+            kind: rule.kind,
+            name: rule.match_name.clone(),
+            amount: rule.minimum,
+        };
+        let settings = Settings {
+            enabled: true,
+            rules: vec![rule],
+            ..Default::default()
+        };
+        self.receive(&event, &settings, now).unwrap_or_default()
+    }
     fn log(&mut self, message: String) {
         self.log.push_front(message);
         self.log.truncate(30);
@@ -159,10 +251,11 @@ impl Events {
     ) -> anyhow::Result<Vec<Target>> {
         event.validate()?;
         anyhow::ensure!(now.is_finite(), "Invalid event clock");
-        if !settings.enabled || self.seen.contains(&event.id) {
+        let identity = format!("{:?}:{}", event.platform, event.id);
+        if !settings.enabled || self.seen.contains(&identity) {
             return Ok(vec![]);
         }
-        self.seen.push_back(event.id.clone());
+        self.seen.push_back(identity);
         if self.seen.len() > 1024 {
             self.seen.pop_front();
         }
@@ -171,6 +264,8 @@ impl Events {
             if rule.enabled
                 && rule.validate()
                 && rule.kind == event.kind
+                && rule.platform.is_none_or(|p| p == event.platform)
+                && (!event.test || rule.accept_test)
                 && rule.kind != Kind::Gesture
                 && event.amount >= rule.minimum
                 && (rule.match_name.is_empty() || rule.match_name.eq_ignore_ascii_case(&event.name))
@@ -187,10 +282,12 @@ impl Events {
             }
         }
         self.log(format!(
-            "{:?} · {} · {} action(s)",
+            "{:?} · {:?} · {} · {} action(s){}",
+            event.platform,
             event.kind,
             event.name,
-            targets.len()
+            targets.len(),
+            if event.test { " · test" } else { "" }
         ));
         Ok(targets)
     }
@@ -259,16 +356,11 @@ impl Events {
         now: f64,
     ) -> (bool, Vec<Target>) {
         let before = serde_json::to_string(settings).unwrap_or_default();
-        ui.heading("Events & gestures");
+        ui.heading("Your reactions");
         crate::theme::caption(
             ui,
-            "Map a stream event or a held tracking condition to a saved action. Preview uses the same cooldown and matching rules as incoming events.",
+            "Choose what your audience can trigger. Preview a reaction before enabling it.",
         );
-        crate::theme::caption(
-            ui,
-            "Connected chat can supply opt-in !commands. Other stream events use the authenticated integration. Direct rewards/subscriptions require additional provider authorization.",
-        );
-        ui.checkbox(&mut settings.enabled, "Enable event and gesture actions");
         ui.checkbox(
             &mut settings.chat_commands,
             "Accept !commands from connected Twitch / YouTube chat",
@@ -293,6 +385,8 @@ impl Events {
             if let Some(id) = max.checked_add(1) {
                 settings.next_id = id;
                 settings.rules.push(Rule {
+                    platform: None,
+                    accept_test: false,
                     id,
                     name: "New rule".into(),
                     enabled: false,
@@ -386,6 +480,11 @@ impl Events {
                         ui.add(egui::DragValue::new(&mut rule.release_margin).speed(0.01).range(0.0..=1e6).prefix("Release margin: "));
                         crate::theme::caption(ui, "Hold the selected conditions together. The release margin prevents jitter from retriggering; it uses each input's units.");
                     } else {
+                        egui::ComboBox::from_id_salt("event-platform").selected_text(rule.platform.map_or("Any platform".into(),|p|format!("{p:?}"))).show_ui(ui,|ui| {
+                            ui.selectable_value(&mut rule.platform,None,"Any platform");
+                            for platform in PLATFORMS { ui.selectable_value(&mut rule.platform,Some(platform),format!("{platform:?}")); }
+                        });
+                        ui.checkbox(&mut rule.accept_test,"Accept provider test events");
                         ui.add(
                             egui::TextEdit::singleline(&mut rule.match_name)
                                 .hint_text("Exact event / reward / command name; blank = any")
@@ -422,15 +521,13 @@ impl Events {
                     ui.horizontal(|ui| {
                         if ui
                             .add_enabled(
-                                settings.enabled
-                                    && rule.enabled
-                                    && rule.validate()
+                                rule.validate()
                                     && rule.kind != Kind::Gesture,
-                                egui::Button::new("Simulate event"),
+                                egui::Button::new("Preview reaction"),
                             )
                             .clicked()
                         {
-                            simulate = Some((rule.kind, rule.match_name.clone(), rule.minimum));
+                            simulate = Some(rule.clone());
                         }
                         if ui.small_button("Remove rule").clicked() {
                             remove = Some(rule.id);
@@ -447,19 +544,8 @@ impl Events {
             self.gestures.remove(&id);
             self.last.remove(&id);
         }
-        let targets = if let Some((kind, name, amount)) = simulate {
-            self.simulation = self.simulation.wrapping_add(1);
-            self.receive(
-                &Event {
-                    id: format!("preview-{}", self.simulation),
-                    kind,
-                    name,
-                    amount,
-                },
-                settings,
-                now,
-            )
-            .unwrap_or_default()
+        let targets = if let Some(rule) = simulate {
+            self.preview(&rule, now)
         } else {
             vec![]
         };
@@ -477,6 +563,47 @@ impl Events {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn explicit_preview_works_before_enabling_and_keeps_cooldowns() {
+        let mut settings = settings();
+        settings.enabled = false;
+        settings.rules[0].enabled = false;
+        let mut runtime = Events::default();
+        assert_eq!(runtime.preview(&settings.rules[0], 0.).len(), 1);
+        assert!(runtime.preview(&settings.rules[0], 0.01).is_empty());
+        assert_eq!(runtime.preview(&settings.rules[0], 10.).len(), 1);
+        assert!(!settings.enabled && !settings.rules[0].enabled);
+    }
+    #[test]
+    fn platform_filters_test_events_and_old_profiles_are_compatible() {
+        let mut settings = settings();
+        settings.rules[0].platform = Some(Platform::Twitch);
+        let mut event: Event = serde_json::from_value(
+            serde_json::json!({"id":"same","kind":"Reward","name":"Bonk","amount":1}),
+        )
+        .unwrap();
+        assert_eq!(event.platform, Platform::Local);
+        settings.rules[0].match_name.clear();
+        settings.rules[0].minimum = 1;
+        settings.rules[0].kind = Kind::Reward;
+        let mut runtime = Events::default();
+        assert!(runtime.receive(&event, &settings, 0.).unwrap().is_empty());
+        event.platform = Platform::Twitch;
+        assert_eq!(runtime.receive(&event, &settings, 3.).unwrap().len(), 1);
+        event.id = "provider-test".into();
+        event.test = true;
+        assert!(runtime.receive(&event, &settings, 6.).unwrap().is_empty());
+        settings.rules[0].accept_test = true;
+        event.id = "provider-test-2".into();
+        assert_eq!(runtime.receive(&event, &settings, 9.).unwrap().len(), 1);
+        assert!(runtime.receive(&event, &settings, 12.).unwrap().is_empty());
+        let mut saved = serde_json::to_value(&settings.rules[0]).unwrap();
+        saved.as_object_mut().unwrap().remove("platform");
+        saved.as_object_mut().unwrap().remove("accept_test");
+        let legacy: Rule = serde_json::from_value(saved).unwrap();
+        assert!(legacy.platform.is_none());
+        assert!(!legacy.accept_test);
+    }
     #[test]
     fn composite_gestures_require_all_inputs_and_hysteresis_release() {
         let mut s = settings();
@@ -564,6 +691,8 @@ mod tests {
             chat_commands: false,
             enabled: true,
             rules: vec![Rule {
+                platform: None,
+                accept_test: false,
                 id: 1,
                 name: "Bonk".into(),
                 enabled: true,
@@ -588,6 +717,8 @@ mod tests {
         let mut runtime = Events::default();
         let mut s = settings();
         let mut e = Event {
+            platform: Platform::Local,
+            test: false,
             id: "a".into(),
             kind: Kind::Bits,
             name: "".into(),

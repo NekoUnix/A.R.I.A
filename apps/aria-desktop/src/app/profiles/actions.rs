@@ -132,6 +132,7 @@ impl AriaApp {
             shortcut: None,
             legacy_label: None,
         }));
+        choices.extend(self.settings.sounds.choices());
         for (command, label) in [
             (crate::actions::MusicCommand::PlayPause, "Play / pause"),
             (crate::actions::MusicCommand::Stop, "Stop"),
@@ -521,6 +522,15 @@ impl AriaApp {
                 crate::actions::MusicCommand::Stop => self.music.stop(),
                 crate::actions::MusicCommand::Next => self.music.next(&self.settings.music)?,
             }
+            return Ok(true);
+        }
+        if let Target::Sound(id) = target {
+            ensure!(mode == Mode::Toggle, "Sound clips are one-shot actions");
+            self.sounds.play(&self.settings.sounds, *id)?;
+            return Ok(true);
+        }
+        if matches!(target, Target::StopSounds) {
+            self.sounds.stop();
             return Ok(true);
         }
         let Target::Avatar { profile, command } = target else {

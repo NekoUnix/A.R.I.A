@@ -92,6 +92,15 @@ semantics; arbitrary cycles remain rejected. Add native provider event clients
 only after publisher OAuth registration, scopes and reconnect/replay handling are
 verified. Then expand chat badges/emotes, moderation and composition.
 
+The Studio event workspace now subscribes to local Streamer.bot Twitch/YouTube
+events and creates disabled reaction rules from received examples. Sound targets
+use background decoding and a bounded worker. Continue with per-user permissions
+and cooldowns, explicit named blocking queues, completion/error history, reward
+catalog management and fulfillment/refund receipts. A received event is not proof
+that an action played successfully. Keep duplicate suppression and gift-bundle
+normalization across all event adapters. TikTok/X currently require external
+adapters; they do not have native account connections in ARIA.
+
 Acceptance: supplied Live2D and all five VRM fixtures, low/high frame rates, tracking
 loss, action cancellation, burst events, absent assets and profile migration.
 

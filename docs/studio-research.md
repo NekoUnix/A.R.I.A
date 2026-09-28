@@ -9,8 +9,53 @@ Work in progress, 2026-09-27. This audit separates observed UI, bundled document
 | Stella Browser | ZIP 1.0.0, built-in guide dated 2026-09-23 | Executable extracted from installer without installing; UI and complete built-in guide; no proprietary source decompilation |
 | VNyan | 1.7.2e | Portable ARIAResearch profile; UI; 331 bundled English help articles (10,922 words), public documentation |
 | KarasuBonk | package.json 1.2.5 | Bundled readable JavaScript/HTML/default data; public MIT repository and release notes; native UI audit in progress |
+| Streamer.bot | Supplied x64 ZIP 1.0.7; 148 entries | Isolated portable extraction, native UI and official event schemas; actual local server subscription accepted; no proprietary source decompilation |
 
 The research uses the user's local avatar collection for local validation only. No reference artwork, installers, application code, or private avatars are included in ARIA.
+
+## Streamer.bot: event automation audit
+
+Archive SHA-256: `47A4E56F7A8A3E5F09EC16A5BA14C50E034DD98D67D2DC1EC89A671994C1F5C5`.
+The provided distribution is a compiled .NET/WPF application with audio, WebView2,
+Roslyn, storage and network dependencies. Dependency presence is architectural
+evidence, not proof of internal implementation details. Accounts were not logged
+in and no real channel rewards, messages or monetized events were generated.
+
+Native pages observed: Home; Actions & Queues overview; Actions (separate action,
+trigger and sub-action panes); Queues (pending/completed/paused/blocking columns);
+Commands (location, global/user cooldown columns); Platforms overview;
+Twitch overview/settings and Channel Point Rewards; Servers/Clients overview;
+WebSocket Server; Integrations catalog. Authenticated platform screens, every
+sub-action dialog, hidden settings and all integrations have **not** been fully
+exercised. The inventory is explicitly incomplete rather than a claim of exhaustive
+page-by-page acceptance.
+
+| System | Strength observed or documented | Friction / boundary | ARIA implementation or follow-up |
+|---|---|---|---|
+| Actions and triggers | Reusable action definitions with multiple event sources | Large trigger/sub-action catalogs can overwhelm first-time setup | Common reactions in a task-focused Events workspace; graphs for sequences |
+| Queues | Explicit blocking, pause and completion counts | Default queue was nonblocking; media completion needs deliberate waiting | Bounded ingress/expiry now; named blocking queues and completion history remain |
+| Commands | Platform/location plus global and per-user cooldown concepts | Permissions and argument semantics add setup complexity | Existing opt-in commands and rule cooldowns; per-user restrictions remain |
+| Twitch rewards | Cost, enabled, paused and ownership columns separate channel state | Reward catalog requires a connected broadcaster | Map reward titles in ARIA; native catalog management remains |
+| Website account login | Broadcaster/bot roles and website-based login | Publisher registrations and platform scopes still matter | Reuse user's Streamer.bot website logins; ARIA direct chat OAuth stays separate |
+| WebSocket transport | Explicit status, host, endpoint, authentication and connected clients | Documentation defaults differed: fresh 1.0.7 showed Auto Start off | Explicit Connect, actual subscription acknowledgement, password challenge support |
+| Gift bundles | Twitch settings identify bundled gift-child behavior | Counting bundle and child notifications can double reactions | Normalize GiftBomb once and ignore GiftSub fromCommunitySubGift children |
+| Integration catalog | Clearly separated third-party services with status markers | Installed integration is not a native platform guarantee | TikTok/X labeled adapter-only; no implied direct login |
+| Audio actions (documented) | Play files/folders, named playback, stop controls and wait behavior | Completion and overlapping playback need intentional queue design | Local sound library, background decode, bounded voices, stop action; completion nodes remain |
+
+Native compatibility: started only the isolated reference app's default loopback
+server (`127.0.0.1:8080/`), left authentication and all account settings unchanged,
+ran ARIA's actual Hello/Subscribe client successfully, then stopped the server.
+Password authentication and failure cases were separately exercised against a
+local protocol fixture. This confirms transport compatibility, not real-account
+delivery or provider permissions.
+
+Primary references: [core actions](https://docs.streamer.bot/guide/core/actions),
+[blocking queues](https://docs.streamer.bot/faq/action-blocking),
+[WebSocket configuration](https://docs.streamer.bot/api/websocket/guide/configuration),
+[authentication](https://docs.streamer.bot/api/websocket/guide/authentication),
+[platform support](https://docs.streamer.bot/faq/platform-support),
+[TikFinity integration](https://tikfinity.zerody.one/streamerbot-integration),
+and the provider event schemas linked in [ARIA's connector guide](streamerbot.md).
 
 ## Stella Browser: architecture and workflows
 

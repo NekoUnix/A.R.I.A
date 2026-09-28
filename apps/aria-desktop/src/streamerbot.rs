@@ -1,4 +1,5 @@
 //! Streamer.bot local-HTTP setup and secret-free action code generation.
+pub mod events;
 use crate::actions::{Choice, Command, Mode, Target};
 use crate::effect_api::{Action, Api, Settings};
 use base64::Engine;

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add a local Streamer.bot WebSocket event connection for Twitch rewards, follows, subscriptions, gift bundles, cheers and raids, plus YouTube membership and support events. Include challenge authentication, bounded queues, platform filters, provider-test opt-in and shared-chat/gift-bundle duplicate suppression.
+- Add a workspace sound library and sound/stop-sound action targets, with background decoding, volume controls, file repair and bounded playback. Events, hotkeys and action graphs can combine sounds with avatar reactions.
+- Organize audience reactions into Reactions, Connections and Sounds tabs with model-colored gradient cards. Create disabled rules from received events and preview a selected reaction before enabling live triggers.
+- Document the explicit custom-event adapter contract for other sources; TikTok/X website connections and native reward creation remain separate work.
+
 - Add True/False action-graph branches, inactive-path-aware joins, timed repetition of a single action and a Choose and repeat recipe. Bound repeats, preserve cancellation and prevent catch-up bursts after delayed frames.
 
 - Add an experimental Windows VST3 music effect with separate-process probing and processing, mono/stereo negotiation, saved normalized controls, bounded buffering and visible timeout/crash recovery. Preserve bounded reported tails; keep native editors, effect chains and shared audio routing marked unfinished.

@@ -29,6 +29,8 @@ pub enum Target {
     Avatar { profile: u64, command: Command },
     Scene(u64),
     Music(MusicCommand),
+    Sound(u64),
+    StopSounds,
     Graph(u64),
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -458,7 +460,13 @@ impl Graph {
                 ensure!(
                     matches!(
                         target,
-                        Some(Target::Avatar { .. } | Target::Scene(_) | Target::Music(_))
+                        Some(
+                            Target::Avatar { .. }
+                                | Target::Scene(_)
+                                | Target::Music(_)
+                                | Target::Sound(_)
+                                | Target::StopSounds
+                        )
                     ),
                     "Choose an action for node {}. Graph nesting is not supported",
                     node.id

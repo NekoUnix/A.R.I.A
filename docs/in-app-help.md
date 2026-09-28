@@ -872,8 +872,6 @@ Open Hotkeys & actions, choose Action nodes, then New action. Name it and click 
 
 Start → Expression On → Wait 2 seconds → Expression Off → End. Click Run action to test. Record a key for the saved graph from Keyboard shortcuts. Forks execute together; a joined node waits for all incoming branches. Delays begin after preceding nodes finish and never pause tracking. Effects and gestures can keep playing after their trigger node finishes; add a Delay to wait for them.
 
-### Avatar changes and repair
-
 ### Choose a path and repeat
 
 In development builds, Branch compares a run-local variable and chooses True or False. Connect two outputs; the first is True, and the inspector can swap them. Cards show destination numbers. Skipped paths execute no actions or delays; joins wait for active paths and run once. Repeat action performs one action 1–100 times, 0.05–300 seconds apart, without catching up after a delayed frame. Stop all actions cancels remaining repetitions. The Choose and repeat recipe demonstrates these controls. Whole-subgraph loops remain unsupported.
@@ -1620,7 +1618,15 @@ Use the object's size, rotation, flip, draw order, visibility, hotkey and input-
 Mounts save with the current avatar's settings and presets, including both mesh points. Stage and OBS outputs use the same composition. Up to four Live2D objects may be attached to one avatar, within the shared texture budget. Objects render in front of or behind the main avatar, not between its individual layers. A replaced model may have different mesh IDs: reopen Mount two models and choose new points if the old mount cannot be resolved. Missing files or textures must be repaired in the object's file/texture controls first.
 
 
-## streamerbot | Streamer.bot connector | Connect stream commands, rewards and events to saved ARIA actions using the authenticated local API.
+## streamerbot | Streamer.bot connector | Connect stream commands, rewards and events to saved ARIA actions and sound clips.
+
+### Events workspace
+
+For common Twitch/YouTube events, use Events → Connections → Streamer.bot event connection. Sign in to those platforms through their websites in Streamer.bot, start its local WebSocket server, then connect ARIA. No per-action C# script is needed for this route. Enable event actions and choose a platform, event kind, exact reward title (or provider event name), cooldown and target. Provider test events require explicit opt-in. The connector is local-only, uses the server password when configured, and does not save that password.
+
+Sound reactions adds local clips to the same target selector as expressions, throws, gestures and graphs. Use a graph to combine a sound and model reaction, with Delay nodes if playback must finish first. Sound nodes queue playback; audio errors appear in Sound reactions. Clips use the default playback device and are limited to 10 seconds / 16 MiB. Stop sounds affects workspace clips. Retry audio reloads files and reopens the device.
+
+TikTok/X are adapter-only here. TikFinity can trigger Streamer.bot actions which use the advanced connector below. X needs a separate authorized source. Selecting a platform in a rule does not sign in to it. Create Twitch channel rewards in Twitch or Streamer.bot; ARIA maps the reaction. See docs/streamerbot.md for supported event types, limits and the custom-event contract.
 
 ### Set up once
 

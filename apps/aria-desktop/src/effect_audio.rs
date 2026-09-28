@@ -28,7 +28,11 @@ impl Audio {
     }
     pub fn play(&mut self, path: &Path, gain: f32) {
         self.voices.retain(|v| !v.empty());
-        if gain <= 0.0 || path.as_os_str().is_empty() || self.device_failed {
+        if !gain.is_finite() || gain <= 0.0 || path.as_os_str().is_empty() {
+            return;
+        }
+        if self.device_failed {
+            self.error = Some("Audio device unavailable; retry audio to reopen it".into());
             return;
         }
         if self.stream.is_none() {

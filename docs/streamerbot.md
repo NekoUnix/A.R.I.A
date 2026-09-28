@@ -1,6 +1,49 @@
 # Streamer.bot → ARIA setup
 
-This connector is included in v0.36 Alpha. It lets a
+## Events workspace connection (Studio builds)
+
+For Twitch rewards and YouTube support events, use **Events → Connections → Streamer.bot event connection**. Sign in through the platforms' website flows in Streamer.bot, open **Servers/Clients → WebSocket Server**, and start its local server at `127.0.0.1:8080` with endpoint `/`. Keep any server password enabled and enter it in ARIA if needed. Click **Connect / reconnect**. ARIA shows Connected only after subscription succeeds. This connection needs no per-action C# script or ARIA API key. Passwords stay in memory; connect again after restarting ARIA. Changing the port requires reconnecting.
+
+In Connections, received events have a Create reaction button that fills the platform, type, exact name and amount. New rules start disabled with no target. In Reactions, choose a target and preview it before enabling. You can also add a rule manually. For a channel reward, enter its exact title, such as `Bonk`. Blank names match all events of that kind. Matching is case-insensitive. Use **Preview reaction** to check only the selected rule before enabling it. Preview honors that rule's cooldown even while live reactions are disabled. Create/edit Twitch's actual channel rewards in Twitch or Streamer.bot; ARIA currently edits their reactions, not the channel's reward catalog.
+
+| Streamer.bot event | ARIA kind | Name match | Minimum amount unit |
+|---|---|---|---|
+| Twitch RewardRedemption | Reward | Reward title | Redemptions (1) |
+| Twitch Follow / YouTube NewSubscriber | Follow | Provider event name | Events (1) |
+| Twitch Sub, ReSub / YouTube NewSponsor, MemberMileStone | Subscription | Provider event name | Events (1) |
+| Twitch GiftSub / GiftBomb | Gift | Provider event name | Gifted subscriptions; bundle children ignored |
+| YouTube MembershipGift | Gift | MembershipGift | Gift count |
+| Twitch Cheer | Bits | Cheer | Bits |
+| Twitch Raid | Raid | Raid | Viewers |
+| YouTube SuperChat, SuperSticker | Tip | Provider event name | Provider tier, not money or currency |
+
+Provider simulations are ignored unless **Accept provider test events** is enabled for a rule. ARIA's Preview is an explicit local test and still honors cooldowns. Shared-chat guest activity does not trigger the host's reactions. Do not connect both a per-action C# trigger and the automatic subscription for the same event unless two actions are intended.
+
+The connector receives at most 256 KiB per WebSocket message, buffers 64 events, consumes at most eight per frame and drops events waiting more than five seconds. Overflow and invalid-event counters are visible. Disabling event actions drains pending inputs. Reconnect drops the previous connection's queue; no history request is made. The existing rule engine deduplicates its most recent 1,024 platform/ID pairs and limits each event to 16 targets. These are live reactions, not a durable redemption ledger: busy graphs, cooldowns and overload can skip work, and ARIA does not automatically refund or fulfill rewards.
+
+### Play a sound with a model reaction
+
+Under **Events → Sounds → Sound reactions**, add WAV, MP3, OGG or FLAC clips and set their volumes. Choose **Sound · clip name** as a rule or graph target. For a combined reaction, connect sound and avatar nodes in the action graph and choose that graph in the rule. Add a Delay if later steps must wait for the sound: queuing playback completes a sound node immediately. **Sound · Stop all clips** stops workspace clips, including queued requests; it is separate from throw-effect sounds and music.
+
+Clips use the system default playback device, are limited to 10 seconds / 16 MiB, and decode off the UI thread. The sound worker allows 16 pending requests, 16 voices, a 64 MiB decoded cache and a five-second request age. Playback failures appear in Sound reactions; use **Replace file** or **Retry audio / reload clips** to repair them. A graph's completed node confirms queued playback, not audible output. Sound clips do not yet pass through music's VST effect or a shared audio bus.
+
+### External event adapters: TikTok, X and other sources
+
+These are adapter inputs, **not native TikTok/X logins**. Streamer.bot's [platform support FAQ](https://docs.streamer.bot/faq/platform-support) points TikTok users to [TikFinity's integration](https://tikfinity.zerody.one/streamerbot-integration). TikFinity can trigger Streamer.bot actions; the existing C# connector below can bind those actions to ARIA targets. That route can play the new sound targets too. X requires a separately authorized event source; selecting X in a rule does not connect an account. There is no claim that all platforms offer Twitch-style channel points.
+
+An adapter can publish a Streamer.bot `General.Custom` event whose data object contains:
+
+```json
+{"aria":{"id":"provider-unique-event-id","platform":"TikTok","kind":"Gift","name":"Rose","amount":5,"test":false}}
+```
+
+The connector also accepts this object serialized in the Custom event's `data` string. Platform values are Local, Twitch, YouTube, Kick, TikTok and X. Additional kinds Tip, Like, Share and Custom are available for adapters. Use a stable provider ID for retries; never generate a different ID just to retry an event. IDs and names are limited to 128 bytes, amount to 1,000,000, and unknown fields are rejected. No payload can choose an action, file path, script or executable. Reactions must be explicitly mapped in ARIA first. External adapters must handle provider access, authenticity, gift-streak completion and unique IDs themselves.
+
+Protocol references: [WebSocket guide](https://docs.streamer.bot/api/websocket/guide), [authentication](https://docs.streamer.bot/api/websocket/guide/authentication), [event envelope](https://docs.streamer.bot/api/websocket/guide/events), [reward schema](https://docs.streamer.bot/api/websocket/events/twitch/reward-redemption), [Super Chat schema](https://docs.streamer.bot/api/websocket/events/youtube/super-chat).
+
+## Advanced per-action HTTP connector
+
+The original connector is included in v0.36 Alpha. It lets a
 Streamer.bot command, channel-point reward, button, timer or other supported
 trigger run ARIA actions. ARIA and Streamer.bot must run on the **same computer**.
 The connection uses ARIA's authenticated local HTTP API; you do not need to enable

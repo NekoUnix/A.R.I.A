@@ -30,7 +30,8 @@ builds and [release status](README.md#current-and-planned-features) for platform
 | Props and attachments | Images/GIF/Live2D/3D assets and pins | Browser/NDI/Spout texture props and animated imported prop behavior |
 | Postprocessing | Lighting exists | Reference bloom, grading, AO, distortion and glitch effects are not all implemented |
 | Logic graphs | Bounded graphs, recipes, per-run variables/math, input reads, stop conditions, True/False branching and timed action repetition | Whole-subgraph loops and VNyan's full callback/node library remain |
-| Stream events | Matching, amounts, cooldowns, deduplication and simulation; opt-in live Twitch/YouTube !command bridge with backlog suppression | Native provider rewards/subscription event authorization and live-account command acceptance remain |
+| Stream events | Reactions/Connections/Sounds workspace, platform filters, learn-from-event rule creation, cooldowns and deduplication; local Streamer.bot Twitch/YouTube subscriptions with challenge authentication | Direct provider EventSub clients, publisher registration, live-account acceptance, native reward creation and TikTok/X connections remain |
+| Sound reaction library | Saved local clips, volume/preview/repair, sound and stop-sound targets for rules/hotkeys/graphs; bounded background decoding | Shared audio buses, selectable sound output, per-clip completion nodes and audible acceptance remain |
 | Throws and projectiles | Existing designer/assets/sounds/deformation; new side modes and momentum rebound | Additional event presets and visual tuning; no blanket superiority claim |
 | Throw queue reliability | Capacity bound, cadence recovery and queue count | Expanded long-session/asset-failure acceptance |
 | Throw frame-rate independence | Fixed-step emissions and analytical rebound | 15/120 FPS position comparison passed |
