@@ -201,6 +201,15 @@ rotation after two parent warps without readback. Rotation coefficients are
 still prepared on the CPU; inherited orientation, origin probing, blend
 shapes and glue have not been ported into the GPU evaluator.
 
+The test path now applies additive warp and ArtMesh blend-shape deltas in a
+second compute dispatch after normal key blending. At an interior pose, the
+large 90s outfit matched Rust with 1,477,244 resident delta points affecting
+458,945 positions; OILBUN matched with 356,777 delta points across 82,468
+positions. Ditto has no position-delta keys in this check. The generated
+chain also carried an active mesh delta through two parent warps and a
+reflection/scale rotation without CPU readback. These figures establish math
+parity only; the active renderer still evaluates these steps on the CPU.
+
 A test-only WGPU compute primitive now samples multiple warp grids in a single
 dispatch. It implements the Rust evaluator's affine shortcut, bent-grid quad
 or triangular cells and exterior continuation. Native DX12 comparisons passed

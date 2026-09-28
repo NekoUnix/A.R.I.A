@@ -445,7 +445,9 @@ fn child_and_grandchild_warps_resolve_on_gpu_without_intermediate_readback() {
                 .unwrap()
         })
         .collect::<Vec<_>>();
-    let mesh_local = [[0.2_f32, 0.3], [0.8, 0.25], [1.2, 0.7], [-0.3, 1.1]];
+    let mesh_base = [[0.2_f32, 0.3], [0.8, 0.25], [1.2, 0.7], [-0.3, 1.1]];
+    let mesh_delta = [0.05_f32, -0.02];
+    let mesh_local = mesh_base.map(|point| [point[0] + mesh_delta[0], point[1] + mesh_delta[1]]);
     let grandchild_grid = WarpGrid::new(2, 2, expected_grandchild.clone()).unwrap();
     let warped_mesh = mesh_local
         .iter()
@@ -494,7 +496,7 @@ fn child_and_grandchild_warps_resolve_on_gpu_without_intermediate_readback() {
     let mut all_points = root;
     all_points.extend(child_local.iter().copied());
     all_points.extend(grandchild_local.iter().copied());
-    all_points.extend(mesh_local);
+    all_points.extend(mesh_base);
     let points_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("ARIA in-place hierarchy points"),
         contents: bytemuck::cast_slice(&vec![[0.0_f32; 2]; all_points.len()]),
@@ -707,6 +709,68 @@ fn child_and_grandchild_warps_resolve_on_gpu_without_intermediate_readback() {
         compilation_options: Default::default(),
         cache: None,
     });
+    let delta_points = [mesh_delta; 4];
+    let delta_work = (0..4)
+        .map(|index| WarpKeyWork {
+            output_index: 27 + index,
+            local_index: index,
+            active_start: 0,
+            active_count: 1,
+        })
+        .collect::<Vec<_>>();
+    let delta_active = [WarpActiveKey {
+        source_offset: 0,
+        weight: 1.0,
+    }];
+    let delta_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("ARIA hierarchy mesh blend deltas"),
+        contents: bytemuck::cast_slice(&delta_points),
+        usage: wgpu::BufferUsages::STORAGE,
+    });
+    let delta_work_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("ARIA hierarchy mesh delta work"),
+        contents: bytemuck::cast_slice(&delta_work),
+        usage: wgpu::BufferUsages::STORAGE,
+    });
+    let delta_active_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("ARIA hierarchy active mesh delta"),
+        contents: bytemuck::cast_slice(&delta_active),
+        usage: wgpu::BufferUsages::STORAGE,
+    });
+    let delta_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("ARIA hierarchy mesh blend bind"),
+        layout: &blend_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: delta_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: delta_work_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: delta_active_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: points_buffer.as_entire_binding(),
+            },
+        ],
+    });
+    let delta_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("ARIA hierarchy mesh blend compute"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("gpu_blend_deltas.wgsl").into()),
+    });
+    let delta_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("ARIA hierarchy mesh blend pipeline"),
+        layout: Some(&blend_pipeline_layout),
+        module: &delta_shader,
+        entry_point: Some("apply_blend_deltas"),
+        compilation_options: Default::default(),
+        cache: None,
+    });
     let (origin, x_axis, y_axis) = rotation.affine_columns();
     let rotation_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("ARIA hierarchy rotation"),
@@ -795,6 +859,12 @@ fn child_and_grandchild_warps_resolve_on_gpu_without_intermediate_readback() {
         let mut pass = encoder.begin_compute_pass(&Default::default());
         pass.set_pipeline(&blend_pipeline);
         pass.set_bind_group(0, &blend_bind, &[]);
+        pass.dispatch_workgroups(1, 1, 1);
+    }
+    {
+        let mut pass = encoder.begin_compute_pass(&Default::default());
+        pass.set_pipeline(&delta_pipeline);
+        pass.set_bind_group(0, &delta_bind, &[]);
         pass.dispatch_workgroups(1, 1, 1);
     }
     for bind in [&child_bind, &grandchild_bind, &mesh_bind] {
@@ -1138,6 +1208,29 @@ struct WarpActiveKey {
     weight: f32,
 }
 
+fn append_active_deltas(
+    delta_points: &mut Vec<[f32; 2]>,
+    active_keys: &mut Vec<WarpActiveKey>,
+    deltas: &[Vec<[f32; 2]>],
+    source_start: usize,
+    weights: &[aria_model_core::moc::KeyformWeight],
+) {
+    let point_count = deltas.first().map_or(0, Vec::len);
+    assert!(deltas.iter().all(|delta| delta.len() == point_count));
+    let base = delta_points.len();
+    for delta in deltas {
+        delta_points.extend_from_slice(delta);
+    }
+    for weight in weights {
+        let index = weight.index - source_start;
+        assert!(index < deltas.len());
+        active_keys.push(WarpActiveKey {
+            source_offset: (base + index * point_count) as u32,
+            weight: weight.weight,
+        });
+    }
+}
+
 #[test]
 #[cfg(windows)]
 #[ignore = "requires ARIA_TEST_MOC and DX12; blends private model geometry keys on the GPU"]
@@ -1147,6 +1240,7 @@ fn local_moc3_geometry_keyforms_match_rust_on_gpu() {
     let bytes = std::fs::read(std::env::var_os("ARIA_TEST_MOC").unwrap()).unwrap();
     let moc = Moc::parse(&bytes).unwrap();
     let graph = moc.binding_graph().unwrap();
+    let blend_graph = moc.blend_graph().unwrap();
     let values = moc
         .parameters()
         .unwrap()
@@ -1165,6 +1259,9 @@ fn local_moc3_geometry_keyforms_match_rust_on_gpu() {
     let mut work = Vec::<WarpKeyWork>::new();
     let mut active_keys = Vec::<WarpActiveKey>::new();
     let mut expected = Vec::<[f32; 2]>::new();
+    let mut delta_points = Vec::<[f32; 2]>::new();
+    let mut delta_work = Vec::<WarpKeyWork>::new();
+    let mut delta_active = Vec::<WarpActiveKey>::new();
     let mut warp_count = 0;
     let mut blended_count = 0;
     for node in moc.deformer_layouts().unwrap() {
@@ -1184,7 +1281,26 @@ fn local_moc3_geometry_keyforms_match_rust_on_gpu() {
                 offset
             })
             .collect::<Vec<_>>();
-        let LocalDeformerFrame::Warp { points, .. } = compiled.frame(&weights).unwrap() else {
+        let mut frame = compiled.frame(&weights).unwrap();
+        let delta_start = delta_active.len() as u32;
+        for target in blend_graph
+            .warps
+            .iter()
+            .filter(|target| target.target == node.local_index)
+        {
+            let blend = moc.compile_blend_warp(target, &blend_graph).unwrap();
+            for source in &blend.bindings {
+                append_active_deltas(
+                    &mut delta_points,
+                    &mut delta_active,
+                    &source.position_deltas,
+                    source.source_start,
+                    &blend_graph.weights(source.binding, &values).unwrap(),
+                );
+            }
+            blend.apply(&mut frame, &blend_graph, &values).unwrap();
+        }
+        let LocalDeformerFrame::Warp { points, .. } = frame else {
             unreachable!()
         };
         let active_start = active_keys.len() as u32;
@@ -1201,6 +1317,14 @@ fn local_moc3_geometry_keyforms_match_rust_on_gpu() {
             active_start,
             active_count: weights.len() as u32,
         }));
+        if delta_active.len() > delta_start as usize {
+            delta_work.extend((0..points.len()).map(|local_index| WarpKeyWork {
+                output_index: output_start + local_index as u32,
+                local_index: local_index as u32,
+                active_start: delta_start,
+                active_count: delta_active.len() as u32 - delta_start,
+            }));
+        }
         expected.extend(points);
         warp_count += 1;
     }
@@ -1221,7 +1345,26 @@ fn local_moc3_geometry_keyforms_match_rust_on_gpu() {
                 offset
             })
             .collect::<Vec<_>>();
-        let points = compiled.frame(&weights).unwrap().positions;
+        let mut frame = compiled.frame(&weights).unwrap();
+        let delta_start = delta_active.len() as u32;
+        for target in blend_graph
+            .art_meshes
+            .iter()
+            .filter(|target| target.target == mesh_index)
+        {
+            let blend = moc.compile_blend_mesh(target, &blend_graph).unwrap();
+            for source in &blend.bindings {
+                append_active_deltas(
+                    &mut delta_points,
+                    &mut delta_active,
+                    &source.deltas,
+                    source.source_start,
+                    &blend_graph.weights(source.binding, &values).unwrap(),
+                );
+            }
+            blend.apply(&mut frame, &blend_graph, &values).unwrap();
+        }
+        let points = frame.positions;
         let active_start = active_keys.len() as u32;
         for key in &weights {
             active_keys.push(WarpActiveKey {
@@ -1236,6 +1379,14 @@ fn local_moc3_geometry_keyforms_match_rust_on_gpu() {
             active_start,
             active_count: weights.len() as u32,
         }));
+        if delta_active.len() > delta_start as usize {
+            delta_work.extend((0..points.len()).map(|local_index| WarpKeyWork {
+                output_index: output_start + local_index as u32,
+                local_index: local_index as u32,
+                active_start: delta_start,
+                active_count: delta_active.len() as u32 - delta_start,
+            }));
+        }
         expected.extend(points);
         mesh_count += 1;
     }
@@ -1243,7 +1394,17 @@ fn local_moc3_geometry_keyforms_match_rust_on_gpu() {
     let source_bytes = std::mem::size_of_val(source_points.as_slice()) as u64;
     let work_bytes = std::mem::size_of_val(work.as_slice()) as u64;
     let output_bytes = std::mem::size_of_val(expected.as_slice()) as u64;
-    for size in [source_bytes, work_bytes, output_bytes] {
+    let delta_bytes = std::mem::size_of_val(delta_points.as_slice()) as u64;
+    let delta_work_bytes = std::mem::size_of_val(delta_work.as_slice()) as u64;
+    let delta_active_bytes = std::mem::size_of_val(delta_active.as_slice()) as u64;
+    for size in [
+        source_bytes,
+        work_bytes,
+        output_bytes,
+        delta_bytes,
+        delta_work_bytes,
+        delta_active_bytes,
+    ] {
         assert!(
             size <= limits.max_storage_buffer_binding_size,
             "geometry key blend exceeds GPU storage binding: {size} bytes"
@@ -1339,6 +1500,61 @@ fn local_moc3_geometry_keyforms_match_rust_on_gpu() {
         pass.set_bind_group(0, &bind, &[]);
         pass.dispatch_workgroups(work.len().div_ceil(64) as u32, 1, 1);
     }
+    if !delta_work.is_empty() {
+        let delta_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("ARIA resident blend-shape deltas"),
+            contents: bytemuck::cast_slice(&delta_points),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+        let delta_work_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("ARIA blend-shape point work"),
+            contents: bytemuck::cast_slice(&delta_work),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+        let delta_active_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("ARIA active blend-shape keys"),
+            contents: bytemuck::cast_slice(&delta_active),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+        let delta_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("ARIA blend-shape deltas bind"),
+            layout: &layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: delta_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: delta_work_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: delta_active_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: output_buffer.as_entire_binding(),
+                },
+            ],
+        });
+        let delta_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("ARIA blend-shape delta compute"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("gpu_blend_deltas.wgsl").into()),
+        });
+        let delta_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("ARIA blend-shape delta pipeline"),
+            layout: Some(&pipeline_layout),
+            module: &delta_shader,
+            entry_point: Some("apply_blend_deltas"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+        let mut pass = encoder.begin_compute_pass(&Default::default());
+        pass.set_pipeline(&delta_pipeline);
+        pass.set_bind_group(0, &delta_bind, &[]);
+        pass.dispatch_workgroups(delta_work.len().div_ceil(64) as u32, 1, 1);
+    }
     encoder.copy_buffer_to_buffer(&output_buffer, 0, &readback, 0, output_bytes);
     state.queue.submit([encoder.finish()]);
     let (tx, rx) = std::sync::mpsc::channel();
@@ -1363,9 +1579,11 @@ fn local_moc3_geometry_keyforms_match_rust_on_gpu() {
         );
     }
     eprintln!(
-        "ARIA GPU key parity: {warp_count} warps ({blended_count} multi-key), {mesh_count} meshes ({blended_mesh_count} multi-key), {} warp points, {} mesh vertices, {:.2} MiB resident keys, max error {max_error}",
+        "ARIA GPU key parity: {warp_count} warps ({blended_count} multi-key), {mesh_count} meshes ({blended_mesh_count} multi-key), {} warp points, {} mesh vertices, {:.2} MiB resident keys, {} delta points across {} affected vertices, max error {max_error}",
         warp_point_count,
         expected.len() - warp_point_count,
-        source_bytes as f64 / 1048576.0
+        source_bytes as f64 / 1048576.0,
+        delta_points.len(),
+        delta_work.len()
     );
 }

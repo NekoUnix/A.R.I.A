@@ -7,6 +7,13 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## GPU morph and Rust model-core checks — 2026-09-28 (unreleased)
 
+- A second test-only GPU dispatch applied authored warp and ArtMesh
+  blend-shape position deltas after normal key interpolation. The large
+  90s outfit matched Rust with 1,477,244 resident delta points touching
+  458,945 positions; OILBUN matched with 356,777 deltas touching 82,468
+  positions. Ditto has no position-delta keys in this fixture. The generated
+  chain passed a synthetic active mesh delta through two parent warps and a
+  rotation without readback. This does not verify a production FPS gain.
 - A test-only affine GPU rotation pass matched Rust on 60 local authored
   rotation frames in the large 90s outfit, 22 in OILBUN and 14 in Ditto at
   four positions each. Largest coordinate differences were below 0.000001

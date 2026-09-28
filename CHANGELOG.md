@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add a GPU compute pass for additive warp and ArtMesh blend-shape deltas after normal keyframe blending. The large 90s outfit matched Rust with 1,477,244 resident delta points affecting 458,945 positions; OILBUN also passed. A generated chain carries a mesh delta through parent warps and rotation without readback. This remains test-only until complete hierarchy, glue and renderer integration pass.
+
 - Add a test-only GPU rotation pass that consumes GPU-resident mesh positions after warp hierarchy resolution. Authored local rotation frames from the large 90s outfit, OILBUN and Ditto match Rust, including angle, scale and reflection coefficients. Hierarchical rotation state and live-renderer integration still need work.
 
 - Extend the batched GPU keyframe parity path to ArtMesh base positions. The large model matched Rust on all 1,210 meshes and 225,448 vertices in addition to its warp grids; OILBUN and Ditto passed too. A generated GPU-only hierarchy carries blended points through two parent warps into final mesh positions. Blend shapes, rotations, glue and renderer integration remain open.
