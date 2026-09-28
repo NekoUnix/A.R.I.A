@@ -746,7 +746,7 @@ impl ModelRenderer {
     /// CPU position vector. The source must be a VERTEX buffer containing
     /// one tightly packed vec2 per vertex in drawable order. The caller also
     /// supplies the already-fitted view and normalized visible bounds.
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub fn render_layers_gpu_positions(
         &mut self,
         view_canvas: Canvas,

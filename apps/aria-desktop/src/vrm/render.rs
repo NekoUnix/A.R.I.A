@@ -620,7 +620,7 @@ impl Renderer {
     pub fn palette(&self) -> crate::chroma::Palette {
         self.palette.clone()
     }
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(super) fn gpu_morph_usage(&self) -> (usize, usize) {
         (
             self.geometry.iter().filter(|g| g.gpu_morph).count(),
@@ -630,7 +630,7 @@ impl Renderer {
                 .count(),
         )
     }
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(super) fn force_cpu_morphs_for_test(&mut self) -> Vec<bool> {
         self.geometry
             .iter_mut()
@@ -642,7 +642,7 @@ impl Renderer {
             })
             .collect()
     }
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(super) fn restore_gpu_morphs_for_test(&mut self, enabled: &[bool]) {
         for (geometry, &enabled) in self.geometry.iter_mut().zip(enabled) {
             geometry.gpu_morph = enabled;
