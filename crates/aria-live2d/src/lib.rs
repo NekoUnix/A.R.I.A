@@ -503,7 +503,7 @@ mod tests {
             std::hint::black_box(evaluator.frame(&values).unwrap());
         }
         println!(
-            "ARIA Rust normal-geometry frame: {:.2} ms/frame, {} of {} meshes supported",
+            "ARIA Rust geometry frame: {:.2} ms/frame, {} of {} meshes supported",
             started.elapsed().as_secs_f64() * 1000. / 120.,
             evaluator.supported_mesh_count(),
             model.drawables.len()

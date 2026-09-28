@@ -57,6 +57,13 @@ results distinguish long GIF import latency from inexpensive playback. The
 smoke harness now reapplies a requested FPS cap after asynchronous profile
 loads so comparisons use the intended target.
 
+The newer GPU morph path keeps a bounded set of active expression deltas in
+GPU storage and combines them in the vertex shader alongside skinning. The
+supplied NekoUnity2 check verified an active face morph used this path and the
+rendered tracking/pose tests passed. A matching before/after full-frame sample
+has not yet been recorded, so the earlier FPS figures above are baselines,
+not measured gains from this change.
+
 The supplied ICHIGO VRC/GLB export rendered successfully but settled around
 113 FPS in this short native sample, with roughly 5 ms model updates. It uses
 the VRM/GLB renderer, not Purism Core. `PERF_VRM` separates parameter/pose,
@@ -95,8 +102,9 @@ ARIA builds the MIT-licensed Purism Core source pinned under
 unchanged. Performance work should be measured against that open source and
 validated on licensed, local model files. No proprietary Live2D binary or
 model artwork is part of the repository. Replacing the entire runtime is a
-larger compatibility task and is not required to investigate the measured
-renderer/transport costs.
+larger compatibility task. ARIA's independent Rust replacement is being
+validated separately against local Cubism exports before it becomes active;
+renderer and transport costs still need measurement alongside that work.
 
 ## Reproducing the CPU test
 

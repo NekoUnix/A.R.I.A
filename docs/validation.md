@@ -5,6 +5,26 @@
 This file records checks for the development builds. The Windows CI workflow
 is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
+## GPU morph and Rust model-core checks — 2026-09-28 (unreleased)
+
+- The supplied NekoUnity2.vrm loaded and rendered with GPU skinning and active
+  expression morphs. The test checks that at least one facial morph actually
+  uses the GPU path, compares its rendered pixels with the CPU fallback to
+  within 1% of channels, switches back to GPU, then exercises tracking,
+  springs, freeze and pose restore.
+  GPU morph deltas have a 64 MiB model budget and a CPU fallback. This test
+  checks correctness, not a measured CPU or FPS improvement.
+- The independent Rust MOC3 evaluator compiled mesh/deformer keyforms and
+  colors into bounded RAM. A seven-frame direct comparison against the local
+  official Cubism Core passed on all 27 exports that the current runtime also
+  accepts, including blend-shape extremes and varied part opacity. The sweep
+  checked vertices, visibility, opacity, multiply/screen color, draw order and
+  static mesh data. `Ditto Eevees.moc3` remains rejected by the current
+  runtime. Final rendered pixels and full dynamic-flag behavior remain open.
+- On OILBUN, the optimized Rust geometry path measured about 2.54 ms/frame
+  versus 0.64 ms/frame for the current runtime's deformation path. The Rust
+  evaluator is not the active desktop renderer yet and has no 120 FPS claim.
+
 ## Avatar performance investigation — 2026-09-27 (unreleased)
 
 - Optimized native CPU test on the supplied large Live2D moc: 1,174 meshes,

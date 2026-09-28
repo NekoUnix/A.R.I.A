@@ -45,6 +45,11 @@ pub struct Canvas {
 pub struct MeshLayout {
     pub id: String,
     pub texture: u8,
+    pub constant_flags: u8,
+    pub parent_part: Option<usize>,
+    pub parent_deformer: Option<usize>,
+    pub enabled: bool,
+    pub default_visible: bool,
     pub uvs: Vec<[f32; 2]>,
     pub triangles: Vec<u16>,
     pub masks: Vec<u32>,
@@ -372,7 +377,93 @@ pub struct LocalMeshFrame {
     pub positions: Vec<[f32; 2]>,
     pub opacity: f32,
     pub draw_order: f32,
+    pub multiply: [f32; 4],
+    pub screen: [f32; 4],
     pub parent_deformer: Option<usize>,
+}
+
+impl LocalMeshFrame {
+    /// The exported render order is integral. Interpolation may land one ULP
+    /// below an integer, so snap only numerical noise before truncating.
+    pub fn integer_draw_order(&self) -> i32 {
+        let rounded = self.draw_order.round();
+        let tolerance = 2.0 * f32::EPSILON * self.draw_order.abs().max(1.0);
+        let value = if (self.draw_order - rounded).abs() <= tolerance {
+            rounded
+        } else {
+            self.draw_order
+        };
+        value as i32
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ColorPair {
+    pub multiply: [f32; 3],
+    pub screen: [f32; 3],
+}
+
+impl Default for ColorPair {
+    fn default() -> Self {
+        Self {
+            multiply: [1.0; 3],
+            screen: [0.0; 3],
+        }
+    }
+}
+
+impl ColorPair {
+    pub fn under(self, parent: Self) -> Self {
+        let mut output = self;
+        for channel in 0..3 {
+            output.multiply[channel] =
+                (self.multiply[channel] * parent.multiply[channel]).clamp(0.0, 1.0);
+            output.screen[channel] = (self.screen[channel] + parent.screen[channel]
+                - self.screen[channel] * parent.screen[channel])
+                .clamp(0.0, 1.0);
+        }
+        output
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ColorKeyforms {
+    colors: Vec<ColorPair>,
+}
+
+impl ColorKeyforms {
+    pub fn decoded_bytes(&self) -> usize {
+        self.colors.len() * std::mem::size_of::<ColorPair>()
+    }
+
+    pub fn frame(&self, weights: &[KeyformWeight]) -> Result<ColorPair> {
+        ensure!(!weights.is_empty(), "Color binding has no active keyforms");
+        let mut color = ColorPair {
+            multiply: [0.0; 3],
+            screen: [0.0; 3],
+        };
+        for key in weights {
+            let source = self
+                .colors
+                .get(key.index)
+                .context("Unknown color keyform")?;
+            ensure!(key.weight.is_finite(), "Non-finite color weight");
+            for channel in 0..3 {
+                color.multiply[channel] += source.multiply[channel] * key.weight;
+                color.screen[channel] += source.screen[channel] * key.weight;
+            }
+        }
+        Ok(color)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PartLayout {
+    pub id: String,
+    pub binding: usize,
+    pub parent: Option<usize>,
+    pub visible: bool,
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -458,6 +549,8 @@ impl CompiledMesh {
             positions,
             opacity,
             draw_order,
+            multiply: [1.0; 4],
+            screen: [0.0, 0.0, 0.0, 1.0],
             parent_deformer: self.parent_deformer,
         })
     }
@@ -505,7 +598,112 @@ pub enum LocalDeformerFrame {
     },
 }
 
+/// Immutable load-time-decoded deformer keyforms. Frame evaluation uses these
+/// resident arrays and does not inspect the encoded MOC3 buffer again.
+#[derive(Debug, Clone)]
+pub struct CompiledDeformer {
+    keyforms: Vec<LocalDeformerFrame>,
+}
+
+impl CompiledDeformer {
+    pub fn frame(&self, weights: &[KeyformWeight]) -> Result<LocalDeformerFrame> {
+        ensure!(
+            !weights.is_empty(),
+            "Deformer binding has no active keyforms"
+        );
+        ensure!(
+            weights.iter().all(|key| key.weight.is_finite()),
+            "Deformer binding contains non-finite weights"
+        );
+        match self.keyforms.first().context("Deformer has no keyforms")? {
+            LocalDeformerFrame::Warp { points, .. } => {
+                let mut output = vec![[0.0_f32; 2]; points.len()];
+                let mut opacity = 0.0_f32;
+                for key in weights {
+                    let LocalDeformerFrame::Warp {
+                        points: source,
+                        opacity: source_opacity,
+                    } = self
+                        .keyforms
+                        .get(key.index)
+                        .context("Unknown warp keyform")?
+                    else {
+                        anyhow::bail!("Mixed deformer keyform types");
+                    };
+                    ensure!(source.len() == output.len(), "Warp keyform size changed");
+                    opacity += source_opacity * key.weight;
+                    for (out, position) in output.iter_mut().zip(source) {
+                        out[0] += position[0] * key.weight;
+                        out[1] += position[1] * key.weight;
+                    }
+                }
+                Ok(LocalDeformerFrame::Warp {
+                    points: output,
+                    opacity,
+                })
+            }
+            LocalDeformerFrame::Rotation { .. } => {
+                let mut origin = [0.0_f32; 2];
+                let (mut angle, mut scale, mut opacity) = (0.0_f32, 0.0_f32, 0.0_f32);
+                let mut dominant = (f32::NEG_INFINITY, [false; 2]);
+                for key in weights {
+                    let LocalDeformerFrame::Rotation {
+                        origin: source_origin,
+                        angle: source_angle,
+                        scale: source_scale,
+                        opacity: source_opacity,
+                        reflect,
+                    } = self
+                        .keyforms
+                        .get(key.index)
+                        .context("Unknown rotation keyform")?
+                    else {
+                        anyhow::bail!("Mixed deformer keyform types");
+                    };
+                    origin[0] += source_origin[0] * key.weight;
+                    origin[1] += source_origin[1] * key.weight;
+                    angle += source_angle * key.weight;
+                    scale += source_scale * key.weight;
+                    opacity += source_opacity * key.weight;
+                    if key.weight > dominant.0 {
+                        dominant = (key.weight, *reflect);
+                    }
+                }
+                Ok(LocalDeformerFrame::Rotation {
+                    origin,
+                    angle,
+                    scale,
+                    opacity,
+                    reflect: dominant.1,
+                })
+            }
+        }
+    }
+}
+
 impl BindingGraph {
+    /// Whether every parameter axis is within this binding's authored keys.
+    /// Objects with an out-of-range normal binding are disabled, rather than
+    /// rendered at a clamped endpoint.
+    pub fn in_range(&self, binding: usize, values: &[f32]) -> Result<bool> {
+        let axes = self
+            .bindings
+            .get(binding)
+            .context("Unknown keyform binding")?;
+        for &table_index in axes {
+            let table = self.tables.get(table_index).context("Invalid key table")?;
+            let value = *values
+                .get(table.parameter)
+                .context("Missing parameter value")?;
+            let first = *table.keys.first().context("Empty key table")?;
+            let last = *table.keys.last().context("Empty key table")?;
+            if value < first || value > last {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     /// Resolve a binding in mixed-radix keyform order. The first parameter
     /// axis changes fastest, matching the exported keyform layout.
     pub fn weights(&self, binding: usize, values: &[f32]) -> Result<Vec<KeyformWeight>> {
@@ -1309,6 +1507,131 @@ impl<'a> Moc<'a> {
         Ok((parent >= 0).then_some(parent as usize))
     }
 
+    pub fn mesh_parent_part(&self, mesh: usize) -> Result<Option<usize>> {
+        let counts = self.counts()?;
+        ensure!(mesh < counts.art_meshes as usize, "Unknown ArtMesh");
+        let parent = self.word(39, mesh)? as i32;
+        ensure!(
+            parent == -1 || (parent >= 0 && parent < counts.parts as i32),
+            "Invalid ArtMesh parent part"
+        );
+        Ok((parent >= 0).then_some(parent as usize))
+    }
+
+    pub fn mesh_enabled(&self, mesh: usize) -> Result<bool> {
+        ensure!(mesh < self.counts()?.art_meshes as usize, "Unknown ArtMesh");
+        Ok(self.word(38, mesh)? != 0)
+    }
+
+    pub fn part_layouts(&self) -> Result<Vec<PartLayout>> {
+        let count = self.counts()?.parts as usize;
+        let mut parts = Vec::with_capacity(count);
+        for index in 0..count {
+            let parent = self.word(9, index)? as i32;
+            ensure!(
+                parent == -1 || (parent >= 0 && (parent as usize) < index),
+                "Parts are not topologically ordered"
+            );
+            parts.push(PartLayout {
+                id: self.id(3, index)?,
+                binding: self.nonnegative(4, index)?,
+                parent: (parent >= 0).then_some(parent as usize),
+                visible: self.word(7, index)? != 0,
+                enabled: self.word(8, index)? != 0,
+            });
+        }
+        Ok(parts)
+    }
+
+    /// Decode normal-parameter color keyforms for an ArtMesh or deformer.
+    /// MOC3 v5 stores separate pool indices per keyform; v4 uses one
+    /// contiguous range per object. Missing authored colors use identity.
+    pub fn compile_colors(
+        &self,
+        base_section: usize,
+        multiply_key_section: usize,
+        screen_key_section: usize,
+        target: usize,
+        keyform_start: usize,
+        keyform_count: usize,
+    ) -> Result<ColorKeyforms> {
+        let mut colors = Vec::with_capacity(keyform_count);
+        if self.version < 4 {
+            colors.resize(keyform_count, ColorPair::default());
+            return Ok(ColorKeyforms { colors });
+        }
+        let multiply_count = self.nonnegative(0, 23)?;
+        let screen_count = self.nonnegative(0, 24)?;
+        let base = self.word(base_section, target)? as i32;
+        let read_rgb = |index: i32, sections: [usize; 3], count: usize, fallback: f32| {
+            if index < 0 {
+                return Ok([fallback; 3]);
+            }
+            let index = index as usize;
+            ensure!(index < count, "Color keyform exceeds its pool");
+            let mut rgb = [0.0_f32; 3];
+            for (channel, section) in sections.into_iter().enumerate() {
+                rgb[channel] = f32::from_bits(self.word(section, index)?);
+                ensure!(rgb[channel].is_finite(), "Non-finite color keyform");
+            }
+            Ok(rgb)
+        };
+        for local in 0..keyform_count {
+            let frame = keyform_start
+                .checked_add(local)
+                .context("Color keyform index overflow")?;
+            let legacy_index = if base < 0 {
+                -1
+            } else {
+                base.checked_add(i32::try_from(local).context("Too many color keys")?)
+                    .context("Color keyform index overflow")?
+            };
+            let (multiply_index, screen_index) = if self.version >= 5
+                && self.section(multiply_key_section).is_some()
+                && self.section(screen_key_section).is_some()
+            {
+                (
+                    self.word(multiply_key_section, frame)? as i32,
+                    self.word(screen_key_section, frame)? as i32,
+                )
+            } else {
+                (legacy_index, legacy_index)
+            };
+            colors.push(ColorPair {
+                multiply: read_rgb(multiply_index, [108, 109, 110], multiply_count, 1.0)?,
+                screen: read_rgb(screen_index, [111, 112, 113], screen_count, 0.0)?,
+            });
+        }
+        Ok(ColorKeyforms { colors })
+    }
+
+    pub fn compile_mesh_colors(&self, mesh: usize) -> Result<ColorKeyforms> {
+        ensure!(mesh < self.counts()?.art_meshes as usize, "Unknown ArtMesh");
+        self.compile_colors(
+            107,
+            141,
+            142,
+            mesh,
+            self.nonnegative(35, mesh)?,
+            self.nonnegative(36, mesh)?,
+        )
+    }
+
+    pub fn compile_deformer_colors(&self, layout: &DeformerLayout) -> Result<ColorKeyforms> {
+        let (base, multiply, screen) = match layout.kind {
+            DeformerKind::Warp { .. } => (105, 137, 138),
+            DeformerKind::Rotation { .. } => (106, 139, 140),
+        };
+        self.compile_colors(
+            base,
+            multiply,
+            screen,
+            layout.local_index,
+            layout.keyform_start,
+            layout.keyform_count,
+        )
+    }
+
     pub fn mesh_keyform_position_bytes(&self, mesh: usize) -> Result<usize> {
         ensure!(mesh < self.counts()?.art_meshes as usize, "Unknown ArtMesh");
         self.nonnegative(36, mesh)?
@@ -1450,6 +1773,8 @@ impl<'a> Moc<'a> {
             positions,
             opacity,
             draw_order,
+            multiply: [1.0; 4],
+            screen: [0.0, 0.0, 0.0, 1.0],
             parent_deformer: (parent >= 0).then_some(parent as usize),
         })
     }
@@ -1690,6 +2015,34 @@ impl<'a> Moc<'a> {
     ) -> Result<LocalDeformerFrame> {
         let weights = graph.weights(layout.binding, values)?;
         self.local_deformer_frame_weighted(layout, &weights)
+    }
+
+    pub fn deformer_keyform_position_bytes(&self, layout: &DeformerLayout) -> Result<usize> {
+        match layout.kind {
+            DeformerKind::Warp { points, .. } => layout
+                .keyform_count
+                .checked_mul(points)
+                .and_then(|count| count.checked_mul(std::mem::size_of::<[f32; 2]>()))
+                .context("Warp keyform RAM size overflow"),
+            DeformerKind::Rotation { .. } => Ok(0),
+        }
+    }
+
+    pub fn compile_deformer(&self, layout: &DeformerLayout) -> Result<CompiledDeformer> {
+        ensure!(
+            self.deformer_keyform_position_bytes(layout)? <= 512 * 1024 * 1024,
+            "Warp keyforms exceed the 512 MiB RAM budget"
+        );
+        let mut keyforms = Vec::with_capacity(layout.keyform_count);
+        for index in 0..layout.keyform_count {
+            keyforms.push(
+                self.local_deformer_frame_weighted(
+                    layout,
+                    &[KeyformWeight { index, weight: 1.0 }],
+                )?,
+            );
+        }
+        Ok(CompiledDeformer { keyforms })
     }
 
     pub fn local_deformer_frame_weighted(
@@ -2177,6 +2530,15 @@ impl<'a> Moc<'a> {
             meshes.push(MeshLayout {
                 id,
                 texture: texture as u8,
+                constant_flags: *self
+                    .section(42)
+                    .context("Missing ArtMesh flags")?
+                    .get(i)
+                    .context("Truncated ArtMesh flags")?,
+                parent_part: self.mesh_parent_part(i)?,
+                parent_deformer: self.mesh_parent_deformer(i)?,
+                enabled: self.mesh_enabled(i)?,
+                default_visible: self.word(37, i)? != 0,
                 uvs,
                 triangles,
                 masks,
@@ -2319,6 +2681,25 @@ mod tests {
             }]
         );
         assert!(graph.weights(0, &[0.0]).is_err());
+        assert!(graph.in_range(0, &[-1.0, 10.0]).unwrap());
+        assert!(graph.in_range(0, &[1.0, 0.0]).unwrap());
+        assert!(!graph.in_range(0, &[1.1, 0.0]).unwrap());
+        assert!(!graph.in_range(0, &[0.0, -0.1]).unwrap());
+    }
+
+    #[test]
+    fn integral_draw_order_snaps_only_float_roundoff() {
+        let mut frame = LocalMeshFrame {
+            positions: Vec::new(),
+            opacity: 1.0,
+            draw_order: 499.99997,
+            multiply: [1.0; 4],
+            screen: [0.0; 4],
+            parent_deformer: None,
+        };
+        assert_eq!(frame.integer_draw_order(), 500);
+        frame.draw_order = 508.75;
+        assert_eq!(frame.integer_draw_order(), 508);
     }
 
     #[test]
@@ -2463,6 +2844,8 @@ mod tests {
                 }
             }
             let evaluator = crate::geometry::GeometryEvaluator::new(&moc).unwrap();
+            drop(moc);
+            drop(bytes);
             let frames = evaluator.frame(&values).unwrap();
             assert_eq!(frames.len(), meshes.len());
             for (frame, layout) in frames.iter().zip(&meshes) {

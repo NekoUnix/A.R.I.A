@@ -1,5 +1,5 @@
-//! Skin on the GPU, upload only changing morph meshes, share one transparent canvas.
-use super::asset::{Asset, Vertex};
+//! GPU skinning and bounded active morphs on one transparent canvas.
+use super::asset::{Asset, Geometry as AssetGeometry, Vertex};
 use crate::cubism_render::{ModelImage, ModelTexture};
 use anyhow::{Result, ensure};
 use aria_core::vrm::Settings;
@@ -14,6 +14,25 @@ struct Joint {
     position: [[f32; 4]; 4],
     normal: [[f32; 4]; 4],
 }
+fn joint_transform(matrix: Mat4) -> Joint {
+    Joint {
+        position: matrix.to_cols_array_2d(),
+        normal: matrix.inverse().transpose().to_cols_array_2d(),
+    }
+}
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct MorphDelta {
+    position: [f32; 4],
+    normal: [f32; 4],
+}
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct MorphInfo {
+    vertex_count: u32,
+    morph_count: u32,
+    padding: [u32; 2],
+}
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Frame {
@@ -27,10 +46,122 @@ struct Frame {
 struct Geometry {
     vertices: wgpu::Buffer,
     joints: wgpu::Buffer,
+    morph_deltas: wgpu::Buffer,
+    morph_weights: wgpu::Buffer,
+    morph_info: wgpu::Buffer,
+    gpu_morph: bool,
+    active_morphs: Vec<usize>,
+    using_cpu_morphs: bool,
     bind: wgpu::BindGroup,
     staging: Vec<Vertex>,
     weights: Vec<f32>,
     palette: Vec<Joint>,
+}
+impl Geometry {
+    fn update_morphs(
+        &mut self,
+        source: &AssetGeometry,
+        weights: &[f32],
+        queue: &wgpu::Queue,
+    ) -> Result<()> {
+        ensure!(
+            weights.len() == source.morphs.len(),
+            "VRM morph weight count changed"
+        );
+        ensure!(
+            weights.iter().all(|weight| weight.is_finite()),
+            "Non-finite VRM morph weight"
+        );
+        if self.weights == weights {
+            return Ok(());
+        }
+        let active = weights
+            .iter()
+            .enumerate()
+            .filter_map(|(index, weight)| (weight.abs() >= 0.00001).then_some(index))
+            .collect::<Vec<_>>();
+        let capacity = (self.morph_weights.size() as usize) / std::mem::size_of::<f32>();
+        if self.gpu_morph && active.len() <= capacity {
+            if self.using_cpu_morphs {
+                queue.write_buffer(&self.vertices, 0, bytemuck::cast_slice(&source.vertices));
+                self.using_cpu_morphs = false;
+            }
+            if active != self.active_morphs {
+                let mut packed = Vec::with_capacity(active.len() * source.vertices.len());
+                for &index in &active {
+                    let morph = &source.morphs[index];
+                    ensure!(
+                        morph.position.len() == source.vertices.len()
+                            && morph.normal.len() == source.vertices.len(),
+                        "VRM morph vertex count differs from geometry"
+                    );
+                    for (position, normal) in morph.position.iter().zip(&morph.normal) {
+                        packed.push(MorphDelta {
+                            position: [position.x, position.y, position.z, 0.0],
+                            normal: [normal.x, normal.y, normal.z, 0.0],
+                        });
+                    }
+                }
+                if !packed.is_empty() {
+                    queue.write_buffer(&self.morph_deltas, 0, bytemuck::cast_slice(&packed));
+                }
+                queue.write_buffer(
+                    &self.morph_info,
+                    0,
+                    bytemuck::bytes_of(&MorphInfo {
+                        vertex_count: source.vertices.len() as u32,
+                        morph_count: active.len() as u32,
+                        padding: [0; 2],
+                    }),
+                );
+                self.active_morphs = active.clone();
+            }
+            if !active.is_empty() {
+                let active_weights = active
+                    .iter()
+                    .map(|&index| weights[index])
+                    .collect::<Vec<_>>();
+                queue.write_buffer(
+                    &self.morph_weights,
+                    0,
+                    bytemuck::cast_slice(&active_weights),
+                );
+            }
+        } else {
+            if !self.active_morphs.is_empty() {
+                queue.write_buffer(
+                    &self.morph_info,
+                    0,
+                    bytemuck::bytes_of(&MorphInfo {
+                        vertex_count: source.vertices.len() as u32,
+                        morph_count: 0,
+                        padding: [0; 2],
+                    }),
+                );
+                self.active_morphs.clear();
+            }
+            if self.staging.len() == source.vertices.len() {
+                self.staging.copy_from_slice(&source.vertices);
+            } else {
+                self.staging = source.vertices.clone();
+            }
+            for (morph, &weight) in source.morphs.iter().zip(weights) {
+                if weight.abs() < 0.00001 {
+                    continue;
+                }
+                for (vertex, delta) in self.staging.iter_mut().zip(&morph.position) {
+                    vertex.position = (Vec3::from(vertex.position) + *delta * weight).to_array();
+                }
+                for (vertex, delta) in self.staging.iter_mut().zip(&morph.normal) {
+                    vertex.normal = (Vec3::from(vertex.normal) + *delta * weight).to_array();
+                }
+            }
+            queue.write_buffer(&self.vertices, 0, bytemuck::cast_slice(&self.staging));
+            self.using_cpu_morphs = true;
+        }
+        self.weights.clone_from_slice(weights);
+        Ok(())
+    }
 }
 struct Part {
     indices: wgpu::Buffer,
@@ -42,6 +173,7 @@ struct Part {
 pub struct Renderer {
     state: RenderState,
     geometry: Vec<Geometry>,
+    skin_palettes: Vec<Vec<Joint>>,
     parts: Vec<Part>,
     materials: Vec<wgpu::BindGroup>,
     pipelines: Vec<wgpu::RenderPipeline>,
@@ -81,11 +213,28 @@ impl Renderer {
         });
         let skin_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("VRM skin"),
-            entries: &[buffer_layout(
-                0,
-                wgpu::BufferBindingType::Storage { read_only: true },
-                wgpu::ShaderStages::VERTEX,
-            )],
+            entries: &[
+                buffer_layout(
+                    0,
+                    wgpu::BufferBindingType::Storage { read_only: true },
+                    wgpu::ShaderStages::VERTEX,
+                ),
+                buffer_layout(
+                    1,
+                    wgpu::BufferBindingType::Storage { read_only: true },
+                    wgpu::ShaderStages::VERTEX,
+                ),
+                buffer_layout(
+                    2,
+                    wgpu::BufferBindingType::Storage { read_only: true },
+                    wgpu::ShaderStages::VERTEX,
+                ),
+                buffer_layout(
+                    3,
+                    wgpu::BufferBindingType::Uniform,
+                    wgpu::ShaderStages::VERTEX,
+                ),
+            ],
         });
         let mut entries: Vec<_> = (0..5)
             .map(|binding| wgpu::BindGroupLayoutEntry {
@@ -247,6 +396,12 @@ impl Renderer {
             }));
         }
         let mut geometry = Vec::new();
+        let skin_palettes = asset
+            .skins
+            .iter()
+            .map(|skin| vec![joint_transform(Mat4::IDENTITY); skin.joints.len()])
+            .collect();
+        let mut gpu_morph_budget = 64 * 1024 * 1024_usize;
         for g in &asset.geometry {
             let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("VRM shared morph mesh"),
@@ -266,20 +421,87 @@ impl Renderer {
                 contents: bytemuck::cast_slice(&palette),
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             });
+            let vertex_count = g.vertices.len();
+            let slot_count = g.morphs.len().min(8);
+            let morph_bytes = slot_count
+                .checked_mul(vertex_count)
+                .and_then(|count| count.checked_mul(std::mem::size_of::<MorphDelta>()))
+                .ok_or_else(|| anyhow::anyhow!("VRM morph storage size overflow"))?;
+            let max_binding = device.limits().max_storage_buffer_binding_size as usize;
+            let gpu_morph = !g.morphs.is_empty()
+                && morph_bytes <= max_binding
+                && morph_bytes <= gpu_morph_budget
+                && (morph_bytes as u64) <= device.limits().max_buffer_size;
+            if gpu_morph {
+                gpu_morph_budget -= morph_bytes;
+            }
+            let morph_deltas = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("VRM active morph deltas"),
+                size: if gpu_morph {
+                    morph_bytes
+                } else {
+                    std::mem::size_of::<MorphDelta>()
+                } as u64,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            let initial_weights = vec![0.0_f32; slot_count.max(1)];
+            let morph_weights = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("VRM morph weights"),
+                contents: bytemuck::cast_slice(&initial_weights),
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            });
+            let morph_info = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("VRM morph layout"),
+                contents: bytemuck::bytes_of(&MorphInfo {
+                    vertex_count: vertex_count as u32,
+                    morph_count: 0,
+                    padding: [0; 2],
+                }),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            });
             let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &skin_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: joints.as_entire_binding(),
-                }],
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: joints.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: morph_deltas.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: morph_weights.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: morph_info.as_entire_binding(),
+                    },
+                ],
             });
-            bytes += vertices.size() + joints.size();
+            bytes += vertices.size()
+                + joints.size()
+                + morph_deltas.size()
+                + morph_weights.size()
+                + morph_info.size();
             geometry.push(Geometry {
                 vertices,
                 joints,
+                morph_deltas,
+                morph_weights,
+                morph_info,
+                gpu_morph,
+                active_morphs: Vec::new(),
+                using_cpu_morphs: false,
                 bind,
-                staging: g.vertices.clone(),
+                staging: if gpu_morph {
+                    Vec::new()
+                } else {
+                    g.vertices.clone()
+                },
                 weights: vec![f32::NAN; g.weights.len()],
                 palette,
             });
@@ -311,6 +533,7 @@ impl Renderer {
         Ok(Self {
             state: state.clone(),
             geometry,
+            skin_palettes,
             parts,
             materials,
             pipelines,
@@ -330,17 +553,53 @@ impl Renderer {
     pub fn palette(&self) -> crate::chroma::Palette {
         self.palette.clone()
     }
-    /// Same morphed vertices and skin matrices as the GPU, evaluated only for pins.
-    pub fn projected_vertex(&self, geometry: usize, vertex: u32) -> Option<Vec3> {
+    #[cfg(test)]
+    pub(super) fn gpu_morph_usage(&self) -> (usize, usize) {
+        (
+            self.geometry.iter().filter(|g| g.gpu_morph).count(),
+            self.geometry
+                .iter()
+                .filter(|g| g.gpu_morph && !g.active_morphs.is_empty() && !g.using_cpu_morphs)
+                .count(),
+        )
+    }
+    #[cfg(test)]
+    pub(super) fn force_cpu_morphs_for_test(&mut self) -> Vec<bool> {
+        self.geometry
+            .iter_mut()
+            .map(|geometry| {
+                let enabled = geometry.gpu_morph;
+                geometry.gpu_morph = false;
+                geometry.weights.fill(f32::NAN);
+                enabled
+            })
+            .collect()
+    }
+    #[cfg(test)]
+    pub(super) fn restore_gpu_morphs_for_test(&mut self, enabled: &[bool]) {
+        for (geometry, &enabled) in self.geometry.iter_mut().zip(enabled) {
+            geometry.gpu_morph = enabled;
+            geometry.weights.fill(f32::NAN);
+        }
+    }
+    /// Project one vertex for picking without morphing every vertex on the CPU.
+    pub fn projected_vertex(&self, asset: &Asset, geometry: usize, vertex: u32) -> Option<Vec3> {
         let g = self.geometry.get(geometry)?;
-        let v = g.staging.get(vertex as usize)?;
+        let source = asset.geometry.get(geometry)?;
+        let v = source.vertices.get(vertex as usize)?;
+        let mut position = Vec3::from(v.position);
+        for (morph, &weight) in source.morphs.iter().zip(&g.weights) {
+            if weight.abs() >= 0.00001 {
+                position += *morph.position.get(vertex as usize)? * weight;
+            }
+        }
         let mut world = glam::Vec4::ZERO;
         for (&joint, &weight) in v.joints.iter().zip(&v.weights) {
             if weight == 0.0 {
                 continue;
             }
             let m = Mat4::from_cols_array_2d(&g.palette.get(joint as usize)?.position);
-            world += (m * Vec3::from(v.position).extend(1.0)) * weight;
+            world += (m * position.extend(1.0)) * weight;
         }
         let clip = self.projection * world;
         if !clip.is_finite() || clip.w.abs() < 1e-6 {
@@ -365,29 +624,19 @@ impl Renderer {
             self.lease = lease;
         }
         let queue = &self.state.queue;
-        for (i, (source, gpu)) in asset.geometry.iter().zip(&mut self.geometry).enumerate() {
-            if gpu.weights != weights[i] {
-                gpu.staging.copy_from_slice(&source.vertices);
-                for (morph, &w) in source.morphs.iter().zip(&weights[i]) {
-                    if w.abs() < 0.00001 {
-                        continue;
-                    }
-                    for (v, p) in gpu.staging.iter_mut().zip(&morph.position) {
-                        v.position = (Vec3::from(v.position) + *p * w).to_array();
-                    }
-                    for (v, n) in gpu.staging.iter_mut().zip(&morph.normal) {
-                        v.normal = (Vec3::from(v.normal) + *n * w).to_array();
-                    }
-                }
-                queue.write_buffer(&gpu.vertices, 0, bytemuck::cast_slice(&gpu.staging));
-                gpu.weights.clone_from(&weights[i]);
+        for (skin, palette) in asset.skins.iter().zip(&mut self.skin_palettes) {
+            for ((joint, &node), &inverse) in
+                palette.iter_mut().zip(&skin.joints).zip(&skin.inverse)
+            {
+                *joint = joint_transform(world[node] * inverse);
             }
-            for (j, out) in gpu.palette.iter_mut().enumerate() {
-                let m = source.skin.map_or(world[source.node], |s| {
-                    world[asset.skins[s].joints[j]] * asset.skins[s].inverse[j]
-                });
-                out.position = m.to_cols_array_2d();
-                out.normal = m.inverse().transpose().to_cols_array_2d();
+        }
+        for (i, (source, gpu)) in asset.geometry.iter().zip(&mut self.geometry).enumerate() {
+            gpu.update_morphs(source, &weights[i], queue)?;
+            if let Some(skin) = source.skin {
+                gpu.palette.copy_from_slice(&self.skin_palettes[skin]);
+            } else {
+                gpu.palette[0] = joint_transform(world[source.node]);
             }
             queue.write_buffer(&gpu.joints, 0, bytemuck::cast_slice(&gpu.palette));
         }

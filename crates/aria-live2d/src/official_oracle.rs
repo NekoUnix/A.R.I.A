@@ -5,7 +5,7 @@
 mod tests {
     use crate::{
         CubismModel,
-        ffi::{Aligned, V2},
+        ffi::{Aligned, V2, V4},
     };
     use libloading::Library;
     use std::{
@@ -94,6 +94,46 @@ mod tests {
                 "csmGetDrawableTextureIndices",
                 unsafe extern "C" fn(*const c_void) -> *const i32
             );
+            let constant_flags = function!(
+                "csmGetDrawableConstantFlags",
+                unsafe extern "C" fn(*const c_void) -> *const u8
+            );
+            let dynamic_flags = function!(
+                "csmGetDrawableDynamicFlags",
+                unsafe extern "C" fn(*const c_void) -> *const u8
+            );
+            let drawable_parts = function!(
+                "csmGetDrawableParentPartIndices",
+                unsafe extern "C" fn(*const c_void) -> *const i32
+            );
+            let drawable_opacities = function!(
+                "csmGetDrawableOpacities",
+                unsafe extern "C" fn(*const c_void) -> *const f32
+            );
+            let drawable_draw_orders = function!(
+                "csmGetDrawableDrawOrders",
+                unsafe extern "C" fn(*const c_void) -> *const i32
+            );
+            let drawable_multiply = function!(
+                "csmGetDrawableMultiplyColors",
+                unsafe extern "C" fn(*const c_void) -> *const V4
+            );
+            let drawable_screen = function!(
+                "csmGetDrawableScreenColors",
+                unsafe extern "C" fn(*const c_void) -> *const V4
+            );
+            let part_count = function!(
+                "csmGetPartCount",
+                unsafe extern "C" fn(*const c_void) -> i32
+            );
+            let part_ids = function!(
+                "csmGetPartIds",
+                unsafe extern "C" fn(*const c_void) -> *const *const c_char
+            );
+            let part_opacities = function!(
+                "csmGetPartOpacities",
+                unsafe extern "C" fn(*mut c_void) -> *mut f32
+            );
             let parameter_count = function!(
                 "csmGetParameterCount",
                 unsafe extern "C" fn(*const c_void) -> i32
@@ -131,9 +171,16 @@ mod tests {
             let native_index_counts =
                 std::slice::from_raw_parts(index_counts(model), layouts.len());
             let native_textures = std::slice::from_raw_parts(textures(model), layouts.len());
+            let native_flags = std::slice::from_raw_parts(constant_flags(model), layouts.len());
+            let native_parents = std::slice::from_raw_parts(drawable_parts(model), layouts.len());
             for (i, layout) in layouts.iter().enumerate() {
                 assert_eq!(layout.id, CStr::from_ptr(native_ids[i]).to_str().unwrap());
                 assert_eq!(i32::from(layout.texture), native_textures[i]);
+                assert_eq!(layout.constant_flags, native_flags[i]);
+                assert_eq!(
+                    layout.parent_part.map(|index| index as i32).unwrap_or(-1),
+                    native_parents[i]
+                );
                 assert_eq!(layout.uvs.len(), native_vertices[i] as usize);
                 let uv = std::slice::from_raw_parts(native_uvs[i], layout.uvs.len());
                 for (decoded, official) in layout.uvs.iter().zip(uv) {
@@ -151,12 +198,21 @@ mod tests {
             for (spec, &id) in params.iter().zip(native_param_ids) {
                 assert_eq!(spec.id, CStr::from_ptr(id).to_str().unwrap());
             }
+            let parts = rust.part_layouts().unwrap();
+            assert_eq!(parts.len(), part_count(model) as usize);
+            let native_part_ids = std::slice::from_raw_parts(part_ids(model), parts.len());
+            for (part, &id) in parts.iter().zip(native_part_ids) {
+                assert_eq!(part.id, CStr::from_ptr(id).to_str().unwrap());
+            }
 
             let param_values = values(model);
             assert!(!param_values.is_null());
             let params: Vec<_> = current.parameters().iter().take(16).cloned().collect();
             let mut worst = 0.0_f32;
             let mut rust_worst = 0.0_f32;
+            let mut opacity_worst = 0.0_f32;
+            let mut color_worst = 0.0_f32;
+            let mut draw_order_mismatches = 0_usize;
             let mut rust_mesh_frames = 0_usize;
             let mut rust_mismatches = 0_usize;
             for frame in 0..7 {
@@ -180,6 +236,23 @@ mod tests {
                         }
                     }
                 }
+                let input_parts = parts
+                    .iter()
+                    .enumerate()
+                    .map(|(index, part)| {
+                        if !part.visible {
+                            0.0
+                        } else if frame == 0 {
+                            1.0
+                        } else {
+                            ((frame * 7 + index * 5) % 13) as f32 / 12.0
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                for (i, value) in input_parts.iter().enumerate() {
+                    part_opacities(model).add(i).write(*value);
+                    current.parts[i].value = *value;
+                }
                 reset(model);
                 update(model);
                 current.update().unwrap();
@@ -187,13 +260,42 @@ mod tests {
                     std::slice::from_raw_parts(vertex_counts(model), current.drawables.len());
                 let positions =
                     std::slice::from_raw_parts(positions(model), current.drawables.len());
+                let native_opacities =
+                    std::slice::from_raw_parts(drawable_opacities(model), current.drawables.len());
+                let native_draw_orders = std::slice::from_raw_parts(
+                    drawable_draw_orders(model),
+                    current.drawables.len(),
+                );
+                let native_dynamic =
+                    std::slice::from_raw_parts(dynamic_flags(model), current.drawables.len());
+                let native_multiply =
+                    std::slice::from_raw_parts(drawable_multiply(model), current.drawables.len());
+                let native_screen =
+                    std::slice::from_raw_parts(drawable_screen(model), current.drawables.len());
                 let rust_values = current
                     .parameters()
                     .iter()
                     .map(|parameter| parameter.value)
                     .collect::<Vec<_>>();
-                let rust_frames = evaluator.frame(&rust_values).unwrap();
+                let rust_frames = evaluator
+                    .frame_with_parts(&rust_values, &input_parts)
+                    .unwrap();
                 for (i, drawable) in current.drawables.iter().enumerate() {
+                    assert_eq!(
+                        drawable.visible,
+                        rust_frames[i]
+                            .as_ref()
+                            .is_some_and(|frame| frame.opacity != 0.0),
+                        "Rust visibility differs for mesh {i} {} at frame {frame}: official dynamic {}, official opacity {}, Rust opacity {:?}, mesh flags {}, enabled {}, parent part {:?}, default visible {}",
+                        drawable.id,
+                        native_dynamic[i],
+                        native_opacities[i],
+                        rust_frames[i].as_ref().map(|f| f.opacity),
+                        layouts[i].constant_flags,
+                        layouts[i].enabled,
+                        layouts[i].parent_part,
+                        layouts[i].default_visible
+                    );
                     assert_eq!(counts[i] as usize, drawable.positions.len());
                     let source = std::slice::from_raw_parts(positions[i], drawable.positions.len());
                     for (official, aria) in source.iter().zip(&drawable.positions) {
@@ -201,10 +303,37 @@ mod tests {
                             .max((official.x - aria[0]).abs())
                             .max((official.y - aria[1]).abs());
                     }
-                    if drawable.visible
-                        && let Some(rust_frame) = &rust_frames[i]
-                    {
+                    if drawable.visible {
+                        let rust_frame = rust_frames[i].as_ref().unwrap_or_else(|| {
+                            panic!("Visible mesh {i} {} has no Rust frame", drawable.id)
+                        });
                         rust_mesh_frames += 1;
+                        opacity_worst =
+                            opacity_worst.max((native_opacities[i] - rust_frame.opacity).abs());
+                        let multiply = [
+                            native_multiply[i].x,
+                            native_multiply[i].y,
+                            native_multiply[i].z,
+                            native_multiply[i].w,
+                        ];
+                        let screen = [
+                            native_screen[i].x,
+                            native_screen[i].y,
+                            native_screen[i].z,
+                            native_screen[i].w,
+                        ];
+                        for channel in 0..4 {
+                            color_worst = color_worst
+                                .max((multiply[channel] - rust_frame.multiply[channel]).abs())
+                                .max((screen[channel] - rust_frame.screen[channel]).abs());
+                        }
+                        if native_draw_orders[i] != rust_frame.integer_draw_order() {
+                            draw_order_mismatches += 1;
+                            eprintln!(
+                                "draw order mesh {i} {} frame {frame}: official {}, rust {}",
+                                drawable.id, native_draw_orders[i], rust_frame.draw_order
+                            );
+                        }
                         let mut mesh_difference = 0.0_f32;
                         for (official, aria) in source.iter().zip(&rust_frame.positions) {
                             let y = if reverse_y { aria[1] } else { -aria[1] };
@@ -224,7 +353,7 @@ mod tests {
                 }
             }
             println!(
-                "official ABI {abi:#x}, current delta {worst}, Rust delta {rust_worst} across {rust_mesh_frames} supported visible mesh frames ({rust_mismatches} mismatched)"
+                "official ABI {abi:#x}, current delta {worst}, Rust delta {rust_worst}, opacity delta {opacity_worst}, color delta {color_worst}, draw-order mismatches {draw_order_mismatches} across {rust_mesh_frames} supported visible mesh frames ({rust_mismatches} mismatched)"
             );
             assert!(
                 worst <= 0.001,
@@ -237,6 +366,18 @@ mod tests {
             assert!(
                 rust_worst <= 0.001,
                 "Rust geometry diverges from official Cubism"
+            );
+            assert!(
+                opacity_worst <= 0.001,
+                "Rust opacity diverges from official Cubism"
+            );
+            assert!(
+                color_worst <= 0.001,
+                "Rust drawable colors diverge from official Cubism"
+            );
+            assert_eq!(
+                draw_order_mismatches, 0,
+                "Rust ArtMesh draw orders diverge from official Cubism"
             );
         }
     }

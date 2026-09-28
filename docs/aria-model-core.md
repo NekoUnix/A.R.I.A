@@ -13,11 +13,15 @@ UVs, triangle indices and masks. It decodes normal-parameter key tables,
 ArtMesh and deformer keyforms, and warp/rotation parent hierarchies. The Rust
 geometry evaluator interpolates parameter keyforms and transforms mesh vertices
 through mixed warp and rotation chains, including grid extrapolation. A
-model-scoped evaluator decodes static bindings, mesh keyforms and blend-shape
-delta keyforms into RAM once, then computes each parent deformer once per frame
-and applies decoded glue constraints. Its decoded mesh and warp position data
-share a 512 MiB budget. The evaluator now applies blend-shape deltas to
-ArtMeshes, warp and rotation deformers, and glue intensities. It does
+model-scoped evaluator decodes static bindings, mesh and deformer keyforms, and
+blend-shape delta keyforms into RAM once. It then computes each parent deformer
+once per frame and applies decoded glue constraints. Its decoded mesh and warp
+position data share a 512 MiB budget. The evaluator applies blend-shape deltas
+to ArtMeshes, warp and rotation deformers, and glue intensities. It also
+resolves part hierarchy, caller-controlled part opacity, binding-range
+visibility, authored multiply/screen colors and integer ArtMesh draw order.
+After compilation,
+frame evaluation no longer borrows or reads the encoded MOC3 bytes. It does
 not run C code, relocate pointers in model bytes, load an SDK, or include
 copied Purism source. The crate is in the workspace for development and
 testing; it is **not** the active evaluator yet. The model-scoped path still
@@ -92,27 +96,35 @@ loader. The expanded blend-shape evaluator also passed this three-frame parity
 test on the same 27 comparable exports. The direct official comparisons below
 include blend-shape parameter extremes; more input combinations still need
 checking.
-Opacity, draw order, visibility, color, offscreen behavior and final rendered
-pixels are not covered by this geometry result. A test passing on these frames
+Final render order, all dynamic-flag transitions, offscreen behavior and final
+rendered pixels are not covered by this geometry result. A test passing on these frames
 does not make the evaluator production-ready or prove a performance gain.
 
 An optimized local diagnostic on the OILBUN export measured the current
-runtime's deformation-only path at roughly `0.71 ms/frame` and the Rust
-geometry path at roughly `3.29 ms/frame`. The Rust path now evaluates geometry
+runtime's deformation-only path at roughly `0.64 ms/frame` and the Rust
+geometry path at roughly `2.54 ms/frame`. Decoding normal deformer keyforms
+into RAM reduced the Rust diagnostic from `3.29` to `2.54 ms/frame` on this
+machine. The Rust path evaluates geometry
 for all 284 of that export's ArtMeshes. The Rust implementation is currently
 slower at this stage; the measurement gives a baseline for eliminating keyform,
 transform and output-allocation costs. It excludes render, GPU upload, capture
 and desktop composition time.
 
-The developer-only official Core comparison now includes Rust blend-shape
-geometry directly. Across seven animated frames, including blend-shape
-parameter extremes, maximum Rust-to-official coordinate differences were
+The developer-only official Core comparison includes Rust blend-shape geometry
+directly. Across seven animated frames, including blend-shape parameter
+extremes and varied part opacities, maximum Rust-to-official coordinate differences were
 `0.00000363` on OILBUN, `0.00000557` on Hiyori, and `0.00000781` on a supplied
-NekoUnix outfit export. Those tests covered 1,909, 912, and 6,123 visible
+NekoUnix outfit export. Those tests covered 1,526, 851, and 4,834 visible
 mesh frames respectively, with zero mismatches above `0.001` model units.
+Part IDs matched. Maximum drawable-opacity differences were below `0.00000006`
+on all three, and sampled visibility, multiply/screen colors and integer
+ArtMesh draw orders matched. The extended local sweep passed direct official
+comparisons on all 27 exports also accepted by the current runtime. It exposed
+and resolved binding-range visibility and integer draw-order edge cases.
 The official DLL remains local and is never linked into the application.
-This checks positions only. It does not validate opacity, colors, render order,
-visibility, output pixels or end-to-end performance.
+This does not validate final render order, every dynamic flag, output pixels
+or end-to-end performance. `Ditto Eevees.moc3` still needs a separate format
+investigation because the current runtime rejects it.
 
 The already-Rust ARIA physics solver was also adjusted with an explicit
 frequency-controlled return torque for Natural and Bouncy modes. This gives

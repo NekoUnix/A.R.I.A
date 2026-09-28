@@ -1071,6 +1071,10 @@ mod tests {
         );
         let state = crate::spout::tests::gpu_state();
         let mut avatar = Avatar::from_asset(&state, asset).unwrap();
+        assert!(
+            avatar.renderer.gpu_morph_usage().0 > 0,
+            "The supplied avatar should exercise GPU morph storage"
+        );
         let mut config = avatar.initial_config.clone();
         config.physics.enabled = false;
         config.vrm.motion.enabled = false;
@@ -1175,6 +1179,32 @@ mod tests {
         let after = avatar.renderer.read_rgba().unwrap();
         assert!(before != after, "Tracking must change the rendered avatar");
         assert!(avatar.weights.iter().flatten().any(|w| *w > 0.));
+        assert!(
+            avatar.renderer.gpu_morph_usage().1 > 0,
+            "Active face morphs should run in the GPU vertex shader"
+        );
+        let gpu_backends = avatar.renderer.force_cpu_morphs_for_test();
+        avatar
+            .renderer
+            .render(&avatar.asset, &avatar.world, &avatar.weights, &config.vrm)
+            .unwrap();
+        let cpu_fallback = avatar.renderer.read_rgba().unwrap();
+        let mismatched = after
+            .iter()
+            .zip(&cpu_fallback)
+            .filter(|(gpu, cpu)| gpu != cpu)
+            .count();
+        assert!(
+            mismatched < after.len() / 100,
+            "CPU morph fallback changed {mismatched} of {} rendered channels",
+            after.len()
+        );
+        avatar.renderer.restore_gpu_morphs_for_test(&gpu_backends);
+        avatar
+            .renderer
+            .render(&avatar.asset, &avatar.world, &avatar.weights, &config.vrm)
+            .unwrap();
+        assert!(avatar.renderer.gpu_morph_usage().1 > 0);
         config.physics.enabled = true;
         config.vrm.motion.enabled = true;
         let arm = avatar.asset.bones["rightUpperArm"];
@@ -1396,7 +1426,12 @@ mod tests {
             let part = &avatar.asset.parts[0];
             let points: Vec<_> = part.indices[..3]
                 .iter()
-                .map(|&v| avatar.renderer.projected_vertex(part.geometry, v).unwrap())
+                .map(|&v| {
+                    avatar
+                        .renderer
+                        .projected_vertex(&avatar.asset, part.geometry, v)
+                        .unwrap()
+                })
                 .collect();
             let point = (points[0] + points[1] + points[2]) / 3.;
             let pin = avatar
