@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add an opt-in in-process ARIA Rust MOC3 path for profiling without worker serialization. Adopt evaluated mesh position buffers directly in the Rust adapter and decoded worker frames instead of copying every vertex into an older buffer. Its large-model default-pose GPU render matched the Rust worker pixel for pixel, but a 120-FPS-target desktop run was slower than the current runtime, so the default remains unchanged.
+
 - Match the official Core directly on all 28 supplied MOC3 exports, including an export the transitional Purism loader rejects. Reduce Rust geometry time by recognizing affine warp grids while retaining full interpolation for bent grids. Validate draw-group graph ownership and cycles before rendering; the large-model worker remains slower than the current runtime.
 
 - Add an opt-in, independently authored Rust MOC3 worker adapter with hierarchical final render ordering; keep the default runtime unchanged while compatibility and performance gates remain open. Move Live2D canvas projection into the GPU vertex shader and reduce CPU vertex preparation. Local GPU render and official Core differential checks cover the tested models; the Rust worker is still slower on the measured large export.

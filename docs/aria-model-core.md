@@ -24,8 +24,12 @@ hierarchical final render order. The draw-group evaluator validates unique
 ownership, acyclic relationships and declared descendant counts, then visits
 groups in parent-before-child order even if they are stored differently. A
 renderer-facing adapter is available in the
-isolated worker when `ARIA_EXPERIMENTAL_RUST_CORE=1` is set. This is an
-opt-in comparison path; the default and distributed runtime still use Purism.
+isolated worker when `ARIA_EXPERIMENTAL_RUST_CORE=1` is set. An additional
+`ARIA_EXPERIMENTAL_DIRECT_RUST_CORE=1` path evaluates the same Rust core in the
+desktop process without worker serialization. Both are opt-in comparison paths;
+the default and distributed runtime still use Purism. The direct path loses
+worker crash isolation and must remain experimental until the replacement gates
+are met.
 After compilation,
 frame evaluation no longer borrows or reads the encoded MOC3 bytes. It does
 not run C code, relocate pointers in model bytes, load an SDK, or include
@@ -139,6 +143,14 @@ seven animated comparison frames, including `Ditto Eevees.moc3`: its maximum
 coordinate delta was below `0.00000047`, with zero visibility, color, opacity,
 draw-order or final render-order mismatches across 51 visible mesh frames.
 The current runtime still rejects that export.
+
+The in-process adapter was tested with two independent Ditto Eevees instances.
+The large 90s outfit rendered with the same pixels as the Rust worker at its
+default pose (1,357 × 2,048). The evaluator now hands its completed position
+vectors to the renderer-facing drawable without another full vertex copy; the
+host also adopts the decoded worker frame vector. These changes reduce CPU
+memory copying but do not move MOC3 geometry or physics evaluation onto the
+GPU. The direct adapter is a profiling path, not a production switch.
 
 Optimized 120-frame worker tests measured OILBUN at about 2.58 ms/frame with
 the current runtime and 4.09 ms/frame with Rust. The large 90s outfit measured

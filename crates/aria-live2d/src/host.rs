@@ -1,5 +1,6 @@
-//! A private, versioned stdio connection to a separate Cubism process.
-//! This isolates Core crashes and owns its lifetime; it is not an OS security sandbox.
+//! A private, versioned stdio connection to a separate Cubism process, plus an
+//! opt-in in-process adapter for profiling ARIA's Rust model core. The default
+//! worker isolates Core crashes; it is not an OS security sandbox.
 use crate::{Canvas, CubismModel, Drawable, Parameter, rust_model::RustModel};
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -296,9 +297,11 @@ impl Drop for Connection {
     }
 }
 
-/// Main-process model data. No native pointers or libraries cross the process boundary.
+/// Main-process model data. The default worker keeps native pointers isolated;
+/// the experimental direct Rust path has no native library boundary.
 pub struct HostedModel {
-    connection: Connection,
+    connection: Option<Connection>,
+    direct: Option<Box<RustModel>>,
     parameters: Vec<Parameter>,
     pub parts: Vec<Parameter>,
     lookup: BTreeMap<String, usize>,
@@ -308,15 +311,57 @@ pub struct HostedModel {
 }
 impl HostedModel {
     pub fn process_id(&self) -> u32 {
-        self.connection.child.id()
+        self.connection
+            .as_ref()
+            .map_or_else(std::process::id, |connection| connection.child.id())
     }
-    /// The legacy Core path is ignored; all workers use statically linked Purism Core.
+    /// The legacy Core path is ignored. The default worker uses statically linked
+    /// Purism Core; the explicit experimental flag runs ARIA's Rust core in process.
     pub fn load(core: &Path, moc: &Path, textures: usize) -> Result<Self> {
+        if std::env::var("ARIA_EXPERIMENTAL_DIRECT_RUST_CORE").as_deref() == Ok("1") {
+            return Self::load_direct_rust(moc, textures);
+        }
         let executable = std::env::var_os("ARIA_CUBISM_HOST")
             .map(PathBuf::from)
             .map_or_else(std::env::current_exe, Ok)?;
         Self::load_with_host(&executable, core, moc, textures)
     }
+
+    fn load_rust(moc: &Path, textures: usize) -> Result<RustModel> {
+        let moc = moc.canonicalize().context("Cannot find the moc3 file")?;
+        let mut bytes = Vec::new();
+        std::fs::File::open(&moc)
+            .with_context(|| format!("Cannot open {}", moc.display()))?
+            .take(aria_core::asset_limits::MOC_FILE as u64 + 1)
+            .read_to_end(&mut bytes)?;
+        ensure!(
+            bytes.len() <= aria_core::asset_limits::MOC_FILE,
+            "MOC3 file exceeds the model-size limit"
+        );
+        RustModel::load(&bytes, textures)
+    }
+
+    fn load_direct_rust(moc: &Path, textures: usize) -> Result<Self> {
+        let direct = Self::load_rust(moc, textures)?;
+        let parameters = direct.parameters().to_vec();
+        let lookup = parameters
+            .iter()
+            .enumerate()
+            .map(|(index, parameter)| (parameter.id.clone(), index))
+            .collect();
+        let hosted = Self {
+            connection: None,
+            canvas: direct.canvas,
+            version: direct.version.clone(),
+            parameters,
+            parts: direct.parts.clone(),
+            lookup,
+            drawables: direct.drawables.clone(),
+            direct: Some(Box::new(direct)),
+        };
+        Ok(hosted)
+    }
+
     /// Use an explicit ARIA worker executable; the legacy Core path is ignored.
     pub fn load_with_host(
         executable: &Path,
@@ -347,7 +392,8 @@ impl HostedModel {
             .map(|(i, p)| (p.id.clone(), i))
             .collect();
         Ok(Self {
-            connection,
+            connection: Some(connection),
+            direct: None,
             canvas,
             version,
             parameters,
@@ -373,13 +419,34 @@ impl HostedModel {
         }
     }
     pub fn update(&mut self) -> Result<()> {
-        let Response::Frame(frame) = self.connection.request(
-            Request::Update(
-                self.parameters.iter().map(|p| p.value).collect(),
-                self.parts.iter().map(|p| p.value).collect(),
-            ),
-            Duration::from_secs(2),
-        )?
+        if let Some(direct) = &mut self.direct {
+            ensure!(
+                self.parameters.len() == direct.parameters.len()
+                    && self.parts.len() == direct.parts.len(),
+                "Rust core topology changed"
+            );
+            for (source, target) in self.parameters.iter().zip(&mut direct.parameters) {
+                target.value = source.value;
+            }
+            for (source, target) in self.parts.iter().zip(&mut direct.parts) {
+                target.value = source.value;
+            }
+            std::mem::swap(&mut self.drawables, &mut direct.drawables);
+            let result = direct.update();
+            std::mem::swap(&mut self.drawables, &mut direct.drawables);
+            return result;
+        }
+        let Response::Frame(frame) = self
+            .connection
+            .as_mut()
+            .context("Missing model worker")?
+            .request(
+                Request::Update(
+                    self.parameters.iter().map(|p| p.value).collect(),
+                    self.parts.iter().map(|p| p.value).collect(),
+                ),
+                Duration::from_secs(2),
+            )?
         else {
             bail!("Cubism host returned an unexpected frame");
         };
@@ -400,7 +467,7 @@ impl HostedModel {
                         .all(|v| v.is_finite()),
                 "Cubism host returned invalid mesh data"
             );
-            d.positions.copy_from_slice(&next.positions);
+            d.positions = next.positions;
             d.visible = next.visible;
             d.order = next.order;
             d.opacity = next.opacity;
@@ -474,7 +541,7 @@ mod tests {
                 assert_eq!(a.opacity, b.opacity);
             }
         }
-        hosted.connection.child.kill().unwrap();
+        hosted.connection.as_mut().unwrap().child.kill().unwrap();
         let start = std::time::Instant::now();
         assert!(hosted.update().is_err());
         assert!(start.elapsed() < Duration::from_secs(3));
@@ -525,6 +592,89 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    #[ignore = "requires ARIA_TEST_MOC and ARIA_EXPERIMENTAL_DIRECT_RUST_CORE=1"]
+    fn direct_rust_core_keeps_independent_avatar_frames() {
+        assert_eq!(
+            std::env::var("ARIA_EXPERIMENTAL_DIRECT_RUST_CORE").as_deref(),
+            Ok("1")
+        );
+        let moc = PathBuf::from(std::env::var_os("ARIA_TEST_MOC").unwrap());
+        let mut first = HostedModel::load(Path::new(""), &moc, 32).unwrap();
+        let mut second = HostedModel::load(Path::new(""), &moc, 32).unwrap();
+        assert_eq!(first.process_id(), std::process::id());
+        assert_eq!(second.process_id(), std::process::id());
+        assert!(first.connection.is_none() && second.connection.is_none());
+        let parameter = first
+            .parameters()
+            .iter()
+            .find(|parameter| parameter.max > parameter.min)
+            .unwrap()
+            .clone();
+        first.set_parameter(&parameter.id, parameter.min);
+        second.set_parameter(&parameter.id, parameter.max);
+        first.update().unwrap();
+        second.update().unwrap();
+        assert!(
+            first
+                .drawables
+                .iter()
+                .zip(&second.drawables)
+                .any(|(left, right)| left.positions != right.positions)
+        );
+        let first_positions = first
+            .drawables
+            .iter()
+            .map(|drawable| drawable.positions.clone())
+            .collect::<Vec<_>>();
+        second.update().unwrap();
+        assert!(
+            first
+                .drawables
+                .iter()
+                .zip(first_positions)
+                .all(|(drawable, positions)| drawable.positions == positions)
+        );
+    }
+
+    #[test]
+    #[ignore = "requires ARIA_TEST_MOC and ARIA_EXPERIMENTAL_DIRECT_RUST_CORE=1; run optimized"]
+    fn direct_rust_update_benchmark() {
+        assert_eq!(
+            std::env::var("ARIA_EXPERIMENTAL_DIRECT_RUST_CORE").as_deref(),
+            Ok("1")
+        );
+        let moc = PathBuf::from(std::env::var_os("ARIA_TEST_MOC").unwrap());
+        let mut model = HostedModel::load(Path::new(""), &moc, 32).unwrap();
+        let parameter = model
+            .parameters()
+            .iter()
+            .find(|parameter| parameter.max > parameter.min)
+            .unwrap()
+            .clone();
+        let mut measured = std::time::Duration::ZERO;
+        for frame in 0..140 {
+            model.set_parameter(
+                &parameter.id,
+                if frame % 2 == 0 {
+                    parameter.min
+                } else {
+                    parameter.max
+                },
+            );
+            let start = std::time::Instant::now();
+            model.update().unwrap();
+            if frame >= 20 {
+                measured += start.elapsed();
+            }
+        }
+        eprintln!(
+            "{}: 120 direct hosted frames {:.3} ms/frame after warmup",
+            model.version,
+            measured.as_secs_f64() * 1000.0 / 120.0
+        );
     }
 
     #[test]

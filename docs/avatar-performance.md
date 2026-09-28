@@ -60,6 +60,20 @@ The two runs are local
 measurements, not a guaranteed FPS gain. Making Rust the default requires
 further geometry acceleration and end-to-end profiling.
 
+An in-process Rust adapter removes worker transport and one position-vector
+copy per updated mesh. On the large 90s outfit, an optimized single-parameter
+hosted test measured about 8.74 ms/frame, while a 32-parameter animation
+measured about 10.93 ms/frame for Rust versus 5.70 ms/frame for the current
+runtime's direct model update. In matched 20-second hidden Studio smokes at a
+120 FPS target, the direct Rust path settled near 43.6 FPS (about 13.3 ms host
+and 3.9 ms renderer wall time), while the default path on the rebuilt binary
+settled near 53.9 FPS (about 11.0 ms host and 3.8 ms renderer). These are local
+samples, not GPU timestamps. The direct path stays opt-in. A synchronously
+awaited Rust background thread was also profiled and discarded because its
+desktop result remained near 43 FPS. The next performance work needs to reduce
+Rust keyform/deformer evaluation and mask pass costs; simply changing thread or
+process boundaries does not meet the 8.33 ms whole-frame budget.
+
 The supplied NekoUnity2 VRM spent about 1–1.3 ms in model update at its saved
 60 FPS target. With the smoke cap held at 120 after import, it subsequently ran
 at 120.1–120.3 FPS in three sampled intervals, with 0.8–1.4 ms model updates.

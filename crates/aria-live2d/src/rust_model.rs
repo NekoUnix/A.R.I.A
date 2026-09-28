@@ -151,19 +151,16 @@ impl RustModel {
             drawable.order = order;
             if let Some(frame) = frame {
                 ensure!(
-                    drawable.positions.len() == frame.positions.len(),
+                    drawable.uvs.len() == frame.positions.len(),
                     "ArtMesh vertex count changed"
                 );
-                for (target, source) in drawable.positions.iter_mut().zip(frame.positions) {
-                    *target = [
-                        source[0],
-                        if self.reverse_y {
-                            source[1]
-                        } else {
-                            -source[1]
-                        },
-                    ];
+                let mut positions = frame.positions;
+                if !self.reverse_y {
+                    for position in &mut positions {
+                        position[1] = -position[1];
+                    }
                 }
+                drawable.positions = positions;
                 drawable.opacity = frame.opacity.clamp(0.0, 1.0);
                 drawable.visible = drawable.opacity != 0.0;
                 drawable.multiply = frame.multiply;
@@ -254,6 +251,46 @@ mod tests {
             geometry_time.as_secs_f64() * 1000.0 / 120.0,
             order_time.as_secs_f64() * 1000.0 / 120.0
         );
+    }
+
+    #[test]
+    #[ignore = "requires ARIA_TEST_MOC; run optimized for meaningful timing"]
+    fn local_multi_axis_update_benchmark() {
+        let path = std::env::var_os("ARIA_TEST_MOC").unwrap();
+        let bytes = std::fs::read(path).unwrap();
+        let mut rust = RustModel::load(&bytes, 32).unwrap();
+        let mut current = CubismModel::load(Path::new(""), &bytes, 32).unwrap();
+        let parameters = rust
+            .parameters()
+            .iter()
+            .filter(|parameter| parameter.max > parameter.min)
+            .take(32)
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(parameters.len(), 32);
+        for (name, model) in [
+            ("current", &mut current as &mut dyn RuntimeBenchmark),
+            ("Rust", &mut rust as &mut dyn RuntimeBenchmark),
+        ] {
+            let mut measured = std::time::Duration::ZERO;
+            for frame in 0..140 {
+                for (index, parameter) in parameters.iter().enumerate() {
+                    let phase = (frame as f32 * 0.11 + index as f32 * 0.31).sin();
+                    let value =
+                        parameter.min + (parameter.max - parameter.min) * (phase + 1.0) * 0.5;
+                    model.set(&parameter.id, value);
+                }
+                let start = std::time::Instant::now();
+                model.evaluate().unwrap();
+                if frame >= 20 {
+                    measured += start.elapsed();
+                }
+            }
+            eprintln!(
+                "{name} 32-axis direct model: {:.3} ms/frame",
+                measured.as_secs_f64() * 1000.0 / 120.0
+            );
+        }
     }
 
     trait RuntimeBenchmark {

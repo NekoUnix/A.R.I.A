@@ -7,6 +7,21 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## GPU morph and Rust model-core checks — 2026-09-28 (unreleased)
 
+- The opt-in in-process Rust core passed a two-avatar independence test using
+  Ditto Eevees, and the large 90s outfit's default-pose GPU render matched its
+  Rust-worker render pixel for pixel at 1,357 × 2,048. The position buffers now
+  move from the evaluator or decoded worker frame into the hosted model instead
+  of making a second vertex copy. The large-model optimized single-axis hosted
+  sample was about 8.74 ms/frame. A 32-axis direct-model sample was 10.93
+  ms/frame for Rust versus 5.70 for the current runtime. In matched hidden
+  desktop smokes, direct Rust settled near 43.6 FPS versus 53.9 FPS for the
+  default runtime, both at a 120 FPS target. This rejects a default switch and
+  does not show GPU offload of MOC3 geometry. The large outfit's seven-frame
+  optimized direct-official-Core comparison passed again after the buffer-move
+  change: 4,834 visible mesh frames, zero mismatches above tolerance and maximum
+  coordinate delta about 0.00000781 model units. Workspace tests, strict
+  all-target/all-feature Clippy, formatting, repository checks and distribution
+  checks also passed.
 - The supplied NekoUnity2.vrm loaded and rendered with GPU skinning and active
   expression morphs. The test checks that at least one facial morph actually
   uses the GPU path, compares its rendered pixels with the CPU fallback to
