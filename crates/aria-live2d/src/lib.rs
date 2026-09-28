@@ -480,6 +480,34 @@ mod tests {
             "purism deformation only: {:.2} ms/frame",
             started.elapsed().as_secs_f64() * 1000. / 120.
         );
+        let rust = aria_model_core::moc::Moc::parse(&bytes).unwrap();
+        let evaluator = aria_model_core::geometry::GeometryEvaluator::new(&rust).unwrap();
+        let specs = rust.parameters().unwrap();
+        let mut values = specs.iter().map(|p| p.default).collect::<Vec<_>>();
+        let rust_parameter = specs.iter().position(|p| p.id == parameter.id).unwrap();
+        for frame in 0..20 {
+            values[rust_parameter] = if frame % 2 == 0 {
+                parameter.min
+            } else {
+                parameter.max
+            };
+            std::hint::black_box(evaluator.frame(&values).unwrap());
+        }
+        let started = std::time::Instant::now();
+        for frame in 0..120 {
+            values[rust_parameter] = if frame % 2 == 0 {
+                parameter.min
+            } else {
+                parameter.max
+            };
+            std::hint::black_box(evaluator.frame(&values).unwrap());
+        }
+        println!(
+            "ARIA Rust normal-geometry frame: {:.2} ms/frame, {} of {} meshes supported",
+            started.elapsed().as_secs_f64() * 1000. / 120.,
+            evaluator.supported_mesh_count(),
+            model.drawables.len()
+        );
     }
     #[test]
     #[ignore = "requires ARIA_TEST_MOC; compares local model output during runtime changes"]

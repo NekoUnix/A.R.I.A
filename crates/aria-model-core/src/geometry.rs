@@ -5,8 +5,8 @@
 //! shape targets are represented as `None` until their geometry is supported.
 
 use crate::moc::{
-    BindingGraph, DeformerKind, DeformerLayout, LocalDeformerFrame, LocalMeshFrame, Moc,
-    ParameterSpec,
+    BindingGraph, CompiledMesh, DeformerKind, DeformerLayout, LocalDeformerFrame, LocalMeshFrame,
+    Moc, ParameterSpec,
 };
 use crate::rig::{Point, RotationTransform, WarpGrid};
 use anyhow::{Context, Result, ensure};
@@ -37,16 +37,36 @@ pub struct GeometryEvaluator<'model, 'bytes> {
     graph: BindingGraph,
     deformers: Vec<DeformerLayout>,
     secondary: Vec<bool>,
+    meshes: Vec<Option<CompiledMesh>>,
 }
 
 impl<'model, 'bytes> GeometryEvaluator<'model, 'bytes> {
     pub fn new(moc: &'model Moc<'bytes>) -> Result<Self> {
+        let secondary = moc.secondary_meshes()?;
+        let mut decoded_bytes = 0_usize;
+        let mut meshes = Vec::with_capacity(secondary.len());
+        for (index, &unsupported) in secondary.iter().enumerate() {
+            if unsupported {
+                meshes.push(None);
+                continue;
+            }
+            decoded_bytes = decoded_bytes
+                .checked_add(moc.mesh_keyform_position_bytes(index)?)
+                .context("Decoded geometry size overflow")?;
+            ensure!(
+                decoded_bytes <= 512 * 1024 * 1024,
+                "Decoded mesh keyforms exceed the 512 MiB RAM budget"
+            );
+            let mesh = moc.compile_mesh(index)?;
+            meshes.push(Some(mesh));
+        }
         Ok(Self {
             moc,
             parameters: moc.parameters()?,
             graph: moc.binding_graph()?,
             deformers: moc.deformer_layouts()?,
-            secondary: moc.secondary_meshes()?,
+            secondary,
+            meshes,
         })
     }
 
@@ -70,6 +90,9 @@ impl<'model, 'bytes> GeometryEvaluator<'model, 'bytes> {
             .zip(values)
             .map(|(spec, value)| spec.resolve(*value))
             .collect::<Result<Vec<_>>>()?;
+        let weights = (0..self.graph.bindings.len())
+            .map(|binding| self.graph.weights(binding, &values))
+            .collect::<Result<Vec<_>>>()?;
 
         let mut states: Vec<Option<DeformerState>> = Vec::with_capacity(self.deformers.len());
         for node in &self.deformers {
@@ -88,7 +111,9 @@ impl<'model, 'bytes> GeometryEvaluator<'model, 'bytes> {
                 states.push(None);
                 continue;
             }
-            let local = self.moc.local_deformer_frame(node, &self.graph, &values)?;
+            let local = self
+                .moc
+                .local_deformer_frame_weighted(node, &weights[node.binding])?;
             let state = match (&node.kind, local) {
                 (
                     DeformerKind::Warp {
@@ -184,7 +209,10 @@ impl<'model, 'bytes> GeometryEvaluator<'model, 'bytes> {
                 frames.push(None);
                 continue;
             }
-            let mut frame = self.moc.local_mesh_frame(index, &self.graph, &values)?;
+            let mesh = self.meshes[index]
+                .as_ref()
+                .context("Supported mesh has no decoded keyforms")?;
+            let mut frame = mesh.frame(&weights[mesh.binding])?;
             if let Some(parent) = frame.parent_deformer {
                 let Some(state) = states
                     .get(parent)

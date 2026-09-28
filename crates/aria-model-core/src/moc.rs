@@ -109,6 +109,61 @@ pub struct LocalMeshFrame {
     pub parent_deformer: Option<usize>,
 }
 
+#[derive(Debug, Clone)]
+struct MeshKeyform {
+    positions: Vec<[f32; 2]>,
+    opacity: f32,
+    draw_order: f32,
+}
+
+/// Immutable, load-time-decoded mesh keyforms. The runtime blends these RAM
+/// arrays without re-reading or revalidating the MOC3 container each frame.
+#[derive(Debug, Clone)]
+pub struct CompiledMesh {
+    pub binding: usize,
+    parent_deformer: Option<usize>,
+    keyforms: Vec<MeshKeyform>,
+}
+
+impl CompiledMesh {
+    pub fn decoded_position_bytes(&self) -> usize {
+        self.keyforms
+            .iter()
+            .map(|keyform| keyform.positions.len() * std::mem::size_of::<[f32; 2]>())
+            .sum()
+    }
+
+    pub fn frame(&self, weights: &[KeyformWeight]) -> Result<LocalMeshFrame> {
+        ensure!(!weights.is_empty(), "Mesh binding has no active keyforms");
+        ensure!(
+            weights.iter().all(|weight| weight.weight.is_finite()),
+            "Mesh binding contains non-finite weights"
+        );
+        let first = self.keyforms.first().context("Mesh has no keyforms")?;
+        let mut positions = vec![[0.0_f32; 2]; first.positions.len()];
+        let mut opacity = 0.0_f32;
+        let mut draw_order = 0.0_f32;
+        for key in weights {
+            let source = self
+                .keyforms
+                .get(key.index)
+                .context("Binding exceeds mesh keyforms")?;
+            opacity += source.opacity * key.weight;
+            draw_order += source.draw_order * key.weight;
+            for (output, source) in positions.iter_mut().zip(&source.positions) {
+                output[0] += source[0] * key.weight;
+                output[1] += source[1] * key.weight;
+            }
+        }
+        Ok(LocalMeshFrame {
+            positions,
+            opacity,
+            draw_order,
+            parent_deformer: self.parent_deformer,
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeformerKind {
     Warp {
@@ -447,9 +502,98 @@ impl<'a> Moc<'a> {
         graph: &BindingGraph,
         values: &[f32],
     ) -> Result<LocalMeshFrame> {
+        let binding = self.mesh_binding(mesh)?;
+        let weights = graph.weights(binding, values)?;
+        self.local_mesh_frame_weighted(mesh, &weights)
+    }
+
+    pub fn mesh_binding(&self, mesh: usize) -> Result<usize> {
+        ensure!(mesh < self.counts()?.art_meshes as usize, "Unknown ArtMesh");
+        self.nonnegative(34, mesh)
+    }
+
+    pub fn mesh_keyform_position_bytes(&self, mesh: usize) -> Result<usize> {
+        ensure!(mesh < self.counts()?.art_meshes as usize, "Unknown ArtMesh");
+        self.nonnegative(36, mesh)?
+            .checked_mul(self.nonnegative(43, mesh)?)
+            .and_then(|points| points.checked_mul(std::mem::size_of::<[f32; 2]>()))
+            .context("Mesh keyform RAM size overflow")
+    }
+
+    pub fn compile_mesh(&self, mesh: usize) -> Result<CompiledMesh> {
         let counts = self.counts()?;
         ensure!(mesh < counts.art_meshes as usize, "Unknown ArtMesh");
-        let binding = self.nonnegative(34, mesh)?;
+        ensure!(
+            self.mesh_keyform_position_bytes(mesh)? <= 512 * 1024 * 1024,
+            "Mesh keyforms exceed the 512 MiB RAM budget"
+        );
+        let keyform_start = self.nonnegative(35, mesh)?;
+        let keyform_count = self.nonnegative(36, mesh)?;
+        let vertex_count = self.nonnegative(43, mesh)?;
+        let keyform_total = self.nonnegative(0, 9)?;
+        ensure!(
+            keyform_count > 0
+                && keyform_start
+                    .checked_add(keyform_count)
+                    .is_some_and(|end| end <= keyform_total)
+                && vertex_count <= 65_536,
+            "ArtMesh keyform range is invalid"
+        );
+        let coordinate_count = self.nonnegative(0, 10)?;
+        let parent = self.word(40, mesh)? as i32;
+        ensure!(
+            parent == -1 || (parent >= 0 && parent < counts.deformers as i32),
+            "Invalid ArtMesh parent deformer"
+        );
+        let mut keyforms = Vec::with_capacity(keyform_count);
+        for frame in keyform_start..keyform_start + keyform_count {
+            let start = self.nonnegative(70, frame)?;
+            ensure!(
+                vertex_count
+                    .checked_mul(2)
+                    .and_then(|coordinates| start.checked_add(coordinates))
+                    .is_some_and(|end| end <= coordinate_count),
+                "ArtMesh key positions exceed the position pool"
+            );
+            let opacity = f32::from_bits(self.word(68, frame)?);
+            let draw_order = f32::from_bits(self.word(69, frame)?);
+            ensure!(
+                opacity.is_finite() && draw_order.is_finite(),
+                "Invalid ArtMesh keyform scalar"
+            );
+            let mut positions = Vec::with_capacity(vertex_count);
+            for vertex in 0..vertex_count {
+                let offset = start + vertex * 2;
+                let x = f32::from_bits(self.word(71, offset)?);
+                let y = f32::from_bits(self.word(71, offset + 1)?);
+                ensure!(
+                    x.is_finite() && y.is_finite(),
+                    "Invalid ArtMesh key position"
+                );
+                positions.push([x, y]);
+            }
+            keyforms.push(MeshKeyform {
+                positions,
+                opacity,
+                draw_order,
+            });
+        }
+        Ok(CompiledMesh {
+            binding: self.mesh_binding(mesh)?,
+            parent_deformer: (parent >= 0).then_some(parent as usize),
+            keyforms,
+        })
+    }
+
+    /// Evaluate a mesh with weights already computed for its binding. The
+    /// model-scoped evaluator shares those weights across all bound objects.
+    pub fn local_mesh_frame_weighted(
+        &self,
+        mesh: usize,
+        weights: &[KeyformWeight],
+    ) -> Result<LocalMeshFrame> {
+        let counts = self.counts()?;
+        ensure!(mesh < counts.art_meshes as usize, "Unknown ArtMesh");
         let keyform_start = self.nonnegative(35, mesh)?;
         let keyform_count = self.nonnegative(36, mesh)?;
         let vertex_count = self.nonnegative(43, mesh)?;
@@ -466,7 +610,7 @@ impl<'a> Moc<'a> {
         let mut opacity = 0.0_f32;
         let mut draw_order = 0.0_f32;
         let coordinate_count = self.nonnegative(0, 10)?;
-        for key in graph.weights(binding, values)? {
+        for key in weights {
             ensure!(
                 key.index < keyform_count,
                 "Binding exceeds ArtMesh keyforms"
@@ -634,6 +778,14 @@ impl<'a> Moc<'a> {
         values: &[f32],
     ) -> Result<LocalDeformerFrame> {
         let weights = graph.weights(layout.binding, values)?;
+        self.local_deformer_frame_weighted(layout, &weights)
+    }
+
+    pub fn local_deformer_frame_weighted(
+        &self,
+        layout: &DeformerLayout,
+        weights: &[KeyformWeight],
+    ) -> Result<LocalDeformerFrame> {
         match layout.kind {
             DeformerKind::Warp { points, .. } => {
                 let coordinate_total = self.nonnegative(0, 10)?;

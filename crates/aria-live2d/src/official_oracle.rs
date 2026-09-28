@@ -20,6 +20,8 @@ mod tests {
         let path = std::env::var_os("ARIA_TEST_MOC").expect("ARIA_TEST_MOC");
         let bytes = std::fs::read(path).unwrap();
         let rust = aria_model_core::moc::Moc::parse(&bytes).unwrap();
+        let evaluator = aria_model_core::geometry::GeometryEvaluator::new(&rust).unwrap();
+        let reverse_y = rust.canvas().unwrap().reverse_y;
         let mut current = CubismModel::load(Path::new(""), &bytes, 32).unwrap();
 
         // SAFETY: The local library is used only after its documented exported
@@ -154,6 +156,8 @@ mod tests {
             assert!(!param_values.is_null());
             let params: Vec<_> = current.parameters().iter().take(16).cloned().collect();
             let mut worst = 0.0_f32;
+            let mut rust_worst = 0.0_f32;
+            let mut rust_mesh_frames = 0_usize;
             for frame in 0..5 {
                 for (i, p) in params.iter().enumerate() {
                     let t = ((frame * 13 + i * 7) % 17) as f32 / 16.0;
@@ -168,6 +172,12 @@ mod tests {
                     std::slice::from_raw_parts(vertex_counts(model), current.drawables.len());
                 let positions =
                     std::slice::from_raw_parts(positions(model), current.drawables.len());
+                let rust_values = current
+                    .parameters()
+                    .iter()
+                    .map(|parameter| parameter.value)
+                    .collect::<Vec<_>>();
+                let rust_frames = evaluator.frame(&rust_values).unwrap();
                 for (i, drawable) in current.drawables.iter().enumerate() {
                     assert_eq!(counts[i] as usize, drawable.positions.len());
                     let source = std::slice::from_raw_parts(positions[i], drawable.positions.len());
@@ -176,12 +186,33 @@ mod tests {
                             .max((official.x - aria[0]).abs())
                             .max((official.y - aria[1]).abs());
                     }
+                    if drawable.visible
+                        && let Some(frame) = &rust_frames[i]
+                    {
+                        rust_mesh_frames += 1;
+                        for (official, aria) in source.iter().zip(&frame.positions) {
+                            let y = if reverse_y { aria[1] } else { -aria[1] };
+                            rust_worst = rust_worst
+                                .max((official.x - aria[0]).abs())
+                                .max((official.y - y).abs());
+                        }
+                    }
                 }
             }
-            println!("official ABI {abi:#x}, maximum position difference {worst}");
+            println!(
+                "official ABI {abi:#x}, current delta {worst}, Rust delta {rust_worst} across {rust_mesh_frames} supported visible mesh frames"
+            );
             assert!(
                 worst <= 0.001,
                 "current runtime diverges from official Cubism"
+            );
+            assert!(
+                rust_mesh_frames > 0,
+                "No supported Rust geometry was compared"
+            );
+            assert!(
+                rust_worst <= 0.001,
+                "Rust normal geometry diverges from official Cubism"
             );
         }
     }
