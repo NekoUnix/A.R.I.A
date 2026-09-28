@@ -7,6 +7,8 @@ struct Material {
     params:vec4<f32>, extra:vec4<f32>, uv:vec4<f32>, outline:vec4<f32>, mode:vec4<f32>,
 };
 struct Joint {position:mat4x4<f32>,normal:mat4x4<f32>};
+struct MorphDelta {position:vec4<f32>,normal:vec4<f32>};
+struct MorphInfo {vertex_count:u32,morph_count:u32,padding:vec2<u32>};
 @group(0) @binding(0) var<uniform> frame:Frame;
 @group(1) @binding(0) var base:texture_2d<f32>;
 @group(1) @binding(1) var shade:texture_2d<f32>;
@@ -16,6 +18,9 @@ struct Joint {position:mat4x4<f32>,normal:mat4x4<f32>};
 @group(1) @binding(5) var sam:sampler;
 @group(1) @binding(6) var<uniform> material:Material;
 @group(2) @binding(0) var<storage,read> joints:array<Joint>;
+@group(2) @binding(1) var<storage,read> morph_deltas:array<MorphDelta>;
+@group(2) @binding(2) var<storage,read> morph_weights:array<f32>;
+@group(2) @binding(3) var<uniform> morph_info:MorphInfo;
 struct Input {
     @location(0) position:vec3<f32>, @location(1) normal:vec3<f32>,
     @location(2) uv:vec2<f32>, @location(3) color:vec4<f32>,
@@ -25,12 +30,22 @@ struct Out {
     @builtin(position) position:vec4<f32>, @location(0) normal:vec3<f32>,
     @location(1) uv:vec2<f32>, @location(2) color:vec4<f32>, @location(3) world:vec3<f32>,
 };
-fn vertex(i:Input, outline:bool)->Out {
+fn vertex(i:Input, vertex_index:u32, outline:bool)->Out {
+    var local_position=i.position;
+    var local_normal=i.normal;
+    for(var morph:u32=0u;morph<morph_info.morph_count;morph=morph+1u) {
+        let weight=morph_weights[morph];
+        if(abs(weight)>=0.00001) {
+            let delta=morph_deltas[morph*morph_info.vertex_count+vertex_index];
+            local_position+=delta.position.xyz*weight;
+            local_normal+=delta.normal.xyz*weight;
+        }
+    }
     let m=joints[i.joint.x].position*i.weight.x+joints[i.joint.y].position*i.weight.y+joints[i.joint.z].position*i.weight.z+joints[i.joint.w].position*i.weight.w;
     let n=joints[i.joint.x].normal*i.weight.x+joints[i.joint.y].normal*i.weight.y+joints[i.joint.z].normal*i.weight.z+joints[i.joint.w].normal*i.weight.w;
     var o:Out;
-    let world=frame.front*m*vec4(i.position,1);
-    o.normal=normalize((frame.front*n*vec4(i.normal,0)).xyz);
+    let world=frame.front*m*vec4(local_position,1);
+    o.normal=normalize((frame.front*n*vec4(local_normal,0)).xyz);
     o.world=world.xyz;
     o.position=frame.vp*(world+vec4(o.normal*select(0.0,material.mode.x,outline),0));
     let uv=i.uv*material.uv.xy;
@@ -38,8 +53,8 @@ fn vertex(i:Input, outline:bool)->Out {
     o.color=i.color;
     return o;
 }
-@vertex fn vs(i:Input)->Out {return vertex(i,false);}
-@vertex fn vs_outline(i:Input)->Out {return vertex(i,true);}
+@vertex fn vs(i:Input,@builtin(vertex_index) vertex_index:u32)->Out {return vertex(i,vertex_index,false);}
+@vertex fn vs_outline(i:Input,@builtin(vertex_index) vertex_index:u32)->Out {return vertex(i,vertex_index,true);}
 fn alpha(value:f32)->f32 {
     if(material.mode.y<1.5) {return 1.0;}
     return value;

@@ -1,4 +1,4 @@
-# Native platforms and the Cubism runtime host
+# Native platforms and ARIA Core
 
 The v0.37.0-alpha.1 release provides Windows x64, Linux x64, macOS Apple Silicon
 and macOS Intel packages. Every app and archive is labeled **Alpha**. Native builds
@@ -10,7 +10,7 @@ phones and every model. See [validation](validation.md) for the tested boundary.
 | Component | Windows | Linux | macOS |
 | --- | --- | --- | --- |
 | Main Rust application | DX12; Vulkan fallback | Vulkan | Metal |
-| Purism Core runtime process | Built in | Built in | Built in |
+| ARIA Rust model core | Built in | Built in | Built in |
 | PNG/GIF and VRM | Implemented and Windows-tested | Native implementation; hardware validation pending | Native implementation; hardware validation pending |
 | iPhone/JSON tracking protocol | Tested with local sender | Portable UDP implementation | Portable UDP implementation |
 | Native OBS canvas output | Spout2 GPU sharing | ARIA Canvas plugin; asynchronous readback/shared memory | Syphon Metal GPU sharing |
@@ -18,36 +18,25 @@ phones and every model. See [validation](validation.md) for the tested boundary.
 | Persistent Twitch/YouTube credentials | Windows DPAPI | OS credential store planned | Keychain support planned |
 | Camera setup helper / NVIDIA bridge | Windows tooling | Native installer/adapter validation planned | Native installer planned; NVIDIA RTX unavailable |
 
-## A separate runtime process
+## Model evaluation
 
 ```mermaid
 flowchart LR
-    UI[ARIA: tracking, settings and GPU rendering] -->|Bounded parameter messages| Host[Cubism runtime process]
-    Host --> Core[Bundled MIT Purism Core]
-    Host -->|Mesh positions and appearance| UI
+    UI[ARIA: tracking and settings] --> Core[ARIA Rust model evaluator]
+    Core --> GPU[GPU geometry and rendering]
+    Core --> CPU[CPU geometry for fallback and surface pins]
 ```
 
-The app starts one hidden worker per Live2D model. Core memory and native pointers
-stay in that worker; ARIA keeps ordinary Rust mesh data. The same desktop executable
-can run worker mode, so a portable install does not need another service or daemon.
-The standalone `aria-cubism-host` executable is also built for integration testing.
-
-Communication uses private standard-input/output pipes and a versioned binary
-protocol, with no listening network port. Texture atlases stay in the main GPU
-renderer; static mesh topology transfers only at load. Loading has a 30-second
-timeout; a stopped frame has a two-second timeout. On failure the worker is stopped
-and the affected model reports an error. Reload the model to start a new worker.
-Unloading a model closes its worker and owned resources.
-
-Workers provide crash isolation, not an OS security sandbox. They run under
-your user account. Purism Core is built from pinned MIT source for the target
-platform; no external Core library is loaded.
+The desktop evaluates Live2D-compatible models in-process. It retains model
+sources in RAM and uploads atlases and geometry to the GPU as needed. A separate
+Rust-only worker remains available for integration tests; normal imports do not
+start it. The GPU path may fall back to Rust CPU geometry for unsupported plans.
 
 ## Built-in runtime
 
-All builds use the same vendored Purism Core revision with the v6 API. No SDK
+All builds use ARIA's Rust model core. No SDK
 selection or platform-specific DLL copying is required. Old saved Core paths
-are ignored. See [runtime distribution notes](purism-core.md).
+are ignored. See [runtime distribution notes](aria-core-runtime.md).
 
 ## Build on Linux or macOS
 

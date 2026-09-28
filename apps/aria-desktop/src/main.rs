@@ -22,6 +22,17 @@ mod effects;
 mod effects_panel;
 mod event_rules;
 mod expressions_panel;
+#[cfg(all(test, windows))]
+mod gpu_glue;
+pub mod gpu_glue_stage;
+pub mod gpu_hierarchy;
+#[cfg(all(test, windows))]
+mod gpu_key_plan;
+pub mod gpu_position_evaluator;
+pub mod gpu_visible_bounds;
+#[cfg(all(test, windows))]
+mod gpu_warp;
+pub mod gpu_warp_hierarchy;
 mod help;
 mod hotkeys;
 mod image_actions;

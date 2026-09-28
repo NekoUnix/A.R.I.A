@@ -1,5 +1,5 @@
 //! Rust particle-chain solver for authored physics3 rigs. Evaluates fixed steps
-//! before Purism Core; retains momentum and interpolates outputs between steps.
+//! before ARIA Core; retains momentum and interpolates outputs between steps.
 //! This implements the data format, not VTube Studio's proprietary physics modes.
 use crate::rig::RigParameter;
 use anyhow::{Result, ensure};
@@ -314,6 +314,11 @@ struct Chain {
     reset_pending: bool,
 }
 
+struct CachedEnhanced {
+    step: EnhancedStep,
+    retention: Vec<f32>,
+}
+
 pub struct Physics {
     chains: Vec<Chain>,
     authored_step: f64,
@@ -322,6 +327,8 @@ pub struct Physics {
     previous_inputs: Vec<f32>,
     input_values: Vec<f32>,
     working: Vec<RigParameter>,
+    enhanced_cache: Vec<CachedEnhanced>,
+    enhanced_cache_dirty: bool,
     motion_style: MotionStyle,
     rest_gravity: V2,
     wind: V2,
@@ -366,6 +373,8 @@ impl Physics {
             previous_inputs: Vec::new(),
             input_values: Vec::with_capacity(parameters.len()),
             working: parameters.to_vec(),
+            enhanced_cache: Vec::new(),
+            enhanced_cache_dirty: true,
             motion_style: MotionStyle::Authored,
             rest_gravity: doc.meta.effective_forces.gravity.mul(-1.0).unit(),
             wind: doc.meta.effective_forces.wind,
@@ -511,6 +520,13 @@ impl Physics {
             // Authored velocity uses response-scaled units; enhanced velocity
             // uses units/second. Never carry one into the other on a mode change.
             self.reset();
+            self.enhanced_cache_dirty = true;
+        }
+        if self.inertia != settings.inertia
+            || self.response != settings.response
+            || self.gravity != settings.gravity
+        {
+            self.enhanced_cache_dirty = true;
         }
         self.enabled = settings.enabled;
         self.strength = settings.strength;
@@ -522,6 +538,9 @@ impl Physics {
             let tuning = settings.groups.get(&chain.id).copied().unwrap_or_default();
             if chain.tuning.enabled != tuning.enabled {
                 chain.reset_pending = true;
+            }
+            if chain.tuning != tuning {
+                self.enhanced_cache_dirty = true;
             }
             chain.tuning = tuning;
         }
@@ -562,6 +581,34 @@ impl Physics {
             return;
         }
         let enhanced = self.motion_style != MotionStyle::Authored;
+        if enhanced && self.enhanced_cache_dirty {
+            self.enhanced_cache = self
+                .chains
+                .iter()
+                .map(|chain| {
+                    let step = EnhancedStep::new(
+                        self.step as f32,
+                        &chain.tuning,
+                        self.inertia,
+                        self.response,
+                        self.gravity,
+                        self.motion_style,
+                    );
+                    let retention = chain
+                        .particles
+                        .iter()
+                        .map(|particle| {
+                            (particle.spec.mobility * step.inertia)
+                                .clamp(0.0, 1.0)
+                                .powf(step.decay_exponent)
+                                * step.drag
+                        })
+                        .collect();
+                    CachedEnhanced { step, retention }
+                })
+                .collect();
+            self.enhanced_cache_dirty = false;
+        }
         let resume = enhanced && dt > 0.25;
         if dt > 0.5 || resume {
             self.reset();
@@ -604,7 +651,7 @@ impl Physics {
                 p.value =
                     self.previous_inputs[i] + (self.input_values[i] - self.previous_inputs[i]) * t;
             }
-            for c in &mut self.chains {
+            for (chain_index, c) in self.chains.iter_mut().enumerate() {
                 if !c.tuning.enabled {
                     continue;
                 }
@@ -617,21 +664,19 @@ impl Physics {
                 });
                 let (translation, gravity) = drivers(c, &self.working, self.rest_gravity);
                 c.particles[0].pos = translation;
-                let dynamics = enhanced.then(|| {
-                    EnhancedStep::new(
-                        self.step as f32,
-                        &c.tuning,
-                        self.inertia,
-                        self.response,
-                        self.gravity,
-                        self.motion_style,
-                    )
-                });
+                let dynamics = enhanced.then(|| &self.enhanced_cache[chain_index]);
                 for i in 1..c.particles.len() {
                     let parent = c.particles[i - 1].pos;
                     let p = &mut c.particles[i];
-                    if let Some(dynamics) = &dynamics {
-                        step_enhanced(p, parent, gravity, wind, dynamics);
+                    if let Some(dynamics) = dynamics {
+                        step_enhanced(
+                            p,
+                            parent,
+                            gravity,
+                            wind,
+                            &dynamics.step,
+                            dynamics.retention[i],
+                        );
                         continue;
                     }
                     let delay = p.spec.delay
@@ -689,6 +734,7 @@ struct EnhancedStep {
     decay_exponent: f32,
     drag: f32,
     follow: f32,
+    restoring: f32,
 }
 impl EnhancedStep {
     fn new(
@@ -699,9 +745,15 @@ impl EnhancedStep {
         gravity: f32,
         style: MotionStyle,
     ) -> Self {
+        let response_scale = response.clamp(0.25, 2.0) * tuning.response.clamp(0.25, 2.0);
+        let frequency_hz = if style == MotionStyle::Bouncy {
+            2.4
+        } else {
+            1.5
+        };
         Self {
             dt,
-            response: 30.0 * response.clamp(0.25, 2.0) * tuning.response.clamp(0.25, 2.0),
+            response: 30.0 * response_scale,
             inertia: inertia.clamp(0.0, 2.0) * tuning.inertia.clamp(0.0, 2.0),
             gravity: gravity.clamp(0.0, 2.0) * tuning.gravity.clamp(0.0, 2.0),
             decay_exponent: dt
@@ -713,27 +765,39 @@ impl EnhancedStep {
                 },
             drag: (-0.6 * dt).exp(),
             follow: 1.0 - 0.8_f32.powf(dt * 60.0),
+            // A constrained pendulum needs an explicit return torque. Its
+            // natural frequency is independent of render rate; Bouncy has a
+            // faster return and lower damping so the tip visibly overshoots.
+            restoring: (std::f32::consts::TAU * frequency_hz * response_scale.sqrt() * dt).powi(2),
         }
     }
 }
 
 /// Projected particle integration in world units/second. Authored mobility is
 /// interpreted as retention per 1/60 second, so more substeps do not add damping.
-/// Bouncy reduces damping, not the spring's force or the exported chain lengths.
-fn step_enhanced(p: &mut Particle, parent: V2, gravity: V2, wind: V2, step: &EnhancedStep) {
+/// Bouncy increases restoring response and reduces damping without changing
+/// exported chain lengths.
+fn step_enhanced(
+    p: &mut Particle,
+    parent: V2,
+    gravity: V2,
+    wind: V2,
+    step: &EnhancedStep,
+    retention: f32,
+) {
     let dt = step.dt;
     let speed = p.spec.delay * step.response;
-    let mobility = (p.spec.mobility * step.inertia).clamp(0.0, 1.0);
-    // Even maximum inertia dissipates energy rather than ringing indefinitely.
-    let retention = mobility.powf(step.decay_exponent) * step.drag;
     let before = p.pos;
     let direction = before
         .sub(parent)
         .rotate(p.gravity.angle(gravity) * step.follow);
     let force = gravity.mul(p.spec.acceleration * step.gravity).add(wind);
+    let rest = gravity.unit().mul(p.spec.radius);
+    let spring = rest.sub(direction).mul(step.restoring);
     let predicted = direction
         .add(p.velocity.mul(dt))
-        .add(force.mul((dt * speed).powi(2)));
+        .add(force.mul((dt * speed).powi(2)))
+        .add(spring);
     p.pos = parent.add(predicted.unit().mul(p.spec.radius));
     p.velocity = if speed > 1e-6 {
         p.pos.sub(before).mul(retention / dt)
@@ -882,6 +946,24 @@ mod tests {
             bouncy.iter().all(|v| v.is_finite() && v.abs() < 0.5),
             "no clipping in this fixture"
         );
+    }
+
+    #[test]
+    fn enhanced_coefficients_are_reused_until_tuning_changes() {
+        let mut parameters = parameters();
+        let mut physics = Physics::load(FIXTURE, &parameters).unwrap();
+        let mut settings = PhysicsSettings::default();
+        physics.configure(&settings);
+        physics.update(&mut parameters, 1.0 / 120.0);
+        let coefficients = physics.enhanced_cache[0].retention.as_ptr();
+        let before = physics.enhanced_cache[0].retention[1];
+        physics.configure(&settings);
+        physics.update(&mut parameters, 1.0 / 120.0);
+        assert_eq!(coefficients, physics.enhanced_cache[0].retention.as_ptr());
+        settings.inertia = 0.5;
+        physics.configure(&settings);
+        physics.update(&mut parameters, 1.0 / 120.0);
+        assert_ne!(before, physics.enhanced_cache[0].retention[1]);
     }
 
     #[test]

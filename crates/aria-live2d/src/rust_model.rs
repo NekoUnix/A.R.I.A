@@ -1,0 +1,199 @@
+//! Renderer-facing adapter for ARIA's independent Rust MOC3 evaluator.
+
+use crate::{Blend, Canvas, Drawable, Parameter};
+use anyhow::{Result, ensure};
+use aria_model_core::{draw_order::RenderOrderEvaluator, geometry::GeometryEvaluator, moc::Moc};
+use std::collections::BTreeMap;
+
+pub struct RustModel {
+    evaluator: GeometryEvaluator,
+    orderer: RenderOrderEvaluator,
+    reverse_y: bool,
+    pub(crate) parameters: Vec<Parameter>,
+    parameter_lookup: BTreeMap<String, usize>,
+    pub parts: Vec<Parameter>,
+    pub canvas: Canvas,
+    pub version: String,
+    pub drawables: Vec<Drawable>,
+}
+
+impl RustModel {
+    pub fn load(bytes: &[u8], texture_count: usize) -> Result<Self> {
+        ensure!(
+            bytes.len() <= aria_core::asset_limits::MOC_FILE,
+            "MOC3 exceeds the file size limit"
+        );
+        ensure!((1..=32).contains(&texture_count), "Expected 1–32 textures");
+        let moc = Moc::parse(bytes)?;
+        ensure!(
+            moc.offscreen_count()? == 0,
+            "Cubism offscreen parts are not yet supported"
+        );
+        let canvas = moc.canvas()?;
+        let layouts = moc.mesh_layouts()?;
+        ensure!(
+            layouts
+                .iter()
+                .all(|layout| usize::from(layout.texture) < texture_count),
+            "A texture atlas is missing"
+        );
+        let part_layouts = moc.part_layouts()?;
+        let parameters = moc
+            .parameters()?
+            .into_iter()
+            .map(|spec| Parameter {
+                id: spec.id,
+                min: spec.minimum,
+                max: spec.maximum,
+                default: spec.default,
+                value: spec.default,
+            })
+            .collect::<Vec<_>>();
+        let parameter_lookup = parameters
+            .iter()
+            .enumerate()
+            .map(|(index, parameter)| (parameter.id.clone(), index))
+            .collect();
+        let parts = part_layouts
+            .iter()
+            .map(|part| {
+                let value = if part.visible { 1.0 } else { 0.0 };
+                Parameter {
+                    id: part.id.clone(),
+                    min: 0.0,
+                    max: 1.0,
+                    default: value,
+                    value,
+                }
+            })
+            .collect();
+        let drawables = layouts
+            .into_iter()
+            .map(|layout| {
+                let flags = layout.constant_flags;
+                let masked = !layout.masks.is_empty();
+                Drawable {
+                    id: layout.id,
+                    part: layout
+                        .parent_part
+                        .map_or_else(String::new, |index| part_layouts[index].id.clone()),
+                    positions: vec![[0.0; 2]; layout.uvs.len()],
+                    uvs: layout.uvs,
+                    indices: layout.triangles,
+                    texture: usize::from(layout.texture),
+                    masks: layout
+                        .masks
+                        .into_iter()
+                        .map(|index| index as usize)
+                        .collect(),
+                    masked,
+                    inverted: flags & 8 != 0,
+                    double_sided: flags & 4 != 0,
+                    visible: false,
+                    order: 0,
+                    opacity: 0.0,
+                    multiply: [1.0; 4],
+                    screen: [0.0, 0.0, 0.0, 1.0],
+                    blend: if flags & 1 != 0 {
+                        Blend::Add
+                    } else if flags & 2 != 0 {
+                        Blend::Multiply
+                    } else {
+                        Blend::Normal
+                    },
+                }
+            })
+            .collect();
+        let evaluator = GeometryEvaluator::new(&moc)?;
+        let orderer = RenderOrderEvaluator::new(&moc)?;
+        let mut model = Self {
+            evaluator,
+            orderer,
+            reverse_y: canvas.reverse_y,
+            parameters,
+            parameter_lookup,
+            parts,
+            canvas: Canvas {
+                size: canvas.size,
+                origin: canvas.origin,
+                pixels_per_unit: canvas.pixels_per_unit,
+            },
+            version: format!("ARIA Rust Model Core (MOC3 v{})", moc.version()),
+            drawables,
+        };
+        model.update()?;
+        Ok(model)
+    }
+
+    pub fn parameters(&self) -> &[Parameter] {
+        &self.parameters
+    }
+
+    pub fn set_parameter(&mut self, id: &str, value: f32) {
+        if value.is_finite()
+            && let Some(&index) = self.parameter_lookup.get(id)
+        {
+            let parameter = &mut self.parameters[index];
+            parameter.value = value.clamp(parameter.min, parameter.max);
+        }
+    }
+
+    pub fn update(&mut self) -> Result<()> {
+        let values = self
+            .parameters
+            .iter()
+            .map(|parameter| parameter.value)
+            .collect::<Vec<_>>();
+        let parts = self.parts.iter().map(|part| part.value).collect::<Vec<_>>();
+        let frames = self.evaluator.frame_with_parts(&values, &parts)?;
+        let orders = self.orderer.frame(&values, &frames)?;
+        for ((drawable, frame), order) in self.drawables.iter_mut().zip(frames).zip(orders) {
+            drawable.order = order;
+            if let Some(frame) = frame {
+                ensure!(
+                    drawable.uvs.len() == frame.positions.len(),
+                    "ArtMesh vertex count changed"
+                );
+                let mut positions = frame.positions;
+                if !self.reverse_y {
+                    for position in &mut positions {
+                        position[1] = -position[1];
+                    }
+                }
+                drawable.positions = positions;
+                drawable.opacity = frame.opacity.clamp(0.0, 1.0);
+                drawable.visible = drawable.opacity != 0.0;
+                drawable.multiply = frame.multiply;
+                drawable.screen = frame.screen;
+            } else {
+                drawable.visible = false;
+            }
+        }
+        Ok(())
+    }
+
+    /// Update render state while GPU geometry supplies positions separately.
+    /// Existing CPU positions are left untouched for stable mesh topology.
+    pub fn update_metadata(&mut self) -> Result<()> {
+        let values = self
+            .parameters
+            .iter()
+            .map(|parameter| parameter.value)
+            .collect::<Vec<_>>();
+        let parts = self.parts.iter().map(|part| part.value).collect::<Vec<_>>();
+        let frames = self.evaluator.metadata_frame_with_parts(&values, &parts)?;
+        let orders = self.orderer.frame(&values, &frames)?;
+        for ((drawable, frame), order) in self.drawables.iter_mut().zip(frames).zip(orders) {
+            drawable.order = order;
+            if let Some(frame) = frame {
+                drawable.opacity = frame.opacity.clamp(0.0, 1.0);
+                drawable.visible = drawable.opacity != 0.0;
+                drawable.multiply = frame.multiply;
+                drawable.screen = frame.screen;
+            } else {
+                drawable.visible = false;
+            }
+        }
+        Ok(())
+    }
+}

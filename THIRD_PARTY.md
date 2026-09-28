@@ -89,18 +89,16 @@ The packet fixture is a synthetic example of that public schema, not a recording
 of a person's face. This app is not affiliated with or endorsed by DenchiSoft,
 Live2D Inc., or Apple.
 
-ARIA now compiles the MIT-licensed [Purism Core](https://github.com/SakuraMotion/PurismCore)
-implementation into its native runtime. See [the full MIT notice](docs/licenses/purism-core.txt)
-and [pinned source provenance](crates/aria-live2d/vendor/purism-core/README.md).
-That notice is included with every packaged application under `docs/licenses/`.
-No proprietary Cubism Core binary, Cubism Framework implementation, Live2D sample
-model or third-party avatar export is part of this runtime migration.
+ARIA's Live2D-compatible MOC3 evaluator is implemented in Rust in
+`crates/aria-model-core`. The distributable contains no proprietary Cubism Core
+binary, Cubism Framework implementation, Live2D sample model or third-party
+avatar export. See [runtime distribution](docs/aria-core-runtime.md).
 
 The Rust renderer, motion parser and particle solver are independently implemented.
 Imported avatar/model artwork, textures, animations and editor exports retain
 their authors' terms. ARIA's MIT license does not grant rights to those assets.
 Live2D and Cubism are trademarks of Live2D Inc.; compatibility references do not
-imply affiliation or endorsement. See [distribution scope](docs/purism-core.md).
+imply affiliation or endorsement. See [distribution scope](docs/aria-core-runtime.md).
 
 ## Optional webcam runtime (v0.24)
 

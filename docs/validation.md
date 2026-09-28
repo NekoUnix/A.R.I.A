@@ -5,6 +5,168 @@
 This file records checks for the development builds. The Windows CI workflow
 is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
+## GPU morph and Rust model-core checks — 2026-09-28 (unreleased)
+
+- A metadata-only Rust evaluator and direct hosted adapter matched full Rust
+  visibility, opacity, colors and render order across three poses on the large
+  outfit (3,630 active mesh-poses), OILBUN (852) and Ditto (46). Hosted adapter
+  tests confirmed its vertex arrays remain untouched. This validates the CPU
+  companion for GPU geometry, not live rendering or FPS.
+  An optimized 120-frame large-outfit microbenchmark measured 3.015 ms/frame
+  for full direct Rust updates and 0.085 ms/frame for metadata-only updates.
+- The resident evaluator now chains normal keys, blend-shape deltas, mixed
+  warp/rotation hierarchy and ordered glue on one GPU position buffer. Native
+  DX12 versus full Rust geometry at three poses passed for the large outfit
+  (676,344 active vertex-poses, 1,365 glue pairs), OILBUN (223,740, 2,298
+  pairs), and Ditto (1,980, no glue). Maximum error was below 0.000015 model
+  units. This establishes final geometry parity on these models only;
+  metadata, bounds, live rendering and comparative timing are unverified.
+- The resident GPU evaluator now resolves warp-only hierarchy branches after
+  normal keys and blend deltas. Native DX12 parity passed at three poses on
+  the large outfit (276,025 hierarchy points), OILBUN (112,068) and Ditto
+  (2,309). The test compared 275,742, 105,303 and 702 eligible mesh vertices,
+  respectively, with full Rust geometry across those poses. Mixed rotation
+  branches and glue remain outside this GPU path.
+- The resident normal-key evaluator now chains a resident blend-shape delta
+  pass on the same GPU output buffer. Native DX12 comparisons against compiled
+  Rust mesh and warp frames passed at three poses on the large 90s outfit
+  (458,945 blend-affected points), OILBUN (82,468) and Ditto (none). This is
+  local geometry parity, not full hierarchy/glue or live rendering parity.
+  The large outfit's blend stage held 11.27 MiB static deltas and uploaded
+  11.12 KiB active weights/counts per pose.
+- A reusable Rust GPU key plan and desktop compute evaluator matched decoded
+  mesh and warp keyframe positions across three poses on the large 90s outfit,
+  OILBUN and Ditto. The large model held 24.03 MiB source positions and
+  15.94 MiB per-vertex work resident; pose changes uploaded 41.34 KiB of
+  selected keys and counts. OILBUN's dynamic upload was 10.95 KiB and
+  Ditto's 6.43 KiB. The largest observed coordinate difference was
+  0.000244 model units, within the coordinate-relative parity tolerance.
+  This validates normal-key blending only, not a complete live GPU frame.
+- A native DX12 renderer fixture wrote masked-mesh vertices in a compute
+  shader, then bound that buffer directly for mask and color passes. The
+  resulting image matched the CPU-position path pixel for pixel despite
+  deliberately incorrect CPU drawable coordinates. Undersized GPU buffers,
+  non-finite bounds and zero-sized views were rejected. This verifies the renderer
+  handoff only; live model evaluation still uses CPU positions.
+- The Rust GPU-glue planner gives one conflict-free pass for the large
+  90s outfit's 16 glues and 1,365 pairs, and two ordered passes for OILBUN's
+  24 glues and 2,298 pairs. OILBUN reuses four vertices across glues; neither
+  rig repeats a vertex within one glue. Test-only DX12 compute matched
+  sequential Rust pair updates on synthetic positions with the rigs' actual
+  topology, weights and pose-derived intensities. Maximum coordinate error
+  was below 0.000001 model units. This is not a live-renderer result.
+- A second test-only GPU dispatch applied authored warp and ArtMesh
+  blend-shape position deltas after normal key interpolation. The large
+  90s outfit matched Rust with 1,477,244 resident delta points touching
+  458,945 positions; OILBUN matched with 356,777 deltas touching 82,468
+  positions. Ditto has no position-delta keys in this fixture. The generated
+  chain passed a synthetic active mesh delta through two parent warps and a
+  rotation without readback. This does not verify a production FPS gain.
+- A test-only affine GPU rotation pass matched Rust on 60 local authored
+  rotation frames in the large 90s outfit, 22 in OILBUN and 14 in Ditto at
+  four positions each. Largest coordinate differences were below 0.000001
+  model units. The generated warp hierarchy then applied a reflected and
+  scaled rotation to GPU-resident mesh positions without readback. Inherited
+  rotation coefficients still require CPU preparation; this is not a live
+  renderer performance result.
+- A test-only DX12 warp-key compute pass matched the Rust evaluator on the
+  supplied large 90s outfit at an interior parameter pose: 680 warp nodes,
+  819,275 control points and 327 multi-key blends. Resident key positions
+  occupied 19.75 MiB; the largest observed coordinate difference was
+  0.000244 model units and stayed within the coordinate-relative test
+  tolerance. A generated two-depth chain also consumed GPU-blended control
+  points and resolved its children without intermediate CPU readback. These
+  are parity results, not a live-renderer speedup.
+- The same GPU batch matched Rust for all 1,210 large-model ArtMeshes and
+  225,448 base vertices, including 358 multi-key meshes. Combined warp and
+  ArtMesh keys occupied 24.03 MiB. OILBUN passed on 249 warps and 284 meshes;
+  Ditto passed on 95 warps and 167 meshes. The generated hierarchy check now
+  resolves final mesh positions from GPU-blended local points through two
+  parent warps with no intermediate readback. It does not cover rotation
+  parents, blend shapes or glue and does not measure production FPS.
+- A test-only DX12 compute warp sampler matched Rust across affine and bent
+  generated grids, quad/triangle interpolation, interior/exterior coordinates,
+  and interleaved samples from four grids in one dispatch. It also matched
+  three affine and three bent default-pose grids each from the large 90s outfit,
+  OILBUN and Ditto at 96 sample positions per grid. An in-place two-depth test
+  resolved child and grandchild control grids in successive compute passes with
+  no intermediate CPU readback. The live Live2D renderer does not use this
+  shader yet; no FPS improvement is claimed.
+- A generated DX12 VRM fixture with 12 simultaneously active morph targets
+  stayed on the GPU and rendered within 1% of the CPU fallback image channels.
+  The GPU path now accepts position-only morphs, treating absent normal deltas
+  as zero. Both generated VRM versions passed the existing native morph render
+  check; the supplied NekoUnity2 VRM passed its tracking, expression, spring
+  and freeze render check. Slot allocation is bounded by 32 active targets per
+  mesh, 64 MiB across the model and GPU buffer limits; a larger active set
+  retains the CPU fallback. No comparative FPS result is claimed.
+- A local MOC3 topology diagnostic found zero unparented/glue-free vertices in
+  the 225,448-vertex 90s outfit, with 740 deformers and a maximum parent depth
+  of 19. Simple-mesh GPU interpolation therefore cannot solve that model's
+  CPU bottleneck; the hierarchical GPU evaluator remains open.
+- The independent Rust evaluator now caches deformer states by normal and
+  blend/constraint parameter dependencies, invalidating descendants when a
+  parent changes. A 20-frame cached-versus-forced-fresh sweep passed on all 28
+  supplied MOC3 exports, including changing part opacity and blend-shape
+  parameters. The seven-frame direct official-Core sweep also passed on all
+  28. On the large 90s outfit, the optimized single-axis hosted benchmark
+  improved from roughly 8.74 to 1.98 ms/frame; three 32-axis Rust samples
+  ranged 8.9–9.4 ms against 5.3–5.4 ms for the current runtime. This is CPU
+  caching, not GPU deformation or a blanket 120 FPS result. A same-binary
+  optimized desktop physics smoke settled near 42.3 FPS for the cached direct
+  Rust path versus 53.9 FPS for the default path on this large asset, so the
+  default was not switched.
+- The opt-in in-process Rust core passed a two-avatar independence test using
+  Ditto Eevees, and the large 90s outfit's default-pose GPU render matched its
+  Rust-worker render pixel for pixel at 1,357 × 2,048. The position buffers now
+  move from the evaluator or decoded worker frame into the hosted model instead
+  of making a second vertex copy. The large-model optimized single-axis hosted
+  sample was about 8.74 ms/frame. A 32-axis direct-model sample was 10.93
+  ms/frame for Rust versus 5.70 for the current runtime. In matched hidden
+  desktop smokes, direct Rust settled near 43.6 FPS versus 53.9 FPS for the
+  default runtime, both at a 120 FPS target. This rejects a default switch and
+  does not show GPU offload of MOC3 geometry. The large outfit's seven-frame
+  optimized direct-official-Core comparison passed again after the buffer-move
+  change: 4,834 visible mesh frames, zero mismatches above tolerance and maximum
+  coordinate delta about 0.00000781 model units. Workspace tests, strict
+  all-target/all-feature Clippy, formatting, repository checks and distribution
+  checks also passed.
+- The supplied NekoUnity2.vrm loaded and rendered with GPU skinning and active
+  expression morphs. The test checks that at least one facial morph actually
+  uses the GPU path, compares its rendered pixels with the CPU fallback to
+  within 1% of channels, switches back to GPU, then exercises tracking,
+  springs, freeze and pose restore.
+  GPU morph deltas have a 64 MiB model budget and a CPU fallback. This test
+  checks correctness, not a measured CPU or FPS improvement.
+- Live2D canvas projection now runs in the GPU vertex shader. The native GPU
+  clipping, blending, culling, color and draw-order check passed. OILBUN loaded
+  and rendered through both the default and opt-in Rust workers; against the
+  previous renderer, 1,101 of 3,854,336 OILBUN pixels changed, 21 by more than
+  one channel level. A whole-frame FPS change was not measured.
+- The independent Rust MOC3 evaluator compiled mesh/deformer keyforms and
+  colors into bounded RAM. A seven-frame direct comparison against the local
+  official Cubism Core passed on all 27 exports that the current runtime also
+  accepts, including blend-shape extremes and varied part opacity. The sweep
+  checked vertices, visibility, opacity, multiply/screen color, authored draw
+  order, hierarchical final render order and static mesh data. A repeat of the
+  large 90s outfit official comparison after the latest warp-grid change found
+  zero mismatched mesh frames or render orders across 4,834 visible mesh frames.
+  The direct harness then covered all 28 supplied exports, including
+  `Ditto Eevees.moc3`, which the current runtime rejects. All 28 passed seven
+  frames with zero geometry, visibility, color, draw-order or final render-order
+  mismatches above the test tolerances. Full dynamic-flag behavior and broader
+  rendered-pose coverage remain open.
+- On OILBUN, the optimized Rust geometry path measured about 2.54 ms/frame
+  versus 0.64 ms/frame for the current runtime's deformation path. The Rust
+  evaluator is opt-in only and has no 120 FPS claim. Optimized worker tests with
+  the larger 90s outfit initially measured about 18.38 ms/frame for Rust versus
+  10.20 ms/frame for the default worker. Affine-grid and finite-validated
+  transform fast paths reduced the Rust follow-up to about 13.85 ms/frame
+  against 9.99 ms/frame for the default.
+  Standard workspace tests, strict all-target
+  Clippy, formatting, repository checks and distribution checks passed with
+  this shader/core checkpoint.
+
 ## Avatar performance investigation — 2026-09-27 (unreleased)
 
 - Optimized native CPU test on the supplied large Live2D moc: 1,174 meshes,
@@ -1249,6 +1411,39 @@ the output screenshot target. These hooks require the `screenshots` feature;
 normal portable builds do not run them or change user layouts automatically.
 
 ## Manual acceptance still required on the intended setup
+
+The opt-in GPU MOC3 path can be reproduced in an optimized screenshot smoke by
+setting `ARIA_EXPERIMENTAL_DIRECT_RUST_CORE=1`, `ARIA_EXPERIMENTAL_GPU_MOC3=1`,
+`ARIA_PERF_LOG=1`, `ARIA_SMOKE_TARGET_FPS=120`, and `ARIA_TEST_MODEL` to a local
+manifest before launching an `aria-desktop` build with `screenshots`. Set
+`ARIA_SMOKE_DELAY_SECONDS=20` for sampled `PERF_FRAME`, `PERF_AVATAR` and
+`PERF_CUBISM_RENDER` entries in the profile's `diagnostics` directory. Remove
+the GPU flag for the direct Rust CPU baseline, then remove both experimental
+flags for the current worker baseline. Keep the same model and capture setup.
+On the supplied large outfit, the 2026-09-28 local runs averaged 106.1, 44.5
+and 53.9 sampled FPS respectively. These smokes do not establish a steady
+120 FPS or full-model compatibility gate.
+The native GPU geometry and visible-bounds test passed three poses on all 28
+local MOC3 file paths. A deeply nested warp export had up to 0.000275 model
+units of float32 position difference; native CPU/GPU screenshots differed by
+at most 0.224% of pixels beyond two channel levels and 0.0185% beyond sixteen
+levels across its two tested poses. This covers the supplied exports, not all
+possible Cubism versions, flags, poses or graphics adapters.
+The native Ditto GPU render test also queued a hidden-to-visible bounds change
+before the previous 16-byte map completed. Both the older completed result
+and the newer visible result reached the view without a synchronous vertex
+readback.
+The 28 supplied local MOC3 paths were inventoried as versions 1–5, with no
+version-6 offscreen parts. The official Cubism Core differential test passed
+on the deeply nested tray-maid export. Version-6 offscreen composition still
+requires a suitable local test model and independent Rust/render implementation.
+Full-resolution mask batching matched the prior single-mask renderer pixel for
+pixel on two CPU and GPU poses each of the large 90s outfit, OILBUN and tray-maid
+exports. The native synthetic clipping/blending/draw-order test and frozen
+layer-preview independence test also passed with batching. Matched optimized
+20-second large-outfit runs sampled 117.4 FPS with batching versus 111.0 and
+105.7 in surrounding single-mask runs; batching did not hold 120 FPS. See the
+[performance note](avatar-performance.md) for pass counts and memory tradeoff.
 
 1. Physical iPhone running the user's VTube Studio version, permissions and Wi-Fi.
    Confirm valid packets, head directions, blinks, mouth, gaze, calibration and

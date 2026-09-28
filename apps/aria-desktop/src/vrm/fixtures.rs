@@ -402,6 +402,68 @@ fn both_versions_render_and_morph_on_gpu() {
 }
 
 #[test]
+#[cfg(windows)]
+#[ignore = "requires a DX12 GPU; generated fixture with twelve active morphs"]
+fn twelve_active_morphs_stay_on_gpu_and_match_cpu_fallback() {
+    let state = crate::spout::tests::gpu_state();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("many-morphs.vrm");
+    let (json, bin) = fixture(false);
+    write(&path, &json, &bin);
+    let mut asset = asset::load(&path, &|_| Ok(())).unwrap();
+    let target = asset
+        .geometry
+        .iter()
+        .position(|geometry| !geometry.morphs.is_empty())
+        .unwrap();
+    let geometry = &mut asset.geometry[target];
+    let position = geometry.morphs[0].position.clone();
+    let normal = geometry.morphs[0].normal.clone();
+    while geometry.morphs.len() < 12 {
+        geometry.morphs.push(asset::Morph {
+            position: position.clone(),
+            normal: normal.clone(),
+        });
+    }
+    geometry.weights.resize(12, 0.0);
+    let mut avatar = Avatar::from_asset(&state, asset).unwrap();
+    let mut weights = avatar.weights.clone();
+    weights[target].fill(0.05);
+    avatar
+        .renderer
+        .render(
+            &avatar.asset,
+            &avatar.world,
+            &weights,
+            &avatar.initial_config.vrm,
+        )
+        .unwrap();
+    assert_eq!(avatar.renderer.gpu_morph_usage().1, 1);
+    let gpu_image = avatar.renderer.read_rgba().unwrap();
+    let enabled = avatar.renderer.force_cpu_morphs_for_test();
+    avatar
+        .renderer
+        .render(
+            &avatar.asset,
+            &avatar.world,
+            &weights,
+            &avatar.initial_config.vrm,
+        )
+        .unwrap();
+    let cpu_image = avatar.renderer.read_rgba().unwrap();
+    let mismatched = gpu_image
+        .iter()
+        .zip(&cpu_image)
+        .filter(|(gpu, cpu)| gpu != cpu)
+        .count();
+    assert!(
+        mismatched < gpu_image.len() / 100,
+        "Twelve GPU morphs differed from CPU fallback in {mismatched} channels"
+    );
+    avatar.renderer.restore_gpu_morphs_for_test(&enabled);
+}
+
+#[test]
 fn secondary_detection_protects_humanoid_and_respects_manual_and_exported_chains() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("secondary.vrm");

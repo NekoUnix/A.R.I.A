@@ -9,12 +9,25 @@ directory on `PATH` is not a valid performance sample.
 
 Set `ARIA_PERF_LOG=1` for two-second `PERF_FRAME` and `PERF_AVATAR` records in the
 local diagnostics directory. `PERF_FRAME` reports the UI/update interval;
-`PERF_AVATAR` separates rig/physics evaluation, Purism host roundtrip and
+`PERF_AVATAR` separates rig/physics evaluation, model update and
 Live2D mesh rendering. `PERF_CUBISM_RENDER` further splits view fitting, vertex
 preparation, GPU writes and command encoding, including mask/color pass counts.
 These are CPU wall times, not GPU execution timings or end-to-end tracking
 latency. A busy system, multiple ARIA instances or GPU backpressure can change
 them substantially.
+
+The renderer batches up to 16 distinct full-resolution R8 clipping masks before
+each ordered color chunk. It retains model draw order and mask resolution, and
+allocates at most 64 MiB of mask textures for a 2048×2048 canvas (plus a separate
+pool while a frozen layer preview is open). Set `ARIA_DISABLE_MASK_BATCH=1` to
+use the single-mask path when GPU memory is constrained. On the supplied large
+90s outfit, matched optimized 20-second Studio smokes at a 120 FPS target
+sampled 117.4 FPS on average with batching (111.6–124.5), versus 111.0 and
+105.7 in surrounding single-mask runs. Color passes fell from 61 to 4 and
+sampled CPU render wall time from 4.94 to 4.45 ms in the first pair. System
+load affected those results; the lowest batched interval was below 120 FPS.
+Full-resolution CPU/GPU native images matched pixel-for-pixel on the large
+outfit, OILBUN and tray-maid samples. This is not a guarantee for every rig.
 
 ## Local supplied-asset samples (2026-09-27)
 
@@ -44,6 +57,62 @@ the change halves dynamic vertex transfer, but does not remove the many mask
 passes or the full Core evaluation. Compare the same asset before and after to
 determine its actual FPS effect.
 
+The renderer now uploads deformed model-space vertices and applies the canvas
+projection in its GPU vertex shader. CPU preparation copies positions directly;
+it reduces visible bounds to model-space extrema rather than projecting every
+vertex for that calculation. The GPU clipping/blending test and an OILBUN
+native render passed. Compared with the preceding OILBUN image, 1,101 of
+3,854,336 pixels changed, with 21 pixels differing by more than one channel
+level and two by more than eight, at rasterized edges. This work leaves MOC3
+deformation and worker transport on the CPU, so it does not establish a 120 FPS
+gain. An initial experimental Rust worker sample took about 18.38 ms/frame on
+the large 90s outfit where the current worker took about 10.20 ms/frame.
+After affine-warp and finite-validated transform fast paths, a follow-up sample
+measured about 13.85 ms/frame for Rust and 9.99 ms/frame for the current worker.
+The two runs are local
+measurements, not a guaranteed FPS gain. Making Rust the default requires
+further geometry acceleration and end-to-end profiling.
+
+An in-process Rust adapter removes worker transport and one position-vector
+copy per updated mesh. On the large 90s outfit, an optimized single-parameter
+hosted test measured about 8.74 ms/frame, while a 32-parameter animation
+measured about 10.93 ms/frame for Rust versus 5.70 ms/frame for the current
+runtime's direct model update. In matched 20-second hidden Studio smokes at a
+120 FPS target, the direct Rust path settled near 43.6 FPS (about 13.3 ms host
+and 3.9 ms renderer wall time), while the default path on the rebuilt binary
+settled near 53.9 FPS (about 11.0 ms host and 3.8 ms renderer). These are local
+samples, not GPU timestamps. The direct path stays opt-in. A synchronously
+awaited Rust background thread was also profiled and discarded because its
+desktop result remained near 43 FPS. The next performance work needs to reduce
+Rust keyform/deformer evaluation and mask pass costs; simply changing thread or
+process boundaries does not meet the 8.33 ms whole-frame budget.
+
+The next Rust-core change caches deformer states by their normal and blend
+parameter dependencies. In optimized large-outfit tests, alternating one
+parameter fell from roughly 8.74 to 1.98 ms per hosted update. Three 32-axis
+samples measured about 8.9–9.4 ms for Rust versus 5.3–5.4 ms for the current
+runtime's direct update. With stage profiling enabled, roughly 5.8 ms of the
+Rust 32-axis frame remained in deformers (about 2.0 ms keyform/blend work and
+3.7 ms hierarchy resolution), 2.4 ms in meshes and 0.5 ms in glue. The
+profiling itself adds overhead; the uninstrumented totals above are the
+performance comparison. This change reduces CPU work but does not execute MOC3
+deformation on the GPU. A matching desktop FPS check is recorded separately.
+
+The experimental GPU warp kernel is a correctness and scheduling prototype,
+not a desktop FPS change. It batches independent grids in one compute dispatch
+and resolves a child then grandchild grid in successive GPU passes without
+reading the parent back to the CPU. The current Studio path still computes
+deformer keyforms, hierarchy, meshes and glue on the CPU and uploads final
+vertices, so the measured Live2D frame rates above remain the baseline.
+
+In matched 20-second hidden Studio physics smokes on the same optimized
+executable, the cached direct Rust path settled near 42.3 FPS by the last six
+sampled intervals, versus 53.9 FPS for the default runtime. The Rust sample's
+host wall times ranged roughly 11–23 ms in the sampled intervals; the default
+was usually about 8–15 ms. Rendering was around 3–6 ms on both. The single-axis
+gain therefore does not solve broad physics-driven updates or the whole-frame
+120 FPS target. The default renderer remains unchanged.
+
 The supplied NekoUnity2 VRM spent about 1–1.3 ms in model update at its saved
 60 FPS target. With the smoke cap held at 120 after import, it subsequently ran
 at 120.1–120.3 FPS in three sampled intervals, with 0.8–1.4 ms model updates.
@@ -56,6 +125,23 @@ samples, with occasional 110 FPS intervals around screenshot/UI work. These
 results distinguish long GIF import latency from inexpensive playback. The
 smoke harness now reapplies a requested FPS cap after asynchronous profile
 loads so comparisons use the intended target.
+
+The newer GPU morph path keeps a bounded set of active expression deltas in
+GPU storage and combines them in the vertex shader alongside skinning. The
+supplied NekoUnity2 check verified an active face morph used this path and the
+rendered tracking/pose tests passed. A matching before/after full-frame sample
+has not yet been recorded, so the earlier FPS figures above are baselines,
+not measured gains from this change.
+
+VRM/GLB morph allocation now selects up to 32 active slots per mesh according
+to vertex count, the remaining 64 MiB model budget and the device's storage
+buffer limits. That extends GPU execution beyond the former eight-morph cutoff
+for models that fit, while larger active sets still use the CPU fallback.
+Position-only morphs supply zero normal deltas on the GPU, matching their CPU
+behavior. A generated 12-active-morph DX12 render matched the CPU fallback to
+within 1% of image channels; NekoUnity2 also passed its native render, tracking
+and spring check. This is more GPU work for 3D expressions, not a measured FPS
+gain or a GPU solution for Live2D deformation.
 
 The supplied ICHIGO VRC/GLB export rendered successfully but settled around
 113 FPS in this short native sample, with roughly 5 ms model updates. It uses
@@ -84,13 +170,89 @@ the native GPU clipping/blending test passed. The large model did not approach
 
 ## Core and licensing
 
-ARIA builds the MIT-licensed Purism Core source pinned under
-`crates/aria-live2d/vendor/purism-core`. Its generated bundle remains upstream
-unchanged. Performance work should be measured against that open source and
-validated on licensed, local model files. No proprietary Live2D binary or
-model artwork is part of the repository. Replacing the entire runtime is a
-larger compatibility task and is not required to investigate the measured
-renderer/transport costs.
+An experimental renderer entry point can now draw directly from a GPU
+compute-produced position buffer. A native masked-mesh pixel comparison
+passed with CPU vertex coordinates deliberately poisoned. The full MOC3
+deformation pipeline is not yet connected to it, so current desktop FPS and
+CPU-use figures should not be interpreted as gains from this entry point.
+
+Normal mesh and warp key positions now use a resident GPU plan in native
+parity checks. On the large outfit, the static key and work buffers total
+39.97 MiB, while parameter changes upload about 41 KiB per pose. This
+removes a planned full-frame geometry upload for that stage. A second resident
+pass applies blend-shape position deltas to the same output buffer, including
+458,945 affected points on that model, with only active blend weights/counts
+uploaded per pose (11.12 KiB on the large outfit, with 11.27 MiB resident
+deltas). Whole-frame GPU timing and active Studio FPS have not been measured;
+the complete path below is experimental and still needs performance checks.
+
+The resident path now also transforms warp-only hierarchy branches in GPU
+storage, using fixed depth-ordered work and no intermediate readback. It
+covered 276,025 control/mesh points on the large outfit. The newer full GPU
+evaluator also resolves mixed warp/rotation branches and glue, with full-Rust
+final-position parity on three local models. Only compact rotation frames,
+active keys and glue intensities upload per pose; the large source arrays and
+final mesh positions stay GPU-resident. The default Studio renderer is still
+on its existing path; the later opt-in hookup has no measured FPS gain yet.
+
+The Rust core now computes drawable metadata without blending mesh positions
+or resolving warp points on the CPU. Native comparisons confirmed identical
+visibility, opacity, color and order on the three local models. This path is
+ready to accompany GPU positions, but active Studio frame-time gains still
+depend on measuring the newly connected experimental path.
+The resident position evaluator now applies the final canvas Y orientation on
+the GPU after glue, matching the renderer-facing Rust vertex array across
+three poses on each of those models. It keeps warp control points unchanged.
+This is a required handoff step, not by itself a Studio FPS improvement.
+The GPU now also reduces oriented positions into visible mesh bounds in two
+compute passes. Vertex ownership stays on the device, visibility changes upload
+one 32-bit word per mesh, and the output is only four floats. Three-pose DX12
+checks against Rust bounds passed on the large outfit, OILBUN and Ditto, with
+one pose hiding every third mesh. A newer opt-in path now delivers those bounds
+asynchronously and uses them for view fitting; these native geometry checks do
+not measure live frame time.
+The Rust metadata and GPU geometry path is now the default. Set
+`ARIA_DISABLE_GPU_MOC3=1` for the Rust CPU geometry path. Mesh
+positions stay on the GPU through deformation, bounds reduction and rendering;
+only four bounds values return asynchronously. Superseded bounds are discarded,
+and layer-only changes skip geometry dispatch. Two-pose native image comparisons
+passed on Ditto, OILBUN and the large outfit, including masks and view fitting.
+The large model's broad second pose differed at 0.116% of pixels by more than
+two color levels, within the test's 0.2% budget. The many mask/color passes
+and broad model compatibility still need profiling.
+In separate optimized 20-second screenshot smokes of the large 90s outfit on
+this Windows machine, all capped at 120 FPS, sampled FPS averaged 44.5 for
+direct Rust CPU geometry (42.5–46.4), 53.9 for the current Purism worker
+(51.5–60.7), and 106.1 for direct Rust plus GPU geometry (100.5–114.7).
+The GPU sample's avatar updates were about 4–8 ms versus 17–24 ms for direct
+Rust CPU. These are desktop smokes with demo input and the same VTS import
+dialog open, not a GPU-timestamp benchmark or a long stream. The GPU path
+substantially reduces the CPU bottleneck but does not hold 120 FPS on that
+model. The renderer still issues about 60 mask and 61 color passes per changing
+frame; GPU-mode render work sampled about 4–7 ms, leaving little room for UI,
+capture and frame pacing inside an 8.33 ms budget.
+The GPU path now encodes compute, bounds reduction and rendering
+before one queue submission on a changing frame. A separate optimized smoke
+after closing two older ARIA instances averaged 109.4 sampled FPS over eight
+steady intervals (98.8–120.6). The earlier run had different background
+conditions, so this comparison does not prove a performance improvement. The
+mask/color passes and submission wall time remain the next measured costs.
+An optimized 120-frame alternating-parameter microbenchmark on the large
+outfit measured 3.015 ms/frame for full direct Rust updates and 0.085
+ms/frame for metadata-only updates after warmup. These figures exclude GPU
+compute and rendering and are not a Studio FPS measurement.
+
+The developing Rust `aria-model-core` now retains MOC3 source bytes and all
+declared encoded atlas files in system RAM. The current desktop renderer reads
+these resident bytes, but still uploads every atlas to the GPU. RAM residency
+alone does not lower VRAM or remove the measured Live2D mask-pass cost; GPU
+atlas residency and frame-time changes need separate measurement.
+
+The active runtime is ARIA's independent Rust evaluator. The repository and
+release exclude third-party model artwork and proprietary Live2D binaries.
+Earlier runtime measurements above are historical baselines, not measurements
+of the current Rust default. Renderer and transport costs still need end-to-end
+measurement on licensed local exports.
 
 ## Reproducing the CPU test
 

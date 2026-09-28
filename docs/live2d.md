@@ -33,20 +33,20 @@ the in-app **?** for the detailed workflow and resource limits. To replace
 the main avatar, use **Avatar & appearance → Import Live2D avatar** (or
 **Change avatar / type → Live2D** when an avatar is already loaded).
 
-ARIA evaluates `.moc3` models through **Purism Core**, compiled into its separate
-runtime process, and renders ArtMeshes with wgpu. You need the exported model
+ARIA evaluates `.moc3` models through **ARIA's Rust core** and renders
+ArtMeshes with wgpu. You need the exported model
 and its texture images. A moc3 contains the rig, not the texture artwork.
 
 ## 1. Built-in runtime
 
-Purism Core is included on Windows, Linux and macOS. No SDK download, DLL picker,
+ARIA Core is included on Windows, Linux and macOS. No SDK download, DLL picker,
 or runtime path is required. Old saved Core paths and `ARIA_CUBISM_CORE` do not
 select or load code. Update ARIA itself to update the runtime.
 
-Each model still runs in a hidden worker, providing crash isolation rather than
-an OS security sandbox. The pinned implementation uses the v6 compatibility API;
-this does not add offscreen or advanced blending support to ARIA's renderer.
-See [runtime provenance and distribution](purism-core.md) and
+Each model runs through the in-process Rust evaluator. GPU geometry is used when
+the model supports the current GPU plan, with Rust CPU geometry as its fallback.
+The evaluator does not yet add offscreen or advanced blending support to ARIA's renderer.
+See [runtime and distribution](aria-core-runtime.md) and
 [native platform limitations](platforms.md).
 
 ## 2. Open the avatar
@@ -161,7 +161,7 @@ cargo run --locked --release -p aria-desktop -- 'C:\Avatars\MyAvatar\MyAvatar.mo
 ```
 
 Launching with a model argument does not automatically connect to a phone.
-The built-in Purism Core runtime is used for every Live2D import.
+The built-in ARIA Rust core is used for every Live2D import.
 
 ## Compatibility and limits
 

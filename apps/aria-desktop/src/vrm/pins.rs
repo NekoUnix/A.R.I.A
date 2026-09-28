@@ -14,7 +14,7 @@ impl Avatar {
             .enumerate()
             .map(|(g, geometry)| {
                 (0..geometry.vertices.len())
-                    .map(|v| self.renderer.projected_vertex(g, v as u32))
+                    .map(|v| self.renderer.projected_vertex(&self.asset, g, v as u32))
                     .collect()
             })
             .collect();
@@ -81,7 +81,7 @@ impl Avatar {
             return Anchor::Missing;
         };
         let [Some(a), Some(b), Some(c)] =
-            vertices.map(|v| self.renderer.projected_vertex(*geometry, v))
+            vertices.map(|v| self.renderer.projected_vertex(&self.asset, *geometry, v))
         else {
             return Anchor::Missing;
         };

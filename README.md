@@ -22,19 +22,19 @@ session notes/timer, action recipes and expressive throw rebounds.
 [Website chat sign-in](docs/streaming-chat.md) replaces user API setup; publisher
 registration is still required before new-account sign-in can be enabled.
 
-**v0.37 Alpha includes Purism Core and expressive Bouncy physics.**
+**The next build uses ARIA's Rust model core and expressive Bouncy physics.**
 
-- Import compatible Live2D models immediately: the MIT-licensed Purism Core runtime
-  is built in. A separate proprietary Core download or library path is no longer needed.
+- Import compatible Live2D models with ARIA's built-in Rust evaluator. A separate
+  proprietary Core download or library path is not needed.
 - Choose **Avatar → Physics → Bouncy** for longer swings and clearer rebound, or
   **Natural** for faster settling. Both use a fixed 120 Hz simulation with bounded
   momentum and pause recovery.
 - New avatars start with Bouncy. Existing profiles keep **Authored · legacy ARIA**;
   choose Bouncy and save physics settings to opt in without replacing your profile.
-- Keep the app and runtime worker from the same package together. Your existing
-  model files and their permissions remain separate from the runtime license.
+- Keep your model files together. Their artwork and export permissions remain
+  separate from ARIA's code license.
 
-[Physics controls](docs/physics.md) · [Runtime and distribution](docs/purism-core.md) ·
+[Physics controls](docs/physics.md) · [Runtime and distribution](docs/aria-core-runtime.md) ·
 [Validation results](docs/validation.md) · [Complete changelog](CHANGELOG.md)
 
 The guided [Streamer.bot connector](docs/streamerbot.md) from v0.36 remains available
@@ -113,7 +113,7 @@ controls relevant to that avatar.
 | Avatar type | What to select | What to expect |
 | --- | --- | --- |
 | PNG/GIF | Your image or animated GIF | Set up idle/talking states, transitions and movement. A static image does not need a 3D or Live2D runtime. |
-| Live2D | An exported `.model3.json`, matching `.vtube.json`, model folder, or `.moc3` with its supporting files nearby | Keep the model folder, textures and supporting files together. The built-in Purism Core runtime evaluates the rig. |
+| Live2D | An exported `.model3.json`, matching `.vtube.json`, model folder, or `.moc3` with its supporting files nearby | Keep the model folder, textures and supporting files together. ARIA's Rust core evaluates the rig. |
 | VRM | A `.vrm` file | Load a VRM 0.x or 1.0 avatar with expressions, Medium spring physics and gestures. |
 | VRC / GLB · Experimental | A skinned `.glb` export | Import bones and facial shapes, review tracking assignments and tune flexible hair/accessories. No Unity or Cubism runtime is needed. |
 
@@ -122,12 +122,12 @@ profile list with its saved settings. Click **Edit** or a stage tab to work on o
 all checked profiles appear together in OBS. To use just one avatar, uncheck the
 others. Read [Profiles](docs/profiles.md) for tracking sharing and saved layouts.
 
-For Live2D-compatible exports, ARIA includes **Purism Core**, an MIT-licensed
-runtime compiled into each native build. No Cubism SDK download or library
+For Live2D-compatible exports, ARIA includes its own **Rust model core**.
+No Cubism SDK download or library
 selection is needed. Keep your `.model3.json`, `.moc3`, textures and supporting
 files together. An editor project such as `.cmo3` must first be exported by its creator.
 
-#### Live2D import with built-in Purism Core
+#### Live2D import with built-in ARIA Core
 
 1. Open **Avatar → Avatar & appearance → Import avatar** and choose **Live2D**.
 2. Select the exported model or its folder, review the files, and finish the import.
@@ -135,7 +135,7 @@ files together. An editor project such as `.cmo3` must first be exported by its 
 
 The runtime is included; model artwork is not. Your model author's terms still
 apply. See [Live2D import](docs/live2d.md) for compatibility limits and
-[runtime distribution notes](docs/purism-core.md) for licensing and provenance.
+[runtime distribution notes](docs/aria-core-runtime.md) for licensing and provenance.
 
 ### 4. Choose how you want to control it
 

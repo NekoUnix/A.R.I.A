@@ -1,6 +1,7 @@
-//! A private, versioned stdio connection to a separate Cubism process.
-//! This isolates Core crashes and owns its lifetime; it is not an OS security sandbox.
-use crate::{Canvas, CubismModel, Drawable, Parameter};
+//! ARIA's in-process Rust model adapter and an optional isolated Rust worker.
+#[cfg(test)]
+use crate::CubismModel;
+use crate::{Canvas, Drawable, Parameter, rust_model::RustModel};
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{
@@ -79,10 +80,50 @@ fn read_packet<T: DeserializeOwned>(reader: &mut impl Read) -> Result<Option<T>>
     Ok(Some(value))
 }
 
-/// Worker entry point. The worker evaluates models using bundled Purism Core.
+fn apply_inputs(
+    parameters: &mut [Parameter],
+    model_parts: &mut [Parameter],
+    values: Vec<f32>,
+    parts: Vec<f32>,
+) -> Result<()> {
+    ensure!(
+        values.len() == parameters.len() && values.iter().all(|value| value.is_finite()),
+        "Invalid Cubism parameter frame"
+    );
+    for (parameter, value) in parameters.iter_mut().zip(values) {
+        parameter.value = value.clamp(parameter.min, parameter.max);
+    }
+    ensure!(
+        parts.len() == model_parts.len()
+            && parts
+                .iter()
+                .all(|value| value.is_finite() && (0.0..=1.0).contains(value)),
+        "Invalid part opacity frame"
+    );
+    for (part, value) in model_parts.iter_mut().zip(parts) {
+        part.value = value;
+    }
+    Ok(())
+}
+
+fn moving(drawables: &[Drawable]) -> Vec<MovingDrawable> {
+    drawables
+        .iter()
+        .map(|drawable| MovingDrawable {
+            positions: drawable.positions.clone(),
+            visible: drawable.visible,
+            order: drawable.order,
+            opacity: drawable.opacity,
+            multiply: drawable.multiply,
+            screen: drawable.screen,
+        })
+        .collect()
+}
+
+/// Worker entry point. It serves only ARIA's Rust evaluator.
 pub fn serve(reader: impl Read, writer: impl Write) -> Result<()> {
     let (mut reader, mut writer) = (BufReader::new(reader), BufWriter::new(writer));
-    let mut model: Option<CubismModel> = None;
+    let mut model: Option<Box<RustModel>> = None;
     while let Some(request) = read_packet(&mut reader)? {
         let response = (|| -> Result<Response> {
             match request {
@@ -93,7 +134,7 @@ pub fn serve(reader: impl Read, writer: impl Write) -> Result<()> {
                         .with_context(|| format!("Cannot open {}", moc.display()))?
                         .take(aria_core::asset_limits::MOC_FILE as u64 + 1)
                         .read_to_end(&mut bytes)?;
-                    let loaded = CubismModel::load(Path::new(""), &bytes, textures)?;
+                    let loaded = Box::new(RustModel::load(&bytes, textures)?);
                     let response = Response::Loaded {
                         canvas: loaded.canvas,
                         version: loaded.version.clone(),
@@ -106,39 +147,9 @@ pub fn serve(reader: impl Read, writer: impl Write) -> Result<()> {
                 }
                 Request::Update(values, parts) => {
                     let model = model.as_mut().context("Load a model before updating it")?;
-                    ensure!(
-                        values.len() == model.parameters.len()
-                            && values.iter().all(|v| v.is_finite()),
-                        "Invalid Cubism parameter frame"
-                    );
-                    for (parameter, value) in model.parameters.iter_mut().zip(values) {
-                        parameter.value = value.clamp(parameter.min, parameter.max);
-                    }
-                    ensure!(
-                        parts.len() == model.parts.len()
-                            && parts
-                                .iter()
-                                .all(|v| v.is_finite() && (0.0..=1.0).contains(v)),
-                        "Invalid part opacity frame"
-                    );
-                    for (p, v) in model.parts.iter_mut().zip(parts) {
-                        p.value = v;
-                    }
+                    apply_inputs(&mut model.parameters, &mut model.parts, values, parts)?;
                     model.update()?;
-                    Ok(Response::Frame(
-                        model
-                            .drawables
-                            .iter()
-                            .map(|d| MovingDrawable {
-                                positions: d.positions.clone(),
-                                visible: d.visible,
-                                order: d.order,
-                                opacity: d.opacity,
-                                multiply: d.multiply,
-                                screen: d.screen,
-                            })
-                            .collect(),
-                    ))
+                    Ok(Response::Frame(moving(&model.drawables)))
                 }
             }
         })()
@@ -253,9 +264,11 @@ impl Drop for Connection {
     }
 }
 
-/// Main-process model data. No native pointers or libraries cross the process boundary.
+/// Main-process model data. The default worker keeps native pointers isolated;
+/// the experimental direct Rust path has no native library boundary.
 pub struct HostedModel {
-    connection: Connection,
+    connection: Option<Connection>,
+    direct: Option<Box<RustModel>>,
     parameters: Vec<Parameter>,
     pub parts: Vec<Parameter>,
     lookup: BTreeMap<String, usize>,
@@ -265,15 +278,59 @@ pub struct HostedModel {
 }
 impl HostedModel {
     pub fn process_id(&self) -> u32 {
-        self.connection.child.id()
+        self.connection
+            .as_ref()
+            .map_or_else(std::process::id, |connection| connection.child.id())
     }
-    /// The legacy Core path is ignored; all workers use statically linked Purism Core.
-    pub fn load(core: &Path, moc: &Path, textures: usize) -> Result<Self> {
-        let executable = std::env::var_os("ARIA_CUBISM_HOST")
-            .map(PathBuf::from)
-            .map_or_else(std::env::current_exe, Ok)?;
-        Self::load_with_host(&executable, core, moc, textures)
+    /// Load through ARIA's in-process Rust evaluator. The legacy Core path is ignored.
+    pub fn load(_core: &Path, moc: &Path, textures: usize) -> Result<Self> {
+        Self::load_direct_rust(moc, textures)
     }
+
+    /// Compile directly from a resident RAM source rather than reopening the MOC3.
+    pub fn load_resident(moc: &[u8], textures: usize) -> Result<Self> {
+        Self::from_rust_model(RustModel::load(moc, textures)?)
+    }
+
+    fn load_rust(moc: &Path, textures: usize) -> Result<RustModel> {
+        let moc = moc.canonicalize().context("Cannot find the moc3 file")?;
+        let mut bytes = Vec::new();
+        std::fs::File::open(&moc)
+            .with_context(|| format!("Cannot open {}", moc.display()))?
+            .take(aria_core::asset_limits::MOC_FILE as u64 + 1)
+            .read_to_end(&mut bytes)?;
+        ensure!(
+            bytes.len() <= aria_core::asset_limits::MOC_FILE,
+            "MOC3 file exceeds the model-size limit"
+        );
+        RustModel::load(&bytes, textures)
+    }
+
+    fn load_direct_rust(moc: &Path, textures: usize) -> Result<Self> {
+        let direct = Self::load_rust(moc, textures)?;
+        Self::from_rust_model(direct)
+    }
+
+    fn from_rust_model(direct: RustModel) -> Result<Self> {
+        let parameters = direct.parameters().to_vec();
+        let lookup = parameters
+            .iter()
+            .enumerate()
+            .map(|(index, parameter)| (parameter.id.clone(), index))
+            .collect();
+        let hosted = Self {
+            connection: None,
+            canvas: direct.canvas,
+            version: direct.version.clone(),
+            parameters,
+            parts: direct.parts.clone(),
+            lookup,
+            drawables: direct.drawables.clone(),
+            direct: Some(Box::new(direct)),
+        };
+        Ok(hosted)
+    }
+
     /// Use an explicit ARIA worker executable; the legacy Core path is ignored.
     pub fn load_with_host(
         executable: &Path,
@@ -304,7 +361,8 @@ impl HostedModel {
             .map(|(i, p)| (p.id.clone(), i))
             .collect();
         Ok(Self {
-            connection,
+            connection: Some(connection),
+            direct: None,
             canvas,
             version,
             parameters,
@@ -329,14 +387,58 @@ impl HostedModel {
             p.value = p.default;
         }
     }
+    pub fn uses_direct_rust(&self) -> bool {
+        self.direct.is_some()
+    }
+
+    /// Evaluate renderer metadata without CPU vertex deformation. Only the
+    /// independent in-process Rust model supports this GPU companion path.
+    pub fn update_metadata(&mut self) -> Result<()> {
+        ensure!(
+            self.direct.is_some(),
+            "GPU metadata requires the Rust model core"
+        );
+        self.update_direct(true)
+    }
+
+    fn update_direct(&mut self, metadata_only: bool) -> Result<()> {
+        let direct = self.direct.as_mut().context("Missing direct Rust model")?;
+        ensure!(
+            self.parameters.len() == direct.parameters.len()
+                && self.parts.len() == direct.parts.len(),
+            "Rust core topology changed"
+        );
+        for (source, target) in self.parameters.iter().zip(&mut direct.parameters) {
+            target.value = source.value;
+        }
+        for (source, target) in self.parts.iter().zip(&mut direct.parts) {
+            target.value = source.value;
+        }
+        std::mem::swap(&mut self.drawables, &mut direct.drawables);
+        let result = if metadata_only {
+            direct.update_metadata()
+        } else {
+            direct.update()
+        };
+        std::mem::swap(&mut self.drawables, &mut direct.drawables);
+        result
+    }
+
     pub fn update(&mut self) -> Result<()> {
-        let Response::Frame(frame) = self.connection.request(
-            Request::Update(
-                self.parameters.iter().map(|p| p.value).collect(),
-                self.parts.iter().map(|p| p.value).collect(),
-            ),
-            Duration::from_secs(2),
-        )?
+        if self.direct.is_some() {
+            return self.update_direct(false);
+        }
+        let Response::Frame(frame) = self
+            .connection
+            .as_mut()
+            .context("Missing model worker")?
+            .request(
+                Request::Update(
+                    self.parameters.iter().map(|p| p.value).collect(),
+                    self.parts.iter().map(|p| p.value).collect(),
+                ),
+                Duration::from_secs(2),
+            )?
         else {
             bail!("Cubism host returned an unexpected frame");
         };
@@ -357,7 +459,7 @@ impl HostedModel {
                         .all(|v| v.is_finite()),
                 "Cubism host returned invalid mesh data"
             );
-            d.positions.copy_from_slice(&next.positions);
+            d.positions = next.positions;
             d.visible = next.visible;
             d.order = next.order;
             d.opacity = next.opacity;
@@ -431,10 +533,217 @@ mod tests {
                 assert_eq!(a.opacity, b.opacity);
             }
         }
-        hosted.connection.child.kill().unwrap();
+        hosted.connection.as_mut().unwrap().child.kill().unwrap();
         let start = std::time::Instant::now();
         assert!(hosted.update().is_err());
         assert!(start.elapsed() < Duration::from_secs(3));
         assert!(hosted.update().is_err());
+    }
+
+    #[test]
+    #[ignore = "requires ARIA_TEST_HOST, ARIA_TEST_MOC and local artwork"]
+    fn isolated_rust_core_serves_renderer_frames() {
+        let host = PathBuf::from(std::env::var_os("ARIA_TEST_HOST").unwrap());
+        let moc = PathBuf::from(std::env::var_os("ARIA_TEST_MOC").unwrap());
+        let bytes = std::fs::read(&moc).unwrap();
+        let mut native = RustModel::load(&bytes, 32).unwrap();
+        let mut hosted = HostedModel::load_with_host(&host, Path::new(""), &moc, 32).unwrap();
+        assert!(hosted.version.starts_with("ARIA Rust Model Core"));
+        assert_eq!(native.drawables.len(), hosted.drawables.len());
+        for (expected, actual) in native.drawables.iter().zip(&hosted.drawables) {
+            assert_eq!(actual.id, expected.id);
+            assert_eq!(actual.uvs, expected.uvs);
+            assert_eq!(actual.indices, expected.indices);
+            assert_eq!(actual.masks, expected.masks);
+        }
+        for maximum in [true, false, true] {
+            for parameter in native.parameters().to_vec() {
+                let value = if maximum {
+                    parameter.max
+                } else {
+                    parameter.min
+                };
+                native.set_parameter(&parameter.id, value);
+                hosted.set_parameter(&parameter.id, value);
+            }
+            native.update().unwrap();
+            hosted.update().unwrap();
+            for (expected, actual) in native.drawables.iter().zip(&hosted.drawables) {
+                assert_eq!(actual.visible, expected.visible);
+                assert_eq!(actual.order, expected.order);
+                if expected.visible {
+                    assert!((actual.opacity - expected.opacity).abs() <= 0.001);
+                    for (left, right) in actual.positions.iter().zip(&expected.positions) {
+                        assert!((left[0] - right[0]).abs() <= 0.001);
+                        assert!((left[1] - right[1]).abs() <= 0.001);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "requires ARIA_TEST_MOC"]
+    fn direct_rust_core_keeps_independent_avatar_frames() {
+        let moc = PathBuf::from(std::env::var_os("ARIA_TEST_MOC").unwrap());
+        let mut first = HostedModel::load(Path::new(""), &moc, 32).unwrap();
+        let mut second = HostedModel::load(Path::new(""), &moc, 32).unwrap();
+        assert_eq!(first.process_id(), std::process::id());
+        assert_eq!(second.process_id(), std::process::id());
+        assert!(first.connection.is_none() && second.connection.is_none());
+        let parameter = first
+            .parameters()
+            .iter()
+            .find(|parameter| parameter.max > parameter.min)
+            .unwrap()
+            .clone();
+        first.set_parameter(&parameter.id, parameter.min);
+        second.set_parameter(&parameter.id, parameter.max);
+        first.update().unwrap();
+        second.update().unwrap();
+        assert!(
+            first
+                .drawables
+                .iter()
+                .zip(&second.drawables)
+                .any(|(left, right)| left.positions != right.positions)
+        );
+        let first_positions = first
+            .drawables
+            .iter()
+            .map(|drawable| drawable.positions.clone())
+            .collect::<Vec<_>>();
+        second.update().unwrap();
+        assert!(
+            first
+                .drawables
+                .iter()
+                .zip(first_positions)
+                .all(|(drawable, positions)| drawable.positions == positions)
+        );
+    }
+
+    #[test]
+    #[ignore = "requires ARIA_TEST_MOC; compares direct Rust metadata with full frames"]
+    fn direct_rust_metadata_keeps_vertices_and_matches_render_state() {
+        let moc = PathBuf::from(std::env::var_os("ARIA_TEST_MOC").unwrap());
+        let mut full = HostedModel::load_direct_rust(&moc, 32).unwrap();
+        let mut metadata = HostedModel::load_direct_rust(&moc, 32).unwrap();
+        assert!(metadata.uses_direct_rust());
+        let initial_positions = metadata
+            .drawables
+            .iter()
+            .map(|drawable| drawable.positions.clone())
+            .collect::<Vec<_>>();
+        for pose in 0..3 {
+            for (index, parameter) in full.parameters().to_vec().iter().enumerate() {
+                let value = match pose {
+                    0 => parameter.default,
+                    1 => parameter.min + (parameter.max - parameter.min) * 0.37,
+                    _ => {
+                        let phase = ((index * 17 + 3) % 23) as f32 / 22.0;
+                        parameter.min + (parameter.max - parameter.min) * phase
+                    }
+                };
+                full.set_parameter(&parameter.id, value);
+                metadata.set_parameter(&parameter.id, value);
+            }
+            full.update().unwrap();
+            metadata.update_metadata().unwrap();
+            for ((expected, actual), initial) in full
+                .drawables
+                .iter()
+                .zip(&metadata.drawables)
+                .zip(&initial_positions)
+            {
+                assert_eq!(actual.visible, expected.visible);
+                assert_eq!(actual.order, expected.order);
+                assert_eq!(actual.opacity, expected.opacity);
+                assert_eq!(actual.multiply, expected.multiply);
+                assert_eq!(actual.screen, expected.screen);
+                assert_eq!(&actual.positions, initial);
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "requires ARIA_TEST_MOC; run optimized"]
+    fn direct_rust_update_benchmark() {
+        let moc = PathBuf::from(std::env::var_os("ARIA_TEST_MOC").unwrap());
+        let mut full = HostedModel::load(Path::new(""), &moc, 32).unwrap();
+        let mut metadata = HostedModel::load(Path::new(""), &moc, 32).unwrap();
+        let parameter = full
+            .parameters()
+            .iter()
+            .find(|parameter| parameter.max > parameter.min)
+            .unwrap()
+            .clone();
+        for (label, model, metadata_only) in [
+            ("full", &mut full, false),
+            ("metadata", &mut metadata, true),
+        ] {
+            let mut measured = std::time::Duration::ZERO;
+            for frame in 0..140 {
+                model.set_parameter(
+                    &parameter.id,
+                    if frame % 2 == 0 {
+                        parameter.min
+                    } else {
+                        parameter.max
+                    },
+                );
+                let start = std::time::Instant::now();
+                if metadata_only {
+                    model.update_metadata().unwrap();
+                } else {
+                    model.update().unwrap();
+                }
+                if frame >= 20 {
+                    measured += start.elapsed();
+                }
+            }
+            eprintln!(
+                "{} {label}: 120 direct hosted frames {:.3} ms/frame after warmup",
+                model.version,
+                measured.as_secs_f64() * 1000.0 / 120.0
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "requires ARIA_TEST_HOST and ARIA_TEST_MOC; run optimized for meaningful timing"]
+    fn isolated_worker_update_benchmark() {
+        let host = PathBuf::from(std::env::var_os("ARIA_TEST_HOST").unwrap());
+        let moc = PathBuf::from(std::env::var_os("ARIA_TEST_MOC").unwrap());
+        let mut hosted = HostedModel::load_with_host(&host, Path::new(""), &moc, 32).unwrap();
+        let parameter = hosted
+            .parameters()
+            .iter()
+            .find(|parameter| parameter.max > parameter.min)
+            .unwrap()
+            .clone();
+        let start = std::time::Instant::now();
+        let mut measured = std::time::Duration::ZERO;
+        for frame in 0..140 {
+            hosted.set_parameter(
+                &parameter.id,
+                if frame % 2 == 0 {
+                    parameter.min
+                } else {
+                    parameter.max
+                },
+            );
+            let before = std::time::Instant::now();
+            hosted.update().unwrap();
+            if frame >= 20 {
+                measured += before.elapsed();
+            }
+        }
+        eprintln!(
+            "{}: 120 worker frames {:.3} ms/frame after warmup, {:.2} s total",
+            hosted.version,
+            measured.as_secs_f64() * 1000.0 / 120.0,
+            start.elapsed().as_secs_f64()
+        );
     }
 }

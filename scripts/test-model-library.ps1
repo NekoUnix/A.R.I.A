@@ -9,7 +9,7 @@ Push-Location -LiteralPath (Split-Path -Parent $PSScriptRoot)
 try {
     $env:ARIA_TEST_MODEL_FOLDER = $ariaFolder
     & cargo build --locked --release -p aria-live2d --bin aria-cubism-host
-    if ($LASTEXITCODE -ne 0) { throw 'Bundled Purism host build failed' }
+    if ($LASTEXITCODE -ne 0) { throw 'Rust model host build failed' }
     $env:ARIA_CUBISM_HOST = (Resolve-Path -LiteralPath 'target/release/aria-cubism-host.exe').Path
     & cargo test --locked --release -p aria-desktop local_model_library_expressive_physics -- --ignored --nocapture --test-threads=1
     if ($LASTEXITCODE -ne 0) { throw 'Physics stability/frame-rate verification failed' }

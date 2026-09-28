@@ -1,4 +1,8 @@
-use crate::cubism_render::{ModelImage, ModelRenderer};
+use crate::cubism_render::{
+    ModelImage, ModelRenderer, fit_canvas_from_model_extents, normalized_model_extents,
+};
+use crate::gpu_position_evaluator::GpuPositionEvaluator;
+use crate::gpu_visible_bounds::GpuVisibleBounds;
 use anyhow::{Context, Result};
 use aria_core::{
     movement::{self, PoseMode, RigConfig},
@@ -9,6 +13,11 @@ use aria_core::{
 use aria_live2d::CubismModel;
 use aria_live2d::host::HostedModel;
 use aria_model::ModelFiles;
+use aria_model_core::resident::ResidentModel;
+use aria_model_core::{
+    gpu_blend_plan::GpuBlendDeltaPlan, gpu_glue_plan::GpuGluePlan,
+    gpu_hierarchy_plan::GpuHierarchyPlan, gpu_key_plan::GpuPositionKeyPlan, moc::Moc,
+};
 use eframe::egui_wgpu::RenderState;
 use std::{
     collections::BTreeMap,
@@ -21,6 +30,7 @@ pub struct Avatar {
     pub name: String,
     pub model_key: String,
     pub files: ModelFiles,
+    _resident: ResidentModel,
     pub model: HostedModel,
     pub initial_config: RigConfig,
     pub labels: BTreeMap<String, String>,
@@ -28,21 +38,120 @@ pub struct Avatar {
     pub physics: Option<Physics>,
     pub imported_count: usize,
     renderer: ModelRenderer,
+    gpu: Option<GpuModelPath>,
     last_pose_mode: PoseMode,
     last_layers: aria_core::layers::Config,
     values: Vec<rig::RigParameter>,
+    cpu_surface_requested: bool,
+    cpu_surface_current: bool,
+}
+
+struct GpuModelPath {
+    state: RenderState,
+    positions: GpuPositionEvaluator,
+    bounds: GpuVisibleBounds,
+    values: Vec<f32>,
+    parts: Vec<f32>,
+    visible: Vec<bool>,
+    latest_bounds: Option<[f32; 4]>,
+    positions_ready: bool,
+}
+
+impl GpuModelPath {
+    fn new(state: &RenderState, resident: &ResidentModel, model: &HostedModel) -> Result<Self> {
+        let moc = Moc::parse(resident.moc())?;
+        let plan = GpuPositionKeyPlan::new(&moc)?;
+        let blend = GpuBlendDeltaPlan::new(&moc, &plan)?;
+        let hierarchy = GpuHierarchyPlan::new(&moc, &plan)?;
+        let glue = GpuGluePlan::new(&moc, &plan)?;
+        let positions = GpuPositionEvaluator::new(&state.device, plan)?
+            .with_blends(&state.device, blend)?
+            .with_hierarchy(&state.device, hierarchy)?
+            .with_glue(&state.device, glue)?
+            .with_output_orientation(&state.device, moc.canvas()?.reverse_y)?;
+        let bounds = GpuVisibleBounds::new(&state.device, positions.positions(), positions.plan())?;
+        Ok(Self {
+            state: state.clone(),
+            positions,
+            bounds,
+            values: vec![0.0; model.parameters().len()],
+            parts: vec![0.0; model.parts.len()],
+            visible: vec![false; model.drawables.len()],
+            latest_bounds: None,
+            positions_ready: false,
+        })
+    }
+
+    fn poll_bounds(&mut self) -> Result<bool> {
+        if let Some(bounds) = self
+            .bounds
+            .poll_readback(&self.state.device, &self.state.queue)?
+        {
+            self.latest_bounds = Some(bounds);
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    fn encode(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        model: &HostedModel,
+        layers: &aria_core::layers::Config,
+        geometry_changed: bool,
+    ) -> Result<()> {
+        for (target, drawable) in self.visible.iter_mut().zip(&model.drawables) {
+            *target = drawable.visible && drawable.opacity * layers.opacity(&drawable.id) > 0.01;
+        }
+        if geometry_changed || !self.positions_ready {
+            for (target, parameter) in self.values.iter_mut().zip(model.parameters()) {
+                *target = parameter.value;
+            }
+            for (target, part) in self.parts.iter_mut().zip(&model.parts) {
+                *target = part.value;
+            }
+            self.positions.encode_with_parts(
+                &self.state.queue,
+                encoder,
+                &self.values,
+                Some(&self.parts),
+            )?;
+        }
+        self.bounds
+            .encode(&self.state.queue, encoder, &self.visible)?;
+        self.positions_ready = true;
+        Ok(())
+    }
 }
 impl Avatar {
-    pub fn load(state: &RenderState, core: &Path, mut files: ModelFiles) -> Result<Self> {
-        let bytes = aria_model::read_bounded(&files.moc, aria_core::asset_limits::MOC_FILE)?;
-        let model_key = movement::model_key(&bytes);
-        drop(bytes);
-        let model = HostedModel::load(core, &files.moc, files.textures.len())
+    pub fn load(state: &RenderState, _core: &Path, mut files: ModelFiles) -> Result<Self> {
+        let resident = ResidentModel::load(&files.moc, &files.textures)
+            .context("Cannot load model sources into RAM")?;
+        let model_key = movement::model_key(resident.moc());
+        let model = HostedModel::load_resident(resident.moc(), files.textures.len())
             .context("Cannot load Live2D avatar")?;
-        let mut renderer =
-            ModelRenderer::new(state, model.canvas, &model.drawables, &files.textures)?;
+        let mut renderer = ModelRenderer::new_resident(
+            state,
+            model.canvas,
+            &model.drawables,
+            &resident,
+            &files.textures,
+        )?;
         files.warnings.extend(renderer.import_notes.clone());
         renderer.render(model.canvas, &model.drawables)?;
+        let gpu = if std::env::var("ARIA_DISABLE_GPU_MOC3").as_deref() != Ok("1") {
+            match GpuModelPath::new(state, &resident, &model) {
+                Ok(path) => Some(path),
+                Err(error) => {
+                    files.warnings.push(format!(
+                        "GPU model path unavailable; using CPU geometry: {error:#}"
+                    ));
+                    None
+                }
+            }
+        } else {
+            None
+        };
         let mut initial_config = RigConfig::from_parameters(model.parameters());
         let mut imported_count = 0;
         let mut physics = files.physics.as_ref().and_then(|path| {
@@ -107,6 +216,7 @@ impl Avatar {
             name,
             model_key,
             files,
+            _resident: resident,
             model,
             initial_config,
             labels: display.labels,
@@ -114,13 +224,33 @@ impl Avatar {
             physics,
             imported_count,
             renderer,
+            gpu,
             last_pose_mode: PoseMode::Live,
             last_layers: Default::default(),
             values,
+            cpu_surface_requested: false,
+            cpu_surface_current: true,
         })
+    }
+    pub fn request_cpu_surface_geometry(&mut self, requested: bool) {
+        self.cpu_surface_requested = requested;
     }
     pub fn image(&self) -> ModelImage {
         self.renderer.image
+    }
+    pub fn runtime_label(&self) -> &'static str {
+        if self.gpu.is_some() {
+            "LIVE2D · ARIA RUST + GPU"
+        } else {
+            "LIVE2D · ARIA RUST · CPU"
+        }
+    }
+    pub fn runtime_description(&self) -> &'static str {
+        if self.gpu.is_some() {
+            "ARIA's Rust core evaluates model geometry on the GPU."
+        } else {
+            "ARIA's Rust core evaluates model geometry on the CPU."
+        }
     }
     pub fn frozen_preview_renderer(&self) -> ModelRenderer {
         self.renderer.fork_preview()
@@ -204,21 +334,90 @@ impl Avatar {
             .iter()
             .zip(self.model.parameters())
             .all(|(a, b)| a.value == b.value);
-        if !pose_changed && !parts_changed && self.last_layers == *render_layers {
+        let cpu_surface_needed = self.gpu.is_some()
+            && (self.cpu_surface_requested
+                || config.items.iter().any(|item| {
+                    matches!(
+                        item.pin.as_ref(),
+                        Some(aria_core::items::Pin::Surface { .. })
+                    )
+                }));
+        let surface_refresh = cpu_surface_needed && !self.cpu_surface_current;
+        let gpu_geometry_pending = self.gpu.as_ref().is_some_and(|gpu| !gpu.positions_ready);
+        let bounds_changed = self
+            .gpu
+            .as_mut()
+            .map_or(Ok(false), GpuModelPath::poll_bounds)?;
+        if !pose_changed
+            && !parts_changed
+            && !surface_refresh
+            && !gpu_geometry_pending
+            && self.last_layers == *render_layers
+            && !bounds_changed
+        {
             return Ok(false);
         }
-        if pose_changed || parts_changed {
+        if pose_changed || parts_changed || surface_refresh {
             if parts_changed {
                 self.model.parts.clone_from(parts);
             }
             for p in &self.values {
                 self.model.set_parameter(&p.id, p.value);
             }
-            self.model.update()?;
+            if self.gpu.is_some() && !cpu_surface_needed {
+                self.model.update_metadata()?;
+                self.cpu_surface_current = false;
+            } else {
+                self.model.update()?;
+                self.cpu_surface_current = true;
+            }
         }
         let host_updated = Instant::now();
-        self.renderer
-            .render_layers(self.model.canvas, &self.model.drawables, &render_layers)?;
+        if let Some(gpu) = &mut self.gpu {
+            let mut encoder = gpu.state.device.create_command_encoder(&Default::default());
+            let mut evaluated_gpu = false;
+            if pose_changed
+                || parts_changed
+                || gpu_geometry_pending
+                || self.last_layers != *render_layers
+            {
+                gpu.encode(
+                    &mut encoder,
+                    &self.model,
+                    &render_layers,
+                    pose_changed || parts_changed,
+                )?;
+                evaluated_gpu = true;
+            }
+            let (view, bounds) = if let Some(extents) = gpu.latest_bounds {
+                let view = fit_canvas_from_model_extents(
+                    self.model.canvas,
+                    extents,
+                    Some(self.renderer.view_canvas),
+                );
+                (view, normalized_model_extents(view, extents))
+            } else {
+                (self.renderer.view_canvas, self.renderer.bounds)
+            };
+            self.renderer.render_layers_gpu_positions_encoded(
+                view,
+                &self.model.drawables,
+                &render_layers,
+                gpu.positions.positions(),
+                bounds,
+                &mut encoder,
+            )?;
+            gpu.state.queue.submit([encoder.finish()]);
+            if evaluated_gpu {
+                gpu.bounds.begin_readback();
+            }
+        } else {
+            self.renderer.render_layers(
+                self.model.canvas,
+                &self.model.drawables,
+                &render_layers,
+            )?;
+        }
         let rendered = Instant::now();
         static PERF_LOG: OnceLock<bool> = OnceLock::new();
         if *PERF_LOG.get_or_init(|| std::env::var("ARIA_PERF_LOG").as_deref() == Ok("1")) {
@@ -263,7 +462,219 @@ mod tests {
     use super::*;
     #[test]
     #[cfg(windows)]
-    #[ignore = "requires ARIA_TEST_MODEL_FOLDER and DX12; uses bundled Purism Core"]
+    #[ignore = "requires ARIA_TEST_MODEL and DX12"]
+    fn gpu_surface_pin_refreshes_cpu_geometry() {
+        let state = crate::spout::tests::gpu_state();
+        let path = std::env::var_os("ARIA_TEST_MODEL").unwrap();
+        let files = aria_model::load_files(Path::new(&path)).unwrap();
+        let mut avatar = Avatar::load(&state, Path::new(""), files).unwrap();
+        assert!(avatar.gpu.is_some(), "test model must support GPU geometry");
+        avatar.cpu_surface_current = false;
+        avatar.request_cpu_surface_geometry(true);
+        let mut config = avatar.initial_config.clone();
+        let mut expressions = crate::expressions_panel::ExpressionsPanel::default();
+        assert!(
+            avatar
+                .update(&Inputs::new(), &mut config, &mut expressions, 1.0 / 60.0)
+                .unwrap()
+        );
+        assert!(avatar.gpu.as_ref().unwrap().positions_ready);
+        assert!(avatar.cpu_surface_current);
+        let mut expected =
+            HostedModel::load_resident(avatar._resident.moc(), avatar.files.textures.len())
+                .unwrap();
+        for parameter in avatar.model.parameters() {
+            expected.set_parameter(&parameter.id, parameter.value);
+        }
+        expected.update().unwrap();
+        for (actual, expected) in avatar.model.drawables.iter().zip(&expected.drawables) {
+            assert_eq!(actual.positions, expected.positions);
+        }
+    }
+    #[test]
+    #[cfg(windows)]
+    #[ignore = "requires ARIA_TEST_MODEL and DX12"]
+    fn local_gpu_model_frame_matches_full_rust_render() {
+        let state = crate::spout::tests::gpu_state();
+        let path = std::env::var_os("ARIA_TEST_MODEL").unwrap();
+        let files = aria_model::load_files(Path::new(&path)).unwrap();
+        let resident = ResidentModel::load(&files.moc, &files.textures).unwrap();
+        let mut cpu_model =
+            HostedModel::load(Path::new(""), &files.moc, files.textures.len()).unwrap();
+        let mut gpu_model =
+            HostedModel::load(Path::new(""), &files.moc, files.textures.len()).unwrap();
+        assert!(cpu_model.uses_direct_rust() && gpu_model.uses_direct_rust());
+        let mut gpu = GpuModelPath::new(&state, &resident, &gpu_model).unwrap();
+        let mut cpu_renderer = ModelRenderer::new_resident(
+            &state,
+            cpu_model.canvas,
+            &cpu_model.drawables,
+            &resident,
+            &files.textures,
+        )
+        .unwrap();
+        let mut gpu_renderer = ModelRenderer::new_resident(
+            &state,
+            gpu_model.canvas,
+            &gpu_model.drawables,
+            &resident,
+            &files.textures,
+        )
+        .unwrap();
+        let params = cpu_model.parameters().to_vec();
+        for pose in 0..2 {
+            for (index, parameter) in params.iter().enumerate() {
+                let value = if pose == 0 {
+                    parameter.default
+                } else {
+                    let t = ((index * 17 + 3) % 23) as f32 / 22.0;
+                    parameter.min + (parameter.max - parameter.min) * t
+                };
+                cpu_model.set_parameter(&parameter.id, value);
+                gpu_model.set_parameter(&parameter.id, value);
+            }
+            cpu_model.update().unwrap();
+            gpu_model.update_metadata().unwrap();
+            let layers = aria_core::layers::Config::default();
+            let mut encoder = state.device.create_command_encoder(&Default::default());
+            gpu.encode(&mut encoder, &gpu_model, &layers, true).unwrap();
+            state.queue.submit([encoder.finish()]);
+            gpu.bounds.begin_readback();
+            state
+                .device
+                .poll(wgpu::PollType::wait_indefinitely())
+                .unwrap();
+            assert!(gpu.poll_bounds().unwrap());
+            cpu_renderer
+                .render_layers(cpu_model.canvas, &cpu_model.drawables, &layers)
+                .unwrap();
+            let extents = gpu.latest_bounds.unwrap();
+            let view = fit_canvas_from_model_extents(
+                gpu_model.canvas,
+                extents,
+                Some(gpu_renderer.view_canvas),
+            );
+            for axis in 0..2 {
+                assert!(
+                    (view.size[axis] - cpu_renderer.view_canvas.size[axis]).abs() < 0.1,
+                    "pose {pose} axis {axis}: CPU view size {} vs GPU {}",
+                    cpu_renderer.view_canvas.size[axis],
+                    view.size[axis]
+                );
+                assert!(
+                    (view.origin[axis] - cpu_renderer.view_canvas.origin[axis]).abs() < 0.1,
+                    "pose {pose} axis {axis}: CPU view origin {} vs GPU {}",
+                    cpu_renderer.view_canvas.origin[axis],
+                    view.origin[axis]
+                );
+            }
+            let bounds = normalized_model_extents(view, extents);
+            gpu_renderer
+                .render_layers_gpu_positions(
+                    view,
+                    &gpu_model.drawables,
+                    &layers,
+                    gpu.positions.positions(),
+                    bounds,
+                )
+                .unwrap();
+            let (expected, size) = cpu_renderer.read_rgba_for_test().unwrap();
+            let (actual, gpu_size) = gpu_renderer.read_rgba_for_test().unwrap();
+            assert_eq!(size, gpu_size);
+            if let Some(directory) = std::env::var_os("ARIA_TEST_RENDER_DIR") {
+                let directory = std::path::PathBuf::from(directory);
+                std::fs::create_dir_all(&directory).unwrap();
+                image::save_buffer(
+                    directory.join(format!("rust-cpu-{pose}.png")),
+                    &expected,
+                    size[0],
+                    size[1],
+                    image::ColorType::Rgba8,
+                )
+                .unwrap();
+                image::save_buffer(
+                    directory.join(format!("rust-gpu-{pose}.png")),
+                    &actual,
+                    size[0],
+                    size[1],
+                    image::ColorType::Rgba8,
+                )
+                .unwrap();
+            }
+            assert_eq!(expected.len(), actual.len());
+            let different = expected
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .zip(actual.as_chunks::<4>().0.iter())
+                .filter(|(a, b)| a.iter().zip(*b).any(|(x, y)| x.abs_diff(*y) > 2))
+                .count();
+            let pixels = expected.len() / 4;
+            let severe = expected
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .zip(actual.as_chunks::<4>().0.iter())
+                .filter(|(a, b)| a.iter().zip(*b).any(|(x, y)| x.abs_diff(*y) > 16))
+                .count();
+            let total_error: u64 = expected
+                .iter()
+                .zip(&actual)
+                .map(|(a, b)| u64::from(a.abs_diff(*b)))
+                .sum();
+            eprintln!(
+                "GPU render parity pose {pose}: changed {different}/{pixels}, severe {severe}, total error {total_error}, CPU view {:?}/{:?}, GPU view {:?}/{:?}, extents {extents:?}",
+                cpu_renderer.view_canvas.size,
+                cpu_renderer.view_canvas.origin,
+                gpu_renderer.view_canvas.size,
+                gpu_renderer.view_canvas.origin,
+            );
+            assert!(
+                different * 400 <= pixels && severe * 5000 <= pixels,
+                "pose {pose}: {different}/{pixels} pixels differ beyond 2 levels; {severe} differ beyond 16 levels"
+            );
+        }
+        // An animated model can change again before a four-value bounds map
+        // completes. The earlier result must still reach the view while the
+        // newer result is queued, or continuous motion starves framing.
+        let visible: Vec<_> = gpu_model.drawables.iter().map(|d| d.visible).collect();
+        for drawable in &mut gpu_model.drawables {
+            drawable.visible = false;
+        }
+        let layers = aria_core::layers::Config::default();
+        let mut encoder = state.device.create_command_encoder(&Default::default());
+        gpu.encode(&mut encoder, &gpu_model, &layers, false)
+            .unwrap();
+        state.queue.submit([encoder.finish()]);
+        gpu.bounds.begin_readback();
+        for (drawable, visible) in gpu_model.drawables.iter_mut().zip(visible) {
+            drawable.visible = visible;
+        }
+        let mut encoder = state.device.create_command_encoder(&Default::default());
+        gpu.encode(&mut encoder, &gpu_model, &layers, false)
+            .unwrap();
+        state.queue.submit([encoder.finish()]);
+        state
+            .device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
+        assert!(
+            gpu.poll_bounds().unwrap(),
+            "older completed bounds were starved"
+        );
+        let hidden = gpu.latest_bounds.unwrap();
+        assert!(hidden[0] > hidden[2] && hidden[1] > hidden[3]);
+        state
+            .device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
+        assert!(gpu.poll_bounds().unwrap(), "newer bounds did not arrive");
+        let revealed = gpu.latest_bounds.unwrap();
+        assert!(revealed[0] <= revealed[2] && revealed[1] <= revealed[3]);
+    }
+    #[test]
+    #[cfg(windows)]
+    #[ignore = "requires ARIA_TEST_MODEL_FOLDER and DX12"]
     fn nested_model_library_renders_full_geometry() {
         let state = crate::spout::tests::gpu_state();
         let root = std::env::var_os("ARIA_TEST_MODEL_FOLDER").unwrap();
@@ -287,6 +698,59 @@ mod tests {
                 original.size,
                 view.size
             );
+            if a.gpu.is_some()
+                && let Some((mesh, drawable)) =
+                    a.model.drawables.iter().enumerate().find(|(_, drawable)| {
+                        if !drawable.visible || drawable.indices.len() < 3 {
+                            return false;
+                        }
+                        let Some(a) = drawable.positions.get(drawable.indices[0] as usize) else {
+                            return false;
+                        };
+                        let Some(b) = drawable.positions.get(drawable.indices[1] as usize) else {
+                            return false;
+                        };
+                        (a[0] - b[0]).hypot(a[1] - b[1]) > 1e-5
+                    })
+            {
+                let pin = aria_core::items::Pin::Surface {
+                    mesh,
+                    vertices: [
+                        drawable.indices[0],
+                        drawable.indices[1],
+                        drawable.indices[2],
+                    ],
+                    weights: [0.2, 0.3, 0.5],
+                    angle: 0.0,
+                    length: 1.0,
+                };
+                let mut config = a.initial_config.clone();
+                config.items.push(aria_core::items::Item {
+                    pin: Some(pin.clone()),
+                    ..Default::default()
+                });
+                a.cpu_surface_current = false;
+                a.update(
+                    &Inputs::new(),
+                    &mut config,
+                    &mut crate::expressions_panel::ExpressionsPanel::default(),
+                    1.0 / 60.0,
+                )
+                .unwrap();
+                assert!(
+                    a.cpu_surface_current,
+                    "Surface geometry stale for {}",
+                    a.name
+                );
+                assert!(
+                    matches!(
+                        crate::items::anchor(Some(&pin), Some(&a)),
+                        crate::items::Anchor::Surface { .. }
+                    ),
+                    "Surface pin failed for {}",
+                    a.name
+                );
+            }
             if let Some(folder) = std::env::var_os("ARIA_TEST_RENDER_DIR") {
                 a.save_png(&Path::new(&folder).join(format!("friend-{index}.png")))
                     .unwrap();
@@ -606,6 +1070,7 @@ mod tests {
             aria_model::load_files(Path::new(&path)).unwrap(),
         )
         .unwrap();
+        assert!(avatar.model.version.starts_with("ARIA Rust Model Core"));
         let mut config = avatar.initial_config.clone();
         config.pose.mode = PoseMode::Frozen;
         config.pose.frozen = avatar
@@ -657,18 +1122,35 @@ mod tests {
                 .update(&Inputs::new(), &mut config, &mut expressions, 0.)
                 .unwrap()
         );
-        assert_eq!(
-            original,
-            avatar.renderer.read_rgba_for_test().unwrap().0,
-            "Restoring layers restores the exact original image"
-        );
-        for _ in 0..60 {
+        let restored = avatar.renderer.read_rgba_for_test().unwrap().0;
+        if avatar.gpu.is_some() {
+            let different = original
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .zip(restored.as_chunks::<4>().0.iter())
+                .filter(|(a, b)| a.iter().zip(*b).any(|(x, y)| x.abs_diff(*y) > 2))
+                .count();
+            let pixels = original.len() / 4;
             assert!(
-                !avatar
-                    .update(&Inputs::new(), &mut config, &mut expressions, 1.0 / 60.0)
-                    .unwrap()
+                different * 500 <= pixels,
+                "GPU-restored image differs at {different}/{pixels} pixels"
+            );
+        } else {
+            assert_eq!(
+                original, restored,
+                "Restoring layers restores the exact original image"
             );
         }
+        let mut bounds_refreshes = 0;
+        for _ in 0..60 {
+            bounds_refreshes += usize::from(
+                avatar
+                    .update(&Inputs::new(), &mut config, &mut expressions, 1.0 / 60.0)
+                    .unwrap(),
+            );
+        }
+        assert!(bounds_refreshes <= usize::from(avatar.gpu.is_some()));
         let p = avatar
             .model
             .parameters()
@@ -693,11 +1175,15 @@ mod tests {
                 .value,
             value
         );
-        assert!(
-            !avatar
-                .update(&Inputs::new(), &mut config, &mut expressions, 1.0 / 60.0)
-                .unwrap()
-        );
+        let mut refreshes = 0;
+        for _ in 0..60 {
+            refreshes += usize::from(
+                avatar
+                    .update(&Inputs::new(), &mut config, &mut expressions, 1.0 / 60.0)
+                    .unwrap(),
+            );
+        }
+        assert!(refreshes <= usize::from(avatar.gpu.is_some()));
         assert_eq!(avatar.renderer.vertex_staging_capacity(), before);
     }
     #[test]

@@ -124,9 +124,15 @@ OBS resolution is configured separately and remains full size even when its
 desktop preview is small. The bottom bar reports process CPU, RAM and GPU memory.
 
 Mesh accessors shared by materials remain shared. Skinning runs on the GPU;
-only morph meshes whose expression weights change are uploaded again. Textures
-are decoded once per referenced image and CPU texture copies are released after
-GPU upload. Lower canvas quality or frame rate when sharing the GPU with a game.
+meshes that share a skin also share its per-frame CPU palette calculation.
+When an expression changes, up to eight active morph targets per mesh run in
+the GPU vertex shader: ARIA uploads their deltas when the active set changes
+and their small weight buffer when values change. Morph storage is capped at
+64 MiB per model. A mesh falls back to CPU morphing if it needs more than eight
+simultaneous targets or exceeds the available GPU budget. Textures are decoded
+once per referenced image and CPU texture copies are released after GPU upload.
+This moves common face-expression work off the CPU; the full avatar frame rate
+still depends on the model, output size and other running GPU workloads.
 
 ## Compatibility in this release
 

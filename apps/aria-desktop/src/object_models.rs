@@ -33,11 +33,15 @@ struct Loaded {
 #[derive(Default)]
 pub struct ObjectModels {
     entries: BTreeMap<u64, Entry>,
+    surface_editing: bool,
     draft_source: Option<(u64, PathBuf)>,
     textures: Vec<PathBuf>,
     search: String,
 }
 impl ObjectModels {
+    pub fn request_cpu_surface_geometry(&mut self, requested: bool) {
+        self.surface_editing = requested;
+    }
     pub fn avatar(&self, id: u64) -> Option<&Avatar> {
         let loaded = self.entries.get(&id)?.loaded.as_ref().ok()?;
         loaded.error.is_none().then_some(&loaded.avatar)
@@ -118,6 +122,7 @@ impl ObjectModels {
         }
     }
     pub fn update(&mut self, config: &mut RigConfig, inputs: &Inputs, dt: f32) {
+        let surface_editing = self.surface_editing;
         let frozen = config.pose.mode == PoseMode::Frozen;
         for item in &mut config.items {
             let Some(loaded) = self
@@ -131,6 +136,9 @@ impl ObjectModels {
                 continue;
             }
             configure_rig(&mut loaded.rig, item, frozen);
+            loaded
+                .avatar
+                .request_cpu_surface_geometry(surface_editing || item.model.mount.is_some());
             match loaded
                 .avatar
                 .update(inputs, &mut loaded.rig, &mut loaded.expressions, dt)

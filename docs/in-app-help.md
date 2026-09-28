@@ -61,7 +61,7 @@ Open Avatar & appearance. For a new session choose Import PNG / GIF avatar or Im
 
 PNG/GIF: select one file, several files or an artwork folder. Folder import includes its immediate PNG/GIF files, not unrelated project files. Mark exactly one file Idle / base. Talking responds to MicTalking when the microphone is enabled, otherwise the mouth input; Blink follows eye input or auto-blink. Quiet reacts when talking stops. Manual / hotkey files display only when activated. Names containing inactive or idle suggest the base; talking suggests Talking; muted or deafened files suggest Manual. ARIA does not read Discord mute/deafen status. Assign those actions hotkeys or your own input rules after import.
 
-Live2D: select the exported model3.json or its matching moc3 to use the built-in Purism Core runtime. Keep relative atlas, physics and expression paths intact. The review summarizes the export. A bare moc3 can be paired with ordered atlas textures in the follow-up dialog. Import restores this model's own parameter settings, groups, expressions and saved profile.
+Live2D: select the exported model3.json or its matching moc3 to use the built-in ARIA Core runtime. Keep relative atlas, physics and expression paths intact. The review summarizes the export. A bare moc3 can be paired with ordered atlas textures in the follow-up dialog. Import restores this model's own parameter settings, groups, expressions and saved profile.
 
 ### Review, import and create
 
@@ -381,7 +381,7 @@ All three output canvases include the same accessories, with each canvas's frami
 
 Drag the .moc3 into Your stage, or use Stage objects & toggles → Add objects. Keep the matching .model3.json beside it and preserve all referenced texture folders. ARIA finds the manifest that references that exact moc3 and loads its atlases in the authored order. Dropping the .model3.json itself works too. Drop only one of those two files to create one object; dropping both creates two independent objects. A moc3 contains compiled geometry and parameters, not the texture images.
 
-Each object has a separate Cubism instance, parameter list and optional physics simulation. Adding, removing or posing it does not replace the main avatar, change the main profile identity, or edit its mappings, expressions or physics. Purism Core is built into each model worker; no runtime setup is required. Main-avatar selection still uses Import Live2D avatar in the left panel.
+Each object has a separate ARIA model instance, parameter list and optional physics simulation. Adding, removing or posing it does not replace the main avatar, change the main profile identity, or edit its mappings, expressions or physics. ARIA Core evaluates each model; no runtime setup is required. Main-avatar selection still uses Import Live2D avatar in the left panel.
 
 ### Bare moc3 texture setup
 
@@ -468,7 +468,7 @@ Freeze pose pauses input rules and captures the current gated visibility with th
 ### Your first session
 
 1. Leave Tracking & connection on Demo to check that the built-in Mica puppet moves.
-2. Open Avatar & appearance to load your own PNG or Live2D export. Live2D uses the built-in Purism Core runtime.
+2. Open Avatar & appearance to load your own PNG or Live2D export. Live2D uses the built-in ARIA Core runtime.
 3. Choose your tracking source and connect. Face the camera naturally and calibrate a neutral pose.
 4. In the Inspector, adjust mappings, pose controls, physics or expressions for this avatar.
 5. Open an output under Capture & performance. For a full-resolution OBS source with a small desktop preview, use Spout2 Capture.
@@ -643,7 +643,7 @@ after importing an old external movement preset or changing custom equations.
 
 Prefer Import Live2D avatar with the exported .model3.json file. It describes the .moc3 geometry, texture atlases and optional physics, expressions and display metadata. Keep the exported folder structure intact. Dropping a .model3.json or .moc3 onto Your stage adds a separate pinnable object and preserves the main avatar. Use Import Live2D avatar to change the main model. A bare .moc3 can be used with its correct textures, but cannot provide all manifest metadata by itself.
 
-Purism Core is included; select your exported model to import it. ARIA does not bundle proprietary Core or your model. A .cmo3 editor project is not the same as a runtime .moc3 export. Re-export from Cubism when needed. The model's own metadata and supported VTS profile assignments populate the rig; unrecognized controls remain available for manual mapping.
+ARIA Core is included; select your exported model to import it. ARIA does not bundle proprietary Core or your model. A .cmo3 editor project is not the same as a runtime .moc3 export. Re-export from Cubism when needed. The model's own metadata and supported VTS profile assignments populate the rig; unrecognized controls remain available for manual mapping.
 
 ### Image puppets
 
@@ -653,15 +653,15 @@ Import PNG / GIF avatar guides you through choosing PNG/GIF artwork and action r
 
 Zoom from 0.5 to 1.5 changes the studio preview. Each output has independent per-avatar scaling and position using drag and wheel gestures. Model details reports meshes, tracked assignments, decoded atlas memory and Core version. Configure avatar physics opens that avatar's discovered groups; Model parameters opens Inputs. A model can have many parameters without all of them having tracking assignments.
 
-## runtime | Built-in Purism Core | Live2D-compatible models run using the included runtime. No separate download or library selection is needed.
+## runtime | Built-in ARIA Core | Live2D-compatible models run using the included runtime. No separate download or library selection is needed.
 
 ### Included runtime
 
-ARIA includes MIT-licensed Purism Core on every supported platform. Select your exported model and textures, then import. Old SDK paths are ignored; updating ARIA updates the runtime. Model details reports the compatibility API version.
+ARIA includes its Rust model core on every supported platform. Select your exported model and textures, then import. Old SDK paths are ignored; updating ARIA updates the runtime. Model details reports the compatibility API version.
 
 ### Separate model workers
 
-Each model runs in a hidden worker. Parameter values go in and mesh data comes back over private pipes. A crash or timeout reports an error for that model; reload it to start a new worker. This isolates crashes but is not an OS security sandbox. The main app renders textures and owns your settings.
+Each model runs through ARIA's in-process Rust evaluator. Model files are read into RAM before renderer setup. Geometry normally runs on the GPU when supported; the Rust CPU path handles unsupported GPU plans and surface pin anchors. Reload a model after an import or evaluation error. The main app renders textures and owns your settings.
 
 ### Troubleshooting
 
@@ -1154,11 +1154,11 @@ Click Graphs in the bottom bar to open a scrollable view with a large Overview a
 
 ### CPU and memory
 
-CPU and RAM include the desktop plus directly owned Cubism model/attachment/effect workers and camera/setup workers. Other programs and descendants launched by those workers are not discovered. CPU is normalized across available logical processors; one busy thread may show a small percentage. RAM sums resident working sets, so shared pages can be counted twice. Private commit includes memory committed but not necessarily resident. The expanded view includes desktop-only values, the number of readable processes, private commit, available/total system RAM and open handles. N/A means unavailable, an unreadable worker or a rate awaiting its second sample; it never means zero. OS process/system counters currently use Windows APIs; unsupported platforms show N/A while the cross-platform frame and tracking graphs remain usable.
+CPU and RAM include the desktop plus directly owned attachment/effect workers and camera/setup workers. Other programs and descendants launched by those workers are not discovered. CPU is normalized across available logical processors; one busy thread may show a small percentage. RAM sums resident working sets, so shared pages can be counted twice. Private commit includes memory committed but not necessarily resident. The expanded view includes desktop-only values, the number of readable processes, private commit, available/total system RAM and open handles. N/A means unavailable, an unreadable worker or a rate awaiting its second sample; it never means zero. OS process/system counters currently use Windows APIs; unsupported platforms show N/A while the cross-platform frame and tracking graphs remain usable.
 
 ### GPU and process I/O
 
-VRAM is ARIA's local GPU memory allocation on its exact rendering adapter, using DXGI on Windows. The expanded view adds budget and shared/non-local memory. These include driver allocations and are not GPU utilization or other applications' usage. Integrated GPUs can use system memory. Process I/O counts bytes read/written by the desktop and directly owned workers, including files, network and IPC pipes; it is not disk throughput. Cubism worker traffic can make it large even with no disk activity.
+VRAM is ARIA's local GPU memory allocation on its exact rendering adapter, using DXGI on Windows. The expanded view adds budget and shared/non-local memory. These include driver allocations and are not GPU utilization or other applications' usage. Integrated GPUs can use system memory. Process I/O counts bytes read/written by the desktop and directly owned workers, including files, network and IPC pipes; it is not disk throughput.
 
 ### Frame and tracking timing
 

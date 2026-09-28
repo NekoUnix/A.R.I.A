@@ -258,8 +258,8 @@ impl Wizard {
                         }
                         theme::caption(ui,"Nested folders, spaces and Unicode names are supported. Extract ZIP/RAR downloads first. For OneDrive, choose Always keep on this device before importing.");
                         if let Some(path)=&self.model {ui.label(path.display().to_string());}
-                        help::label(ui,"Purism Core · built in","runtime");
-                        theme::caption(ui,"Ready to import. No separate runtime download is needed.");
+                        help::label(ui,"ARIA Rust Core · built in","runtime");
+                        theme::caption(ui,"Model data loads into RAM before rendering. The active GPU or CPU path is shown after import.");
                     }
                     ui.horizontal(|ui| {
                         if ui.button("Back").clicked(){self.step=0;}

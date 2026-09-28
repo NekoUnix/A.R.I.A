@@ -120,7 +120,7 @@ The compiler version is pinned in `rust-toolchain.toml`; rustup will download it
 when first needed. `Cargo.lock` pins dependency resolution. Internet access is
 needed on the initial build; cached dependencies can be used offline afterward.
 The workspace requires Rust 1.95 or newer; the pinned toolchain is newer.
-Live2D-compatible avatars use the bundled Purism Core runtime; no SDK download is needed. See [Live2D setup](live2d.md).
+Live2D-compatible avatars use the bundled ARIA Core runtime; no SDK download is needed. See [Live2D setup](live2d.md).
 
 For a quicker edit/compile loop:
 
@@ -243,7 +243,7 @@ Import/export action configurations and editable artwork are supplied in
 all units, priority rules, GIF limits and microphone troubleshooting offline.
 
 **Import Live2D avatar…** guides you through selecting an exported .model3.json
-or .moc3; Purism Core is built in. Review the detected atlas textures,
+or .moc3; ARIA Core is built in. Review the detected atlas textures,
 physics and expressions, then import. Follow the [Live2D guide](live2d.md) for details.
 
 After import, **Model details** summarizes the current Live2D export. Live2D
