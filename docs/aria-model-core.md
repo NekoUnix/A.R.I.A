@@ -20,7 +20,10 @@ position data share a 512 MiB budget. The evaluator applies blend-shape deltas
 to ArtMeshes, warp and rotation deformers, and glue intensities. It also
 resolves part hierarchy, caller-controlled part opacity, binding-range
 visibility, authored multiply/screen colors, integer ArtMesh draw order and
-hierarchical final render order. A renderer-facing adapter is available in the
+hierarchical final render order. The draw-group evaluator validates unique
+ownership, acyclic relationships and declared descendant counts, then visits
+groups in parent-before-child order even if they are stored differently. A
+renderer-facing adapter is available in the
 isolated worker when `ARIA_EXPERIMENTAL_RUST_CORE=1` is set. This is an
 opt-in comparison path; the default and distributed runtime still use Purism.
 After compilation,
@@ -71,11 +74,10 @@ On 2026-09-27, the Rust container and static-mesh reader passed its own unit
 tests and parsed 28 local MOC3 files from the supplied VTube Models and VTube
 Studio folders. IDs, parameter ranges, UVs, triangle indices, masks, and atlas
 slots matched the current runtime for all 11 Steam models and 16 of 17 models
-from Documents. The remaining `Ditto Eevees.moc3` is accepted by the Rust
-static reader but rejected by the existing Purism consistency check, so it
-has no current-runtime parity result. This is a format-validation issue to
-investigate before a production switchover. None of these checks establish
-deformation parity or live performance for the Rust evaluator.
+from Documents. `Ditto Eevees.moc3` is accepted by the Rust static reader but
+rejected by the existing Purism consistency check, so it has no Purism parity
+result. A later direct official-Core comparison is recorded below. These early
+checks alone did not establish deformation parity or live performance.
 
 On 2026-09-28, a developer-only harness directly loaded the official Cubism
 Core 5 DLL installed with VTube Studio. ARIA's Rust-decoded mesh IDs, UVs,
@@ -93,7 +95,7 @@ reflection, hierarchy and extrapolation tests. Before the blend-shape addition,
 the mixed warp/rotation parity test found zero mismatched visible mesh frames
 across 27 of the 28 locally supplied MOC3 exports at default and normal
 parameter extremes, with the largest coordinate difference below `0.0000015`
-model units. `Ditto Eevees.moc3` remains rejected by the existing runtime's
+model units. `Ditto Eevees.moc3` is rejected by the existing runtime's
 loader. The expanded blend-shape evaluator also passed this three-frame parity
 test on the same 27 comparable exports. The direct official comparisons below
 include blend-shape parameter extremes; more input combinations still need
@@ -131,8 +133,12 @@ outfit export. Their default-pose images differed from the current renderer on
 3,017 of 3,854,336 and 1,963 of 2,779,136 pixels respectively, mostly
 subpixel edges; each had five pixels with channel difference above 32. This
 does not validate every dynamic flag, output pose, or end-to-end performance.
-Official Core 5 accepts `Ditto Eevees.moc3`, but the current runtime rejects
-it; direct Rust-to-official comparison for that export remains pending.
+The direct harness now permits the transitional runtime to reject an export
+while comparing Rust to official Core. All 28 supplied MOC3 exports passed
+seven animated comparison frames, including `Ditto Eevees.moc3`: its maximum
+coordinate delta was below `0.00000047`, with zero visibility, color, opacity,
+draw-order or final render-order mismatches across 51 visible mesh frames.
+The current runtime still rejects that export.
 
 Optimized 120-frame worker tests measured OILBUN at about 2.58 ms/frame with
 the current runtime and 4.09 ms/frame with Rust. The large 90s outfit measured
@@ -142,6 +148,18 @@ accelerated before it can replace the default. In the desktop renderer, model
 coordinates are now projected in the GPU vertex shader; this removes CPU
 projection of every vertex before upload but does not move MOC3 deformation
 or worker serialization to the GPU. No whole-frame FPS improvement is claimed.
+
+Profiling the large 90s outfit located most remaining Rust geometry time in
+parent warp transformations. The evaluator now recognizes warp grids whose
+control points agree with an affine map within `0.000001` model units and uses
+the precomputed map for vertex and child-deformer transforms. Bent grids still
+use full cell interpolation. Internal finite-validated transforms also avoid
+repeating per-vertex input checks; the completed geometry frame is checked for
+non-finite vertices. All 28 direct official-Core comparisons passed after
+these changes. In optimized local 120-frame worker samples, the Rust path fell
+from about `18.38` to `13.85 ms/frame`; the transitional worker measured about
+`9.99 ms/frame` in the same follow-up series. These are workload-specific
+CPU/transport timings and still fall short of the required performance gate.
 
 The already-Rust ARIA physics solver was also adjusted with an explicit
 frequency-controlled return torque for Natural and Bouncy modes. This gives
@@ -162,5 +180,7 @@ with the same variable to repeat the supported animated geometry comparison.
 It reports the number of visible mesh frames and the largest coordinate delta.
 
 Set `ARIA_CUBISM_CORE` to an official Core DLL you already have and run the
-ignored `official_cubism_matches_current_runtime_on_animated_vertices` test
+ignored `official_cubism_matches_rust_on_animated_vertices` test
 to repeat the direct Cubism comparison. No DLL path is hardcoded into ARIA.
+Set `ARIA_COMPARE_TRANSITIONAL_CORE=1` to include the temporary Purism runtime
+in that diagnostic; direct Rust-to-official comparison works without it.

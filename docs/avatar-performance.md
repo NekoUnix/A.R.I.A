@@ -52,9 +52,13 @@ native render passed. Compared with the preceding OILBUN image, 1,101 of
 3,854,336 pixels changed, with 21 pixels differing by more than one channel
 level and two by more than eight, at rasterized edges. This work leaves MOC3
 deformation and worker transport on the CPU, so it does not establish a 120 FPS
-gain. The experimental Rust worker currently takes about 18.38 ms/frame on a
-large 90s outfit where the current worker takes about 10.20 ms/frame; making
-it the default requires both geometry acceleration and end-to-end profiling.
+gain. An initial experimental Rust worker sample took about 18.38 ms/frame on
+the large 90s outfit where the current worker took about 10.20 ms/frame.
+After affine-warp and finite-validated transform fast paths, a follow-up sample
+measured about 13.85 ms/frame for Rust and 9.99 ms/frame for the current worker.
+The two runs are local
+measurements, not a guaranteed FPS gain. Making Rust the default requires
+further geometry acceleration and end-to-end profiling.
 
 The supplied NekoUnity2 VRM spent about 1–1.3 ms in model update at its saved
 60 FPS target. With the smoke cap held at 120 after import, it subsequently ran

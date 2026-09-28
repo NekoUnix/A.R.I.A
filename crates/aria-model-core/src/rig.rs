@@ -63,6 +63,7 @@ pub struct WarpGrid {
     affine_center: Point,
     affine_u: Point,
     affine_v: Point,
+    affine: bool,
 }
 
 /// Affine rotation about a model-space origin, with authored reflection and
@@ -133,6 +134,12 @@ impl WarpGrid {
             .add(p11)
             .scale(0.25)
             .sub(diagonal.scale(0.5));
+        let affine = points.iter().enumerate().all(|(index, point)| {
+            let u = (index % (columns + 1)) as f32 / columns as f32;
+            let v = (index / (columns + 1)) as f32 / rows as f32;
+            let expected = affine_center.add(affine_u.scale(u)).add(affine_v.scale(v));
+            (point.x - expected.x).abs() <= 0.000001 && (point.y - expected.y).abs() <= 0.000001
+        });
         Ok(Self {
             columns,
             rows,
@@ -140,6 +147,7 @@ impl WarpGrid {
             affine_center,
             affine_u,
             affine_v,
+            affine,
         })
     }
 
@@ -160,6 +168,10 @@ impl WarpGrid {
                 && (0.0..=1.0).contains(&uv.y),
             "Warp coordinate lies outside the supported grid interior"
         );
+        Ok(self.sample_interior_finite(uv, quad))
+    }
+
+    fn sample_interior_finite(&self, uv: Point, quad: bool) -> Point {
         let scaled_x = uv.x * self.columns as f32;
         let scaled_y = uv.y * self.rows as f32;
         let col = (scaled_x as usize).min(self.columns - 1);
@@ -174,11 +186,11 @@ impl WarpGrid {
             self.points[top_left + stride],
             self.points[top_left + stride + 1],
         ];
-        Ok(if quad {
+        if quad {
             bilinear_cell(corners, local_x, local_y)
         } else {
             triangle_cell(corners, local_x, local_y)
-        })
+        }
     }
 
     /// Extend the grid using a diagonal-derived affine boundary basis. Near
@@ -189,8 +201,20 @@ impl WarpGrid {
             uv.x.is_finite() && uv.y.is_finite(),
             "Non-finite warp coordinate"
         );
+        Ok(self.sample_extended_finite(uv, quad))
+    }
+
+    /// GeometryEvaluator has already validated decoded keyforms and finite
+    /// parameter weights. It checks completed ArtMesh positions after use.
+    pub(crate) fn sample_extended_finite(&self, uv: Point, quad: bool) -> Point {
+        if self.affine {
+            return self
+                .affine_center
+                .add(self.affine_u.scale(uv.x))
+                .add(self.affine_v.scale(uv.y));
+        }
         if (0.0..=1.0).contains(&uv.x) && (0.0..=1.0).contains(&uv.y) {
-            return self.sample_interior(uv, quad);
+            return self.sample_interior_finite(uv, quad);
         }
         let stride = self.columns + 1;
         let affine = |u: f32, v: f32| {
@@ -199,7 +223,7 @@ impl WarpGrid {
                 .add(self.affine_v.scale(v))
         };
         if uv.x <= -2.0 || uv.x >= 3.0 || uv.y <= -2.0 || uv.y >= 3.0 {
-            return Ok(affine(uv.x, uv.y));
+            return affine(uv.x, uv.y);
         }
         let x = exterior_axis(uv.x, self.columns);
         let y = exterior_axis(uv.y, self.rows);
@@ -215,7 +239,7 @@ impl WarpGrid {
             }
         };
         let corners = [corner(0, 0), corner(1, 0), corner(0, 1), corner(1, 1)];
-        Ok(triangle_cell(corners, x.2, y.2))
+        triangle_cell(corners, x.2, y.2)
     }
 }
 
@@ -440,6 +464,7 @@ mod tests {
             ],
         )
         .unwrap();
+        assert!(grid.affine);
         for point in [
             Point { x: -0.5, y: 0.5 },
             Point { x: 0.5, y: 1.5 },
@@ -449,5 +474,28 @@ mod tests {
             assert!((result.x - (1.0 + 2.0 * point.x)).abs() < 1e-5);
             assert!((result.y - (-2.0 + 3.0 * point.y)).abs() < 1e-5);
         }
+    }
+
+    #[test]
+    fn bent_grid_keeps_cell_interpolation() {
+        let grid = WarpGrid::new(
+            2,
+            1,
+            vec![
+                Point { x: 0.0, y: 0.0 },
+                Point { x: 1.0, y: 0.25 },
+                Point { x: 2.0, y: 0.0 },
+                Point { x: 0.0, y: 1.0 },
+                Point { x: 1.0, y: 1.25 },
+                Point { x: 2.0, y: 1.0 },
+            ],
+        )
+        .unwrap();
+        assert!(!grid.affine);
+        assert_eq!(
+            grid.sample_extended(Point { x: 0.5, y: 0.5 }, true)
+                .unwrap(),
+            Point { x: 1.0, y: 0.75 }
+        );
     }
 }

@@ -172,14 +172,6 @@ impl RustModel {
                 drawable.visible = false;
             }
         }
-        ensure!(
-            self.drawables.iter().all(|drawable| drawable
-                .positions
-                .iter()
-                .flatten()
-                .all(|v| v.is_finite())),
-            "Non-finite ArtMesh vertex"
-        );
         Ok(())
     }
 }

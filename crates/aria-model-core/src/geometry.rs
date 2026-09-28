@@ -20,7 +20,7 @@ enum Transform {
 impl Transform {
     fn apply(&self, point: Point) -> Result<Point> {
         match self {
-            Self::Warp(grid, quad) => grid.sample_extended(point, *quad),
+            Self::Warp(grid, quad) => Ok(grid.sample_extended_finite(point, *quad)),
             Self::Rotation(rotation) => Ok(rotation.apply(point)),
         }
     }
@@ -239,7 +239,6 @@ impl GeometryEvaluator {
         let weights = (0..self.graph.bindings.len())
             .map(|binding| self.graph.weights(binding, &values))
             .collect::<Result<Vec<_>>>()?;
-
         let mut states: Vec<Option<DeformerState>> = Vec::with_capacity(self.deformers.len());
         for (index, node) in self.deformers.iter().enumerate() {
             if !node.enabled
@@ -295,8 +294,9 @@ impl GeometryEvaluator {
                             *point = parent.transform.apply(*point)?;
                         }
                     }
+                    let grid = WarpGrid::new(*columns, *rows, points)?;
                     DeformerState {
-                        transform: Transform::Warp(WarpGrid::new(*columns, *rows, points)?, *quad),
+                        transform: Transform::Warp(grid, *quad),
                         opacity: opacity * parent.map_or(1.0, |parent| parent.opacity),
                         scale: parent.map_or(1.0, |parent| parent.scale),
                         color,
@@ -443,6 +443,14 @@ impl GeometryEvaluator {
                 right[1] -= delta[1] * intensity * pair.right_weight;
             }
         }
+        ensure!(
+            frames.iter().flatten().all(|frame| frame
+                .positions
+                .iter()
+                .flatten()
+                .all(|value| value.is_finite())),
+            "Non-finite ArtMesh vertex"
+        );
         Ok(frames)
     }
 }

@@ -11,6 +11,7 @@ pub struct RenderOrderEvaluator {
     parts: Vec<PartLayout>,
     part_keys: Vec<Vec<f32>>,
     groups: Vec<DrawGroupLayout>,
+    traversal: Vec<usize>,
     mesh_count: usize,
 }
 
@@ -38,12 +39,14 @@ impl RenderOrderEvaluator {
             );
         }
         let mesh_count = moc.counts()?.art_meshes as usize;
+        let traversal = validate_groups(&groups, mesh_count)?;
         Ok(Self {
             parameters,
             graph,
             parts,
             part_keys,
             groups,
+            traversal,
             mesh_count,
         })
     }
@@ -85,7 +88,8 @@ impl RenderOrderEvaluator {
             .map(|index| index as i32)
             .collect::<Vec<_>>();
         let mut cursors = vec![0_usize; self.groups.len()];
-        for (group_index, group) in self.groups.iter().enumerate() {
+        for &group_index in &self.traversal {
+            let group = &self.groups[group_index];
             let mut sorted = group
                 .items
                 .iter()
@@ -124,6 +128,65 @@ impl RenderOrderEvaluator {
         }
         Ok(ranks)
     }
+}
+
+fn validate_groups(groups: &[DrawGroupLayout], mesh_count: usize) -> Result<Vec<usize>> {
+    let mut mesh_owner = vec![None; mesh_count];
+    let mut group_parent = vec![None; groups.len()];
+    for (parent, group) in groups.iter().enumerate() {
+        for item in &group.items {
+            match *item {
+                DrawItem::Mesh(index) => {
+                    ensure!(
+                        index < mesh_count,
+                        "Draw group references an invalid ArtMesh"
+                    );
+                    ensure!(
+                        mesh_owner[index].replace(parent).is_none(),
+                        "ArtMesh belongs to multiple draw groups"
+                    );
+                }
+                DrawItem::Part { child_group, .. } => {
+                    ensure!(child_group < groups.len(), "Invalid child draw group");
+                    ensure!(
+                        group_parent[child_group].replace(parent).is_none(),
+                        "Draw group has multiple parents"
+                    );
+                }
+            }
+        }
+    }
+    let mut traversal = Vec::with_capacity(groups.len());
+    let mut queue = std::collections::VecDeque::new();
+    queue.extend((0..groups.len()).filter(|&index| group_parent[index].is_none()));
+    while let Some(index) = queue.pop_front() {
+        traversal.push(index);
+        for item in &groups[index].items {
+            if let DrawItem::Part { child_group, .. } = item {
+                queue.push_back(*child_group);
+            }
+        }
+    }
+    ensure!(
+        traversal.len() == groups.len(),
+        "Draw-group graph has a cycle"
+    );
+    let mut descendants = vec![0_usize; groups.len()];
+    for &index in traversal.iter().rev() {
+        let group = &groups[index];
+        descendants[index] = group.items.iter().try_fold(0_usize, |sum, item| {
+            let count = match *item {
+                DrawItem::Mesh(_) => 1,
+                DrawItem::Part { child_group, .. } => descendants[child_group],
+            };
+            sum.checked_add(count).context("Draw-group count overflow")
+        })?;
+        ensure!(
+            descendants[index] == group.total_count,
+            "Draw-group descendant count differs from its declared size"
+        );
+    }
+    Ok(traversal)
 }
 
 fn integer_order(value: f32) -> i32 {
@@ -187,6 +250,7 @@ mod tests {
                     items: vec![DrawItem::Mesh(1), DrawItem::Mesh(2)],
                 },
             ],
+            traversal: vec![0, 1],
             mesh_count: 3,
         };
         assert_eq!(
@@ -201,5 +265,44 @@ mod tests {
                 .unwrap(),
             [0, 2, 1]
         );
+    }
+
+    #[test]
+    fn malformed_draw_group_graph_is_rejected_before_frame_evaluation() {
+        let mut groups = vec![
+            DrawGroupLayout {
+                min_order: 0,
+                max_order: 1,
+                total_count: 1,
+                items: vec![DrawItem::Part {
+                    index: 0,
+                    child_group: 1,
+                }],
+            },
+            DrawGroupLayout {
+                min_order: 0,
+                max_order: 1,
+                total_count: 1,
+                items: vec![DrawItem::Mesh(0)],
+            },
+        ];
+        assert_eq!(validate_groups(&groups, 1).unwrap(), [0, 1]);
+        groups[1].items.push(DrawItem::Part {
+            index: 0,
+            child_group: 0,
+        });
+        assert!(validate_groups(&groups, 1).is_err());
+        groups[1].items.pop();
+        groups[0].items.push(DrawItem::Mesh(0));
+        assert!(validate_groups(&groups, 1).is_err());
+        groups[0].items.pop();
+        groups[0].total_count = 2;
+        assert!(validate_groups(&groups, 1).is_err());
+        groups[0].total_count = 1;
+        groups.swap(0, 1);
+        if let DrawItem::Part { child_group, .. } = &mut groups[1].items[0] {
+            *child_group = 0;
+        }
+        assert_eq!(validate_groups(&groups, 1).unwrap(), [1, 0]);
     }
 }

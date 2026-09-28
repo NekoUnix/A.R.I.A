@@ -491,9 +491,10 @@ mod tests {
         let host = PathBuf::from(std::env::var_os("ARIA_TEST_HOST").unwrap());
         let moc = PathBuf::from(std::env::var_os("ARIA_TEST_MOC").unwrap());
         let bytes = std::fs::read(&moc).unwrap();
-        let mut native = CubismModel::load(Path::new(""), &bytes, 32).unwrap();
+        let mut native = RustModel::load(&bytes, 32).unwrap();
         let mut hosted = HostedModel::load_with_host(&host, Path::new(""), &moc, 32).unwrap();
         assert!(hosted.version.starts_with("ARIA Rust Model Core"));
+        assert_eq!(native.drawables.len(), hosted.drawables.len());
         for (expected, actual) in native.drawables.iter().zip(&hosted.drawables) {
             assert_eq!(actual.id, expected.id);
             assert_eq!(actual.uvs, expected.uvs);

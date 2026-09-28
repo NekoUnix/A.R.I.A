@@ -27,14 +27,19 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
   order, hierarchical final render order and static mesh data. A repeat of the
   large 90s outfit official comparison after the latest warp-grid change found
   zero mismatched mesh frames or render orders across 4,834 visible mesh frames.
-  `Ditto Eevees.moc3` is accepted by official Core 5 but rejected by the current
-  runtime, so direct Rust-to-official comparison remains open. Full dynamic-flag
-  behavior and broader rendered-pose coverage remain open.
+  The direct harness then covered all 28 supplied exports, including
+  `Ditto Eevees.moc3`, which the current runtime rejects. All 28 passed seven
+  frames with zero geometry, visibility, color, draw-order or final render-order
+  mismatches above the test tolerances. Full dynamic-flag behavior and broader
+  rendered-pose coverage remain open.
 - On OILBUN, the optimized Rust geometry path measured about 2.54 ms/frame
   versus 0.64 ms/frame for the current runtime's deformation path. The Rust
   evaluator is opt-in only and has no 120 FPS claim. Optimized worker tests with
-  the larger 90s outfit measured about 18.38 ms/frame for Rust versus 10.20
-  ms/frame for the default worker. Standard workspace tests, strict all-target
+  the larger 90s outfit initially measured about 18.38 ms/frame for Rust versus
+  10.20 ms/frame for the default worker. Affine-grid and finite-validated
+  transform fast paths reduced the Rust follow-up to about 13.85 ms/frame
+  against 9.99 ms/frame for the default.
+  Standard workspace tests, strict all-target
   Clippy, formatting, repository checks and distribution checks passed with
   this shader/core checkpoint.
 
