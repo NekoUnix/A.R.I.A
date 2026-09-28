@@ -1429,6 +1429,10 @@ units of float32 position difference; native CPU/GPU screenshots differed by
 at most 0.224% of pixels beyond two channel levels and 0.0185% beyond sixteen
 levels across its two tested poses. This covers the supplied exports, not all
 possible Cubism versions, flags, poses or graphics adapters.
+The native Ditto GPU render test also queued a hidden-to-visible bounds change
+before the previous 16-byte map completed. Both the older completed result
+and the newer visible result reached the view without a synchronous vertex
+readback.
 
 1. Physical iPhone running the user's VTube Studio version, permissions and Wi-Fi.
    Confirm valid packets, head directions, blinks, mouth, gaze, calibration and

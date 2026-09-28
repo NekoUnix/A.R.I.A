@@ -294,6 +294,10 @@ impl GpuVisibleBounds {
         let bounds = *bytemuck::from_bytes::<[f32; 4]>(&bytes);
         drop(bytes);
         self.readback.unmap();
+        ensure!(
+            bounds.iter().all(|value| value.is_finite()),
+            "GPU bounds are not finite"
+        );
         if self.newer_bounds_pending {
             self.newer_bounds_pending = false;
             let mut encoder = device.create_command_encoder(&Default::default());
@@ -301,12 +305,10 @@ impl GpuVisibleBounds {
             queue.submit([encoder.finish()]);
             self.copy_pending = true;
             self.begin_readback();
-            return Ok(None);
+            // The completed copy is older than the latest pose, but the view
+            // only expands. Publish it while the newer four-value copy runs;
+            // otherwise animation can keep every result perpetually stale.
         }
-        ensure!(
-            bounds.iter().all(|value| value.is_finite()),
-            "GPU bounds are not finite"
-        );
         Ok(Some(bounds))
     }
 

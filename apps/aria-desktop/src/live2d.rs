@@ -581,6 +581,43 @@ mod tests {
                 "pose {pose}: {different}/{pixels} pixels differ beyond 2 levels; {severe} differ beyond 16 levels"
             );
         }
+        // An animated model can change again before a four-value bounds map
+        // completes. The earlier result must still reach the view while the
+        // newer result is queued, or continuous motion starves framing.
+        let visible: Vec<_> = gpu_model.drawables.iter().map(|d| d.visible).collect();
+        for drawable in &mut gpu_model.drawables {
+            drawable.visible = false;
+        }
+        let layers = aria_core::layers::Config::default();
+        let mut encoder = state.device.create_command_encoder(&Default::default());
+        gpu.encode(&mut encoder, &gpu_model, &layers, false)
+            .unwrap();
+        state.queue.submit([encoder.finish()]);
+        gpu.bounds.begin_readback();
+        for (drawable, visible) in gpu_model.drawables.iter_mut().zip(visible) {
+            drawable.visible = visible;
+        }
+        let mut encoder = state.device.create_command_encoder(&Default::default());
+        gpu.encode(&mut encoder, &gpu_model, &layers, false)
+            .unwrap();
+        state.queue.submit([encoder.finish()]);
+        state
+            .device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
+        assert!(
+            gpu.poll_bounds().unwrap(),
+            "older completed bounds were starved"
+        );
+        let hidden = gpu.latest_bounds.unwrap();
+        assert!(hidden[0] > hidden[2] && hidden[1] > hidden[3]);
+        state
+            .device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
+        assert!(gpu.poll_bounds().unwrap(), "newer bounds did not arrive");
+        let revealed = gpu.latest_bounds.unwrap();
+        assert!(revealed[0] <= revealed[2] && revealed[1] <= revealed[3]);
     }
     #[test]
     #[cfg(windows)]

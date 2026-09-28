@@ -38,6 +38,9 @@ only four bounds values are returned asynchronously to fit the view. If GPU
 plan construction fails for a model, Studio records a warning and uses the
 direct Rust CPU geometry path. Both variables must be set for this experiment;
 it is not yet the default or a measured 120 FPS path.
+Completed bounds are applied even if a newer pose is already pending, because
+the fitted canvas only grows. A second readback then catches up without
+blocking rendering; continuous tracking no longer starves stage expansion.
 In matched optimized Studio smoke runs on the large outfit with a 120-FPS cap,
 this opt-in GPU path sampled 100.5–114.7 FPS (106.1 average), versus
 42.5–46.4 FPS (44.5 average) for the direct Rust CPU path and 51.5–60.7 FPS

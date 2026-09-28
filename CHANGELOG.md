@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix asynchronous GPU model framing under continuous animation. A completed four-float bounds readback now expands the stage even when a newer pose is queued; the newer result continues asynchronously. Previously every completed result could be discarded as stale while tracking changed each frame. A native DX12 test covers hidden-to-visible changes during an in-flight readback.
+
 - Submit experimental GPU MOC3 compute, bounds reduction and ArtMesh rendering in one ordered command buffer per changed frame. A clean optimized 20-second large-outfit smoke produced a valid image and sampled 98.8–120.6 FPS in its steady intervals (109.4 average); this single run does not establish a repeatable FPS gain or sustained 120 FPS. The Studio and import panels now report the actual Rust/GPU, Rust/CPU or Purism runtime rather than labeling every loaded Live2D avatar as Purism.
 
 - Validate the experimental GPU hierarchy and visible bounds on all 28 supplied local MOC3 file paths across three poses. A deeply nested warp export exposed float32 extrapolation differences up to 0.000275 model units; its CPU/GPU fitted canvas differed by under 0.05 pixels, and native image comparisons stayed within 0.25% of pixels beyond two color levels and 0.02% beyond sixteen. The test tolerance now covers this measured numerical case. This is local geometry and render evidence, not full Cubism conformance or a default-runtime switch.
