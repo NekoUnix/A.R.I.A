@@ -64,6 +64,7 @@ struct Style {
     multiply: [f32; 4],
     screen: [f32; 4],
     control: [f32; 4],
+    projection: [f32; 4],
 }
 #[derive(Clone)]
 struct Mesh {
@@ -183,7 +184,7 @@ impl ModelRenderer {
                         resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                             buffer: &uniforms,
                             offset: 0,
-                            size: NonZeroU64::new(48),
+                            size: NonZeroU64::new(64),
                         }),
                     },
                 ],
@@ -389,11 +390,11 @@ impl ModelRenderer {
                 texture_entry(0),
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: true,
-                        min_binding_size: NonZeroU64::new(48),
+                        min_binding_size: NonZeroU64::new(64),
                     },
                     count: None,
                 },
@@ -557,7 +558,7 @@ impl ModelRenderer {
             contents: bytemuck::cast_slice(&index_data),
             usage: wgpu::BufferUsages::INDEX,
         });
-        let uniform_stride = 48_usize
+        let uniform_stride = 64_usize
             .div_ceil(device.limits().min_uniform_buffer_offset_alignment as usize)
             * device.limits().min_uniform_buffer_offset_alignment as usize;
         let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
@@ -580,7 +581,7 @@ impl ModelRenderer {
                         resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                             buffer: &uniforms,
                             offset: 0,
-                            size: NonZeroU64::new(48),
+                            size: NonZeroU64::new(64),
                         }),
                     },
                 ],
@@ -692,19 +693,22 @@ impl ModelRenderer {
         vertices.clear();
         let uniform_bytes = &mut self.style_staging;
         let c = self.view_canvas;
-        let mut bounds = egui::Rect::NOTHING;
+        let projection = [
+            2.0 * c.pixels_per_unit / c.size[0],
+            2.0 * c.pixels_per_unit / c.size[1],
+            2.0 * c.origin[0] / c.size[0] - 1.0,
+            2.0 * c.origin[1] / c.size[1] - 1.0,
+        ];
+        let mut model_min = egui::Vec2::INFINITY;
+        let mut model_max = -egui::Vec2::INFINITY;
         for (i, d) in drawables.iter().enumerate() {
-            vertices.extend(d.positions.iter().map(|p| {
-                [
-                    2.0 * (p[0] * c.pixels_per_unit + c.origin[0]) / c.size[0] - 1.0,
-                    2.0 * (p[1] * c.pixels_per_unit + c.origin[1]) / c.size[1] - 1.0,
-                ]
-            }));
+            vertices.extend_from_slice(&d.positions);
             let opacity = d.opacity * self.layer_opacities[i];
             if d.visible && opacity > 0.01 {
-                for vertex in &vertices[vertices.len() - d.positions.len()..] {
-                    bounds
-                        .extend_with(egui::pos2((vertex[0] + 1.0) * 0.5, (1.0 - vertex[1]) * 0.5));
+                for vertex in &d.positions {
+                    let point = egui::vec2(vertex[0], vertex[1]);
+                    model_min = model_min.min(point);
+                    model_max = model_max.max(point);
                 }
             }
             let style = Style {
@@ -722,10 +726,20 @@ impl ModelRenderer {
                     self.image.size.x,
                     self.image.size.y,
                 ],
+                projection,
             };
-            uniform_bytes[i * self.uniform_stride..i * self.uniform_stride + 48]
+            uniform_bytes[i * self.uniform_stride..i * self.uniform_stride + 64]
                 .copy_from_slice(bytemuck::bytes_of(&style));
         }
+        let bounds = if model_min.is_finite() && model_max.is_finite() {
+            let min_x = (model_min.x * projection[0] + projection[2] + 1.0) * 0.5;
+            let max_x = (model_max.x * projection[0] + projection[2] + 1.0) * 0.5;
+            let min_y = (1.0 - model_max.y * projection[1] - projection[3]) * 0.5;
+            let max_y = (1.0 - model_min.y * projection[1] - projection[3]) * 0.5;
+            egui::Rect::from_min_max(egui::pos2(min_x, min_y), egui::pos2(max_x, max_y))
+        } else {
+            egui::Rect::NOTHING
+        };
         self.bounds = bounds.intersect(egui::Rect::from_min_max(
             egui::Pos2::ZERO,
             egui::pos2(1., 1.),

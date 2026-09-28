@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add an opt-in, independently authored Rust MOC3 worker adapter with hierarchical final render ordering; keep the default runtime unchanged while compatibility and performance gates remain open. Move Live2D canvas projection into the GPU vertex shader and reduce CPU vertex preparation. Local GPU render and official Core differential checks cover the tested models; the Rust worker is still slower on the measured large export.
+
 - Move common VRM/GLB expression morphing into the GPU vertex shader, with up to eight active targets per mesh and a 64 MiB model budget. Fall back to CPU morphing for larger active sets and keep picking accurate without deforming every vertex on the CPU. Compute shared skin palettes once per frame. Expand the independent Rust MOC3 evaluator with RAM-compiled deformer keyforms, part/mesh binding visibility, colors and integer draw orders. Bundle the Windows runtime DLLs needed by portable builds.
 
 - Make the Windows source launcher use the optimized release executable and warn when it is missing. Mark debug builds in the Studio footer, add opt-in Live2D and VRM/GLB timing diagnostics, and stop re-copying static Live2D mesh UVs, indices and masks on every update. Keep UVs in a separate GPU buffer so only changing positions upload per frame, bind geometry once per render pass, and use a single-channel mask target. Avoid repeated descendant-tree walks in VRM/GLB spring simulation. Document the measured limits of a large model at a 120 FPS target.

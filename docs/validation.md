@@ -14,16 +14,29 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
   springs, freeze and pose restore.
   GPU morph deltas have a 64 MiB model budget and a CPU fallback. This test
   checks correctness, not a measured CPU or FPS improvement.
+- Live2D canvas projection now runs in the GPU vertex shader. The native GPU
+  clipping, blending, culling, color and draw-order check passed. OILBUN loaded
+  and rendered through both the default and opt-in Rust workers; against the
+  previous renderer, 1,101 of 3,854,336 OILBUN pixels changed, 21 by more than
+  one channel level. A whole-frame FPS change was not measured.
 - The independent Rust MOC3 evaluator compiled mesh/deformer keyforms and
   colors into bounded RAM. A seven-frame direct comparison against the local
   official Cubism Core passed on all 27 exports that the current runtime also
   accepts, including blend-shape extremes and varied part opacity. The sweep
-  checked vertices, visibility, opacity, multiply/screen color, draw order and
-  static mesh data. `Ditto Eevees.moc3` remains rejected by the current
-  runtime. Final rendered pixels and full dynamic-flag behavior remain open.
+  checked vertices, visibility, opacity, multiply/screen color, authored draw
+  order, hierarchical final render order and static mesh data. A repeat of the
+  large 90s outfit official comparison after the latest warp-grid change found
+  zero mismatched mesh frames or render orders across 4,834 visible mesh frames.
+  `Ditto Eevees.moc3` is accepted by official Core 5 but rejected by the current
+  runtime, so direct Rust-to-official comparison remains open. Full dynamic-flag
+  behavior and broader rendered-pose coverage remain open.
 - On OILBUN, the optimized Rust geometry path measured about 2.54 ms/frame
   versus 0.64 ms/frame for the current runtime's deformation path. The Rust
-  evaluator is not the active desktop renderer yet and has no 120 FPS claim.
+  evaluator is opt-in only and has no 120 FPS claim. Optimized worker tests with
+  the larger 90s outfit measured about 18.38 ms/frame for Rust versus 10.20
+  ms/frame for the default worker. Standard workspace tests, strict all-target
+  Clippy, formatting, repository checks and distribution checks passed with
+  this shader/core checkpoint.
 
 ## Avatar performance investigation — 2026-09-27 (unreleased)
 

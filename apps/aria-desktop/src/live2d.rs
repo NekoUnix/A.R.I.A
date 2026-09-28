@@ -614,6 +614,9 @@ mod tests {
             aria_model::load_files(Path::new(&path)).unwrap(),
         )
         .unwrap();
+        if std::env::var("ARIA_EXPERIMENTAL_RUST_CORE").as_deref() == Ok("1") {
+            assert!(avatar.model.version.starts_with("ARIA Rust Model Core"));
+        }
         let mut config = avatar.initial_config.clone();
         config.pose.mode = PoseMode::Frozen;
         config.pose.frozen = avatar

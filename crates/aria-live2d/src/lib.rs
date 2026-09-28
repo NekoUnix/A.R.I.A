@@ -4,6 +4,7 @@ mod ffi;
 pub mod host;
 #[cfg(test)]
 mod official_oracle;
+pub mod rust_model;
 use anyhow::{Context, Result, ensure};
 use ffi::{Aligned, Api, V2, array, count};
 use std::{collections::BTreeMap, ffi::CStr, marker::PhantomData, path::Path, rc::Rc};

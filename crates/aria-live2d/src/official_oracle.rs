@@ -6,6 +6,7 @@ mod tests {
     use crate::{
         CubismModel,
         ffi::{Aligned, V2, V4},
+        rust_model::RustModel,
     };
     use libloading::Library;
     use std::{
@@ -21,8 +22,23 @@ mod tests {
         let bytes = std::fs::read(path).unwrap();
         let rust = aria_model_core::moc::Moc::parse(&bytes).unwrap();
         let evaluator = aria_model_core::geometry::GeometryEvaluator::new(&rust).unwrap();
+        let orderer = aria_model_core::draw_order::RenderOrderEvaluator::new(&rust).unwrap();
         let reverse_y = rust.canvas().unwrap().reverse_y;
         let mut current = CubismModel::load(Path::new(""), &bytes, 32).unwrap();
+        let mut rust_adapter = RustModel::load(&bytes, 32).unwrap();
+        assert_eq!(rust_adapter.drawables.len(), current.drawables.len());
+        for (independent, existing) in rust_adapter.drawables.iter().zip(&current.drawables) {
+            assert_eq!(independent.id, existing.id);
+            assert_eq!(independent.part, existing.part);
+            assert_eq!(independent.uvs, existing.uvs);
+            assert_eq!(independent.indices, existing.indices);
+            assert_eq!(independent.masks, existing.masks);
+            assert_eq!(independent.texture, existing.texture);
+            assert_eq!(independent.masked, existing.masked);
+            assert_eq!(independent.inverted, existing.inverted);
+            assert_eq!(independent.double_sided, existing.double_sided);
+            assert_eq!(independent.blend, existing.blend);
+        }
 
         // SAFETY: The local library is used only after its documented exported
         // functions have been resolved. MOC/model buffers have the Core ABI's
@@ -112,6 +128,10 @@ mod tests {
             );
             let drawable_draw_orders = function!(
                 "csmGetDrawableDrawOrders",
+                unsafe extern "C" fn(*const c_void) -> *const i32
+            );
+            let drawable_render_orders = function!(
+                "csmGetDrawableRenderOrders",
                 unsafe extern "C" fn(*const c_void) -> *const i32
             );
             let drawable_multiply = function!(
@@ -213,6 +233,7 @@ mod tests {
             let mut opacity_worst = 0.0_f32;
             let mut color_worst = 0.0_f32;
             let mut draw_order_mismatches = 0_usize;
+            let mut render_order_mismatches = 0_usize;
             let mut rust_mesh_frames = 0_usize;
             let mut rust_mismatches = 0_usize;
             for frame in 0..7 {
@@ -222,6 +243,7 @@ mod tests {
                         let value = p.min + (p.max - p.min) * t;
                         param_values.add(i).write(value);
                         current.set_parameter(&p.id, value);
+                        rust_adapter.set_parameter(&p.id, value);
                     }
                 } else {
                     for (i, spec) in rust.parameters().unwrap().iter().enumerate() {
@@ -233,6 +255,7 @@ mod tests {
                             };
                             param_values.add(i).write(value);
                             current.set_parameter(&spec.id, value);
+                            rust_adapter.set_parameter(&spec.id, value);
                         }
                     }
                 }
@@ -252,10 +275,12 @@ mod tests {
                 for (i, value) in input_parts.iter().enumerate() {
                     part_opacities(model).add(i).write(*value);
                     current.parts[i].value = *value;
+                    rust_adapter.parts[i].value = *value;
                 }
                 reset(model);
                 update(model);
                 current.update().unwrap();
+                rust_adapter.update().unwrap();
                 let counts =
                     std::slice::from_raw_parts(vertex_counts(model), current.drawables.len());
                 let positions =
@@ -264,6 +289,10 @@ mod tests {
                     std::slice::from_raw_parts(drawable_opacities(model), current.drawables.len());
                 let native_draw_orders = std::slice::from_raw_parts(
                     drawable_draw_orders(model),
+                    current.drawables.len(),
+                );
+                let native_render_orders = std::slice::from_raw_parts(
+                    drawable_render_orders(model),
                     current.drawables.len(),
                 );
                 let native_dynamic =
@@ -280,6 +309,29 @@ mod tests {
                 let rust_frames = evaluator
                     .frame_with_parts(&rust_values, &input_parts)
                     .unwrap();
+                let rust_orders = orderer.frame(&rust_values, &rust_frames).unwrap();
+                for (index, drawable) in current.drawables.iter().enumerate() {
+                    let independent = &rust_adapter.drawables[index];
+                    assert_eq!(independent.visible, drawable.visible);
+                    assert_eq!(independent.order, drawable.order);
+                    if drawable.visible {
+                        assert!((independent.opacity - drawable.opacity).abs() <= 0.001);
+                        for (left, right) in independent.positions.iter().zip(&drawable.positions) {
+                            assert!((left[0] - right[0]).abs() <= 0.001);
+                            assert!((left[1] - right[1]).abs() <= 0.001);
+                        }
+                    }
+                    assert_eq!(drawable.order, native_render_orders[index]);
+                    if native_render_orders[index] != rust_orders[index] {
+                        render_order_mismatches += 1;
+                        if render_order_mismatches <= 8 {
+                            eprintln!(
+                                "render order mesh {index} {} frame {frame}: official {}, Rust {}",
+                                drawable.id, native_render_orders[index], rust_orders[index]
+                            );
+                        }
+                    }
+                }
                 for (i, drawable) in current.drawables.iter().enumerate() {
                     assert_eq!(
                         drawable.visible,
@@ -353,7 +405,7 @@ mod tests {
                 }
             }
             println!(
-                "official ABI {abi:#x}, current delta {worst}, Rust delta {rust_worst}, opacity delta {opacity_worst}, color delta {color_worst}, draw-order mismatches {draw_order_mismatches} across {rust_mesh_frames} supported visible mesh frames ({rust_mismatches} mismatched)"
+                "official ABI {abi:#x}, current delta {worst}, Rust delta {rust_worst}, opacity delta {opacity_worst}, color delta {color_worst}, draw-order mismatches {draw_order_mismatches}, render-order mismatches {render_order_mismatches} across {rust_mesh_frames} supported visible mesh frames ({rust_mismatches} mismatched)"
             );
             assert!(
                 worst <= 0.001,
@@ -378,6 +430,10 @@ mod tests {
             assert_eq!(
                 draw_order_mismatches, 0,
                 "Rust ArtMesh draw orders diverge from official Cubism"
+            );
+            assert_eq!(
+                render_order_mismatches, 0,
+                "Rust final render orders diverge from official Cubism"
             );
         }
     }

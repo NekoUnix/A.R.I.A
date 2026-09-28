@@ -1,6 +1,6 @@
 //! A private, versioned stdio connection to a separate Cubism process.
 //! This isolates Core crashes and owns its lifetime; it is not an OS security sandbox.
-use crate::{Canvas, CubismModel, Drawable, Parameter};
+use crate::{Canvas, CubismModel, Drawable, Parameter, rust_model::RustModel};
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{
@@ -79,10 +79,55 @@ fn read_packet<T: DeserializeOwned>(reader: &mut impl Read) -> Result<Option<T>>
     Ok(Some(value))
 }
 
-/// Worker entry point. The worker evaluates models using bundled Purism Core.
+enum HostEngine {
+    Current(Box<CubismModel>),
+    Rust(Box<RustModel>),
+}
+
+fn apply_inputs(
+    parameters: &mut [Parameter],
+    model_parts: &mut [Parameter],
+    values: Vec<f32>,
+    parts: Vec<f32>,
+) -> Result<()> {
+    ensure!(
+        values.len() == parameters.len() && values.iter().all(|value| value.is_finite()),
+        "Invalid Cubism parameter frame"
+    );
+    for (parameter, value) in parameters.iter_mut().zip(values) {
+        parameter.value = value.clamp(parameter.min, parameter.max);
+    }
+    ensure!(
+        parts.len() == model_parts.len()
+            && parts
+                .iter()
+                .all(|value| value.is_finite() && (0.0..=1.0).contains(value)),
+        "Invalid part opacity frame"
+    );
+    for (part, value) in model_parts.iter_mut().zip(parts) {
+        part.value = value;
+    }
+    Ok(())
+}
+
+fn moving(drawables: &[Drawable]) -> Vec<MovingDrawable> {
+    drawables
+        .iter()
+        .map(|drawable| MovingDrawable {
+            positions: drawable.positions.clone(),
+            visible: drawable.visible,
+            order: drawable.order,
+            opacity: drawable.opacity,
+            multiply: drawable.multiply,
+            screen: drawable.screen,
+        })
+        .collect()
+}
+
+/// Worker entry point. Rust evaluation can be enabled for local parity testing.
 pub fn serve(reader: impl Read, writer: impl Write) -> Result<()> {
     let (mut reader, mut writer) = (BufReader::new(reader), BufWriter::new(writer));
-    let mut model: Option<CubismModel> = None;
+    let mut model: Option<HostEngine> = None;
     while let Some(request) = read_packet(&mut reader)? {
         let response = (|| -> Result<Response> {
             match request {
@@ -93,52 +138,50 @@ pub fn serve(reader: impl Read, writer: impl Write) -> Result<()> {
                         .with_context(|| format!("Cannot open {}", moc.display()))?
                         .take(aria_core::asset_limits::MOC_FILE as u64 + 1)
                         .read_to_end(&mut bytes)?;
-                    let loaded = CubismModel::load(Path::new(""), &bytes, textures)?;
-                    let response = Response::Loaded {
-                        canvas: loaded.canvas,
-                        version: loaded.version.clone(),
-                        parameters: loaded.parameters().to_vec(),
-                        parts: loaded.parts.clone(),
-                        draws: loaded.drawables.clone(),
+                    let use_rust =
+                        std::env::var("ARIA_EXPERIMENTAL_RUST_CORE").as_deref() == Ok("1");
+                    let loaded = if use_rust {
+                        HostEngine::Rust(Box::new(RustModel::load(&bytes, textures)?))
+                    } else {
+                        HostEngine::Current(Box::new(CubismModel::load(
+                            Path::new(""),
+                            &bytes,
+                            textures,
+                        )?))
+                    };
+                    let response = match &loaded {
+                        HostEngine::Current(inner) => Response::Loaded {
+                            canvas: inner.canvas,
+                            version: inner.version.clone(),
+                            parameters: inner.parameters().to_vec(),
+                            parts: inner.parts.clone(),
+                            draws: inner.drawables.clone(),
+                        },
+                        HostEngine::Rust(inner) => Response::Loaded {
+                            canvas: inner.canvas,
+                            version: inner.version.clone(),
+                            parameters: inner.parameters().to_vec(),
+                            parts: inner.parts.clone(),
+                            draws: inner.drawables.clone(),
+                        },
                     };
                     model = Some(loaded);
                     Ok(response)
                 }
                 Request::Update(values, parts) => {
                     let model = model.as_mut().context("Load a model before updating it")?;
-                    ensure!(
-                        values.len() == model.parameters.len()
-                            && values.iter().all(|v| v.is_finite()),
-                        "Invalid Cubism parameter frame"
-                    );
-                    for (parameter, value) in model.parameters.iter_mut().zip(values) {
-                        parameter.value = value.clamp(parameter.min, parameter.max);
+                    match model {
+                        HostEngine::Current(inner) => {
+                            apply_inputs(&mut inner.parameters, &mut inner.parts, values, parts)?;
+                            inner.update()?;
+                            Ok(Response::Frame(moving(&inner.drawables)))
+                        }
+                        HostEngine::Rust(inner) => {
+                            apply_inputs(&mut inner.parameters, &mut inner.parts, values, parts)?;
+                            inner.update()?;
+                            Ok(Response::Frame(moving(&inner.drawables)))
+                        }
                     }
-                    ensure!(
-                        parts.len() == model.parts.len()
-                            && parts
-                                .iter()
-                                .all(|v| v.is_finite() && (0.0..=1.0).contains(v)),
-                        "Invalid part opacity frame"
-                    );
-                    for (p, v) in model.parts.iter_mut().zip(parts) {
-                        p.value = v;
-                    }
-                    model.update()?;
-                    Ok(Response::Frame(
-                        model
-                            .drawables
-                            .iter()
-                            .map(|d| MovingDrawable {
-                                positions: d.positions.clone(),
-                                visible: d.visible,
-                                order: d.order,
-                                opacity: d.opacity,
-                                multiply: d.multiply,
-                                screen: d.screen,
-                            })
-                            .collect(),
-                    ))
                 }
             }
         })()
@@ -436,5 +479,87 @@ mod tests {
         assert!(hosted.update().is_err());
         assert!(start.elapsed() < Duration::from_secs(3));
         assert!(hosted.update().is_err());
+    }
+
+    #[test]
+    #[ignore = "requires ARIA_TEST_HOST, ARIA_TEST_MOC, ARIA_EXPERIMENTAL_RUST_CORE=1 and local artwork"]
+    fn isolated_rust_core_serves_renderer_frames() {
+        assert_eq!(
+            std::env::var("ARIA_EXPERIMENTAL_RUST_CORE").as_deref(),
+            Ok("1")
+        );
+        let host = PathBuf::from(std::env::var_os("ARIA_TEST_HOST").unwrap());
+        let moc = PathBuf::from(std::env::var_os("ARIA_TEST_MOC").unwrap());
+        let bytes = std::fs::read(&moc).unwrap();
+        let mut native = CubismModel::load(Path::new(""), &bytes, 32).unwrap();
+        let mut hosted = HostedModel::load_with_host(&host, Path::new(""), &moc, 32).unwrap();
+        assert!(hosted.version.starts_with("ARIA Rust Model Core"));
+        for (expected, actual) in native.drawables.iter().zip(&hosted.drawables) {
+            assert_eq!(actual.id, expected.id);
+            assert_eq!(actual.uvs, expected.uvs);
+            assert_eq!(actual.indices, expected.indices);
+            assert_eq!(actual.masks, expected.masks);
+        }
+        for maximum in [true, false, true] {
+            for parameter in native.parameters().to_vec() {
+                let value = if maximum {
+                    parameter.max
+                } else {
+                    parameter.min
+                };
+                native.set_parameter(&parameter.id, value);
+                hosted.set_parameter(&parameter.id, value);
+            }
+            native.update().unwrap();
+            hosted.update().unwrap();
+            for (expected, actual) in native.drawables.iter().zip(&hosted.drawables) {
+                assert_eq!(actual.visible, expected.visible);
+                assert_eq!(actual.order, expected.order);
+                if expected.visible {
+                    assert!((actual.opacity - expected.opacity).abs() <= 0.001);
+                    for (left, right) in actual.positions.iter().zip(&expected.positions) {
+                        assert!((left[0] - right[0]).abs() <= 0.001);
+                        assert!((left[1] - right[1]).abs() <= 0.001);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "requires ARIA_TEST_HOST and ARIA_TEST_MOC; run optimized for meaningful timing"]
+    fn isolated_worker_update_benchmark() {
+        let host = PathBuf::from(std::env::var_os("ARIA_TEST_HOST").unwrap());
+        let moc = PathBuf::from(std::env::var_os("ARIA_TEST_MOC").unwrap());
+        let mut hosted = HostedModel::load_with_host(&host, Path::new(""), &moc, 32).unwrap();
+        let parameter = hosted
+            .parameters()
+            .iter()
+            .find(|parameter| parameter.max > parameter.min)
+            .unwrap()
+            .clone();
+        let start = std::time::Instant::now();
+        let mut measured = std::time::Duration::ZERO;
+        for frame in 0..140 {
+            hosted.set_parameter(
+                &parameter.id,
+                if frame % 2 == 0 {
+                    parameter.min
+                } else {
+                    parameter.max
+                },
+            );
+            let before = std::time::Instant::now();
+            hosted.update().unwrap();
+            if frame >= 20 {
+                measured += before.elapsed();
+            }
+        }
+        eprintln!(
+            "{}: 120 worker frames {:.3} ms/frame after warmup, {:.2} s total",
+            hosted.version,
+            measured.as_secs_f64() * 1000.0 / 120.0,
+            start.elapsed().as_secs_f64()
+        );
     }
 }

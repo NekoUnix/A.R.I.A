@@ -19,14 +19,16 @@ once per frame and applies decoded glue constraints. Its decoded mesh and warp
 position data share a 512 MiB budget. The evaluator applies blend-shape deltas
 to ArtMeshes, warp and rotation deformers, and glue intensities. It also
 resolves part hierarchy, caller-controlled part opacity, binding-range
-visibility, authored multiply/screen colors and integer ArtMesh draw order.
+visibility, authored multiply/screen colors, integer ArtMesh draw order and
+hierarchical final render order. A renderer-facing adapter is available in the
+isolated worker when `ARIA_EXPERIMENTAL_RUST_CORE=1` is set. This is an
+opt-in comparison path; the default and distributed runtime still use Purism.
 After compilation,
 frame evaluation no longer borrows or reads the encoded MOC3 bytes. It does
 not run C code, relocate pointers in model bytes, load an SDK, or include
-copied Purism source. The crate is in the workspace for development and
-testing; it is **not** the active evaluator yet. The model-scoped path still
-allocates per frame and has no end-to-end frame-time measurement, so it is not
-a measured 120 FPS implementation.
+copied Purism source. The model-scoped path still allocates per frame and is
+slower than the current runtime on the measured large export. It is not a
+measured 120 FPS implementation.
 
 `resident::ResidentModel` is the first production connection to this core.
 On avatar load, it reads the complete MOC3 source and every declared encoded
@@ -96,9 +98,9 @@ loader. The expanded blend-shape evaluator also passed this three-frame parity
 test on the same 27 comparable exports. The direct official comparisons below
 include blend-shape parameter extremes; more input combinations still need
 checking.
-Final render order, all dynamic-flag transitions, offscreen behavior and final
-rendered pixels are not covered by this geometry result. A test passing on these frames
-does not make the evaluator production-ready or prove a performance gain.
+All dynamic-flag transitions and offscreen behavior are not covered by this
+geometry result. A test passing on these frames does not make the evaluator
+production-ready or prove a performance gain.
 
 An optimized local diagnostic on the OILBUN export measured the current
 runtime's deformation-only path at roughly `0.64 ms/frame` and the Rust
@@ -122,9 +124,24 @@ ArtMesh draw orders matched. The extended local sweep passed direct official
 comparisons on all 27 exports also accepted by the current runtime. It exposed
 and resolved binding-range visibility and integer draw-order edge cases.
 The official DLL remains local and is never linked into the application.
-This does not validate final render order, every dynamic flag, output pixels
-or end-to-end performance. `Ditto Eevees.moc3` still needs a separate format
-investigation because the current runtime rejects it.
+The same 27 comparable exports subsequently matched official Cubism's final
+render-order ranks across seven frames after ARIA decoded hierarchical draw
+groups. Opt-in Rust worker rendering was tested on OILBUN and a large 90s
+outfit export. Their default-pose images differed from the current renderer on
+3,017 of 3,854,336 and 1,963 of 2,779,136 pixels respectively, mostly
+subpixel edges; each had five pixels with channel difference above 32. This
+does not validate every dynamic flag, output pose, or end-to-end performance.
+Official Core 5 accepts `Ditto Eevees.moc3`, but the current runtime rejects
+it; direct Rust-to-official comparison for that export remains pending.
+
+Optimized 120-frame worker tests measured OILBUN at about 2.58 ms/frame with
+the current runtime and 4.09 ms/frame with Rust. The large 90s outfit measured
+about 10.20 ms/frame current and 18.38 ms/frame Rust. These figures include
+worker frame handling, not complete desktop rendering. The Rust path must be
+accelerated before it can replace the default. In the desktop renderer, model
+coordinates are now projected in the GPU vertex shader; this removes CPU
+projection of every vertex before upload but does not move MOC3 deformation
+or worker serialization to the GPU. No whole-frame FPS improvement is claimed.
 
 The already-Rust ARIA physics solver was also adjusted with an explicit
 frequency-controlled return torque for Natural and Bouncy modes. This gives

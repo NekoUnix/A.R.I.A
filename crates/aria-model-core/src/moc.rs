@@ -466,6 +466,20 @@ pub struct PartLayout {
     pub enabled: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DrawItem {
+    Mesh(usize),
+    Part { index: usize, child_group: usize },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DrawGroupLayout {
+    pub min_order: i32,
+    pub max_order: i32,
+    pub total_count: usize,
+    pub items: Vec<DrawItem>,
+}
+
 #[derive(Debug, Clone)]
 struct MeshKeyform {
     positions: Vec<[f32; 2]>,
@@ -529,6 +543,22 @@ impl CompiledMesh {
             weights.iter().all(|weight| weight.weight.is_finite()),
             "Mesh binding contains non-finite weights"
         );
+        if let [key] = weights
+            && key.weight == 1.0
+        {
+            let source = self
+                .keyforms
+                .get(key.index)
+                .context("Binding exceeds mesh keyforms")?;
+            return Ok(LocalMeshFrame {
+                positions: source.positions.clone(),
+                opacity: source.opacity,
+                draw_order: source.draw_order,
+                multiply: [1.0; 4],
+                screen: [0.0, 0.0, 0.0, 1.0],
+                parent_deformer: self.parent_deformer,
+            });
+        }
         let first = self.keyforms.first().context("Mesh has no keyforms")?;
         let mut positions = vec![[0.0_f32; 2]; first.positions.len()];
         let mut opacity = 0.0_f32;
@@ -615,6 +645,15 @@ impl CompiledDeformer {
             weights.iter().all(|key| key.weight.is_finite()),
             "Deformer binding contains non-finite weights"
         );
+        if let [key] = weights
+            && key.weight == 1.0
+        {
+            return self
+                .keyforms
+                .get(key.index)
+                .cloned()
+                .context("Unknown deformer keyform");
+        }
         match self.keyforms.first().context("Deformer has no keyforms")? {
             LocalDeformerFrame::Warp { points, .. } => {
                 let mut output = vec![[0.0_f32; 2]; points.len()];
@@ -811,6 +850,13 @@ impl<'a> Moc<'a> {
 
     pub fn version(&self) -> u8 {
         self.version
+    }
+    pub fn offscreen_count(&self) -> Result<usize> {
+        if self.version >= 6 {
+            self.nonnegative(0, 35)
+        } else {
+            Ok(0)
+        }
     }
     pub fn byte_order(&self) -> ByteOrder {
         self.byte_order
@@ -1541,6 +1587,82 @@ impl<'a> Moc<'a> {
             });
         }
         Ok(parts)
+    }
+
+    pub fn part_draw_order_keyforms(&self, part: usize) -> Result<Vec<f32>> {
+        ensure!(part < self.counts()?.parts as usize, "Unknown part");
+        let start = self.nonnegative(5, part)?;
+        let count = self.nonnegative(6, part)?;
+        let total = self.nonnegative(0, 6)?;
+        ensure!(
+            count > 0 && start.checked_add(count).is_some_and(|end| end <= total),
+            "Part keyforms exceed the keyform pool"
+        );
+        (start..start + count)
+            .map(|index| {
+                let value = f32::from_bits(self.word(58, index)?);
+                ensure!(value.is_finite(), "Non-finite part draw order");
+                Ok(value)
+            })
+            .collect()
+    }
+
+    pub fn draw_group_layouts(&self) -> Result<Vec<DrawGroupLayout>> {
+        let groups = self.nonnegative(0, 18)?;
+        let items = self.nonnegative(0, 19)?;
+        let counts = self.counts()?;
+        ensure!(
+            groups <= 16_384 && items <= 1_000_000,
+            "Draw groups exceed ARIA limits"
+        );
+        let mut layouts = Vec::with_capacity(groups);
+        for group in 0..groups {
+            let start = self.nonnegative(81, group)?;
+            let count = self.nonnegative(82, group)?;
+            let total_count = self.nonnegative(83, group)?;
+            let max_order = self.word(84, group)? as i32;
+            let min_order = self.word(85, group)? as i32;
+            ensure!(
+                start.checked_add(count).is_some_and(|end| end <= items)
+                    && total_count <= counts.art_meshes as usize + counts.parts as usize
+                    && min_order <= max_order,
+                "Invalid draw-group range"
+            );
+            let mut children = Vec::with_capacity(count);
+            for item in start..start + count {
+                let object = self.nonnegative(87, item)?;
+                let entry = match self.word(86, item)? as i32 {
+                    0 => {
+                        ensure!(
+                            object < counts.art_meshes as usize,
+                            "Invalid draw-group mesh"
+                        );
+                        DrawItem::Mesh(object)
+                    }
+                    1 => {
+                        ensure!(object < counts.parts as usize, "Invalid draw-group part");
+                        let child_group = self.nonnegative(88, item)?;
+                        ensure!(
+                            child_group < groups && child_group != group,
+                            "Invalid child draw group"
+                        );
+                        DrawItem::Part {
+                            index: object,
+                            child_group,
+                        }
+                    }
+                    _ => anyhow::bail!("Unknown draw-group item type"),
+                };
+                children.push(entry);
+            }
+            layouts.push(DrawGroupLayout {
+                min_order,
+                max_order,
+                total_count,
+                items: children,
+            });
+        }
+        Ok(layouts)
     }
 
     /// Decode normal-parameter color keyforms for an ArtMesh or deformer.

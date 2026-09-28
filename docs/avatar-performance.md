@@ -44,6 +44,18 @@ the change halves dynamic vertex transfer, but does not remove the many mask
 passes or the full Core evaluation. Compare the same asset before and after to
 determine its actual FPS effect.
 
+The renderer now uploads deformed model-space vertices and applies the canvas
+projection in its GPU vertex shader. CPU preparation copies positions directly;
+it reduces visible bounds to model-space extrema rather than projecting every
+vertex for that calculation. The GPU clipping/blending test and an OILBUN
+native render passed. Compared with the preceding OILBUN image, 1,101 of
+3,854,336 pixels changed, with 21 pixels differing by more than one channel
+level and two by more than eight, at rasterized edges. This work leaves MOC3
+deformation and worker transport on the CPU, so it does not establish a 120 FPS
+gain. The experimental Rust worker currently takes about 18.38 ms/frame on a
+large 90s outfit where the current worker takes about 10.20 ms/frame; making
+it the default requires both geometry acceleration and end-to-end profiling.
+
 The supplied NekoUnity2 VRM spent about 1–1.3 ms in model update at its saved
 60 FPS target. With the smoke cap held at 120 after import, it subsequently ran
 at 120.1–120.3 FPS in three sampled intervals, with 0.8–1.4 ms model updates.

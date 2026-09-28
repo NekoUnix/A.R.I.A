@@ -4,6 +4,7 @@
 //! Until format decoding and deformation pass the local-model parity gate, the
 //! desktop application continues to use its existing production runtime.
 
+pub mod draw_order;
 pub mod geometry;
 pub mod moc;
 pub mod resident;

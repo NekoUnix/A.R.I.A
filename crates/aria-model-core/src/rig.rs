@@ -60,6 +60,9 @@ pub struct WarpGrid {
     columns: usize,
     rows: usize,
     points: Vec<Point>,
+    affine_center: Point,
+    affine_u: Point,
+    affine_v: Point,
 }
 
 /// Affine rotation about a model-space origin, with authored reflection and
@@ -116,10 +119,27 @@ impl WarpGrid {
             points.iter().all(|p| p.x.is_finite() && p.y.is_finite()),
             "Non-finite warp control point"
         );
+        let p00 = points[0];
+        let p10 = points[columns];
+        let p01 = points[rows * (columns + 1)];
+        let p11 = points[rows * (columns + 1) + columns];
+        let diagonal = p11.sub(p00);
+        let opposite = p10.sub(p01);
+        let affine_v = diagonal.sub(opposite).scale(0.5);
+        let affine_u = diagonal.add(opposite).scale(0.5);
+        let affine_center = p00
+            .add(p10)
+            .add(p01)
+            .add(p11)
+            .scale(0.25)
+            .sub(diagonal.scale(0.5));
         Ok(Self {
             columns,
             rows,
             points,
+            affine_center,
+            affine_u,
+            affine_v,
         })
     }
 
@@ -173,21 +193,11 @@ impl WarpGrid {
             return self.sample_interior(uv, quad);
         }
         let stride = self.columns + 1;
-        let p00 = self.points[0];
-        let p10 = self.points[self.columns];
-        let p01 = self.points[self.rows * stride];
-        let p11 = self.points[self.rows * stride + self.columns];
-        let diagonal = p11.sub(p00);
-        let opposite = p10.sub(p01);
-        let dv = diagonal.sub(opposite).scale(0.5);
-        let du = diagonal.add(opposite).scale(0.5);
-        let center = p00
-            .add(p10)
-            .add(p01)
-            .add(p11)
-            .scale(0.25)
-            .sub(diagonal.scale(0.5));
-        let affine = |u: f32, v: f32| center.add(du.scale(u)).add(dv.scale(v));
+        let affine = |u: f32, v: f32| {
+            self.affine_center
+                .add(self.affine_u.scale(u))
+                .add(self.affine_v.scale(v))
+        };
         if uv.x <= -2.0 || uv.x >= 3.0 || uv.y <= -2.0 || uv.y >= 3.0 {
             return Ok(affine(uv.x, uv.y));
         }

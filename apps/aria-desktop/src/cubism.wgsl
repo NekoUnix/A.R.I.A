@@ -1,4 +1,4 @@
-struct Style { multiply: vec4<f32>, screen: vec4<f32>, control: vec4<f32> }
+struct Style { multiply: vec4<f32>, screen: vec4<f32>, control: vec4<f32>, projection: vec4<f32> }
 @group(0) @binding(0) var atlas: texture_2d<f32>;
 @group(0) @binding(1) var linear_sampler: sampler;
 @group(1) @binding(0) var mask: texture_2d<f32>;
@@ -10,7 +10,7 @@ struct VertexOut {
 }
 @vertex fn vertex(@location(0) position: vec2<f32>, @location(1) uv: vec2<f32>) -> VertexOut {
     var out: VertexOut;
-    out.position = vec4<f32>(position, 0.0, 1.0);
+    out.position = vec4<f32>(position * style.projection.xy + style.projection.zw, 0.0, 1.0);
     out.uv = vec2<f32>(uv.x, 1.0 - uv.y);
     return out;
 }
