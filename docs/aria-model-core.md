@@ -30,6 +30,14 @@ desktop process without worker serialization. Both are opt-in comparison paths;
 the default and distributed runtime still use Purism. The direct path loses
 worker crash isolation and must remain experimental until the replacement gates
 are met.
+With the direct path enabled, `ARIA_EXPERIMENTAL_GPU_MOC3=1` additionally runs
+mesh deformation, hierarchy, glue and visible-bounds reduction on the GPU.
+Rust still resolves drawable metadata and compact dynamic coefficients on the
+CPU. The final vertex buffer is bound directly by the desktop renderer, and
+only four bounds values are returned asynchronously to fit the view. If GPU
+plan construction fails for a model, Studio records a warning and uses the
+direct Rust CPU geometry path. Both variables must be set for this experiment;
+it is not yet the default or a measured 120 FPS path.
 After compilation,
 frame evaluation no longer borrows or reads the encoded MOC3 bytes. It does
 not run C code, relocate pointers in model bytes, load an SDK, or include
@@ -268,8 +276,8 @@ poses on the large outfit (740 deformers, 19 depths, 1,365 glue pairs and
 676,344 active vertex-poses), OILBUN (271 deformers, 11 depths, 2,298 glue
 pairs and 223,740 vertex-poses) and Ditto (109 deformers, 13 depths and 1,980
 vertex-poses). Maximum observed errors were below 0.000015 model units. This
-validates geometry math, not live rendering: dynamic bounds, renderer hookup
-and frame-time measurements remain.
+validates geometry math; later opt-in work below connects bounds and rendering.
+Whole-frame speed measurements remain.
 
 The Rust evaluator now has a separate metadata-only frame path. It computes
 activation, inherited part/deformer opacity and color, mesh opacity/color,
@@ -277,21 +285,23 @@ and draw order while leaving positions empty. The direct Rust hosted adapter
 updates its drawable state without changing the stored vertex arrays. Local
 three-pose comparisons on the large outfit, OILBUN and Ditto matched the full
 Rust frame's metadata and render order exactly. This removes the need to run
-CPU vertex deformation solely to feed GPU rendering; dynamic bounds and the
-actual Studio renderer switch are still pending.
+CPU vertex deformation solely to feed GPU rendering. The opt-in Studio hookup
+is described below; default switching is still pending.
 
 The resident GPU evaluator now finishes with canvas orientation after all
 deformer and glue passes. Only the leading mesh-vertex range is flipped when
 the MOC canvas requires it; control points retain their source orientation.
 Native DX12 checks against Rust renderer coordinates passed at three poses on
-the large outfit, OILBUN and Ditto. Dynamic visible bounds and view fitting
-remain prerequisites for enabling the GPU vertex buffer in Studio.
+the large outfit, OILBUN and Ditto.
 
 A two-pass GPU reduction now calculates the minimum and maximum of final mesh
 positions for visible meshes, with static vertex ownership and a small dynamic
 visibility array. Native checks on those three models also passed with every
-third mesh intentionally hidden. It produces a four-float result; asynchronous
-CPU delivery for view fitting and the actual Studio renderer connection remain.
+third mesh intentionally hidden. It produces a four-float result. The opt-in
+Studio path now reads that small result asynchronously, discards stale bounds,
+fits the view and binds the resident vertex buffer directly. Two-pose native
+render comparisons passed on those models, with sparse raster-edge differences
+on the large outfit. Live frame-time and broader compatibility checks remain.
 
 A test-only WGPU compute primitive now samples multiple warp grids in a single
 dispatch. It implements the Rust evaluator's affine shortcut, bent-grid quad

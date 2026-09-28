@@ -17,29 +17,50 @@ const MASK_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
 /// Keep the texture's aspect ratio and never shrink on animation frames, avoiding
 /// breathing/zoom jitter. Only projection changes; GPU allocations remain fixed.
 fn fit_canvas(original: Canvas, drawables: &[Drawable], previous: Option<Canvas>) -> Canvas {
-    let base = previous.unwrap_or(original);
-    let mut min = if previous.is_some() {
-        egui::vec2(-base.origin[0], -base.origin[1])
-    } else {
-        egui::Vec2::INFINITY
-    };
-    let mut max = if previous.is_some() {
-        min + egui::vec2(base.size[0], base.size[1])
-    } else {
-        -egui::Vec2::INFINITY
-    };
-    let old_min = min;
-    let old_max = max;
+    let mut min = egui::Vec2::INFINITY;
+    let mut max = -egui::Vec2::INFINITY;
     for p in drawables
         .iter()
         .filter(|d| d.visible && d.opacity > 0.0)
         .flat_map(|d| &d.positions)
     {
-        let p = egui::vec2(p[0], p[1]) * original.pixels_per_unit;
+        let p = egui::vec2(p[0], p[1]);
         if p.is_finite() {
             min = min.min(p);
             max = max.max(p);
         }
+    }
+    fit_canvas_from_model_extents(original, [min.x, min.y, max.x, max.y], previous)
+}
+
+/// Grow the view from four model-space extrema produced by the GPU reducer.
+pub(crate) fn fit_canvas_from_model_extents(
+    original: Canvas,
+    bounds: [f32; 4],
+    previous: Option<Canvas>,
+) -> Canvas {
+    let base = previous.unwrap_or(original);
+    let old_min = egui::vec2(-base.origin[0], -base.origin[1]);
+    let old_max = old_min + egui::vec2(base.size[0], base.size[1]);
+    let mut min = if previous.is_some() {
+        old_min
+    } else {
+        egui::Vec2::INFINITY
+    };
+    let mut max = if previous.is_some() {
+        old_max
+    } else {
+        -egui::Vec2::INFINITY
+    };
+    let incoming_min = egui::vec2(bounds[0], bounds[1]) * original.pixels_per_unit;
+    let incoming_max = egui::vec2(bounds[2], bounds[3]) * original.pixels_per_unit;
+    if incoming_min.is_finite()
+        && incoming_max.is_finite()
+        && incoming_min.x <= incoming_max.x
+        && incoming_min.y <= incoming_max.y
+    {
+        min = min.min(incoming_min);
+        max = max.max(incoming_max);
     }
     if !min.is_finite() || !max.is_finite() || (max - min).max_elem() < 1e-5 {
         return base;
@@ -57,6 +78,26 @@ fn fit_canvas(original: Canvas, drawables: &[Drawable], previous: Option<Canvas>
         origin: [origin.x, origin.y],
         pixels_per_unit: original.pixels_per_unit,
     }
+}
+
+pub(crate) fn normalized_model_extents(canvas: Canvas, bounds: [f32; 4]) -> egui::Rect {
+    if !bounds.iter().all(|value| value.is_finite())
+        || bounds[0] > bounds[2]
+        || bounds[1] > bounds[3]
+    {
+        return egui::Rect::NOTHING;
+    }
+    let projection = [
+        2.0 * canvas.pixels_per_unit / canvas.size[0],
+        2.0 * canvas.pixels_per_unit / canvas.size[1],
+        2.0 * canvas.origin[0] / canvas.size[0] - 1.0,
+        2.0 * canvas.origin[1] / canvas.size[1] - 1.0,
+    ];
+    let min_x = (bounds[0] * projection[0] + projection[2] + 1.0) * 0.5;
+    let max_x = (bounds[2] * projection[0] + projection[2] + 1.0) * 0.5;
+    let min_y = (1.0 - bounds[3] * projection[1] - projection[3]) * 0.5;
+    let max_y = (1.0 - bounds[1] * projection[1] - projection[3]) * 0.5;
+    egui::Rect::from_min_max(egui::pos2(min_x, min_y), egui::pos2(max_x, max_y))
 }
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -682,10 +723,6 @@ impl ModelRenderer {
     /// CPU position vector. The source must be a VERTEX buffer containing
     /// one tightly packed vec2 per vertex in drawable order. The caller also
     /// supplies the already-fitted view and normalized visible bounds.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "GPU model evaluator connection is pending")
-    )]
     pub fn render_layers_gpu_positions(
         &mut self,
         view_canvas: Canvas,
@@ -699,12 +736,13 @@ impl ModelRenderer {
             "GPU geometry has fewer vertices than this model"
         );
         ensure!(
-            bounds.min.x.is_finite()
-                && bounds.min.y.is_finite()
-                && bounds.max.x.is_finite()
-                && bounds.max.y.is_finite()
-                && bounds.min.x <= bounds.max.x
-                && bounds.min.y <= bounds.max.y,
+            bounds == egui::Rect::NOTHING
+                || (bounds.min.x.is_finite()
+                    && bounds.min.y.is_finite()
+                    && bounds.max.x.is_finite()
+                    && bounds.max.y.is_finite()
+                    && bounds.min.x <= bounds.max.x
+                    && bounds.min.y <= bounds.max.y),
             "GPU geometry bounds are invalid"
         );
         ensure!(
@@ -795,11 +833,7 @@ impl ModelRenderer {
                 .copy_from_slice(bytemuck::bytes_of(&style));
         }
         let bounds = if model_min.is_finite() && model_max.is_finite() {
-            let min_x = (model_min.x * projection[0] + projection[2] + 1.0) * 0.5;
-            let max_x = (model_max.x * projection[0] + projection[2] + 1.0) * 0.5;
-            let min_y = (1.0 - model_max.y * projection[1] - projection[3]) * 0.5;
-            let max_y = (1.0 - model_min.y * projection[1] - projection[3]) * 0.5;
-            egui::Rect::from_min_max(egui::pos2(min_x, min_y), egui::pos2(max_x, max_y))
+            normalized_model_extents(c, [model_min.x, model_min.y, model_max.x, model_max.y])
         } else {
             egui::Rect::NOTHING
         };
@@ -1194,6 +1228,13 @@ mod tests {
         d.positions = vec![[-1.4, -2.2], [1.8, -2.2], [1.8, 2.3], [-1.4, 2.3]];
         d.visible = true;
         let view = fit_canvas(canvas, &[d.clone()], None);
+        let extents = [-1.4, -2.2, 1.8, 2.3];
+        let from_extents = fit_canvas_from_model_extents(canvas, extents, None);
+        assert_eq!(view.size, from_extents.size);
+        assert_eq!(view.origin, from_extents.origin);
+        let normalized = normalized_model_extents(view, extents);
+        assert!(normalized.min.x > 0.0 && normalized.min.y > 0.0);
+        assert!(normalized.max.x < 1.0 && normalized.max.y < 1.0);
         let check = |view: Canvas, d: &Drawable| {
             assert!((view.size[0] / view.size[1] - 0.5).abs() < 1e-6);
             for p in &d.positions {
@@ -1207,6 +1248,10 @@ mod tests {
         check(view, &d);
         d.positions[0][0] = -3.0;
         let grown = fit_canvas(canvas, &[d.clone()], Some(view));
+        let grown_from_extents =
+            fit_canvas_from_model_extents(canvas, [-3.0, -2.2, 1.8, 2.3], Some(view));
+        assert_eq!(grown.size, grown_from_extents.size);
+        assert_eq!(grown.origin, grown_from_extents.origin);
         check(grown, &d);
         assert!(grown.size[1] > view.size[1]);
         d.positions = vec![[0., 0.]; 4];

@@ -170,8 +170,8 @@ removes a planned full-frame geometry upload for that stage. A second resident
 pass applies blend-shape position deltas to the same output buffer, including
 458,945 affected points on that model, with only active blend weights/counts
 uploaded per pose (11.12 KiB on the large outfit, with 11.27 MiB resident
-deltas). Whole-frame GPU timing and active Studio FPS have not been
-measured because later deformation stages and metadata are still on the CPU path.
+deltas). Whole-frame GPU timing and active Studio FPS have not been measured;
+the complete path below is experimental and still needs performance checks.
 
 The resident path now also transforms warp-only hierarchy branches in GPU
 storage, using fixed depth-ordered work and no intermediate readback. It
@@ -179,28 +179,34 @@ covered 276,025 control/mesh points on the large outfit. The newer full GPU
 evaluator also resolves mixed warp/rotation branches and glue, with full-Rust
 final-position parity on three local models. Only compact rotation frames,
 active keys and glue intensities upload per pose; the large source arrays and
-final mesh positions stay GPU-resident. The active Studio renderer is still on
-its existing path, so no FPS gain is claimed until metadata, bounds and
-renderer integration are measured.
+final mesh positions stay GPU-resident. The default Studio renderer is still
+on its existing path; the later opt-in hookup has no measured FPS gain yet.
 
 The Rust core now computes drawable metadata without blending mesh positions
 or resolving warp points on the CPU. Native comparisons confirmed identical
 visibility, opacity, color and order on the three local models. This path is
 ready to accompany GPU positions, but active Studio frame-time gains still
-depend on completing GPU framing and connecting the renderer.
+depend on measuring the newly connected experimental path.
 The resident position evaluator now applies the final canvas Y orientation on
 the GPU after glue, matching the renderer-facing Rust vertex array across
 three poses on each of those models. It keeps warp control points unchanged.
-This is a required handoff step, not an active Studio FPS improvement: visible
-bounds and view fitting still need to be supplied without synchronously reading
-the vertex buffer back to the CPU.
+This is a required handoff step, not by itself a Studio FPS improvement.
 The GPU now also reduces oriented positions into visible mesh bounds in two
 compute passes. Vertex ownership stays on the device, visibility changes upload
 one 32-bit word per mesh, and the output is only four floats. Three-pose DX12
 checks against Rust bounds passed on the large outfit, OILBUN and Ditto, with
-one pose hiding every third mesh. Studio still needs asynchronous delivery of
-those bounds and a view update before the GPU path can be enabled; these native
-checks do not measure live frame time.
+one pose hiding every third mesh. A newer opt-in path now delivers those bounds
+asynchronously and uses them for view fitting; these native geometry checks do
+not measure live frame time.
+Set `ARIA_EXPERIMENTAL_DIRECT_RUST_CORE=1` and `ARIA_EXPERIMENTAL_GPU_MOC3=1`
+before launching Studio to use the Rust metadata and GPU geometry path. Mesh
+positions stay on the GPU through deformation, bounds reduction and rendering;
+only four bounds values return asynchronously. Superseded bounds are discarded,
+and layer-only changes skip geometry dispatch. Two-pose native image comparisons
+passed on Ditto, OILBUN and the large outfit, including masks and view fitting.
+The large model's broad second pose differed at 0.116% of pixels by more than
+two color levels, within the test's 0.2% budget. The many mask/color passes
+and broad model compatibility still need profiling before the default changes.
 An optimized 120-frame alternating-parameter microbenchmark on the large
 outfit measured 3.015 ms/frame for full direct Rust updates and 0.085
 ms/frame for metadata-only updates after warmup. These figures exclude GPU

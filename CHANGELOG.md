@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Connect the independent Rust MOC3 core's metadata path to resident GPU geometry and direct GPU vertex rendering behind `ARIA_EXPERIMENTAL_DIRECT_RUST_CORE=1` plus `ARIA_EXPERIMENTAL_GPU_MOC3=1`. Visible bounds reduce on the GPU and return asynchronously as four floats; stale results are discarded when visibility changes again. Layer-only edits skip geometry dispatch, and fully hidden models retain a valid transparent render. Two-pose native render comparisons passed on Ditto, OILBUN and the large outfit; the latter differed by at most 3,231 of 2,779,136 pixels beyond two color levels (0.116%) and 264 pixels beyond sixteen levels. Default rendering, whole-frame speed and the Purism removal gate remain unchanged pending performance measurements and broader model validation.
+
 - Add a two-pass GPU reduction for visible MOC3 mesh bounds. Static vertex-to-mesh ownership stays resident, and only one visibility word per mesh changes per pose; the GPU reduces final oriented positions to four bound values without a vertex readback. Native DX12 parity passed across three poses on the large outfit, OILBUN and Ditto, including deliberately hidden meshes. Asynchronous bound delivery, dynamic view fitting and active renderer hookup remain.
 
 - Finish the resident GPU MOC3 position buffer with the canvas Y orientation used by the Rust renderer. The pass runs after hierarchy and glue and touches only mesh vertices, leaving warp control points in source coordinates. Three-pose DX12 position parity still passes on the large outfit, OILBUN and Ditto. GPU visible bounds and live Studio connection remain before this can improve frame rate.

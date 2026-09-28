@@ -2,6 +2,7 @@
 
 use anyhow::{Result, ensure};
 use aria_model_core::gpu_key_plan::GpuPositionKeyPlan;
+use std::sync::mpsc::{self, Receiver, TryRecvError};
 use wgpu::util::DeviceExt;
 
 pub struct GpuVisibleBounds {
@@ -13,6 +14,10 @@ pub struct GpuVisibleBounds {
     visible: wgpu::Buffer,
     _groups: wgpu::Buffer,
     bounds: wgpu::Buffer,
+    readback: wgpu::Buffer,
+    copy_pending: bool,
+    map_pending: Option<Receiver<bool>>,
+    newer_bounds_pending: bool,
     mesh_bind: wgpu::BindGroup,
     reduce_bind: wgpu::BindGroup,
     mesh_pipeline: wgpu::ComputePipeline,
@@ -84,6 +89,12 @@ impl GpuVisibleBounds {
             label: Some("ARIA GPU visible bounds"),
             size: 16,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let readback = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("ARIA GPU visible bounds readback"),
+            size: 16,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
         let storage_entry = |binding, read_only| wgpu::BindGroupLayoutEntry {
@@ -195,6 +206,10 @@ impl GpuVisibleBounds {
             visible,
             _groups: groups,
             bounds,
+            readback,
+            copy_pending: false,
+            map_pending: None,
+            newer_bounds_pending: false,
             mesh_bind,
             reduce_bind,
             mesh_pipeline,
@@ -229,7 +244,70 @@ impl GpuVisibleBounds {
         pass.set_pipeline(&self.reduce_pipeline);
         pass.set_bind_group(0, &self.reduce_bind, &[]);
         pass.dispatch_workgroups(1, 1, 1);
+        drop(pass);
+        if !self.copy_pending && self.map_pending.is_none() {
+            encoder.copy_buffer_to_buffer(&self.bounds, 0, &self.readback, 0, 16);
+            self.copy_pending = true;
+            self.newer_bounds_pending = false;
+        } else {
+            self.newer_bounds_pending = true;
+        }
         Ok(())
+    }
+
+    /// Start mapping the tiny readback only after the compute submission.
+    pub fn begin_readback(&mut self) {
+        if !self.copy_pending {
+            return;
+        }
+        self.copy_pending = false;
+        let (tx, rx) = mpsc::channel();
+        self.readback
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                let _ = tx.send(result.is_ok());
+            });
+        self.map_pending = Some(rx);
+    }
+
+    /// Poll once without waiting for the GPU; a busy frame keeps its previous bounds.
+    pub fn poll_readback(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<Option<[f32; 4]>> {
+        if self.map_pending.is_none() {
+            return Ok(None);
+        }
+        device.poll(wgpu::PollType::Poll)?;
+        let received = match self.map_pending.as_ref().unwrap().try_recv() {
+            Ok(success) => success,
+            Err(TryRecvError::Empty) => return Ok(None),
+            Err(TryRecvError::Disconnected) => {
+                self.map_pending = None;
+                anyhow::bail!("GPU bounds readback callback disconnected")
+            }
+        };
+        self.map_pending = None;
+        ensure!(received, "GPU bounds readback mapping failed");
+        let bytes = self.readback.slice(..).get_mapped_range()?;
+        let bounds = *bytemuck::from_bytes::<[f32; 4]>(&bytes);
+        drop(bytes);
+        self.readback.unmap();
+        if self.newer_bounds_pending {
+            self.newer_bounds_pending = false;
+            let mut encoder = device.create_command_encoder(&Default::default());
+            encoder.copy_buffer_to_buffer(&self.bounds, 0, &self.readback, 0, 16);
+            queue.submit([encoder.finish()]);
+            self.copy_pending = true;
+            self.begin_readback();
+            return Ok(None);
+        }
+        ensure!(
+            bounds.iter().all(|value| value.is_finite()),
+            "GPU bounds are not finite"
+        );
+        Ok(Some(bounds))
     }
 
     pub fn output(&self) -> &wgpu::Buffer {

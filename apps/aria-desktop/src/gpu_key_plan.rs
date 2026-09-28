@@ -79,12 +79,6 @@ fn local_moc3_full_gpu_hierarchy_matches_rust_meshes() {
         evaluator.plan(),
     )
     .unwrap();
-    let bounds_readback = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("ARIA visible GPU bounds parity readback"),
-        size: 16,
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-        mapped_at_creation: false,
-    });
     let output_bytes = evaluator.positions().size();
     let readback = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("ARIA full GPU hierarchy parity readback"),
@@ -121,8 +115,8 @@ fn local_moc3_full_gpu_hierarchy_matches_rust_meshes() {
             .encode(&state.queue, &mut encoder, &visible)
             .unwrap();
         encoder.copy_buffer_to_buffer(evaluator.positions(), 0, &readback, 0, output_bytes);
-        encoder.copy_buffer_to_buffer(gpu_bounds.output(), 0, &bounds_readback, 0, 16);
         state.queue.submit([encoder.finish()]);
+        gpu_bounds.begin_readback();
         let (tx, rx) = std::sync::mpsc::channel();
         readback
             .slice(..)
@@ -161,16 +155,10 @@ fn local_moc3_full_gpu_hierarchy_matches_rust_meshes() {
                 checked += 1;
             }
         }
-        let (tx, rx) = std::sync::mpsc::channel();
-        bounds_readback
-            .slice(..)
-            .map_async(wgpu::MapMode::Read, move |result| {
-                tx.send(result).unwrap();
-            });
-        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
-        rx.recv().unwrap().unwrap();
-        let bytes = bounds_readback.slice(..).get_mapped_range().unwrap();
-        let gpu_bounds = bytemuck::from_bytes::<[f32; 4]>(&bytes);
+        let gpu_bounds = gpu_bounds
+            .poll_readback(device, &state.queue)
+            .unwrap()
+            .unwrap();
         for axis in 0..4 {
             assert!(
                 (expected_bounds[axis] - gpu_bounds[axis]).abs() <= 0.0001,
@@ -179,9 +167,35 @@ fn local_moc3_full_gpu_hierarchy_matches_rust_meshes() {
                 gpu_bounds[axis]
             );
         }
-        drop(bytes);
-        bounds_readback.unmap();
     }
+    // A newer visibility frame arriving while readback is pending must not
+    // publish the older bounds after every mesh has been hidden.
+    let visible = vec![true; evaluator.plan().mesh_ranges.len()];
+    let mut encoder = device.create_command_encoder(&Default::default());
+    gpu_bounds
+        .encode(&state.queue, &mut encoder, &visible)
+        .unwrap();
+    state.queue.submit([encoder.finish()]);
+    gpu_bounds.begin_readback();
+    let hidden = vec![false; visible.len()];
+    let mut encoder = device.create_command_encoder(&Default::default());
+    gpu_bounds
+        .encode(&state.queue, &mut encoder, &hidden)
+        .unwrap();
+    state.queue.submit([encoder.finish()]);
+    device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+    assert!(
+        gpu_bounds
+            .poll_readback(device, &state.queue)
+            .unwrap()
+            .is_none()
+    );
+    device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+    let hidden_bounds = gpu_bounds
+        .poll_readback(device, &state.queue)
+        .unwrap()
+        .unwrap();
+    assert!(hidden_bounds[0] > hidden_bounds[2] && hidden_bounds[1] > hidden_bounds[3]);
     assert!(checked > 0, "No active meshes were compared");
     eprintln!(
         "ARIA full GPU geometry parity: {} warp/rotation nodes across {levels} depths, {} glues, {} pairs in {} levels, {checked} mesh vertex-poses, max error {max_error}",
