@@ -1433,6 +1433,17 @@ The native Ditto GPU render test also queued a hidden-to-visible bounds change
 before the previous 16-byte map completed. Both the older completed result
 and the newer visible result reached the view without a synchronous vertex
 readback.
+The 28 supplied local MOC3 paths were inventoried as versions 1–5, with no
+version-6 offscreen parts. The official Cubism Core differential test passed
+on the deeply nested tray-maid export. Version-6 offscreen composition still
+requires a suitable local test model and independent Rust/render implementation.
+Full-resolution mask batching matched the prior single-mask renderer pixel for
+pixel on two CPU and GPU poses each of the large 90s outfit, OILBUN and tray-maid
+exports. The native synthetic clipping/blending/draw-order test and frozen
+layer-preview independence test also passed with batching. Matched optimized
+20-second large-outfit runs sampled 117.4 FPS with batching versus 111.0 and
+105.7 in surrounding single-mask runs; batching did not hold 120 FPS. See the
+[performance note](avatar-performance.md) for pass counts and memory tradeoff.
 
 1. Physical iPhone running the user's VTube Studio version, permissions and Wi-Fi.
    Confirm valid packets, head directions, blinks, mouth, gaze, calibration and

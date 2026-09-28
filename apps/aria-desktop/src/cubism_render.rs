@@ -5,9 +5,11 @@ use aria_live2d::{Blend, Canvas, Drawable};
 use aria_model_core::resident::ResidentModel;
 use bytemuck::{Pod, Zeroable};
 use eframe::{egui, egui_wgpu::RenderState};
+use std::{
+    collections::HashSet, io::Cursor, num::NonZeroU64, ops::Range, path::PathBuf, time::Instant,
+};
 #[cfg(test)]
 use std::{fs::File, io::Read};
-use std::{io::Cursor, num::NonZeroU64, ops::Range, path::PathBuf, time::Instant};
 use wgpu::util::DeviceExt;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
@@ -129,10 +131,10 @@ pub struct ModelRenderer {
     pub image: ModelImage,
     pub lease: std::sync::Arc<ModelTexture>,
     output: wgpu::TextureView,
-    mask: wgpu::TextureView,
+    masks: Vec<wgpu::TextureView>,
     // Bind groups own the atlas resources; output is also owned by egui's registered view.
     atlases: Vec<wgpu::BindGroup>,
-    clipped: wgpu::BindGroup,
+    clipped: Vec<wgpu::BindGroup>,
     unclipped: wgpu::BindGroup,
     pipelines: Vec<wgpu::RenderPipeline>,
     mask_pipelines: Vec<wgpu::RenderPipeline>,
@@ -172,15 +174,19 @@ impl ModelRenderer {
             "Frozen layer preview",
         )
         .create_view(&Default::default());
-        let mask = target_with_format(
-            device,
-            size.width,
-            size.height,
-            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            "Frozen layer mask",
-            MASK_FORMAT,
-        )
-        .create_view(&Default::default());
+        let masks = (0..self.masks.len())
+            .map(|_| {
+                target_with_format(
+                    device,
+                    size.width,
+                    size.height,
+                    wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                    "Frozen layer mask",
+                    MASK_FORMAT,
+                )
+                .create_view(&Default::default())
+            })
+            .collect::<Vec<_>>();
         let vertices = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Frozen layer vertices"),
             size: self.vertices.size(),
@@ -231,7 +237,7 @@ impl ModelRenderer {
                 ],
             })
         };
-        let clipped = group(&mask);
+        let clipped = masks.iter().map(group).collect();
         let unclipped = group(&white.create_view(&Default::default()));
         let (id, lease) = ModelTexture::register(&self.state, &output);
         Self {
@@ -242,7 +248,7 @@ impl ModelRenderer {
             },
             lease,
             output,
-            mask,
+            masks,
             atlases: self.atlases.clone(),
             clipped,
             unclipped,
@@ -538,15 +544,32 @@ impl ModelRenderer {
             "Cubism output",
         )
         .create_view(&Default::default());
-        let mask = target_with_format(
-            device,
-            width,
-            height,
-            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            "Cubism mask",
-            MASK_FORMAT,
-        )
-        .create_view(&Default::default());
+        let unique_masks = drawables
+            .iter()
+            .filter(|d| d.masked)
+            .map(|d| d.masks.as_slice())
+            .collect::<HashSet<_>>()
+            .len();
+        // Keep one surface for low-memory troubleshooting. Normal rendering
+        // batches at most 16 full-resolution masks to preserve draw fidelity.
+        let mask_count = if std::env::var("ARIA_DISABLE_MASK_BATCH").as_deref() == Ok("1") {
+            1
+        } else {
+            unique_masks.clamp(1, 16)
+        };
+        let masks = (0..mask_count)
+            .map(|_| {
+                target_with_format(
+                    device,
+                    width,
+                    height,
+                    wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                    "Cubism mask",
+                    MASK_FORMAT,
+                )
+                .create_view(&Default::default())
+            })
+            .collect::<Vec<_>>();
         let white = target(
             device,
             1,
@@ -628,7 +651,7 @@ impl ModelRenderer {
                 ],
             })
         };
-        let clipped = style_group(&mask);
+        let clipped = masks.iter().map(style_group).collect();
         let unclipped = style_group(&white.create_view(&Default::default()));
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("ARIA Cubism"),
@@ -681,7 +704,7 @@ impl ModelRenderer {
                 size: egui::vec2(width as f32, height as f32),
             },
             output,
-            mask,
+            masks,
             atlases,
             clipped,
             unclipped,
@@ -894,41 +917,93 @@ impl ModelRenderer {
         self.order
             .sort_unstable_by_key(|&i| (drawables[i].order, i));
         let sorted = &self.order;
-        let mut cursor = 0;
         let mut mask_passes = 0_usize;
         let mut color_passes = 0_usize;
-        while cursor < sorted.len() {
-            let d = &drawables[sorted[cursor]];
-            if d.masked {
-                mask_passes += 1;
-                let mut pass = begin_pass(encoder, &self.mask, true);
+        if self.masks.len() > 1 {
+            let mut cursor = 0;
+            while cursor < sorted.len() {
+                let start = cursor;
+                let mut groups: Vec<&[usize]> = Vec::with_capacity(self.masks.len());
+                let mut slots = Vec::new();
+                while cursor < sorted.len() {
+                    let mesh = &drawables[sorted[cursor]];
+                    let slot = if mesh.masked {
+                        if let Some(slot) = groups
+                            .iter()
+                            .position(|group| *group == mesh.masks.as_slice())
+                        {
+                            Some(slot)
+                        } else if groups.len() == self.masks.len() {
+                            break;
+                        } else {
+                            groups.push(&mesh.masks);
+                            Some(groups.len() - 1)
+                        }
+                    } else {
+                        None
+                    };
+                    slots.push(slot);
+                    cursor += 1;
+                }
+                for (slot, masks) in groups.iter().enumerate() {
+                    let mut pass = begin_pass(encoder, &self.masks[slot], true);
+                    self.bind_geometry(&mut pass, vertex_buffer);
+                    mask_passes += 1;
+                    for &index in masks.iter() {
+                        let mask = &drawables[index];
+                        pass.set_pipeline(&self.mask_pipelines[usize::from(mask.double_sided)]);
+                        self.draw_mesh(&mut pass, index, mask, None);
+                    }
+                }
+                let mut pass = begin_pass(encoder, &self.output, false);
                 self.bind_geometry(&mut pass, vertex_buffer);
-                for &index in &d.masks {
-                    let mask = &drawables[index];
-                    pass.set_pipeline(&self.mask_pipelines[usize::from(mask.double_sided)]);
-                    self.draw_mesh(&mut pass, index, mask, false);
+                color_passes += 1;
+                for (&index, slot) in sorted[start..cursor].iter().zip(slots) {
+                    let mesh = &drawables[index];
+                    let blend = match mesh.blend {
+                        Blend::Normal => 0,
+                        Blend::Add => 1,
+                        Blend::Multiply => 2,
+                    };
+                    pass.set_pipeline(&self.pipelines[blend * 2 + usize::from(mesh.double_sided)]);
+                    self.draw_mesh(&mut pass, index, mesh, slot);
                 }
             }
-            let mut pass = begin_pass(encoder, &self.output, false);
-            color_passes += 1;
-            self.bind_geometry(&mut pass, vertex_buffer);
-            loop {
-                let index = sorted[cursor];
-                let mesh = &drawables[index];
-                let blend = match mesh.blend {
-                    Blend::Normal => 0,
-                    Blend::Add => 1,
-                    Blend::Multiply => 2,
-                };
-                pass.set_pipeline(&self.pipelines[blend * 2 + usize::from(mesh.double_sided)]);
-                self.draw_mesh(&mut pass, index, mesh, mesh.masked);
-                cursor += 1;
-                if cursor == sorted.len() {
-                    break;
+        } else {
+            let mut cursor = 0;
+            while cursor < sorted.len() {
+                let d = &drawables[sorted[cursor]];
+                if d.masked {
+                    mask_passes += 1;
+                    let mut pass = begin_pass(encoder, &self.masks[0], true);
+                    self.bind_geometry(&mut pass, vertex_buffer);
+                    for &index in &d.masks {
+                        let mask = &drawables[index];
+                        pass.set_pipeline(&self.mask_pipelines[usize::from(mask.double_sided)]);
+                        self.draw_mesh(&mut pass, index, mask, None);
+                    }
                 }
-                let next = &drawables[sorted[cursor]];
-                if next.masked && (!d.masked || next.masks != d.masks) {
-                    break;
+                let mut pass = begin_pass(encoder, &self.output, false);
+                color_passes += 1;
+                self.bind_geometry(&mut pass, vertex_buffer);
+                loop {
+                    let index = sorted[cursor];
+                    let mesh = &drawables[index];
+                    let blend = match mesh.blend {
+                        Blend::Normal => 0,
+                        Blend::Add => 1,
+                        Blend::Multiply => 2,
+                    };
+                    pass.set_pipeline(&self.pipelines[blend * 2 + usize::from(mesh.double_sided)]);
+                    self.draw_mesh(&mut pass, index, mesh, mesh.masked.then_some(0));
+                    cursor += 1;
+                    if cursor == sorted.len() {
+                        break;
+                    }
+                    let next = &drawables[sorted[cursor]];
+                    if next.masked && (!d.masked || next.masks != d.masks) {
+                        break;
+                    }
                 }
             }
         }
@@ -971,15 +1046,17 @@ impl ModelRenderer {
         pass.set_vertex_buffer(1, self.uvs.slice(..));
         pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
     }
-    fn draw_mesh(&self, pass: &mut wgpu::RenderPass<'_>, index: usize, d: &Drawable, masked: bool) {
+    fn draw_mesh(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        index: usize,
+        d: &Drawable,
+        mask_slot: Option<usize>,
+    ) {
         pass.set_bind_group(0, &self.atlases[d.texture], &[]);
         pass.set_bind_group(
             1,
-            if masked {
-                &self.clipped
-            } else {
-                &self.unclipped
-            },
+            mask_slot.map_or(&self.unclipped, |slot| &self.clipped[slot]),
             &[(index * self.uniform_stride) as u32],
         );
         pass.draw_indexed(self.meshes[index].indices.clone(), 0, 0..1);

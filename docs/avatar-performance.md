@@ -16,6 +16,19 @@ These are CPU wall times, not GPU execution timings or end-to-end tracking
 latency. A busy system, multiple ARIA instances or GPU backpressure can change
 them substantially.
 
+The renderer batches up to 16 distinct full-resolution R8 clipping masks before
+each ordered color chunk. It retains model draw order and mask resolution, and
+allocates at most 64 MiB of mask textures for a 2048×2048 canvas (plus a separate
+pool while a frozen layer preview is open). Set `ARIA_DISABLE_MASK_BATCH=1` to
+use the single-mask path when GPU memory is constrained. On the supplied large
+90s outfit, matched optimized 20-second Studio smokes at a 120 FPS target
+sampled 117.4 FPS on average with batching (111.6–124.5), versus 111.0 and
+105.7 in surrounding single-mask runs. Color passes fell from 61 to 4 and
+sampled CPU render wall time from 4.94 to 4.45 ms in the first pair. System
+load affected those results; the lowest batched interval was below 120 FPS.
+Full-resolution CPU/GPU native images matched pixel-for-pixel on the large
+outfit, OILBUN and tray-maid samples. This is not a guarantee for every rig.
+
 ## Local supplied-asset samples (2026-09-27)
 
 An optimized CPU-only test alternated one parameter for 120 frames after 20

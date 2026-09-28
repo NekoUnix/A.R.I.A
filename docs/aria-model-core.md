@@ -143,6 +143,13 @@ checking.
 All dynamic-flag transitions and offscreen behavior are not covered by this
 geometry result. A test passing on these frames does not make the evaluator
 production-ready or prove a performance gain.
+An inventory of the 28 supplied local MOC3 file paths found versions 1–5 and
+no version-6 offscreen parts. The official-Core differential test passed on
+the deeply nested tray-maid export after the GPU framing change. A version-6
+offscreen model and its separate render-target composition remain untested and
+unsupported; the loader rejects such models explicitly. Live2D's
+[offscreen drawing guide](https://docs.live2d.com/en/cubism-sdk-manual/offscreen-drawing-alias-ow/)
+describes that feature as a distinct Cubism 5.3 rendering path.
 
 An optimized local diagnostic on the OILBUN export measured the current
 runtime's deformation-only path at roughly `0.64 ms/frame` and the Rust
