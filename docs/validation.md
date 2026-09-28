@@ -7,6 +7,13 @@ is the repeatable MSVC build/test path; its status belongs to a specific commit.
 
 ## GPU morph and Rust model-core checks — 2026-09-28 (unreleased)
 
+- A test-only affine GPU rotation pass matched Rust on 60 local authored
+  rotation frames in the large 90s outfit, 22 in OILBUN and 14 in Ditto at
+  four positions each. Largest coordinate differences were below 0.000001
+  model units. The generated warp hierarchy then applied a reflected and
+  scaled rotation to GPU-resident mesh positions without readback. Inherited
+  rotation coefficients still require CPU preparation; this is not a live
+  renderer performance result.
 - A test-only DX12 warp-key compute pass matched the Rust evaluator on the
   supplied large 90s outfit at an interior parameter pose: 680 warp nodes,
   819,275 control points and 327 multi-key blends. Resident key positions

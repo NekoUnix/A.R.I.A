@@ -193,6 +193,14 @@ consumed GPU-blended local points through two parent warps into final mesh
 positions without intermediate readback. Per-model blend shapes, rotation
 parents and glue are still CPU-only, so this path is not a complete renderer.
 
+A test-only affine rotation pass can now transform those GPU-resident points
+after warp resolution. It matched the Rust transform for all 60 authored
+rotation nodes in the large 90s outfit, 22 in OILBUN and 14 in Ditto at an
+interior parameter pose. The generated chain also applied reflected, scaled
+rotation after two parent warps without readback. Rotation coefficients are
+still prepared on the CPU; inherited orientation, origin probing, blend
+shapes and glue have not been ported into the GPU evaluator.
+
 A test-only WGPU compute primitive now samples multiple warp grids in a single
 dispatch. It implements the Rust evaluator's affine shortcut, bent-grid quad
 or triangular cells and exterior continuation. Native DX12 comparisons passed

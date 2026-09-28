@@ -1,7 +1,7 @@
 //! Experimental GPU warp primitive. This verifies the math needed by a future
 //! whole-frame GPU evaluator; the current renderer still consumes CPU meshes.
 
-use aria_model_core::rig::{Point, WarpGrid};
+use aria_model_core::rig::{Point, RotationTransform, WarpGrid};
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
@@ -23,6 +23,14 @@ struct GpuSample {
     position: [f32; 2],
     grid: u32,
     output_index: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct RotationDescriptor {
+    origin: [f32; 2],
+    x_axis: [f32; 2],
+    y_axis: [f32; 2],
 }
 
 struct GridInput<'a> {
@@ -439,13 +447,19 @@ fn child_and_grandchild_warps_resolve_on_gpu_without_intermediate_readback() {
         .collect::<Vec<_>>();
     let mesh_local = [[0.2_f32, 0.3], [0.8, 0.25], [1.2, 0.7], [-0.3, 1.1]];
     let grandchild_grid = WarpGrid::new(2, 2, expected_grandchild.clone()).unwrap();
-    let expected_mesh = mesh_local
+    let warped_mesh = mesh_local
         .iter()
         .map(|p| {
             grandchild_grid
                 .sample_extended(Point { x: p[0], y: p[1] }, true)
                 .unwrap()
         })
+        .collect::<Vec<_>>();
+    let rotation =
+        RotationTransform::new(Point { x: 0.25, y: -0.1 }, 35.0, 1.2, [true, false]).unwrap();
+    let expected_mesh = warped_mesh
+        .iter()
+        .map(|point| rotation.apply(*point))
         .collect::<Vec<_>>();
     let (root_affine, [center, basis_u, basis_v]) = basis(2, 2, &root);
     let descriptors = [
@@ -693,6 +707,82 @@ fn child_and_grandchild_warps_resolve_on_gpu_without_intermediate_readback() {
         compilation_options: Default::default(),
         cache: None,
     });
+    let (origin, x_axis, y_axis) = rotation.affine_columns();
+    let rotation_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("ARIA hierarchy rotation"),
+        contents: bytemuck::bytes_of(&RotationDescriptor {
+            origin,
+            x_axis,
+            y_axis,
+        }),
+        usage: wgpu::BufferUsages::STORAGE,
+    });
+    let rotation_samples = mesh_local
+        .iter()
+        .enumerate()
+        .map(|(index, &position)| GpuSample {
+            position,
+            grid: 0,
+            output_index: (27 + index) as u32,
+        })
+        .collect::<Vec<_>>();
+    let rotation_samples_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("ARIA hierarchy rotation samples"),
+        contents: bytemuck::cast_slice(&rotation_samples),
+        usage: wgpu::BufferUsages::STORAGE,
+    });
+    let rotation_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("ARIA hierarchy rotation layout"),
+        entries: &[(0, true), (1, false), (2, false)].map(|(binding, writable)| {
+            wgpu::BindGroupLayoutEntry {
+                binding,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage {
+                        read_only: !writable,
+                    },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }
+        }),
+    });
+    let rotation_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("ARIA hierarchy rotation bind"),
+        layout: &rotation_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: points_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: rotation_samples_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: rotation_buffer.as_entire_binding(),
+            },
+        ],
+    });
+    let rotation_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("ARIA hierarchy rotation compute"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("gpu_rotation.wgsl").into()),
+    });
+    let rotation_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("ARIA hierarchy rotation pipeline layout"),
+        bind_group_layouts: &[Some(&rotation_layout)],
+        immediate_size: 0,
+    });
+    let rotation_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("ARIA hierarchy rotation pipeline"),
+        layout: Some(&rotation_pipeline_layout),
+        module: &rotation_shader,
+        entry_point: Some("resolve_rotation"),
+        compilation_options: Default::default(),
+        cache: None,
+    });
     let bytes = std::mem::size_of_val(all_points.as_slice()) as u64;
     let readback = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("ARIA hierarchy final readback"),
@@ -711,6 +801,12 @@ fn child_and_grandchild_warps_resolve_on_gpu_without_intermediate_readback() {
         let mut pass = encoder.begin_compute_pass(&Default::default());
         pass.set_pipeline(&pipeline);
         pass.set_bind_group(0, bind, &[]);
+        pass.dispatch_workgroups(1, 1, 1);
+    }
+    {
+        let mut pass = encoder.begin_compute_pass(&Default::default());
+        pass.set_pipeline(&rotation_pipeline);
+        pass.set_bind_group(0, &rotation_bind, &[]);
         pass.dispatch_workgroups(1, 1, 1);
     }
     encoder.copy_buffer_to_buffer(&points_buffer, 0, &readback, 0, bytes);
@@ -744,6 +840,191 @@ fn child_and_grandchild_warps_resolve_on_gpu_without_intermediate_readback() {
             "mesh vertex {index}: {expected:?} vs {actual:?}"
         );
     }
+}
+
+#[test]
+#[cfg(windows)]
+#[ignore = "requires ARIA_TEST_MOC and DX12; checks authored local rotations on the GPU"]
+fn local_moc3_rotation_frames_match_rust_on_gpu() {
+    use aria_model_core::moc::{DeformerKind, LocalDeformerFrame, Moc};
+
+    let bytes = std::fs::read(std::env::var_os("ARIA_TEST_MOC").unwrap()).unwrap();
+    let moc = Moc::parse(&bytes).unwrap();
+    let graph = moc.binding_graph().unwrap();
+    let values = moc
+        .parameters()
+        .unwrap()
+        .into_iter()
+        .map(|parameter| {
+            if parameter.maximum > parameter.minimum {
+                parameter.minimum + (parameter.maximum - parameter.minimum) * 0.37
+            } else {
+                parameter.default
+            }
+        })
+        .collect::<Vec<_>>();
+    let mut rotations = Vec::<RotationDescriptor>::new();
+    let mut points = Vec::<[f32; 2]>::new();
+    let mut samples = Vec::<GpuSample>::new();
+    let mut expected = Vec::<[f32; 2]>::new();
+    for node in moc.deformer_layouts().unwrap() {
+        let DeformerKind::Rotation { base_angle } = node.kind else {
+            continue;
+        };
+        let compiled = moc.compile_deformer(&node).unwrap();
+        let LocalDeformerFrame::Rotation {
+            origin,
+            angle,
+            scale,
+            reflect,
+            ..
+        } = compiled
+            .frame(&graph.weights(node.binding, &values).unwrap())
+            .unwrap()
+        else {
+            unreachable!()
+        };
+        let transform = RotationTransform::new(
+            Point {
+                x: origin[0],
+                y: origin[1],
+            },
+            base_angle + angle,
+            scale,
+            reflect,
+        )
+        .unwrap();
+        let (origin, x_axis, y_axis) = transform.affine_columns();
+        let rotation_index = rotations.len() as u32;
+        rotations.push(RotationDescriptor {
+            origin,
+            x_axis,
+            y_axis,
+        });
+        for point in [[0.0, 0.0], [0.17, -0.24], [0.6, 1.2], [-0.8, 0.4]] {
+            let index = points.len() as u32;
+            points.push(point);
+            samples.push(GpuSample {
+                position: point,
+                grid: rotation_index,
+                output_index: index,
+            });
+            let output = transform.apply(Point {
+                x: point[0],
+                y: point[1],
+            });
+            expected.push([output.x, output.y]);
+        }
+    }
+    assert!(!rotations.is_empty(), "Model has no rotation deformers");
+    let state = crate::spout::tests::gpu_state();
+    let device = &state.device;
+    let points_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("ARIA authored rotation points"),
+        contents: bytemuck::cast_slice(&points),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+    });
+    let samples_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("ARIA authored rotation samples"),
+        contents: bytemuck::cast_slice(&samples),
+        usage: wgpu::BufferUsages::STORAGE,
+    });
+    let rotation_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("ARIA authored rotations"),
+        contents: bytemuck::cast_slice(&rotations),
+        usage: wgpu::BufferUsages::STORAGE,
+    });
+    let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("ARIA authored rotation layout"),
+        entries: &[(0, true), (1, false), (2, false)].map(|(binding, writable)| {
+            wgpu::BindGroupLayoutEntry {
+                binding,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage {
+                        read_only: !writable,
+                    },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }
+        }),
+    });
+    let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("ARIA authored rotation bind"),
+        layout: &layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: points_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: samples_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: rotation_buffer.as_entire_binding(),
+            },
+        ],
+    });
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("ARIA authored rotation compute"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("gpu_rotation.wgsl").into()),
+    });
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("ARIA authored rotation pipeline layout"),
+        bind_group_layouts: &[Some(&layout)],
+        immediate_size: 0,
+    });
+    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("ARIA authored rotation pipeline"),
+        layout: Some(&pipeline_layout),
+        module: &shader,
+        entry_point: Some("resolve_rotation"),
+        compilation_options: Default::default(),
+        cache: None,
+    });
+    let size = std::mem::size_of_val(points.as_slice()) as u64;
+    let readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("ARIA authored rotation readback"),
+        size,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+    let mut encoder = device.create_command_encoder(&Default::default());
+    {
+        let mut pass = encoder.begin_compute_pass(&Default::default());
+        pass.set_pipeline(&pipeline);
+        pass.set_bind_group(0, &bind, &[]);
+        pass.dispatch_workgroups(samples.len().div_ceil(64) as u32, 1, 1);
+    }
+    encoder.copy_buffer_to_buffer(&points_buffer, 0, &readback, 0, size);
+    state.queue.submit([encoder.finish()]);
+    let (tx, rx) = std::sync::mpsc::channel();
+    readback
+        .slice(..)
+        .map_async(wgpu::MapMode::Read, move |result| {
+            tx.send(result).unwrap();
+        });
+    device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+    rx.recv().unwrap().unwrap();
+    let bytes = readback.slice(..).get_mapped_range().unwrap().to_vec();
+    readback.unmap();
+    let gpu = bytemuck::cast_slice::<u8, [f32; 2]>(&bytes);
+    let mut max_error = 0.0_f32;
+    for (index, (cpu, gpu)) in expected.iter().zip(gpu).enumerate() {
+        let error = (cpu[0] - gpu[0]).abs().max((cpu[1] - gpu[1]).abs());
+        max_error = max_error.max(error);
+        let tolerance = 0.00001_f32.max(cpu[0].abs().max(cpu[1].abs()) * 0.000001);
+        assert!(error <= tolerance, "rotation {index}: {cpu:?} vs {gpu:?}");
+    }
+    eprintln!(
+        "ARIA GPU rotation parity: {} authored frames, {} samples, max error {max_error}",
+        rotations.len(),
+        samples.len()
+    );
 }
 
 #[test]

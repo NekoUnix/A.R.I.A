@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add a test-only GPU rotation pass that consumes GPU-resident mesh positions after warp hierarchy resolution. Authored local rotation frames from the large 90s outfit, OILBUN and Ditto match Rust, including angle, scale and reflection coefficients. Hierarchical rotation state and live-renderer integration still need work.
+
 - Extend the batched GPU keyframe parity path to ArtMesh base positions. The large model matched Rust on all 1,210 meshes and 225,448 vertices in addition to its warp grids; OILBUN and Ditto passed too. A generated GPU-only hierarchy carries blended points through two parent warps into final mesh positions. Blend shapes, rotations, glue and renderer integration remain open.
 
 - Add a test-only GPU compute stage that blends resident MOC3 warp keyforms in one batched dispatch. A non-default pose of the supplied large model matched Rust across 680 warp nodes and 819,275 points, including 327 multi-key nodes. A generated two-depth chain then consumed blended control points directly in GPU storage without intermediate readback. This targets a known CPU cost but is not connected to the live renderer yet.

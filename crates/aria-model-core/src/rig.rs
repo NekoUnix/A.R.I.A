@@ -104,6 +104,15 @@ impl RotationTransform {
             y: self.origin.y + self.yx * point.x + self.yy * point.y,
         }
     }
+
+    /// Affine columns for applying this transform to GPU-resident positions.
+    pub fn affine_columns(self) -> ([f32; 2], [f32; 2], [f32; 2]) {
+        (
+            [self.origin.x, self.origin.y],
+            [self.xx, self.yx],
+            [self.xy, self.yy],
+        )
+    }
 }
 
 impl WarpGrid {
