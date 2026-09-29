@@ -373,6 +373,9 @@ impl Avatar {
             }
         }
         let host_updated = Instant::now();
+        let mut gpu_encoded = host_updated;
+        let mut color_encoded = host_updated;
+        let mut submitted = host_updated;
         if let Some(gpu) = &mut self.gpu {
             let mut encoder = gpu.state.device.create_command_encoder(&Default::default());
             let mut evaluated_gpu = false;
@@ -389,6 +392,7 @@ impl Avatar {
                 )?;
                 evaluated_gpu = true;
             }
+            gpu_encoded = Instant::now();
             let (view, bounds) = if let Some(extents) = gpu.latest_bounds {
                 let view = fit_canvas_from_model_extents(
                     self.model.canvas,
@@ -407,7 +411,9 @@ impl Avatar {
                 bounds,
                 &mut encoder,
             )?;
+            color_encoded = Instant::now();
             gpu.state.queue.submit([encoder.finish()]);
+            submitted = Instant::now();
             if evaluated_gpu {
                 gpu.bounds.begin_readback();
             }
@@ -432,10 +438,13 @@ impl Avatar {
                     "info",
                     "PERF_AVATAR",
                     &format!(
-                        "eval_ms={:.1} host_ms={:.1} render_ms={:.1} drawables={} vertices={} atlases={}",
+                        "eval_ms={:.1} host_ms={:.1} render_ms={:.1} gpu_encode_ms={:.2} color_encode_ms={:.2} submit_ms={:.2} drawables={} vertices={} atlases={}",
                         (evaluated - started).as_secs_f64() * 1000.,
                         (host_updated - evaluated).as_secs_f64() * 1000.,
                         (rendered - host_updated).as_secs_f64() * 1000.,
+                        (gpu_encoded - host_updated).as_secs_f64() * 1000.,
+                        (color_encoded - gpu_encoded).as_secs_f64() * 1000.,
+                        (submitted - color_encoded).as_secs_f64() * 1000.,
                         self.model.drawables.len(),
                         self.model
                             .drawables
