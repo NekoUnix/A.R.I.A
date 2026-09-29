@@ -19,6 +19,7 @@ pub enum Tab {
     Effects,
     Images,
     Vrm,
+    Graphics,
     Layers,
     Customize,
     Microphone,
@@ -336,7 +337,9 @@ impl InputMonitor {
         if kind.is_some_and(crate::avatar_import::Kind::is_3d) && self.tab == Tab::Images {
             self.tab = Tab::Vrm;
         }
-        if !kind.is_some_and(crate::avatar_import::Kind::is_3d) && self.tab == Tab::Vrm {
+        if !kind.is_some_and(crate::avatar_import::Kind::is_3d)
+            && matches!(self.tab, Tab::Vrm | Tab::Graphics)
+        {
             self.tab = Tab::Inputs;
         }
         let mut group = match self.tab {
@@ -345,6 +348,7 @@ impl InputMonitor {
             | Tab::Expressions
             | Tab::Images
             | Tab::Vrm
+            | Tab::Graphics
             | Tab::Layers
             | Tab::Customize => 1,
             Tab::Items | Tab::Effects => 2,
@@ -373,6 +377,7 @@ impl InputMonitor {
                 ],
                 Some(crate::avatar_import::Kind::Vrm | crate::avatar_import::Kind::Glb) => &[
                     (Tab::Vrm, "View"),
+                    (Tab::Graphics, "Graphics"),
                     (Tab::Physics, "Springs"),
                     (Tab::Expressions, "Expressions"),
                 ],
@@ -426,6 +431,7 @@ impl InputMonitor {
                     }
                 }
                 Tab::Vrm => "vrm-view",
+                Tab::Graphics => "vrm-graphics",
                 Tab::Layers => "live2d-layers",
                 Tab::Customize => "live2d-customization",
                 Tab::Expressions => {
@@ -503,6 +509,7 @@ impl InputMonitor {
             | Tab::Microphone
             | Tab::Controller
             | Tab::Vrm
+            | Tab::Graphics
             | Tab::Layers
             | Tab::Customize
             | Tab::Physics => {}

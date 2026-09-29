@@ -5,6 +5,42 @@ use crate::{
     theme,
 };
 use eframe::egui;
+use std::path::{Path, PathBuf};
+
+fn dlss5_runtime_file(path: &Path) -> Result<(), &'static str> {
+    if !path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("nvngx_dlssnr.dll"))
+    {
+        return Err("Choose a file named nvngx_dlssnr.dll.");
+    }
+    let metadata = std::fs::metadata(path).map_err(|_| "That DLL is not accessible.")?;
+    if !metadata.is_file() || metadata.len() < 1024 {
+        return Err("That file is not a DLL.");
+    }
+    let mut file = std::fs::File::open(path).map_err(|_| "That DLL cannot be opened.")?;
+    let mut header = [0u8; 64];
+    use std::io::{Read, Seek, SeekFrom};
+    file.read_exact(&mut header)
+        .map_err(|_| "That file is not a Windows DLL.")?;
+    if &header[..2] != b"MZ" {
+        return Err("That file is not a Windows DLL.");
+    }
+    let pe_offset = u32::from_le_bytes(header[60..64].try_into().unwrap()) as u64;
+    if pe_offset > metadata.len().saturating_sub(4) {
+        return Err("That file has an invalid Windows executable header.");
+    }
+    file.seek(SeekFrom::Start(pe_offset))
+        .map_err(|_| "That file has an invalid Windows executable header.")?;
+    let mut signature = [0u8; 4];
+    file.read_exact(&mut signature)
+        .map_err(|_| "That file has an invalid Windows executable header.")?;
+    if &signature != b"PE\0\0" {
+        return Err("That file has an invalid Windows executable header.");
+    }
+    Ok(())
+}
 
 fn motion(ui: &mut egui::Ui, avatar: &mut Avatar, monitor: &mut InputMonitor) {
     let before = monitor.saved.config.vrm.motion.clone();
@@ -129,7 +165,49 @@ pub fn view(ui: &mut egui::Ui, avatar: &mut Avatar, monitor: &mut InputMonitor) 
             settings.portrait = 0.;
         }
     });
-    theme::category(ui, "vrm-render", "Appearance & performance", true, |ui| {
+    help::control(ui, "vrm-expressions", |ui| {
+        ui.checkbox(&mut settings.auto_blink, "Automatic blinking")
+    });
+    monitor.save_requested |= before != *settings;
+    theme::category(ui, "vrm-posing", "Tracking & posing", false, |ui| {
+        ui.label("Phone face angles drive head/neck rotation. Eye opening drives blink expressions, mouth opening drives A / aa, and gaze rotates the eyes or uses look expressions. Matching ARKit expressions get individual input assignments.");
+        ui.label("Relax arms is a parameter in Inputs and Pose controls. Lower it toward 0° for a T-pose; raise it to lower the arms. Freeze a pose before exporting a screenshot.");
+        if ui.button("Open pose controls").clicked() {
+            monitor.tab = Tab::Pose;
+        }
+        if ui.button("Tracking inputs").clicked() {
+            monitor.tab = Tab::Inputs;
+        }
+    });
+    details(ui, avatar);
+}
+
+/// VRM and imported VRChat GLB models share this transparent GPU canvas.
+pub fn graphics(
+    ui: &mut egui::Ui,
+    avatar: &Avatar,
+    monitor: &mut InputMonitor,
+    dlss5_runtime: &mut Option<PathBuf>,
+) {
+    let info = avatar.renderer.adapter_info();
+    ui.strong(format!("{} · {:?}", info.name, info.backend));
+    let before = monitor.saved.config.vrm.clone();
+    let settings = &mut monitor.saved.config.vrm;
+    theme::category(ui, "vrm-render", "3D render quality", true, |ui| {
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Performance").clicked() {
+                settings.resolution = 1024;
+                settings.outlines = false;
+            }
+            if ui.button("Balanced").clicked() {
+                settings.resolution = 1536;
+                settings.outlines = true;
+            }
+            if ui.button("Detail").clicked() {
+                settings.resolution = 2048;
+                settings.outlines = true;
+            }
+        });
         help::control(ui, "vrm-view", |ui| {
             egui::ComboBox::from_id_salt("vrm-quality")
                 .selected_text(format!("{} px avatar canvas", settings.resolution))
@@ -153,22 +231,61 @@ pub fn view(ui: &mut egui::Ui, avatar: &mut Avatar, monitor: &mut InputMonitor) 
         help::control(ui, "vrm-view", |ui| {
             ui.checkbox(&mut settings.outlines, "Authored outlines")
         });
-        help::control(ui, "vrm-expressions", |ui| {
-            ui.checkbox(&mut settings.auto_blink, "Automatic blinking")
+    });
+    theme::category(ui, "vrm-dlss", "NVIDIA DLSS 5", true, |ui| {
+        let rtx_50 = info.vendor == 0x10de && info.name.to_ascii_lowercase().contains("rtx 50");
+        if rtx_50 {
+            ui.label("RTX 50-series GPU detected. This meets NVIDIA's published GPU-family requirement for DLSS 5.");
+        } else {
+            ui.label("NVIDIA specifies GeForce RTX 50-series hardware for DLSS 5 neural rendering. This adapter does not identify as one.");
+        }
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Choose neural-rendering DLL…").clicked()
+                && let Some(path) = rfd::FileDialog::new()
+                    .add_filter("NVIDIA DLSS 5 runtime", &["dll"])
+                    .pick_file()
+            {
+                let error = dlss5_runtime_file(&path).err().map(str::to_owned);
+                if error.is_none() {
+                    *dlss5_runtime = Some(path);
+                    monitor.save_requested = true;
+                }
+                ui.ctx()
+                    .data_mut(|data| data.insert_temp(egui::Id::new("dlss5-runtime-error"), error));
+            }
+            if dlss5_runtime.is_some() && ui.button("Remove selection").clicked() {
+                *dlss5_runtime = None;
+                monitor.save_requested = true;
+            }
         });
+        if let Some(error) = ui
+            .ctx()
+            .data(|data| data.get_temp::<Option<String>>(egui::Id::new("dlss5-runtime-error")))
+            .flatten()
+        {
+            ui.colored_label(ui.visuals().error_fg_color, error);
+        }
+        if let Some(path) = dlss5_runtime {
+            ui.label(format!("Selected DLL: {}", path.display()));
+            if !path.is_file() {
+                ui.colored_label(
+                    ui.visuals().error_fg_color,
+                    "The selected DLL is no longer available at this path.",
+                );
+            }
+        } else {
+            ui.label("No neural-rendering DLL selected.");
+        }
+        ui.add_enabled(
+            false,
+            egui::Button::new("Enable DLSS 5 · integration pending"),
+        );
+        theme::caption(
+            ui,
+            "The picker remembers a DLL on this computer; it does not load, copy, or run it. Selection does not enable DLSS 5. ARIA still needs a neural-rendering API bridge, motion vectors, depth, and a tested GPU path. The controls above are ARIA render-quality settings, not DLSS.",
+        );
     });
     monitor.save_requested |= before != *settings;
-    theme::category(ui, "vrm-posing", "Tracking & posing", false, |ui| {
-        ui.label("Phone face angles drive head/neck rotation. Eye opening drives blink expressions, mouth opening drives A / aa, and gaze rotates the eyes or uses look expressions. Matching ARKit expressions get individual input assignments.");
-        ui.label("Relax arms is a parameter in Inputs and Pose controls. Lower it toward 0° for a T-pose; raise it to lower the arms. Freeze a pose before exporting a screenshot.");
-        if ui.button("Open pose controls").clicked() {
-            monitor.tab = Tab::Pose;
-        }
-        if ui.button("Tracking inputs").clicked() {
-            monitor.tab = Tab::Inputs;
-        }
-    });
-    details(ui, avatar);
 }
 
 fn glb_rig(ui: &mut egui::Ui, avatar: &Avatar, monitor: &mut InputMonitor) {

@@ -1263,15 +1263,17 @@ ARIA animates skinned meshes, facial morph expressions, bone/expression eye look
 
 Every avatar has a content-based profile. Tracking mappings, camera, spring groups, poses, expressions, shortcuts, microphone and output settings restore only for that avatar. Updating the file changes its identity. A source path remembered on this PC is reopened at launch; the file is not copied into ARIA or uploaded anywhere.
 
-## vrm-view | VRM view and quality | Frame the avatar, orbit the camera and choose a shared render resolution for all outputs.
+## vrm-view | VRM view | Frame the avatar and orbit the camera without changing tracking calibration.
 
 Portrait crop blends between full body (0) and head/shoulders (1). Camera orbit turns around the avatar in degrees; 0 faces the model and ±180 shows the back. Camera elevation looks from above or below. These camera controls do not change the tracking calibration. Reset framing returns all three controls to zero. Each output still has its own position and scale; drag to move and scroll to resize.
 
-The avatar canvas is a transparent 3:4 image with four-sample anti-aliasing, rendered once and shared by the stage, landscape, portrait and freeform outputs. The quality selector sets its pixel height (512–4096); width is three quarters of height. Higher quality gives sharper enlarged avatars but increases rendering cost and GPU memory quadratically. Canvas color, anti-aliasing and depth attachments use about 36 bytes per pixel: approximately 61 MiB at 1152 × 1536 or 432 MiB at 3072 × 4096, plus the avatar's textures and meshes. Small preview windows still send the separately configured full OBS output resolution.
-
-Toon lighting scales the lit/shaded colors; emissive materials keep their own glow. Authored outlines enables the widths/colors exported with the VRM. The renderer approximates MToon; world-space outlines and the main lighting controls are supported. See Model details for import notes.
-
 Relax arms is a pose parameter: 0° uses the authored T-pose and 65° lowers the arms for streaming. Input monitor lets you remap, hold or step it like other parameters. Save profile persists camera/quality changes; movement and pose presets include them too.
+
+## vrm-graphics | VRM / VRC graphics | Set real 3D canvas quality and inspect NVIDIA DLSS 5 availability.
+
+Graphics appears for VRM and imported VRChat GLB avatars. Performance, Balanced and Detail set the transparent canvas resolution and authored outlines. The resolution selector offers 512–4096 pixels high; width is three quarters of height. The avatar canvas uses four-sample anti-aliasing, renders once and is shared by stage and outputs. Higher quality improves enlarged avatars but increases rendering cost and GPU memory quadratically. Canvas attachments use about 36 bytes per pixel: approximately 61 MiB at 1152 × 1536 or 432 MiB at 3072 × 4096, plus textures and meshes. OBS output resolution is separate. Toon lighting scales lit/shaded colors; emissive materials keep their glow. See Model details for import notes. These settings save with the avatar profile.
+
+NVIDIA DLSS 5 is 3D-guided neural rendering, distinct from Super Resolution and Frame Generation. NVIDIA specifies GeForce RTX 50-series hardware. ARIA shows the active graphics adapter and lets you select an existing `nvngx_dlssnr.dll` for future integration. This path stays on your computer and can be removed in the Graphics tab. Selecting a DLL does not activate or execute it: the public Streamline source names `sl.dlss_nr` without publishing its feature-specific header or integration guide, and ARIA still needs per-frame motion/depth inputs and a tested API bridge for its transparent wgpu canvas. The disabled switch does not process frames. The controls above are native render-quality controls, not DLSS.
 
 ## vrm-physics | 3D spring physics | Medium defaults make hair, tails and clothing follow your movement, with per-avatar tuning.
 

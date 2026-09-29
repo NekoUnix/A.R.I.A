@@ -258,6 +258,10 @@ pub struct Renderer {
 }
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 impl Renderer {
+    pub fn adapter_info(&self) -> wgpu::AdapterInfo {
+        self.state.adapter.get_info()
+    }
+
     pub fn new(state: &RenderState, asset: &mut Asset, settings: &Settings) -> Result<Self> {
         let device = &state.device;
         let buffer_layout = |binding, ty, visibility| wgpu::BindGroupLayoutEntry {

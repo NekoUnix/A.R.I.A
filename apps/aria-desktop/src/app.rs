@@ -68,6 +68,7 @@ struct Settings {
     chat_accounts: crate::chat::Accounts,
     image_avatar: Option<PathBuf>,
     vrm_avatar: Option<PathBuf>,
+    dlss5_runtime: Option<PathBuf>,
     theme: crate::theme::Settings,
     camera_runtime: crate::webcam::Runtime,
     camera: crate::webcam::Settings,
@@ -105,6 +106,7 @@ impl Default for Settings {
             chat_accounts: Default::default(),
             image_avatar: None,
             vrm_avatar: None,
+            dlss5_runtime: None,
             theme: Default::default(),
             camera_runtime: Default::default(),
             camera: Default::default(),
@@ -1851,6 +1853,7 @@ impl AriaApp {
                         }
                         for (label, tab) in [
                             ("View & framing", Tab::Vrm),
+                            ("3D graphics", Tab::Graphics),
                             ("Tracking & parameters", Tab::Inputs),
                             ("Spring physics", Tab::Physics),
                             ("Expressions & hotkeys", Tab::Expressions),
@@ -2991,6 +2994,14 @@ impl AriaApp {
             if let Some(avatar) = &mut self.vrm {
                 if self.input_monitor.tab == Tab::Vrm {
                     crate::vrm::panel::view(ui, avatar, &mut self.input_monitor);
+                }
+                if self.input_monitor.tab == Tab::Graphics {
+                    crate::vrm::panel::graphics(
+                        ui,
+                        avatar,
+                        &mut self.input_monitor,
+                        &mut self.settings.dlss5_runtime,
+                    );
                 }
                 if self.input_monitor.tab == Tab::Physics {
                     crate::vrm::panel::physics(ui, avatar, &mut self.input_monitor);
