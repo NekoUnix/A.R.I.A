@@ -129,7 +129,44 @@ pub fn view(ui: &mut egui::Ui, avatar: &mut Avatar, monitor: &mut InputMonitor) 
             settings.portrait = 0.;
         }
     });
-    theme::category(ui, "vrm-render", "Appearance & performance", true, |ui| {
+    help::control(ui, "vrm-expressions", |ui| {
+        ui.checkbox(&mut settings.auto_blink, "Automatic blinking")
+    });
+    monitor.save_requested |= before != *settings;
+    theme::category(ui, "vrm-posing", "Tracking & posing", false, |ui| {
+        ui.label("Phone face angles drive head/neck rotation. Eye opening drives blink expressions, mouth opening drives A / aa, and gaze rotates the eyes or uses look expressions. Matching ARKit expressions get individual input assignments.");
+        ui.label("Relax arms is a parameter in Inputs and Pose controls. Lower it toward 0° for a T-pose; raise it to lower the arms. Freeze a pose before exporting a screenshot.");
+        if ui.button("Open pose controls").clicked() {
+            monitor.tab = Tab::Pose;
+        }
+        if ui.button("Tracking inputs").clicked() {
+            monitor.tab = Tab::Inputs;
+        }
+    });
+    details(ui, avatar);
+}
+
+/// VRM and imported VRChat GLB models share this transparent GPU canvas.
+pub fn graphics(ui: &mut egui::Ui, avatar: &Avatar, monitor: &mut InputMonitor) {
+    let info = avatar.renderer.adapter_info();
+    ui.strong(format!("{} · {:?}", info.name, info.backend));
+    let before = monitor.saved.config.vrm.clone();
+    let settings = &mut monitor.saved.config.vrm;
+    theme::category(ui, "vrm-render", "3D render quality", true, |ui| {
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Performance").clicked() {
+                settings.resolution = 1024;
+                settings.outlines = false;
+            }
+            if ui.button("Balanced").clicked() {
+                settings.resolution = 1536;
+                settings.outlines = true;
+            }
+            if ui.button("Detail").clicked() {
+                settings.resolution = 2048;
+                settings.outlines = true;
+            }
+        });
         help::control(ui, "vrm-view", |ui| {
             egui::ComboBox::from_id_salt("vrm-quality")
                 .selected_text(format!("{} px avatar canvas", settings.resolution))
@@ -153,22 +190,21 @@ pub fn view(ui: &mut egui::Ui, avatar: &mut Avatar, monitor: &mut InputMonitor) 
         help::control(ui, "vrm-view", |ui| {
             ui.checkbox(&mut settings.outlines, "Authored outlines")
         });
-        help::control(ui, "vrm-expressions", |ui| {
-            ui.checkbox(&mut settings.auto_blink, "Automatic blinking")
-        });
+    });
+    theme::category(ui, "vrm-dlss", "NVIDIA DLSS 5", true, |ui| {
+        let rtx_50 = info.vendor == 0x10de && info.name.to_ascii_lowercase().contains("rtx 50");
+        if rtx_50 {
+            ui.label("RTX 50-series GPU detected. This meets NVIDIA's published GPU-family requirement for DLSS 5.");
+        } else {
+            ui.label("NVIDIA specifies GeForce RTX 50-series hardware for DLSS 5 neural rendering. This adapter does not identify as one.");
+        }
+        ui.add_enabled(false, egui::Button::new("Enable DLSS 5 · unavailable"));
+        theme::caption(
+            ui,
+            "ARIA does not have an integrated DLSS 5 runtime or its feature-specific API. NVIDIA's public Streamline source names the neural-rendering plugin but does not publish its feature header or integration guide. The switch stays unavailable until the required SDK, render inputs and GPU path are integrated and tested. The controls above are ARIA render-quality settings, not DLSS.",
+        );
     });
     monitor.save_requested |= before != *settings;
-    theme::category(ui, "vrm-posing", "Tracking & posing", false, |ui| {
-        ui.label("Phone face angles drive head/neck rotation. Eye opening drives blink expressions, mouth opening drives A / aa, and gaze rotates the eyes or uses look expressions. Matching ARKit expressions get individual input assignments.");
-        ui.label("Relax arms is a parameter in Inputs and Pose controls. Lower it toward 0° for a T-pose; raise it to lower the arms. Freeze a pose before exporting a screenshot.");
-        if ui.button("Open pose controls").clicked() {
-            monitor.tab = Tab::Pose;
-        }
-        if ui.button("Tracking inputs").clicked() {
-            monitor.tab = Tab::Inputs;
-        }
-    });
-    details(ui, avatar);
 }
 
 fn glb_rig(ui: &mut egui::Ui, avatar: &Avatar, monitor: &mut InputMonitor) {

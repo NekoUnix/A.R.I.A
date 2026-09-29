@@ -1851,6 +1851,7 @@ impl AriaApp {
                         }
                         for (label, tab) in [
                             ("View & framing", Tab::Vrm),
+                            ("3D graphics", Tab::Graphics),
                             ("Tracking & parameters", Tab::Inputs),
                             ("Spring physics", Tab::Physics),
                             ("Expressions & hotkeys", Tab::Expressions),
@@ -2991,6 +2992,9 @@ impl AriaApp {
             if let Some(avatar) = &mut self.vrm {
                 if self.input_monitor.tab == Tab::Vrm {
                     crate::vrm::panel::view(ui, avatar, &mut self.input_monitor);
+                }
+                if self.input_monitor.tab == Tab::Graphics {
+                    crate::vrm::panel::graphics(ui, avatar, &mut self.input_monitor);
                 }
                 if self.input_monitor.tab == Tab::Physics {
                     crate::vrm::panel::physics(ui, avatar, &mut self.input_monitor);

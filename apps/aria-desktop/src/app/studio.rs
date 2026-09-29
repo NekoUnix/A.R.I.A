@@ -200,6 +200,12 @@ const TOOLS: &[SearchItem] = &[
         command: Command::Tool(Tab::Vrm),
     },
     SearchItem {
+        label: "3D graphics",
+        detail: "VRM / GLB render quality and NVIDIA DLSS 5 status",
+        keywords: "vrm vrc glb nvidia dlss graphics gpu resolution performance",
+        command: Command::Tool(Tab::Graphics),
+    },
+    SearchItem {
         label: "Tracking inputs",
         detail: "Map parameters and monitor live input",
         keywords: "rig bindings parameter",
@@ -302,7 +308,7 @@ fn available(command: Command, kind: Option<crate::avatar_import::Kind>) -> bool
     match command {
         Command::Tool(Tab::Layers | Tab::Customize) => kind == Some(Kind::Live2d),
         Command::Tool(Tab::Images) => kind.is_none() || kind == Some(Kind::Images),
-        Command::Tool(Tab::Vrm) => kind.is_some_and(Kind::is_3d),
+        Command::Tool(Tab::Vrm | Tab::Graphics) => kind.is_some_and(Kind::is_3d),
         Command::Tool(Tab::Physics | Tab::Expressions) => kind != Some(Kind::Images),
         _ => true,
     }
@@ -1063,6 +1069,11 @@ mod tests {
             search("3D view", Some(Kind::Vrm))[0].command,
             Command::Tool(Tab::Vrm)
         );
+        assert_eq!(
+            search("dlss", Some(Kind::Glb))[0].command,
+            Command::Tool(Tab::Graphics)
+        );
+        assert!(search("dlss", Some(Kind::Live2d)).is_empty());
         assert!(search("no such tool xyz", None).is_empty());
     }
     #[test]
