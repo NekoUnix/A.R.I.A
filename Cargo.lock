@@ -212,7 +212,7 @@ dependencies = [
  "glam",
  "gltf",
  "image",
- "pollster 0.4.0",
+ "pollster 1.0.1",
  "reqwest",
  "rfd",
  "rodio",
